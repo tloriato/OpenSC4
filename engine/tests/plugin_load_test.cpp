@@ -10313,10 +10313,14 @@ int TrafficEnableTest(const std::string& dll, const std::string& ini, const std:
     CHECK(text.find("traffic Read -> 0") != std::string::npos);
     CHECK(text.find("cFC4TrafficSimulator destroyed (2 fallbacks, 0 external pathfinders)") != std::string::npos);
     CHECK(text.find("traffic: test hooks installed") != std::string::npos);
-    // The traffic shadow on the stand-in original (seam op 51).
-    CHECK(text.find("traffic shadow: requested (traffic_shadow from FreeCity4.ini) but INACTIVE") !=
+    // The traffic shadow on the stand-in original (seam op 51). glue27:
+    // `enable = traffic` with `traffic_shadow = 1` is no longer refused; the
+    // shadow runs as that replacement's self-check (FC4TrafficShadow.h).
+    CHECK(text.find("traffic shadow: ON over FreeCity4's replacement (traffic_shadow from FreeCity4.ini, "
+                    "`enable = traffic`)") != std::string::npos);
+    CHECK(text.find("traffic shadow: requested (traffic_shadow from FreeCity4.ini) but INACTIVE") ==
           std::string::npos);
-    CHECK(text.find("traffic shadow: comparing with the original traffic simulator") != std::string::npos);
+    CHECK(text.find("traffic shadow: comparing with the live traffic simulator") != std::string::npos);
     CHECK(text.find("traffic shadow month to 2000-02-01: clean; deliveries=5 (day 3, month 1, other 1)") !=
           std::string::npos);
     CHECK(text.find("INCOMPLETE") == std::string::npos);
@@ -10643,7 +10647,7 @@ int TractEnableTest(const std::string& dll, const std::string& ini, const std::s
     // Off by default; `enable = tract` registers cFC4TractDeveloper. No city:
     // the QI table (§1.1), the slots' return channels (§7.1), the record
     // (§6), Init / Shutdown and a Grow without services, the seam's filter
-    // counts and the shadow's answers (inactive with ours).
+    // counts and the shadow's answers (since glue27 a self-check over ours).
     SetEnvironmentVariableA("FC4_DISABLE", nullptr);
     SetEnvironmentVariableA("FC4_ENABLE", nullptr);
     SetEnvironmentVariableA("FC4_TRACT_SEED", nullptr);
@@ -10812,8 +10816,11 @@ int TractEnableTest(const std::string& dll, const std::string& ini, const std::s
     CHECK(CountOf(text, "tract Read -> 1") == 1);
     CHECK(CountOf(text, "tract Read -> 0") == 2);
     CHECK(text.find("tract Shutdown: init=0") != npos);
-    CHECK(text.find("tract shadow: requested (tract_shadow from FreeCity4.ini) but INACTIVE") != npos);
-    CHECK(text.find("tract shadow: ON") == npos);
+    // glue27: `enable = tract` with `tract_shadow = 1` is no longer refused;
+    // the shadow runs as that replacement's self-check (FC4TractShadow.h).
+    CHECK(text.find("tract shadow: ON over FreeCity4's replacement (tract_shadow from FreeCity4.ini, "
+                    "`enable = tract`)") != npos);
+    CHECK(text.find("tract shadow: requested (tract_shadow from FreeCity4.ini) but INACTIVE") == npos);
     CHECK(text.find("structured exception") == npos);
     CHECK(text.find("config: WARNING unknown key") == npos);
     CHECK(text.find("WARNING: released last reference") == npos);

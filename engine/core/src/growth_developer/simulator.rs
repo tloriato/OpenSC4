@@ -912,6 +912,14 @@ impl GrowthDeveloper {
         let td = self.host.tract_developer();
         let me = self.token();
         let mut count = 0u32;
+        // glue27: each grid read and write in one host call when the grid
+        // offers it (the batching `layer_f32` already uses, devperf). This
+        // walk is per cell of the desirability map and used to make three
+        // crossings per cell; the UpdatePopulation call below is the one
+        // crossing per cell that has to stay.
+        let w = GridSnapshot::new(&*w);
+        let cap = GridSnapshot::new(&*cap);
+        let mut pop = GridSnapshot::batched(&*pop);
         let done = loop {
             count = count.wrapping_add(step);
             // Deterministic pacing (simulator.md §5.7): no clock.

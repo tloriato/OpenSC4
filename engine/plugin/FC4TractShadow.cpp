@@ -700,15 +700,27 @@ void RunStep(void* p) {
         r.result = -1;
         return;
     }
+    // glue27: with `enable = tract` the city's tract developer is ours, so the
+    // original is no longer the class behind GetTractDeveloper. Rather than
+    // keeping an unreachable copy of the game's class, the shadow becomes a
+    // class-layer self-check of the replacement (the shape glue21 chose for
+    // the prop and lot configuration managers): it writes the live class's own
+    // record and runs a private core over it on a read-only host, so a
+    // difference is a defect in the replacement (a record that does not round
+    // trip, a getter that disagrees with the core it was built from, or a
+    // host callback that the read-only host answers differently) rather than
+    // a difference from the original. The original-vs-ours differential is
+    // still what `tract_shadow = 1` does without `enable = tract`. In both
+    // modes the compared fields are named "orig" (the live class) and "ours"
+    // (the private core) in the shadow lines, so the line format is unchanged.
     if (cFC4TractDeveloper::FromPrimary(raw) != nullptr) {
         if (!g_loggedOurs) {
             g_loggedOurs = true;
-            Log("tract shadow %s: the city's tract developer is FreeCity4's (enable = tract); the shadow compares "
-                "the ORIGINAL: nothing compared",
+            Log("tract shadow %s: the city's tract developer is FreeCity4's (enable = tract): the live class is the "
+                "reference, so this is its self-check (the slot 7 forwarder is not installed, so UpdatePopulation "
+                "is compared on sample tracts only)",
                 r.date);
         }
-        r.result = -2;
-        return;
     }
     cFC4ISC4TractDeveloper* td = AsGame(raw);
     bool incomplete = false;
@@ -894,11 +906,19 @@ void TractShadowStartup(bool tractReplaced) {
     if (!g_enabled) return;  // off by default: not a word in the log
     const char* src = "";
     Setting("tract_shadow", "FC4_TRACT_SHADOW", &src);
+    // glue27: a replacement (`enable = tract`) no longer removes the shadow;
+    // it turns it into that class's self-check (RunStep). See the comment
+    // there and FC4TractShadow.h.
     if (tractReplaced) {
-        Log("tract shadow: requested (tract_shadow from %s) but INACTIVE: it compares the ORIGINAL tract developer, "
-            "and `enable = tract` replaces it",
-            src);
-        g_enabled = false;
+        Log("tract shadow: ON over FreeCity4's replacement (tract_shadow from %s, `enable = tract`): at PostCityInit "
+            "and each SimNewMonth, the live class's own style state (slots 8, 9, 11, 13) and its record (its Write "
+            "into memory, then ReadTuning; the core's Write must give the same bytes) against FreeCity4's core "
+            "loaded from that record, and UpdatePopulation on up to %u sample tracts per growth developer at each "
+            "month (the slot 7 forwarder is only installed over the original's code)",
+            src, static_cast<unsigned>(kSampleTracts));
+        Log("tract shadow: NOT compared in this mode: the slot 7 forwarder's per-call lot-by-lot comparison (it "
+            "hooks the original's Grow / UpdatePopulation), Grow and Decline (they change the city and draw from "
+            "the generators), the histogram, the filter map; tract (0, 0) (seeded from the clock in the original)");
         return;
     }
     Log("tract shadow: ON (tract_shadow from %s): at PostCityInit and each SimNewMonth, the original tract "

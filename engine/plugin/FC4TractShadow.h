@@ -17,16 +17,33 @@
 //
 //   tract_shadow = 1             (env FC4_TRACT_SHADOW)
 //
-// It needs the ORIGINAL tract developer (the default: `tract` is not
-// enabled) and only reads it. At PostCityInit ("load") and at every
-// SimNewMonth ("month"), on the main thread:
-//   1. the original's style state through cISC4TractDeveloper slots 8, 9, 11
+// It only reads the city's tract developer. Two modes, decided at game start
+// by whether `enable = tract` put FreeCity4's class where the original's was
+// (FC4TractShadow.cpp TractShadowStartup):
+//
+//   differential (the default, `tract` not enabled): the reference is the
+//   ORIGINAL tract developer and the private core is on its record.
+//
+//   self-check (`enable = tract`): the original is no longer reachable
+//   through the city, so the reference is FreeCity4's own live class and the
+//   private core is on that class's record. Both sides are ours, so a
+//   difference is a defect in the replacement (a record that does not round
+//   trip, a getter that disagrees with the core it was built from) rather
+//   than a difference from the original. The slot 7 forwarder is only ever
+//   installed over the original's code, so UpdatePopulation is compared on
+//   sample tracts only. This is the shape glue21 chose for the prop and lot
+//   configuration managers. In both modes the shadow lines name the live
+//   class "orig" and the private core "ours", so the line format is unchanged.
+//
+// At PostCityInit ("load") and at every SimNewMonth ("month"), on the main
+// thread:
+//   1. the live class's style state through cISC4TractDeveloper slots 8, 9, 11
 //      and 13 (never a setter);
 //   2. FreeCity4's core in shadow mode (fc4_tract_create_shadow) reads the
-//      original's own record (its cIGZSerializable::Write into memory, §6),
+//      reference's own record (its cIGZSerializable::Write into memory, §6),
 //      over a read-only host table on the city's borrowed services, then
 //      ReadTuning (§4.21, the fix-ups Init makes). Its Write must give the
-//      same bytes back and its getters must match the original's;
+//      same bytes back and its getters must match the reference's;
 //   3. UpdatePopulation (§4.18), at every call. On the identified executable,
 //      when the original tract developer's vtable slot 7 holds the original
 //      UpdatePopulation (0x00706BC0), that entry is pointed at a forwarder in

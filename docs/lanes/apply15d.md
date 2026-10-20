@@ -1,6 +1,6 @@
 # Lane apply15d
 
-| Lane | Worktree | State at stop | Next steps |
+| Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
 | apply15d | `.claude/worktrees/apply15d` (branch `apply15d`) | **ready** — the traffic answers the traffic glue still needed are applied: TG23 (`update_network_costs`, `SetFullExpenses` at five call sites), TG24 (path-info slots 14/3/7, so lane continuity runs) and TG25 (the counted tunnel pair, borrowed), plus the re-answers13 TS64 model (state 13 resets the saved scanning iterator). TG26 verified as already matching, untouched. Gate green: cargo test 2596 passed / 0 failed (baseline 2595, plus the new TS64 test), clippy `-D warnings` clean, rustfmt clean on every touched file, plugin builds, ctest **58/58** including `ret_channel_check` (0 flagged, 7 reviewed) and the new `traffic_cost_logic_test`. Three game runs on Konradshohe to 2032, all `clean` with `ref_warnings=0`; the traffic shadow is 89 lines, 55 exact, with the 34 differences all the known pacing one. `docs/abi/` untouched by me (rows staged in `build-runs/pending-abi/apply15d-rows.tsv`); `FC4_ABI_VERSION` not bumped; no C ABI export added, so `"abi": false`. No merge lock taken. | Merge `apply15d` into main with `--no-ff` (`build-runs/merge-queue/apply15d.json`). Then, for the coordinator: (1) `build-runs/pending-abi/apply15d-rows.tsv` holds four `cISC4PathInfo` rows for `interfaces.tsv`; (2) the six numbered questions below, of which question 1 is the one the task itself set up. |
 

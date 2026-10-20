@@ -660,15 +660,19 @@ void LotsInCellRect(void* u, const fc4_cell_rect* rect, fc4_token_callback cb, v
     if (!list.valid()) return;
     lm->GetLotsInCellRect(reinterpret_cast<fc4::GameList<cISC4Lot*>&>(list), rect->x1, rect->z1, rect->x2, rect->z2,
                           true);
-    std::vector<uint64_t> tokens;
+    // glue27: the tokens used to be collected into a vector first and handed
+    // out in a second pass. The references are already held in `held` as each
+    // lot is taken from the list, so the callback can run in the same pass and
+    // the vector (a heap allocation per call - this is once per desirability
+    // tract of every growth developer's map update) goes away.
     for (cISC4Lot*& lot : list) {
         if (lot == nullptr) continue;
         FC4_ACQUIRED(lot, "GetLotsInCellRect list entry");
         Ctx(u)->held.push_back(lot);
-        tokens.push_back(TokenOf(lot));
+        const uint64_t t = TokenOf(lot);
         lot = nullptr;  // the list's destructor then only frees its nodes
+        cb(cbCtx, t);
     }
-    for (uint64_t t : tokens) cb(cbCtx, t);
 }
 
 // BuildFarm's list (§4.15.2, §9.2: "one list appended across 4 + 4·k

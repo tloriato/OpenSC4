@@ -113,9 +113,10 @@
 //   development_shadow = 0 / 1    the development shadow (default 0; needs FreeCity4's
 //                                 simulator and the ORIGINAL BDS and growth developers: do
 //                                 not enable development; FC4DevelopmentShadow.h)
-//   tract_shadow = 0 / 1          the tract developer shadow (default 0; needs the
-//                                 ORIGINAL tract developer: do not enable tract;
-//                                 FC4TractShadow.h)
+//   tract_shadow = 0 / 1          the tract developer shadow (default 0; FC4TractShadow.h).
+//                                 Without `enable = tract` it is the
+//                                 original-vs-core differential; with it, the
+//                                 replacement's self-check (glue27)
 //   history_shadow = 0 / 1        the history warehouse shadow (default 0; needs the
 //                                 ORIGINAL warehouse: do not enable history;
 //                                 FC4HistoryShadow.h)
@@ -176,8 +177,10 @@
 //   traffic_seed = N              the traffic generator's session seed (default: the
 //                                 cRZTime clock; env FC4_TRAFFIC_SEED)
 //   traffic_shadow = 0 / 1        the traffic shadow (default 0; needs FreeCity4's
-//                                 simulator and the ORIGINAL traffic simulator: do not
-//                                 enable traffic; FC4TrafficShadow.h)
+//                                 simulator; FC4TrafficShadow.h). Without
+//                                 `enable = traffic` it is the original-vs-core
+//                                 differential; with it, the replacement's
+//                                 self-check (glue27)
 //   traffic_shadow_diffs = N      its differences named per line (default 8, 1..64)
 //   traffic_shadow_lines = N      its delivery lines per month (default 8)
 //   traffic_shadow_hypotheses = N its alternative readings of unclear spec points
