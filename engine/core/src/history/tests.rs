@@ -525,6 +525,44 @@ fn hw12_07_get_point() {
     assert_eq!(w.get_point(K, 15, P24), None);
 }
 
+// ---- HW2: the graph window draws from GetPoint alone -------------------------------------------
+
+/// HW2 (re-answers22): the graph window (`cSC4GraphsViewWinProc`) reads a series
+/// through slot 8 only — one `GetPoint` per sample date, never `GetCount` — so
+/// what it draws at a sample date is whatever `GetPoint` answers. At an interior
+/// point that is the regression value through the point and its two neighbours
+/// (§4.7, §4.8), **not** the recorded value there: the smoothing is visible in
+/// every graph. These cases pin that, so a later change that answers the
+/// recorded value (or the plain mean, or a neighbour average) fails here.
+#[test]
+fn hw2_graph_window_draws_the_smoothed_value() {
+    let (_f, mut w) = new();
+    // §4.8: the recorded value at 1000 is 10 and the drawn one is 10/3.
+    let t = 1000u32;
+    w.set_series(K, series(&[(t - 1, 0), (t, 10), (t + 1, 0)], 0));
+    let drawn = w.get_point(K, t, P24).unwrap();
+    assert_ne!(drawn, 10.0, "the graph must not draw the recorded value");
+    assert_eq!(drawn, 10.0f32 / 3.0);
+
+    // A sample date on every interior point of a longer series: each is drawn
+    // at its own three-point regression, which differs from the record as soon
+    // as the series is not already a straight line.
+    w.set_series(K, series(&[(10, 0), (20, 10), (30, 3), (40, 20), (50, 5)], 0));
+    // date 30: neighbours 10 and 40 with 10 and 20; the regression through
+    // (20, 10), (30, 3), (40, 20) is not 3.
+    let at30 = w.get_point(K, 30, P24).unwrap();
+    assert_ne!(at30, 3.0, "an interior point is drawn smoothed, not as recorded");
+    // The end points are drawn as recorded (no predecessor / successor).
+    assert_eq!(w.get_point(K, 10, P24), Some(0.0));
+    assert_eq!(w.get_point(K, 50, P24), Some(5.0));
+
+    // `GetCount` counts the widened range and is never what the window draws
+    // (it does not call slot 5); a change to `GetCount` must not reach the
+    // curves, and the two answer different things at the same date.
+    assert_eq!(w.get_count(K, 30, 30), Some(3.0));
+    assert_ne!(Some(at30), w.get_count(K, 30, 30));
+}
+
 #[test]
 fn hw12_07_widened_ranges() {
     let p = pts(&[(10, 1), (20, 2), (30, 3), (40, 4)]);

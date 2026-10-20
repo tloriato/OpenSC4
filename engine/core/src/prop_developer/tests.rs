@@ -160,6 +160,8 @@ struct Fake {
     night: Cell<bool>,
     view: Cell<bool>,
     next: Cell<u64>,
+    /// `CreateLotProp` answers null (PV8).
+    fail_create: Cell<bool>,
     log: RefCell<Vec<String>>,
 }
 
@@ -375,6 +377,10 @@ impl PropHost for Fake {
         self.profiles.borrow().get(&id).map_or(0, |p| p.1)
     }
     fn create_lot_prop(&self, lot: u64, index: usize, id: u32) -> Option<u64> {
+        if self.fail_create.get() {
+            self.log(format!("create {lot:#x} {index} {id:#x} -> null"));
+            return None;
+        }
         let t = self.next.get();
         self.next.set(t + 1);
         let tag = self.lot(lot).objs.and_then(|o| o.get(index).map(|o| o.tag));
@@ -1162,4 +1168,97 @@ fn requesters_add_and_remove() {
     assert_eq!(e.d.requesters()[1].token(), POLLUTION);
     assert_eq!(e.d.requesters()[2].token(), CRIME);
     assert!(!e.d.remove_prop_requester(0x9999));
+}
+
+// PV8: a null created occupant returns false; the free entry is used up and
+// `need` is unchanged, so every free slot is tried once.
+#[test]
+fn null_creation_returns_false() {
+    let e = env();
+    city(&e);
+    example_lot(&e, 0.5);
+    e.f.fail_create.set(true);
+    e.member.push(&[0, 0, 0, 0]);
+    e.d.update_block(0, 0);
+    let o = e.d.last_block();
+    assert_eq!((o.target, o.created), (2, 0));
+    assert_eq!(e.member.draws(), ["RS(0, 4)", "RS(0, 3)", "RS(0, 2)", "RS(0, 1)"]);
+    assert!(e.f.take().iter().all(|l| l.ends_with("-> null")));
+    assert!(e.f.on_lot(0x10).is_empty());
+}
+
+// PV12: each list is searched only when the prop passes that list's test.
+#[test]
+fn unregister_tests_each_list() {
+    let e = env();
+    city(&e);
+    let removed = |token: u64| PropMessage {
+        msg_type: MSG_OCCUPANT_REMOVED,
+        object: token,
+        data3: OCCUPANT_TYPE_PROP,
+        ..Default::default()
+    };
+    // A trigger prop joins while the 3D view exists.
+    let mut h = PropertyHolder::new();
+    h.add(PROP_TRIGGER, Variant::Scalar(Elem::U32(0xCACB_DFC7)));
+    e.f.add_prop(0x500, Some(0x10), None, 0x600, h);
+    e.d.register_prop(0x500);
+    // A dated prop.
+    let mut h = PropertyHolder::new();
+    h.add(PROP_DATE, Variant::Scalar(Elem::U32(5)));
+    e.f.add_prop(0x501, Some(0x10), None, 0x600, h);
+    e.d.register_prop(0x501);
+    e.f.take();
+    // [quirk] The view has gone: the trigger-map prop stays, held.
+    e.f.view.set(false);
+    e.d.do_message(&removed(0x500));
+    assert_eq!(e.d.trigger_map().len(), 1);
+    e.f.view.set(true);
+    e.d.do_message(&removed(0x500));
+    assert!(e.d.trigger_map().is_empty());
+    // The date property gone by the removal: the dated list is not searched.
+    e.f.props.borrow_mut().get_mut(&0x501).unwrap().props = PropertyHolder::new();
+    e.d.do_message(&removed(0x501));
+    assert_eq!(e.d.dated_list().len(), 1);
+    // A preview prop is not looked up at all.
+    let mut h = PropertyHolder::new();
+    h.add(PROP_PREVIEW, Variant::Scalar(Elem::U8(1)));
+    h.add(PROP_DATE, Variant::Scalar(Elem::U32(5)));
+    e.f.props.borrow_mut().get_mut(&0x501).unwrap().props = h;
+    e.d.do_message(&removed(0x501));
+    assert_eq!(e.d.dated_list().len(), 1);
+}
+
+// PV13: a scanner state byte above 2 is running and is written back as read
+// until the scan finishes or resets.
+#[test]
+fn scanner_state_byte_above_two() {
+    let e = env();
+    let mut t = hex(TUTORIAL);
+    t[3] = 5;
+    assert!(read(&e.d, &t));
+    let s = e.d.snapshot();
+    assert_eq!((s.scanner.state, s.scan_byte, s.scanner.x, s.scanner.z), (ScanState::Running, 5, 7, 14));
+    assert_eq!(record(&e.d), t);
+    assert_eq!(e.d.block_step(), Some((8, 14)));
+    assert_eq!(e.d.snapshot().scan_byte, 5);
+    assert_eq!(record(&e.d)[3], 5);
+    // From the clip's last block the scan finishes and restarts: byte 1.
+    let e = env();
+    t[3] = 0xFF;
+    t[4] = 15;
+    t[8] = 15;
+    assert!(read(&e.d, &t));
+    assert_eq!(e.d.snapshot().scan_byte, 0xFF);
+    assert_eq!(e.d.block_step(), Some((0, 0)));
+    assert_eq!(e.d.snapshot().scan_byte, 1);
+    assert_eq!(record(&e.d)[3], 1);
+    // 0 and 2 are fresh and done.
+    for (b, st) in [(0u8, ScanState::Fresh), (2, ScanState::Done)] {
+        let e = env();
+        t[3] = b;
+        assert!(read(&e.d, &t));
+        assert_eq!(e.d.snapshot().scanner.state, st);
+        assert_eq!(record(&e.d)[3], b);
+    }
 }

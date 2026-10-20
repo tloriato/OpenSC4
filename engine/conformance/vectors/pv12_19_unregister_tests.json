@@ -1,0 +1,32 @@
+{
+  "format": 1,
+  "name": "prop_developer_unregister_tests",
+  "spec": ["prop-developer 4.6", "prop-developer 4.7", "prop-developer 10"],
+  "description": "Section 4.7 (PV12): unregistering searches each list only when the prop passes that list's test (night-lit = 1; trigger present, non-zero and the 3D view present; the time-of-day, date and power properties present, values not read; the two sign types). A prop that joined the trigger map while the 3D view existed is not removed when the view is gone at its removal and stays held [quirk]; it is removed (and released) once the view is back. A dated prop whose date property is gone by its removal stays in the dated list. A prop whose time-of-day pair has start = end never joined, and its lookup finds nothing.",
+  "steps": [
+    {"op": "pv_create"},
+    {"op": "pv_init", "expect": true},
+    {"op": "pv_prop", "prop": "0x500", "cell": [0, 0], "properties": {"0x6A3FCC37": {"u32": "0xCACBDFC7"}}},
+    {"op": "pv_message", "msg": "0x99EF1142", "object": "0x500", "data3": "0xA823821E", "expect": true},
+    {"op": "pv_prop", "prop": "0x501", "cell": [0, 0], "properties": {"0x0A751675": {"u32": 5}}},
+    {"op": "pv_message", "msg": "0x99EF1142", "object": "0x501", "data3": "0xA823821E", "expect": true},
+    {"op": "pv_prop", "prop": "0x502", "cell": [0, 0], "properties": {"0x4A149631": {"f32": [6, 6]}}},
+    {"op": "pv_message", "msg": "0x99EF1142", "object": "0x502", "data3": "0xA823821E", "expect": true},
+    {"op": "pv_expect_lists", "triggers": [["0xCACBDFC7", ["0x500"]]], "dated": ["0x501"], "time_of_day": []},
+    {"op": "pv_env", "view": false},
+    {"op": "pv_clear_events"},
+    {"op": "pv_message", "msg": "0x99EF1143", "object": "0x500", "data3": "0xA823821E", "expect": true},
+    {"op": "pv_expect_events", "events": []},
+    {"op": "pv_expect_lists", "triggers": [["0xCACBDFC7", ["0x500"]]]},
+    {"op": "pv_env", "view": true},
+    {"op": "pv_message", "msg": "0x99EF1143", "object": "0x500", "data3": "0xA823821E", "expect": true},
+    {"op": "pv_expect_events", "events": [{"event": "release", "token": "0x500"}]},
+    {"op": "pv_expect_lists", "triggers": []},
+    {"op": "pv_prop", "prop": "0x501", "properties": {}},
+    {"op": "pv_message", "msg": "0x99EF1143", "object": "0x501", "data3": "0xA823821E", "expect": true},
+    {"op": "pv_expect_events", "events": []},
+    {"op": "pv_expect_lists", "dated": ["0x501"]},
+    {"op": "pv_message", "msg": "0x99EF1143", "object": "0x502", "data3": "0xA823821E", "expect": true},
+    {"op": "pv_expect_events", "events": []}
+  ]
+}

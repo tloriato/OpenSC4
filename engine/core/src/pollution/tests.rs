@@ -13,7 +13,7 @@ use std::rc::Rc;
 use super::*;
 use crate::grid::{CityDims, CoreGrids};
 use crate::property::PropertyHolder;
-use crate::rng::FixedSeeds;
+use crate::rng::{FixedSeeds, RzRandomSuper};
 use crate::stream::{ByteReader, ByteWriter, RefResolver, RefValue, SaveObject, SaveRegistry};
 use crate::variant::{Elem, Variant};
 
@@ -850,4 +850,27 @@ fn effect_pass_without_effects_keeps_rand_and_worst_tracts() {
             value: 2000
         }
     );
+}
+
+/// RN3: the visual-effect generator of [`PollutionSim::process_wide`] is
+/// seeded once per process (by the first session) and shared by every later
+/// simulator; [`PollutionSim::from_session`] builds one of its own.
+#[test]
+fn effect_generator_is_process_wide() {
+    use crate::seeding::{clocks, keys, seed};
+    let h = host(4);
+    let a = PollutionSim::process_wide(h.clone() as Rc<dyn PollutionHost>, 1, 0x0BAD_5EED);
+    let first = a.effect_generator().borrow_mut().next_u32();
+    drop(a);
+    let b = PollutionSim::process_wide(h.clone() as Rc<dyn PollutionHost>, 2, 0x1234_0000);
+    let key = keys::POLLUTION_EFFECTS;
+    let mut fresh = RzRandomSuper::new(seed(0x0BAD_5EED, key), &clocks(0x0BAD_5EED, key));
+    assert_eq!(fresh.next_u32(), first);
+    assert_eq!(b.effect_generator().borrow_mut().next_u32(), fresh.next_u32());
+    let c = PollutionSim::process_wide(h.clone() as Rc<dyn PollutionHost>, 3, 0x0BAD_5EED);
+    assert!(Rc::ptr_eq(b.effect_generator(), c.effect_generator()));
+    let own = PollutionSim::from_session(h as Rc<dyn PollutionHost>, 4, 0x0BAD_5EED);
+    assert!(!Rc::ptr_eq(b.effect_generator(), own.effect_generator()));
+    let mut fresh = RzRandomSuper::new(seed(0x0BAD_5EED, key), &clocks(0x0BAD_5EED, key));
+    assert_eq!(own.effect_generator().borrow_mut().next_u32(), fresh.next_u32());
 }

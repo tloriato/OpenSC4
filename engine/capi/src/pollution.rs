@@ -566,7 +566,8 @@ fn peek<R>(p: *const fc4_pollution, fallback: R, f: impl FnOnce(&PollutionSim) -
 /// copied. `token` is the host identity of the simulator itself;
 /// `session_seed` is foundations §6.3's `S`: the visual-effect generator (the
 /// original's file-local one, wall clock XOR `0x4C09C4D3`) takes
-/// `derive(S, 0x4C09C4D3)`.
+/// `derive(S, 0x4C09C4D3)`. It is process-wide (RN3): the first create seeds
+/// it and later simulators continue its stream.
 #[no_mangle]
 pub unsafe extern "C" fn fc4_pollution_create(
     host: *const fc4_pollution_host,
@@ -576,7 +577,8 @@ pub unsafe extern "C" fn fc4_pollution_create(
     guard(std::ptr::null_mut(), || match host.as_ref() {
         Some(h) if (h.struct_size as usize) >= std::mem::size_of::<fc4_pollution_host>() && h.grids.complete() => {
             let host = Rc::new(CHost(*h));
-            let sim = PollutionSim::from_session(host.clone(), token, session_seed);
+            // The visual-effect generator is process-wide (RN3).
+            let sim = PollutionSim::process_wide(host.clone(), token, session_seed);
             Box::into_raw(Box::new(Handle {
                 host,
                 sim,

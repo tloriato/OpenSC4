@@ -785,7 +785,9 @@ cargo test -p fc4-formats --release --test network_rules -- --nocapture
      traffic, parks), a temporary seeded from the clock the GZCLSID XOR its creation count (civic monthly,
      neighbours' proposals, a growth decline key whose coordinate seed is `0xFFFFFFFF`); flammability keeps its
      constant 0 and its zero-state reseed takes `derive(GZCLSID)`; coordinate-seeded temporaries are unchanged
-     (tract (0, 0) uses 1); `rand()` stays unseeded. Without the key `S` is the `cRZTime` wall clock at game start
+     (tract (0, 0) uses 1); `rand()` stays unseeded. The budget's, the crime simulator's and the pollution
+     effects' generators are process-wide like the original's statics (RN3, `seeding::process_super`): the first
+     create of the process seeds them and later city loads continue their streams. Without the key `S` is the `cRZTime` wall clock at game start
      (seconds since 1901-01-01, `time() + 2177452800`), like the clock the original seeds from. A subsystem's own
      `<key>_seed` (`crime_seed`, `development_seed`, `tract_seed`, `lotdev_seed`, `zonedev_seed`, `civic_seed`,
      `parks_seed`, `residential_seed`, `neighbors_seed`, `traffic_seed`) still overrides `S` for that subsystem.

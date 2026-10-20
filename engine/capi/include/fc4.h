@@ -614,7 +614,9 @@ typedef struct fc4_budget_host {
     bool (*try_start_disaster)(void* user, uint32_t id, float x, float z); /* false if it does not exist */
     /* The session seed S (foundations §6.3): the RiskyMoney generator is seeded
      * with derive(S, 0x6C09C3D7) (ABI 64; before, this callback returned the
-     * generator's seed itself). */
+     * generator's seed itself). The generator is process-wide (RN3): the first
+     * fc4_budget_create of the process seeds it, later budgets (later city
+     * loads) continue its stream and their seed is not read again. */
     uint32_t (*session_seed)(void* user);
     bool (*ltext)(void* user, uint32_t group, uint32_t instance, fc4_bytes_sink sink, void* ctx);
     bool (*building_type_name)(void* user, uint32_t building_type, fc4_bytes_sink sink, void* ctx);
@@ -2361,7 +2363,9 @@ typedef struct fc4_pollution_host {
 
 /* `token`: the simulator's own host identity; `session_seed` is the session
  * seed S (foundations §6.3): the visual-effect generator is seeded with
- * derive(S, 0x4C09C4D3) (ABI 64; before, the argument was its seed). */
+ * derive(S, 0x4C09C4D3) (ABI 64; before, the argument was its seed). It is
+ * process-wide (RN3): the first fc4_pollution_create of the process seeds it,
+ * later simulators (later city loads) continue its stream. */
 fc4_pollution* fc4_pollution_create(const fc4_pollution_host* host, uint64_t token, uint32_t session_seed);
 /* A loaded, never-initialised object gives its list and department references back. */
 void fc4_pollution_destroy(fc4_pollution* p);
@@ -7167,12 +7171,14 @@ typedef struct fc4_city_detail_state {
     /* The last Init: 0 nothing, 1 reduce, 2 increase; the occupants removed
      * and created, the draws, the network lots redeveloped. */
     uint32_t last_pass, last_removed, last_created, last_draws, last_network_lots;
-    uint32_t session_passes; /* increase passes so far in this session */
+    uint32_t session_passes; /* increase passes by this manager object so far (n of §3.5,
+                              * 0 at creation; CD5) */
 } fc4_city_detail_state;
 
 /* Constructed (level none, reference count 0). The host table is copied (NULL
  * for a NULL or short table). `session_seed` is S of §3.5; `token` is the
- * manager's own host identity. */
+ * manager's own host identity. The increase-pass count n of §3.5 belongs to
+ * the object and starts at 0 (CD5): the game makes one per city load. */
 fc4_city_detail* fc4_city_detail_create(const fc4_city_detail_host* host, uint32_t session_seed, uint64_t token);
 void fc4_city_detail_destroy(fc4_city_detail* c);
 bool fc4_city_detail_query_interface(uint32_t iid);
@@ -7227,12 +7233,13 @@ typedef struct fc4_port_host {
     void (*lot_rect)(void* user, uint64_t lot, fc4_cell_rect* out);
     uint32_t (*lot_facing)(void* user, uint64_t lot);
     bool (*lot_zone_compatible)(void* user, uint64_t lot, uint16_t zone);
-    /* The lot configuration with this ID (0 = none). */
+    /* The lot configuration with this ID (0 = none: the swap still goes on, PD5). */
     uint64_t (*lot_configuration)(void* user, uint32_t id);
     void (*start_demolish_lot)(void* user, uint64_t lot);
     void (*end_demolish_lot)(void* user, uint64_t lot);
     /* CreateLot(x, z, width, depth, facing); the lot (0 = none). */
     uint64_t (*create_lot)(void* user, int32_t x, int32_t z, int32_t width, int32_t depth, uint32_t facing);
+    /* SetLotConfiguration + UpdateZoneType, ConstructDefaultLot(lot, cfg, 0, 1); `configuration` may be 0 (null, PD5). */
     void (*set_lot_configuration)(void* user, uint64_t lot, uint64_t configuration);
     bool (*construct_default_lot)(void* user, uint64_t lot, uint64_t configuration);
     void (*dezone)(void* user, const fc4_cell_rect* rect);
@@ -7247,6 +7254,9 @@ typedef struct fc4_port_host {
     void (*terrain_size)(void* user, uint32_t* width, uint32_t* depth);
     bool (*cell_has_water)(void* user, uint32_t x, uint32_t z);
     uint32_t (*set_access_props_state)(void* user, uint64_t lot, uint32_t property, uint32_t state);
+    /* cISTETerrain slot 51 SetAltitude(x, z, h): vertex indices. The seaport passes the truncated metre
+     * coordinates of a cell centre, as the original does (§4.8 step 4, PD6); ones outside the terrain's
+     * vertices are skipped. */
     void (*set_altitude)(void* user, int32_t x, int32_t z, float altitude);
 } fc4_port_host;
 
@@ -7282,7 +7292,9 @@ bool fc4_port_developer_query_interface(uint32_t kind, uint32_t iid, uint32_t* o
 uint32_t fc4_port_developer_add_ref(fc4_port_developer* p);
 /* Release: the last release calls Shutdown and returns 0; the handle stays valid until fc4_port_developer_destroy. */
 uint32_t fc4_port_developer_release(fc4_port_developer* p);
-/* Init: tuning, department, agent; the seaport's map. */
+/* Init (guarded: a second call returns true at once): tuning, agent, department; the seaport's map.
+ * Shutdown (nothing without Init): deletes every port and port type, removes the agent; keeps the
+ * tuning-loaded flag (PD10). */
 bool fc4_port_developer_init(fc4_port_developer* p);
 bool fc4_port_developer_shutdown(fc4_port_developer* p);
 /* DoMessage (§3): `data` is the occupant (0x99EF1142) or the lot (0xE8BDA2E7,
@@ -7300,7 +7312,9 @@ size_t fc4_port_developer_all_port_lots(const fc4_port_developer* p, uint64_t* o
 uint32_t fc4_port_developer_num_ports(const fc4_port_developer* p, uint32_t size_flags, uint32_t stage_flags);
 uint32_t fc4_port_developer_num_airports(const fc4_port_developer* p, uint32_t size);
 uint32_t fc4_port_developer_num_seaports(const fc4_port_developer* p);
-/* Get...UsageValues(lot): false (0, 0) if not a port. */
+/* Get...UsageValues(lot): usage = min(trips, capacity), cap = capacity, then with funding the funded
+ * cap and the usage clamped to it (§4.7; the month uses the plain capacity, PD8); false (0, 0) if not
+ * a port. */
 bool fc4_port_developer_usage_values(const fc4_port_developer* p, uint64_t lot, uint32_t* usage, uint32_t* cap);
 uint32_t fc4_port_developer_num_trips(const fc4_port_developer* p);
 /* GetMaintenanceCost(lot) (0 if not a port). */
@@ -7448,7 +7462,7 @@ typedef struct fc4_prop_message {
 typedef struct fc4_prop_state {
     uint32_t struct_size;
     int32_t scan_flag;      /* 0 never set up, 1 set up, 2 scanning */
-    uint32_t scanner_state; /* 0 fresh, 1 running, 2 done */
+    uint32_t scanner_state; /* 0 fresh, 2 done, any other byte running (1, or a byte above 2 as read, PV13) */
     int32_t scanner_x, scanner_z, scanner_step;
     int32_t clip_x0, clip_z0, clip_x1, clip_z1;
     uint32_t night_cursor, night_mode, night_batch, night_acc;

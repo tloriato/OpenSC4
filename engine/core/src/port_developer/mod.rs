@@ -30,14 +30,21 @@
 //!   read as 0.
 //! - `Read` is atomic for the port list and rejects a type index out of
 //!   range (§7). The tuning it loads (with the record's instance) stays
-//!   loaded when the rest of the record fails.
-//! - A port whose lot is null (a failed swap, §10 point 8) is skipped by the
-//!   month, the trips and the growth, and is left out of `GetAllPortLots`.
-//! - A swap whose next-stage lot configuration is missing fails before the
-//!   demolition.
-//! - The seaport's terrain grid (§4.8) is read row-major with rows along z
-//!   for facing 0 and rotated by quarter turns for facings 1–3 [question];
-//!   it never runs with shipped data.
+//!   loaded when the rest of the record fails, as the original's order
+//!   gives (PD11).
+//! - A port whose lot is null (a failed swap, §10 point 8; the original
+//!   faults on it, PD7) is skipped by the month, the trips, the growth, the
+//!   access recheck and every other walk over the ports, and is left out of
+//!   `GetAllPortLots`.
+//! - The seaport's terrain grid (§4.8, PD4, PD6) is reproduced in full
+//!   except where the original reads or writes out of bounds: a grid index
+//!   past the grid's values sets nothing, and a vertex index (the metre
+//!   coordinates the original passes to `SetAltitude`) outside the
+//!   terrain's `(cellsX + 1) × (cellsZ + 1)` vertices is skipped
+//!   [question PD12, PD13]. It never runs with shipped data.
+//! - `Shutdown` keeps `tuningLoaded`, `typeCount` and the type instance
+//!   list (§3, the original's [quirk]; the spec allows clearing
+//!   `tuningLoaded`, FreeCity4 does not).
 //! - `GetCellSeaAccess` outside the map answers 0 (no bounds check in the
 //!   original).
 //! - Threading (foundations §19.3): main-thread only; no state is borrowed
@@ -289,7 +296,8 @@ pub trait PortHost {
     fn lot_zone_compatible(&self, lot: u64, zone_type: u16) -> bool;
 
     // ---- growth (§4.5) ----
-    /// `lotConfigurationManager.GetLotConfiguration(id)`.
+    /// `lotConfigurationManager.GetLotConfiguration(id)`; `None` (null)
+    /// when the manager does not have it (PD5: the swap goes on).
     fn lot_configuration(&self, id: u32) -> Option<u64>;
     /// Lot developer `StartDemolishLot(lot)`.
     fn start_demolish_lot(&self, lot: u64);
@@ -297,10 +305,13 @@ pub trait PortHost {
     fn end_demolish_lot(&self, lot: u64);
     /// `lotManager.CreateLot(x, z, width, depth, facing)` (slot 23).
     fn create_lot(&self, x: i32, z: i32, width: i32, depth: i32, facing: u32) -> Option<u64>;
-    /// `lot.SetLotConfiguration(cfg)` then `lot.UpdateZoneType()`.
-    fn set_lot_configuration(&self, lot: u64, config: u64);
-    /// `ConstructDefaultLot(lot, cfg, 0, 1)`.
-    fn construct_default_lot(&self, lot: u64, config: u64) -> bool;
+    /// `lot.SetLotConfiguration(cfg)` then `lot.UpdateZoneType()`; `cfg`
+    /// may be null (`None`, PD5).
+    fn set_lot_configuration(&self, lot: u64, config: Option<u64>);
+    /// `ConstructDefaultLot(lot, cfg, 0, 1)`; `cfg` may be null (`None`,
+    /// PD5: the lot developer then leaves an empty lot in state 2 with
+    /// condition 1 and answers true, lot-developer.md §6.4).
+    fn construct_default_lot(&self, lot: u64, config: Option<u64>) -> bool;
     /// `PlaceZone` with zone 0 over the rectangle, for free (§4.6).
     fn dezone(&self, rect: CellRect);
 
@@ -330,7 +341,10 @@ pub trait PortHost {
     /// Switches the lot's props with property `0xC98204B8` to state 1;
     /// returns how many.
     fn set_access_props_state(&self, lot: u64, property: u32, state: u32) -> u32;
-    /// `SetAltitudeAtVertex(x, z, altitude)`.
+    /// `terrain.SetAltitude(x, z, altitude)` (`cISTETerrain` slot 51):
+    /// `x`, `z` are vertex indices. The seaport passes the truncated metre
+    /// coordinates of a cell centre (§4.8 step 4, PD6), as the original
+    /// does; the developer has already skipped any outside the terrain.
     fn set_altitude(&self, x: i32, z: i32, altitude: f32);
 }
 
@@ -534,11 +548,19 @@ impl PortDeveloper {
 
     // ---- Init / Shutdown ----
 
-    /// Slot 3 `Init`: tuning, department (§4.2), agent (§3); the seaport
-    /// builds its map (§4.8). Returns true.
+    /// Slot 3 `Init` (§3, PD10): guarded by `initialized` (a second call
+    /// returns true at once). The base: `initialized := 1`, the tuning
+    /// (§6), the agent (added without removing anything first); then the
+    /// subclass: the department (§4.2) and, for the seaport, the map
+    /// (§4.8). Returns true.
     pub fn init(&self) -> bool {
+        if self.s.get().initialized {
+            return true;
+        }
+        self.edit(|s| s.initialized = true);
         self.load_tuning();
         let h = &*self.host;
+        h.add_agent(AGENT_NAME, AGENT_LEVEL, AGENT_FLAGS);
         let id = self.kind.department();
         let dept = h.department(id).or_else(|| {
             h.create_department(
@@ -550,24 +572,31 @@ impl PortDeveloper {
             )
         });
         self.edit(|s| s.department = dept);
-        h.add_agent(AGENT_NAME, AGENT_LEVEL, AGENT_FLAGS);
         if self.kind == PortKind::Seaport {
             self.build_water_map();
         }
-        self.edit(|s| s.initialized = true);
         true
     }
 
-    /// Slot 4 `Shutdown`: removes the agent and drops the department.
-    /// Returns true.
+    /// Slot 4 `Shutdown` (§3, PD10): nothing without `Init`. Otherwise
+    /// `initialized := 0`; every port lot is deleted (its lot resolved first
+    /// when `needsLookup` is set) and the port list emptied; the port types
+    /// are deleted and their vector emptied; the agent is removed and the
+    /// department dropped. `tuningLoaded`, `typeCount` and the type
+    /// instances are kept [quirk]: an `Init` or `Read` after a `Shutdown`
+    /// finds no port types. Returns true.
     pub fn shutdown(&self) -> bool {
-        if self.s.get().initialized {
-            self.host.remove_agent(AGENT_NAME);
+        if !self.s.get().initialized {
+            return true;
         }
-        self.edit(|s| {
-            s.initialized = false;
-            s.department = None;
-        });
+        self.edit(|s| s.initialized = false);
+        for i in 0..self.port_count() {
+            self.lot_of(i);
+        }
+        self.ports.borrow_mut().clear();
+        self.types.borrow_mut().clear();
+        self.host.remove_agent(AGENT_NAME);
+        self.edit(|s| s.department = None);
         true
     }
 
@@ -822,18 +851,30 @@ impl PortDeveloper {
         f(trips) >= f(self.capacity(&p)) * GROWTH_THRESHOLD
     }
 
-    /// The usage values of port `i` (§4.7): `(min(trips, cap), cap)`.
-    fn usage_values_of(&self, i: usize) -> (u32, u32) {
-        let p = self.port(i);
-        let capacity = self.capacity(&p);
-        let cap = match self.line() {
-            Some((full, cur)) if full > 0 => {
-                x87::ftol32(f64::from(f(capacity) * ((cur as f32) / (full as f32)))) as u32
-            }
-            _ => capacity,
-        };
+    /// `PortUsageValues` of port `i` (the internal `0x006E9770` the month
+    /// calls, §4.3, PD8): `(min(trips, capacity), capacity)`, no funding
+    /// scaling.
+    fn port_usage_values(&self, i: usize) -> (u32, u32) {
+        let cap = self.capacity(&self.port(i));
         let trips = self.trips_for_port(i);
         (trips.min(cap), cap)
+    }
+
+    /// The public query of port `i` (slot 12, §4.7): [`Self::port_usage_values`],
+    /// then with line 1 and `full > 0` the funded cap
+    /// `trunc(float(capacity) / full × float(current))` (each operation
+    /// rounded to float, the int64 operands entering exactly) and the usage
+    /// clamped to it again.
+    fn usage_values_of(&self, i: usize) -> (u32, u32) {
+        let (usage, capacity) = self.port_usage_values(i);
+        match self.line() {
+            Some((full, cur)) if full > 0 => {
+                let q = (f64::from(capacity) / full as f64) as f32;
+                let cap = x87::ftol32(f64::from(x87::mul_i64_f32(cur, q))) as u32;
+                (usage.min(cap), cap)
+            }
+            _ => (usage, capacity),
+        }
     }
 
     /// `AverageEfficiency()`: 1.0 without ports.
@@ -872,7 +913,8 @@ impl PortDeveloper {
             let mut p = self.port(i);
             p.efficiency = Self::efficiency(f(self.capacity(&p)) * ratio, trips);
             self.set_port(i, p);
-            let (usage, cap) = self.usage_values_of(i);
+            // PD8: the plain capacity (the funded cap is the query's).
+            let (usage, cap) = self.port_usage_values(i);
             let new = f(usage) / f(cap);
             h.update_occupant_effects(lot, p.usage, new);
             p.usage = new;
@@ -964,14 +1006,16 @@ impl PortDeveloper {
         }
         if self.s.get().recheck_access {
             self.edit(|s| s.recheck_access = false);
+            // PD9: every listed port without access sets the event flag,
+            // at any stage and whatever the prop switch finds.
             let mut any = false;
             for i in 0..self.port_count() {
                 let Some(lot) = self.lot_of(i) else {
                     continue;
                 };
                 if !self.lot_has_access(lot) {
-                    self.host.set_access_props_state(lot, PROP_SEAPORT_ACCESS, 1);
                     any = true;
+                    self.host.set_access_props_state(lot, PROP_SEAPORT_ACCESS, 1);
                 }
             }
             if any {
@@ -1010,15 +1054,17 @@ impl PortDeveloper {
         grown
     }
 
-    /// Swaps port `i`'s lot for one with configuration `config_id`.
+    /// Swaps port `i`'s lot for one with configuration `config_id`. A
+    /// missing configuration is not tested (PD5): the null configuration
+    /// goes to `SetLotConfiguration` and `ConstructDefaultLot`, whose answer
+    /// decides (true in the original: the port is left on an empty lot in
+    /// state 2 that never grows again).
     fn swap(&self, i: usize, config_id: u32) -> bool {
         let h = &*self.host;
         let Some(old) = self.lot_of(i) else {
             return false;
         };
-        let Some(config) = h.lot_configuration(config_id) else {
-            return false;
-        };
+        let config = h.lot_configuration(config_id);
         let mut p = self.port(i);
         p.swapping = true;
         self.set_port(i, p);
@@ -1060,7 +1106,8 @@ impl PortDeveloper {
         self.lot_of(i).is_some_and(|l| self.lot_has_access(l))
     }
 
-    /// `OnNewLotCreated(p)` (seaport, §4.8).
+    /// `OnNewLotCreated(p)` (seaport, §4.8): the trip capacity, a recheck,
+    /// then the terrain grid if the port type has one.
     fn on_new_lot_created(&self, i: usize) {
         if self.kind != PortKind::Seaport {
             return;
@@ -1072,26 +1119,56 @@ impl PortDeveloper {
         let (Some(grid), Some(lot)) = (grid, p.lot) else {
             return;
         };
-        let r = self.host.lot_rect(lot);
-        let (w, d) = (r.x1 - r.x0 + 1, r.z1 - r.z0 + 1);
-        if (grid.rows * grid.columns) as i64 != i64::from(w) * i64::from(d) {
+        self.apply_terrain_grid(lot, &grid);
+    }
+
+    /// §4.8 steps 2–4 (PD4, PD6): the use test compares only the product
+    /// `R × C` with `(x2 − x1)(z2 − z1)` of the inclusive rectangle; the walk
+    /// covers `z1 ≤ z < z2` (outer) and `x1 ≤ x < x2` (inner), the last row
+    /// and column of the lot excluded; the value is picked by the facing
+    /// (facing 0: rows along x; 2: its 180° turn; 1 and 3: the transpose and
+    /// its 180° turn; any other facing sets nothing); the write passes the
+    /// truncated metre coordinates of the cell centre as vertex indices.
+    fn apply_terrain_grid(&self, lot: u64, grid: &TerrainGrid) {
+        let h = &*self.host;
+        let r = h.lot_rect(lot);
+        let walk = i64::from(r.x1 - r.x0) * i64::from(r.z1 - r.z0);
+        if i64::from(grid.rows) * i64::from(grid.columns) != walk {
             return;
         }
-        let facing = self.host.lot_facing(lot) & 3;
-        for dz in 0..d {
-            for dx in 0..w {
-                // [choice] Row-major, rows along z at facing 0, rotated by
-                // quarter turns.
+        let facing = h.lot_facing(lot);
+        if facing > 3 {
+            return;
+        }
+        let (cells_x, cells_z) = h.terrain_size();
+        let (vx, vz) = (i64::from(cells_x) + 1, i64::from(cells_z) + 1);
+        let columns = i64::from(grid.columns);
+        for z in r.z0..r.z1 {
+            for x in r.x0..r.x1 {
                 let (row, col) = match facing {
-                    0 => (dz, dx),
-                    1 => (dx, d - 1 - dz),
-                    2 => (d - 1 - dz, w - 1 - dx),
-                    _ => (w - 1 - dx, dz),
+                    0 => (x - r.x0, z - r.z0),
+                    1 => (r.z1 - 1 - z, r.x1 - 1 - x),
+                    2 => (r.x1 - 1 - x, r.z1 - 1 - z),
+                    _ => (z - r.z0, x - r.x0),
                 };
-                let idx = row as usize * grid.columns as usize + col as usize;
-                if let Some(&alt) = grid.values.get(idx) {
-                    self.host.set_altitude(r.x0 + dx, r.z0 + dz, alt);
+                // No bounds check in the original: with matching products
+                // and different sides the flat index runs on [quirk]; past
+                // the values it would read beyond the grid [choice: skip].
+                let idx = i64::from(row) * columns + i64::from(col);
+                let Some(&alt) = usize::try_from(idx).ok().and_then(|k| grid.values.get(k)) else {
+                    continue;
+                };
+                // `CellCenterToPosition` (`cISC4City` slot 97), truncated.
+                let px = x87::ftol32((f64::from(x) + 0.5) * 16.0);
+                let pz = x87::ftol32((f64::from(z) + 0.5) * 16.0);
+                // Slot 51 takes vertex indices `(cellsX + 1) × z + x` with no
+                // bounds check [quirk]; one outside the vertex array is
+                // skipped [choice].
+                let vertex = vx * i64::from(pz) + i64::from(px);
+                if !(0..vx * vz).contains(&vertex) {
+                    continue;
                 }
+                h.set_altitude(px, pz, alt);
             }
         }
     }

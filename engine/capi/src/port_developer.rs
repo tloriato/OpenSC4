@@ -271,11 +271,12 @@ impl PortHost for CHost {
     fn create_lot(&self, x: i32, z: i32, width: i32, depth: i32, facing: u32) -> Option<u64> {
         opt(cb!(self, create_lot, 0, x, z, width, depth, facing))
     }
-    fn set_lot_configuration(&self, lot: u64, config: u64) {
-        cb!(self, set_lot_configuration, (), lot, config)
+    // A null configuration (PD5) goes to the host as 0.
+    fn set_lot_configuration(&self, lot: u64, config: Option<u64>) {
+        cb!(self, set_lot_configuration, (), lot, config.unwrap_or(0))
     }
-    fn construct_default_lot(&self, lot: u64, config: u64) -> bool {
-        cb!(self, construct_default_lot, false, lot, config)
+    fn construct_default_lot(&self, lot: u64, config: Option<u64>) -> bool {
+        cb!(self, construct_default_lot, false, lot, config.unwrap_or(0))
     }
     fn dezone(&self, rect: CellRect) {
         let r = rect_c(rect);

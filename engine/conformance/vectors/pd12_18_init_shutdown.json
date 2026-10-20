@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "name": "port_developers_init_shutdown",
+  "spec": ["port-developers 3", "port-developers 10", "port-developers 12"],
+  "description": "Section 12 test 13 (PD10): Init is guarded by initialized, so two Init calls register one agent and get the department once. Shutdown deletes every port lot (the read one, which needs a lookup, is resolved first) and empties the list, deletes the port types and empties their vector, removes the agent and drops the department; tuningLoaded and typeCount are kept [quirk]. A second Shutdown does nothing. A re-Init does not reload the tuning, so the same object finds no port types: a record with a port is rejected [choice: index out of range].",
+  "steps": [
+    {"op": "pd_create", "kind": "airport"},
+    {"op": "pd_init", "expect": true},
+    {"op": "pd_init", "expect": true},
+    {"op": "pd_expect_event_count", "filter": {"event": "add_agent"}, "count": 1},
+    {"op": "pd_expect_event_count", "filter": {"event": "create_department"}, "count": 1},
+    {"op": "pd_lot", "lot": "0x10", "config": ["0xCA2436C0", 1], "x": 3, "z": 4, "rect": [3, 4, 7, 6]},
+    {"op": "pd_occupant", "occupant": "0x100", "lot": "0x10"},
+    {"op": "pd_message", "msg": "0x99EF1142", "data": "0x100"},
+    {"op": "pd_read", "hex": "0200 0100 9D0E27CA 0B00 0100 01000000 0000 2800 3400", "expect": true},
+    {"op": "pd_expect", "state": {"ports": 2, "types": 3}},
+    {"op": "pd_clear_events"},
+    {"op": "pd_shutdown", "expect": true},
+    {"op": "pd_expect_events", "events": [{"event": "remove_agent", "name": "cSC4PortDeveloper"}]},
+    {"op": "pd_expect", "state": {"ports": 0, "types": 0, "type_count": 3, "tuning_loaded": true, "initialized": false, "department": null}},
+    {"op": "pd_shutdown", "expect": true},
+    {"op": "pd_expect_events", "events": []},
+    {"op": "pd_init", "expect": true},
+    {"op": "pd_expect", "state": {"initialized": true, "types": 0, "tuning_loaded": true, "department": "0xD"}},
+    {"op": "pd_read", "hex": "0200 0100 9D0E27CA 0B00 0100 01000000 0000 2800 3400", "expect": false},
+    {"op": "pd_expect", "state": {"ports": 0}}
+  ]
+}

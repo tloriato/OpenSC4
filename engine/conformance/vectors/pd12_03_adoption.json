@@ -2,11 +2,11 @@
   "format": 1,
   "name": "port_developers_adoption",
   "spec": ["port-developers 3", "port-developers 4.1", "port-developers 4.2", "port-developers 12"],
-  "description": "Section 12 test 3. Init creates the department (0x6A4119F0, group 0xAA369059, name 0x6A3FF01C/0xEA493564, maximum funding 1.2, line 1) and registers the agent cSC4PortDeveloper at level 6 with flags 2. A building of group 0x1508 inserted on a phase-1 small-airport lot is adopted at stage 0 and line 1's full expenses become 700. A phase-2 lot, a preview occupant, an occupant of another group or type, and a lot whose configuration is no type's stage-0 configuration add nothing. [quirk] An occupant inserted twice is adopted twice.",
+  "description": "Section 12 test 3. Init (the base first, section 3, PD10) registers the agent cSC4PortDeveloper at level 6 with flags 2, then the subclass creates the department (0x6A4119F0, group 0xAA369059, name 0x6A3FF01C/0xEA493564, maximum funding 1.2, line 1). A building of group 0x1508 inserted on a phase-1 small-airport lot is adopted at stage 0 and line 1's full expenses become 700. A phase-2 lot, a preview occupant, an occupant of another group or type, and a lot whose configuration is no type's stage-0 configuration add nothing. [quirk] An occupant inserted twice is adopted twice.",
   "steps": [
     {"op": "pd_create", "kind": "airport"},
     {"op": "pd_init", "expect": true},
-    {"op": "pd_expect_events", "events": [{"event": "create_department", "id": "0x6A4119F0", "group": "0xAA369059", "name_group": "0x6A3FF01C", "name": "0xEA493564", "max": 1.2, "line": 1}, {"event": "add_agent", "name": "cSC4PortDeveloper", "level": 6, "flags": 2}]},
+    {"op": "pd_expect_events", "events": [{"event": "add_agent", "name": "cSC4PortDeveloper", "level": 6, "flags": 2}, {"event": "create_department", "id": "0x6A4119F0", "group": "0xAA369059", "name_group": "0x6A3FF01C", "name": "0xEA493564", "max": 1.2, "line": 1}]},
     {"op": "pd_expect", "state": {"initialized": true, "department": "0xD", "types": 3}},
     {"op": "pd_lot", "lot": "0x10", "config": ["0xCA2436C0", 1], "x": 3, "z": 4, "rect": [3, 4, 7, 6]},
     {"op": "pd_occupant", "occupant": "0x100", "lot": "0x10"},

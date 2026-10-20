@@ -121,7 +121,8 @@ impl World {
             m.set_next_random(Box::new(Stub(self.me.borrow().clone())));
         } else {
             let s = self.session.borrow().clone();
-            let seed = s.pass_seed(s.passes.get());
+            // n counts this manager's passes (CD5).
+            let seed = s.pass_seed(m.passes());
             let r = fc4_core::rng::RzRandom::new(
                 seed,
                 &fc4_core::rng::FixedSeeds {
@@ -463,7 +464,7 @@ fn expect(w: &World, op: &Json) -> R<()> {
         ("created".to_owned(), ji(l.created)),
         ("draws".to_owned(), ji(l.draws)),
         ("network_lots".to_owned(), ji(l.network_lots)),
-        ("session_passes".to_owned(), ji(w.session.borrow().passes.get())),
+        ("session_passes".to_owned(), ji(m.passes())),
     ];
     check_state(&got, field(op, "state")?)
 }

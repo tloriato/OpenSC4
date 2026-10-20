@@ -14,12 +14,26 @@
 //! the `K` of every generator a merged core owns, and every core seeds
 //! through [`seed`] / [`clocks`] with one of them.
 //!
+//! **Process-wide generators (RN3).** A file-local generator of the §6.3
+//! table is a static of its source file: it is seeded once per process and
+//! keeps its stream across city loads, whichever object draws from it. The
+//! budget's and the pollution effects' `cRZRandomSuper` are shared that way
+//! through [`process_super`] (one per thread, keyed by `K`; the first
+//! session to ask seeds it). The crime generator is process-wide too, kept
+//! by its own [`crate::crime::CrimeShared`]. A core's plain constructor
+//! still builds a generator of its own (tests, conformance vectors,
+//! replays); the C ABI's create functions take the process-wide one.
+//!
 //! Not covered here, by §6.3: coordinate-seeded temporaries keep their
 //! coordinate seed ([`coordinate_seed`] only moves the tract developer's
 //! (0, 0) case off 0), and the C runtime `rand()` ([`crate::rng::CrtRand`])
 //! stays unseeded (state 1, §12.6).
 
-use crate::rng::{derive_seed, file_seed, FixedSeeds};
+use std::cell::RefCell;
+use std::collections::BTreeMap;
+use std::rc::Rc;
+
+use crate::rng::{derive_seed, file_seed, FixedSeeds, RzRandomSuper};
 
 /// Which `K` a generator uses (foundations §6.3, by the kinds of §6.2).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -98,6 +112,32 @@ pub fn coordinate_seed(seed: u32) -> u32 {
     } else {
         seed
     }
+}
+
+/// A `cRZRandomSuper` several objects draw from in turn (RN3).
+pub type SharedSuper = Rc<RefCell<RzRandomSuper>>;
+
+thread_local! {
+    /// The process-wide file-local generators made so far, by `K`.
+    static PROCESS_SUPERS: RefCell<BTreeMap<u32, SharedSuper>> = const { RefCell::new(BTreeMap::new()) };
+}
+
+/// The process-wide file-local `cRZRandomSuper` `key` (RN3): seeded with
+/// `derive(S, K)` of the session that first asks for it, then shared, its
+/// stream continuing across city loads (a later `session` is ignored). One
+/// per thread: the plugin creates its simulators on the main thread.
+pub fn process_super(session: u32, key: SeedKey) -> SharedSuper {
+    PROCESS_SUPERS.with(|m| {
+        m.borrow_mut()
+            .entry(key.k())
+            .or_insert_with(|| {
+                Rc::new(RefCell::new(RzRandomSuper::new(
+                    seed(session, key),
+                    &clocks(session, key),
+                )))
+            })
+            .clone()
+    })
 }
 
 /// The `K` of every generator a merged core owns (foundations §6.2, §6.3).
@@ -542,5 +582,21 @@ mod tests {
         ks.sort_unstable();
         ks.dedup();
         assert_eq!(ks.len(), all.len());
+    }
+
+    /// RN3: a process-wide generator is seeded once, by the first session,
+    /// and every later request shares its stream.
+    #[test]
+    fn process_supers_are_shared() {
+        let a = process_super(S, keys::BUDGET);
+        let first = a.borrow_mut().next_u32();
+        let b = process_super(S ^ 2, keys::BUDGET);
+        assert!(Rc::ptr_eq(&a, &b));
+        let mut fresh = RzRandomSuper::new(seed(S, keys::BUDGET), &clocks(S, keys::BUDGET));
+        assert_eq!(fresh.next_u32(), first);
+        assert_eq!(b.borrow_mut().next_u32(), fresh.next_u32());
+        // Another K is another generator.
+        let c = process_super(S, keys::POLLUTION_EFFECTS);
+        assert!(!Rc::ptr_eq(&a, &c));
     }
 }

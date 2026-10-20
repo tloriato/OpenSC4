@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "name": "port_developers_funding_month",
+  "spec": ["port-developers 4.3", "port-developers 4.7", "port-developers 12"],
+  "description": "Section 12 test 11 (PD8): funding at 50 % (line 1 full 700, current 350), one small airport (capacity 10000). The airport's trips are its funded share of the jobs (own 5000 / subnetwork 5000 x jobs), so 4000 jobs give 4000 trips. The month's usage ratio uses the plain capacity (the internal PortUsageValues, no funding scaling): 4000 / 10000 = 0.4. The public query (slot 12) scales the cap: trunc(float(10000) / 700 x 350) = 5000, usage min(4000, 5000) = 4000. With 6000 trips the month's ratio is 0.6 and the query gives 5000, 5000.",
+  "steps": [
+    {"op": "pd_create", "kind": "airport"},
+    {"op": "pd_init"},
+    {"op": "pd_lot", "lot": "0x10", "config": ["0xCA2436C0", 1], "x": 3, "z": 4, "rect": [3, 4, 7, 6]},
+    {"op": "pd_occupant", "occupant": "0x100", "lot": "0x10"},
+    {"op": "pd_message", "msg": "0x99EF1142", "data": "0x100"},
+    {"op": "pd_env", "follow": false, "line": [700, 350], "offices": [[4000], [0]]},
+    {"op": "pd_clear_events"},
+    {"op": "pd_month"},
+    {"op": "pd_expect_port", "index": 0, "state": {"trips": 4000, "usage": 0.4}},
+    {"op": "pd_expect_events", "filter": {"event": "effects"}, "events": [{"event": "effects", "lot": "0x10", "old": 0, "new": 0.4}]},
+    {"op": "pd_query", "query": "usage_values", "args": ["0x10"], "expect": [4000, 5000]},
+    {"op": "pd_env", "offices": [[6000], [0]]},
+    {"op": "pd_month"},
+    {"op": "pd_expect_port", "index": 0, "state": {"trips": 6000, "usage": 0.6}},
+    {"op": "pd_query", "query": "usage_values", "args": ["0x10"], "expect": [5000, 5000]}
+  ]
+}

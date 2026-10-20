@@ -1869,7 +1869,7 @@ over one scripted city implementing `CityDetailHost`. Every op name starts with 
 | `cd_init` / `cd_shutdown` / `cd_add_ref` / `cd_release` / `cd_get_level` | `expect?` | the slots |
 | `cd_set` | `level` | the stored level (test setup) |
 | `cd_identity` | `iids` (`{"0xIID": bool}`), `class?` | `QueryInterface`, `GetGZCLSID` |
-| `cd_expect` | `state` (partial: `level`, `ref_count`, `destroyed`, `last_pass`, `removed`, `created`, `draws`, `network_lots`, `session_passes`) | the manager |
+| `cd_expect` | `state` (partial: `level`, `ref_count`, `destroyed`, `last_pass`, `removed`, `created`, `draws`, `network_lots`, `session_passes`: the increase passes by this manager object, n of §3.5, CD5) | the manager |
 | `cd_expect_occupants` | `lot`, `occupants` (`[[occupant, kind or type, tag or null]]`, token order) | a lot's occupants |
 | `cd_write` / `cd_read` | `hex?`, `slot?`, `fresh?`, `expect?` | the record |
 | `cd_expect_events` / `cd_expect_event_count` / `cd_clear_events` | see the shared conventions | host calls |
@@ -1886,7 +1886,7 @@ terrain's water. Every op name starts with `pd_`. A lot configuration's token is
 
 | op | Arguments | Effect / check |
 |---|---|---|
-| `pd_env` | any of `kind`, `line` (`[full, current]` or null), `follow` (current expenses follow SetFullExpenses), `department` (a token or null), `offices` (`[[CO$$ per subnetwork], [CO$$$ per subnetwork]]`), `terrain` (`[width, depth]`), `water` (`[[x, z]]`, replacing the set), `create_lot`, `construct` (whether CreateLot and ConstructDefaultLot succeed), `exemplars` (`{"0xINSTANCE": {properties} \| null}`) | the world |
+| `pd_env` | any of `kind`, `line` (`[full, current]` or null), `follow` (current expenses follow SetFullExpenses), `department` (a token or null), `offices` (`[[CO$$ per subnetwork], [CO$$$ per subnetwork]]`), `terrain` (`[width, depth]`), `water` (`[[x, z]]`, replacing the set), `create_lot`, `construct` (whether CreateLot and ConstructDefaultLot succeed), `missing_configs` (configuration IDs the manager does not have; ConstructDefaultLot with the null configuration then leaves the lot in state 2 with condition 1 and answers true, PD5), `exemplars` (`{"0xINSTANCE": {properties} \| null}`) | the world |
 | `pd_lot` | `lot`, any of `config` (`[id, growth stage]` or null), `x`, `z`, `state`, `condition`, `days`, `rect` (`[x0, z0, x1, z1]`), `facing`, `compatible`, `subnetworks`, `arrived` | creates or updates a lot |
 | `pd_occupant` | `occupant`, `lot`, `type?` (`"building"` or an ID), `group?`, `preview?` | a building occupant |
 | `pd_create` | `kind?` (`"airport"` or `"seaport"`) | a new developer |
@@ -1911,7 +1911,8 @@ The prop developer vectors (`pv12_…`) drive `fc4_core::prop_developer::PropDev
 (`docs/specs/prop-developer.md`) over one scripted city implementing `PropHost`. Every op name starts with `pv_`.
 The default world: a 64 × 64 city, cell width 16, no lots, no props, every cell powered, no 24-hour clock, visual
 mode 0, day, a 3D view with every trigger off, the managers and wealth requester token of the corpus. A network
-occupant's token names its first cell (`0xXXXXZZZZ`). Records are written and read with each reference as
+occupant's token names its first cell (`0xXXXXZZZZ`). A prop removed through the prop manager keeps its type and
+properties for its removal message, as the live occupant does (§4.7). Records are written and read with each reference as
 `u32 token, u32 class`, so the spec's corpus records round-trip byte for byte. Every generator draw is logged as a
 `draw` event (`gen` `"member"` or `"wealth"`; `call` `"RS"` with `lo`, `hi`, or `"U"` with `n`; `value`).
 
@@ -1934,7 +1935,7 @@ occupant's token names its first cell (`0xXXXXZZZZ`). Records are written and re
 | `pv_signs` | `show?`, `toggle?`, `expect?` (visible afterwards) | slots 8–10 |
 | `pv_wealth_select` | `ids`, `x`, `z`, `expect` | the wealth requester's `SelectProp` |
 | `pv_identity` | `iids?`, `wealth_iids?` (`{"0xIID": offset \| false}`), `member_seed?` (`[S, seed]`) | `QueryInterface`, the member seed |
-| `pv_expect` | `state` (partial: `initialized`, `scan_flag`, `scanner` (`"fresh"`, `"running"`, `"done"`), `scan_at`, `clip`, `wealth_added`, `night_cursor`, `night_mode`, `night_batch`, `night_acc`, `is_night`, `tod_last`, `signs_visible`, `ref_count`, `destroyed`, `crt_state`, and the list lengths `requesters`, `night`, `triggers`, `time_of_day`, `dated`, `power`, `signs`) | the developer |
+| `pv_expect` | `state` (partial: `initialized`, `scan_flag`, `scanner` (`"fresh"`, `"running"`, `"done"`), `scan_byte` (the state byte written while running, PV13), `scan_at`, `clip`, `wealth_added`, `night_cursor`, `night_mode`, `night_batch`, `night_acc`, `is_night`, `tod_last`, `signs_visible`, `ref_count`, `destroyed`, `crt_state`, and the list lengths `requesters`, `night`, `triggers`, `time_of_day`, `dated`, `power`, `signs`) | the developer |
 | `pv_expect_block` | `state` (partial: `block`, `lots`, `occ_sum`, `slots`, `kept_all`, `target`, `want`, `kept`, `removed`, `created`, `member_draws`, `stopped`) | the last block update |
 | `pv_expect_lists` | any of `requesters` (`[[token, class]]`), `night`, `time_of_day`, `dated`, `power`, `signs` (tokens), `triggers` (`[[trigger, [tokens]]]`), `classes` (`{"0xTOKEN": class}`) | the lists |
 | `pv_expect_prop` | `prop`, `state` (partial: `exists`, `state`, `type`, `lot`, `tag`, `requester`, `pos`) | a prop in the world |
@@ -3566,6 +3567,8 @@ and the reload order; `fc4_capi`'s `network_rules_tests` cover the C ABI.
 | 4 reduce (unlisted tags removed, untagged and listed stay) | `cd8_04_reduce` |
 | 5 increase (one prop per missing required object, at the developer's placement; optional skipped; one draw each) | `cd8_05_increase`, `cd8_06_session_generator` |
 | 6 network lots redeveloped once in both directions, none in a new city | `cd8_01_new_city`, `cd8_04_reduce`, `cd8_05_increase` |
+| CD4: the presence test counts flora and prop occupants by tag alone; step 4 draws for any object type | `cd8_08_presence_and_object_types` |
+| CD5: the pass count n is per manager object and starts at 0 | `cd8_06_session_generator`, `cd8_07_pass_count_per_manager` |
 
 ## Coverage (port developers §12)
 
@@ -3581,7 +3584,10 @@ and the reload order; `fc4_capi`'s `network_rules_tests` cover the C ABI.
 | 8 a destroyed port lot | `pd12_08_removal` |
 | 9 the seaport map | `pd12_09_seaport_map`, `pd12_11_seaport_tick` |
 | 10 no ports | `pd12_10_no_ports` |
-| other sections | `pd12_12_funding`, `pd12_13_queries`, `pd12_14_tuning`, `pd12_15_reference_count` |
+| 11 funding scales only the public query (PD8) | `pd12_16_funding_month` |
+| 12 a missing next-stage configuration (PD5) | `pd12_17_missing_configuration` |
+| 13 `Init` guarded, `Shutdown` empties the ports and types (PD10) | `pd12_18_init_shutdown` |
+| other sections | `pd12_12_funding`, `pd12_13_queries`, `pd12_14_tuning`, `pd12_15_reference_count`, `pd12_19_terrain_grid` (§4.8 grid, PD4, PD6) |
 
 ## Coverage (prop developer §12)
 
@@ -3600,7 +3606,7 @@ and the reload order; `fc4_capi`'s `network_rules_tests` cover the C ABI.
 | 12 registration (and triggers, power, unregistering) | `pv12_13_registration` |
 | 13 signs | `pv12_14_signs` |
 | 14 lot state | `pv12_15_lot_state` |
-| other sections | `pv12_16_cell_walk_quirks`, `pv12_17_requesters` |
+| other sections | `pv12_16_cell_walk_quirks`, `pv12_17_requesters`, `pv12_18_scanner_state_byte` (§7, PV13), `pv12_19_unregister_tests` (§4.7, PV12) |
 
 Not covered by a vector: the 421-save corpus itself (item 3) is not available to this suite; `pv12_02` and `pv12_03`
 replay the records §7 quotes.

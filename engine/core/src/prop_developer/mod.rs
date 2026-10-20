@@ -30,21 +30,26 @@
 //!   shuffle uses a [`CrtRand`] owned by the developer, seeded with 1
 //!   (foundations §12.6). Every generator is injectable ([`PropRandom`]).
 //! - A requester index `≥ R` is treated as no index (§4.3 step 2.3.6).
-//! - The null-lot creation path returns false (§4.4 step 5); so does a
-//!   creation whose occupant is null [question].
+//! - The null-lot creation path returns false (§4.4 step 5). A creation
+//!   whose occupant is null returns false as the original does (§4.4 step
+//!   6, PV8).
 //! - `total = 0` (impossible with the wealth requester) ends the block
-//!   update after the cell walk instead of dividing by zero.
+//!   update after the cell walk instead of dividing by zero (the original
+//!   faults, PV10).
 //! - `Shutdown` clears the power list (§3.2).
 //! - The time-of-day walk stops at the end of the list (§4.9).
 //! - A night batch decides on/off with the mode it started with: the batch
-//!   that ends a dusk sweep still switches its props on [question].
+//!   that ends a dusk sweep still switches its props on (PV7).
 //! - A timed prop whose global trigger is non-zero while the 3D view is
-//!   missing leaves mask 4 unchanged [question].
-//! - Unregistering looks the prop up in every list (§4.7).
+//!   missing leaves mask 4 unchanged (PV9).
+//! - Unregistering searches each list only when the prop passes that
+//!   list's test (§4.7, PV12).
 //! - The manager references are written back as read until `Init`
 //!   replaces them, and are never used.
 //! - `Read` is atomic: on any failure nothing changes. A scanner state
-//!   byte above 2 rejects the record.
+//!   byte other than 0 and 2 is running (PV13): a byte above 2 is kept
+//!   ([`PropState::scan_byte`]) and written back unchanged until the scan
+//!   finishes or resets.
 //! - Temporary references (the kept lists of §4.3) are not mirrored to the
 //!   host; the held lists are (`hold` / `release`).
 //! - Threading (foundations §19.3): main-thread only; no state is borrowed
@@ -481,6 +486,10 @@ pub struct PropState {
     pub initialized: bool,
     pub scan_flag: i8,
     pub scanner: ScanIterator,
+    /// The scanner's state byte while it is running (§7, PV13): 1, or a
+    /// byte above 2 read from a record, which `GetNext` never rewrites and
+    /// which is written back as read until the scan finishes or resets.
+    pub scan_byte: u8,
     pub wealth_added: bool,
     pub night_cursor: u32,
     pub night_mode: u32,
@@ -500,6 +509,7 @@ impl Default for PropState {
             initialized: false,
             scan_flag: 0,
             scanner: ScanIterator::default(),
+            scan_byte: 1,
             wealth_added: false,
             night_cursor: 0,
             night_mode: 0,
@@ -711,6 +721,7 @@ impl PropDeveloper {
                 it.step = s.scanner.step;
                 it.reset(0, 0);
                 s.scanner = it;
+                s.scan_byte = 1;
             });
         }
         // 4.–6.
@@ -874,13 +885,22 @@ impl PropDeveloper {
             2 => {
                 let next = {
                     let mut s = self.s.borrow_mut();
-                    match s.scanner.next_cell() {
+                    let was_running = s.scanner.state == ScanState::Running;
+                    let mut reset = false;
+                    let next = match s.scanner.next_cell() {
                         Some(b) => Some(b),
                         None => {
+                            reset = true;
                             s.scanner.reset(0, 0);
                             s.scanner.next_cell()
                         }
+                    };
+                    // A kept byte above 2 lasts only while the scan runs on
+                    // without finishing or resetting (PV13).
+                    if reset || !was_running || s.scanner.state != ScanState::Running {
+                        s.scan_byte = 1;
                     }
+                    next
                 };
                 if let Some((bx, bz)) = next {
                     self.update_block(bx, bz);
@@ -1118,6 +1138,8 @@ impl PropDeveloper {
                 None => None,
             },
         };
+        // Step 6: the original tests the created occupant (`0x006F18C6`,
+        // PV8): null → false, the free entry used up, `need` unchanged.
         let Some(occ) = occ else {
             return false;
         };
@@ -1415,33 +1437,57 @@ impl PropDeveloper {
         }
     }
 
-    /// `HandleRemoveOccupant` for a prop (§4.7).
+    /// `HandleRemoveOccupant` for a prop (§4.7, PV12): after the preview
+    /// test, each list is searched only when the prop passes that list's
+    /// test, which is looser than §4.6's join condition. A trigger-map prop
+    /// whose 3D view has gone stays in the map, held [quirk].
     pub fn unregister_prop(&self, prop: u64) {
-        self.erase_from(&self.night, prop, false, true);
-        let keys = self.triggers.borrow().keys();
-        for k in keys {
-            let found = {
-                let mut map = self.triggers.borrow_mut();
-                let v = map.get_mut(k).expect("key");
-                match v.iter().position(|p| p.token == prop) {
-                    Some(i) => {
+        let h = &*self.host;
+        let props = h.prop_properties(prop).unwrap_or_default();
+        if props.has(PROP_PREVIEW) {
+            return;
+        }
+        // Night list: night-lit = 1 and a prop occupant (`0xE9793A65`; the
+        // message's occupant is one, §3.3).
+        if u8_prop(&props, PROP_NIGHT_LIT) == Some(1) {
+            self.erase_from(&self.night, prop, false, true);
+        }
+        // Trigger map: the trigger present and non-zero, the 3D view there.
+        if let Some(t) = u32_prop(&props, PROP_TRIGGER).filter(|&t| t != 0) {
+            if h.view_available() {
+                let found = {
+                    let mut map = self.triggers.borrow_mut();
+                    let hit = map.get_mut(t).and_then(|v| {
+                        let i = v.iter().position(|p| p.token == prop)?;
                         v.remove(i);
-                        if v.is_empty() {
-                            map.remove(k);
-                        }
-                        true
+                        Some(v.is_empty())
+                    });
+                    if hit == Some(true) {
+                        map.remove(t);
                     }
-                    None => false,
+                    hit.is_some()
+                };
+                if found {
+                    h.release(prop);
                 }
-            };
-            if found {
-                self.host.release(prop);
             }
         }
-        self.erase_from(&self.tod, prop, true, true);
-        self.erase_from(&self.dated, prop, true, true);
-        self.erase_from(&self.power, prop, true, true);
-        self.erase_from(&self.signs, prop, false, false);
+        // The time-of-day, dated and power lists: the property present (its
+        // value not read).
+        if props.has(PROP_TIME_OF_DAY) {
+            self.erase_from(&self.tod, prop, true, true);
+        }
+        if props.has(PROP_DATE) {
+            self.erase_from(&self.dated, prop, true, true);
+        }
+        if props.has(PROP_NEEDS_POWER) {
+            self.erase_from(&self.power, prop, true, true);
+        }
+        // Signs: the two sign types (not held).
+        let t = h.prop_type(prop);
+        if t == PROP_TYPE_SIGNPOST || t == PROP_TYPE_STREET_SIGN {
+            self.erase_from(&self.signs, prop, false, false);
+        }
     }
 
     // ---- triggers (§4.10) ----
@@ -1602,11 +1648,12 @@ impl PropDeveloper {
             return None;
         }
         let scan_flag = inp.get_i8()?;
-        let state = match inp.get_u8()? {
+        // Stored as read (PV13): 0 fresh, 2 done, any other byte running.
+        let scan_byte = inp.get_u8()?;
+        let state = match scan_byte {
             0 => ScanState::Fresh,
-            1 => ScanState::Running,
             2 => ScanState::Done,
-            _ => return None,
+            _ => ScanState::Running,
         };
         let mut v = [0i32; 7];
         for x in &mut v {
@@ -1667,6 +1714,7 @@ impl PropDeveloper {
         Some(Parsed {
             scan_flag,
             scanner,
+            scan_byte: if state == ScanState::Running { scan_byte } else { 1 },
             wealth_added,
             requesters,
             managers,
@@ -1690,6 +1738,7 @@ impl PropDeveloper {
 struct Parsed {
     scan_flag: i8,
     scanner: ScanIterator,
+    scan_byte: u8,
     wealth_added: bool,
     requesters: Vec<Requester>,
     managers: [PropRef; 3],
@@ -1727,7 +1776,7 @@ impl SaveObject for PropDeveloper {
         let it = &s.scanner;
         out.put_u8(match it.state {
             ScanState::Fresh => 0,
-            ScanState::Running => 1,
+            ScanState::Running => s.scan_byte,
             ScanState::Done => 2,
         });
         for v in [it.x, it.z, it.step, it.x0, it.z0, it.x1, it.z1] {
@@ -1770,6 +1819,7 @@ impl SaveObject for PropDeveloper {
         self.edit(|s| {
             s.scan_flag = p.scan_flag;
             s.scanner = p.scanner;
+            s.scan_byte = p.scan_byte;
             s.wealth_added = p.wealth_added;
             s.night_cursor = p.night_cursor;
             s.night_mode = p.night_mode;

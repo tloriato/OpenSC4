@@ -12,6 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::rc::{Rc, Weak};
 
 use crate::rng::RzRandomSuper;
+use crate::seeding::SharedSuper;
 use crate::stream::{InStream, OutStream, RefValue, SaveObject};
 
 use super::items::{
@@ -153,16 +154,32 @@ pub struct BudgetSim {
     /// FundsChanged / BondIssued / BondFinished are only posted once `Init`
     /// has acquired the message server (§10.1).
     posting: Cell<bool>,
-    /// The budget's file-local `cRZRandomSuper` (foundations §6.2).
-    rng: RefCell<RzRandomSuper>,
+    /// The budget's file-local `cRZRandomSuper` (foundations §6.2), shared
+    /// process-wide when built by [`BudgetSim::process_wide`] (RN3).
+    rng: SharedSuper,
 }
 
 impl BudgetSim {
-    /// A fresh budget simulator (as created by its class factory).
+    /// A fresh budget simulator (as created by its class factory) with a
+    /// generator of its own, seeded with `derive(S, 0x6C09C3D7)` (tests,
+    /// conformance vectors, replays).
     pub fn new(host: Rc<dyn BudgetHost>, token: u64) -> Rc<BudgetSim> {
         let session = host.session_seed();
         let key = crate::seeding::keys::BUDGET;
         let (seed, seeds) = (crate::seeding::seed(session, key), crate::seeding::clocks(session, key));
+        BudgetSim::with_generator(host, token, Rc::new(RefCell::new(RzRandomSuper::new(seed, &seeds))))
+    }
+
+    /// A fresh budget simulator drawing from the process-wide generator
+    /// (RN3): seeded once per process with `derive(S, 0x6C09C3D7)` of the
+    /// first session, its stream continuing across city loads.
+    pub fn process_wide(host: Rc<dyn BudgetHost>, token: u64) -> Rc<BudgetSim> {
+        let rng = crate::seeding::process_super(host.session_seed(), crate::seeding::keys::BUDGET);
+        BudgetSim::with_generator(host, token, rng)
+    }
+
+    /// A fresh budget simulator drawing from `rng`.
+    pub fn with_generator(host: Rc<dyn BudgetHost>, token: u64, rng: SharedSuper) -> Rc<BudgetSim> {
         Rc::new_cyclic(|me| BudgetSim {
             host,
             token: Cell::new(token),
@@ -172,12 +189,18 @@ impl BudgetSim {
                 ..Default::default()
             }),
             posting: Cell::new(false),
-            rng: RefCell::new(RzRandomSuper::new(seed, &seeds)),
+            rng,
         })
     }
 
     pub fn token(&self) -> u64 {
         self.token.get()
+    }
+
+    /// The RiskyMoney generator (shared with every budget drawing from the
+    /// same one, RN3).
+    pub fn generator(&self) -> &SharedSuper {
+        &self.rng
     }
 
     pub fn set_token(&self, token: u64) {

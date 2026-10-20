@@ -13,13 +13,13 @@
 //! network lots. Lists come back through the sinks of `sinks.rs`.
 //!
 //! The increase pass's temporary generator is seeded per session (§3.5
-//! *[choice]*): `derive_seed(S, 0xEAD4BA36 XOR n)`, `n` counted per thread
-//! across every manager created with the same session seed.
+//! *[choice]*): `derive_seed(S, 0xEAD4BA36 XOR n)`, `n` the increase
+//! passes run by this manager object, from 0 at its creation (CD5; the game
+//! makes a new manager at every city load).
 //!
 //! Threads: the core is single-threaded. The plugin serialises every call
 //! on one object (fc4.h).
 
-use std::cell::RefCell;
 use std::ffi::c_void;
 use std::rc::Rc;
 
@@ -93,7 +93,7 @@ pub struct fc4_city_detail_state {
     pub last_created: u32,
     pub last_draws: u32,
     pub last_network_lots: u32,
-    /// Increase passes so far in this session.
+    /// Increase passes by this manager object so far (`n` of §3.5, CD5).
     pub session_passes: u32,
 }
 
@@ -197,33 +197,10 @@ impl CityDetailHost for CHost {
     }
 }
 
-// ---- the session (§3.5) -------------------------------------------------------------------------------
-
-thread_local! {
-    /// The session of this thread: the seed and the increase-pass count.
-    static SESSION: RefCell<Option<Rc<DetailSession>>> = const { RefCell::new(None) };
-}
-
-/// The session for `seed` (a new one when the seed changes).
-fn session(seed: u32) -> Rc<DetailSession> {
-    SESSION.with(|s| {
-        let mut s = s.borrow_mut();
-        match &*s {
-            Some(d) if d.seed == seed => d.clone(),
-            _ => {
-                let d = DetailSession::new(seed);
-                *s = Some(d.clone());
-                d
-            }
-        }
-    })
-}
-
 // ---- handles ----------------------------------------------------------------------------------------
 
 struct Handle {
     sim: Rc<CityDetailManager>,
-    session: Rc<DetailSession>,
 }
 
 fn with_p<R>(p: *const fc4_city_detail, fallback: R, f: impl FnOnce(&Handle) -> R) -> R {
@@ -246,9 +223,10 @@ pub unsafe extern "C" fn fc4_city_detail_create(
     guard(std::ptr::null_mut(), || match host.as_ref() {
         Some(h) if (h.struct_size as usize) >= std::mem::size_of::<fc4_city_detail_host>() => {
             let c = Rc::new(CHost { h: *h });
-            let session = session(session_seed);
-            let sim = CityDetailManager::new(c, session.clone(), token);
-            Box::into_raw(Box::new(Handle { sim, session })) as *mut fc4_city_detail
+            // The pass count is per manager object (CD5): each create
+            // starts again at n = 0.
+            let sim = CityDetailManager::new(c, DetailSession::new(session_seed), token);
+            Box::into_raw(Box::new(Handle { sim })) as *mut fc4_city_detail
         }
         _ => std::ptr::null_mut(),
     })
@@ -313,7 +291,7 @@ pub unsafe extern "C" fn fc4_city_detail_get_state(p: *const fc4_city_detail, ou
             last_created: l.created,
             last_draws: l.draws,
             last_network_lots: l.network_lots,
-            session_passes: h.session.passes.get(),
+            session_passes: h.sim.passes(),
         };
         true
     })

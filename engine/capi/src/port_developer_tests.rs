@@ -232,7 +232,8 @@ fn airport_adoption_month_and_record() {
         assert!(fc4_port_developer_init(p));
         assert_eq!(
             g.take(),
-            ["create_department 0x6a4119f0 1", "add_agent cSC4PortDeveloper 6 2"]
+            // §3 (PD10): the base's agent, then the subclass's department.
+            ["add_agent cSC4PortDeveloper 6 2", "create_department 0x6a4119f0 1"]
         );
         g.lots.borrow_mut().insert(0x10, (0xCA24_36C0, 1, 3, 4));
         assert!(fc4_port_developer_do_message(p, 0x99EF_1142, 0x1000, 0, 0));

@@ -126,6 +126,10 @@ pub(crate) struct World {
     network: RefCell<BTreeMap<(i32, i32), NetLot>>,
     zones: RefCell<BTreeMap<(i32, i32), u32>>,
     props: RefCell<BTreeMap<u64, Prop>>,
+    /// Props removed through the prop manager: the occupant object stays
+    /// alive for its removal message (`0x99EF1143`), so its type and
+    /// properties can still be read (§4.7).
+    gone: RefCell<BTreeMap<u64, Prop>>,
     /// prop ID → (satisfaction, wealth)
     profiles: RefCell<BTreeMap<u32, (u32, u8)>>,
     families: RefCell<BTreeMap<u32, Vec<u32>>>,
@@ -160,6 +164,7 @@ impl World {
             network: RefCell::new(BTreeMap::new()),
             zones: RefCell::new(BTreeMap::new()),
             props: RefCell::new(BTreeMap::new()),
+            gone: RefCell::new(BTreeMap::new()),
             profiles: RefCell::new(BTreeMap::new()),
             families: RefCell::new(BTreeMap::new()),
             exemplars: RefCell::new(BTreeMap::new()),
@@ -242,6 +247,11 @@ impl World {
 
     fn prop(&self, prop: u64) -> Option<Prop> {
         self.props.borrow().get(&prop).cloned()
+    }
+
+    /// A live prop, or one removed whose object is still alive.
+    fn prop_object(&self, prop: u64) -> Option<Prop> {
+        self.prop(prop).or_else(|| self.gone.borrow().get(&prop).cloned())
     }
 
     fn edit_prop(&self, prop: u64, f: impl FnOnce(&mut Prop)) {
@@ -455,7 +465,9 @@ impl PropHost for World {
     }
     fn remove_prop(&self, prop: u64) {
         self.events.push("remove_prop", vec![("prop", t(prop))]);
-        self.props.borrow_mut().remove(&prop);
+        if let Some(p) = self.props.borrow_mut().remove(&prop) {
+            self.gone.borrow_mut().insert(prop, p);
+        }
     }
     fn prop_type_valid(&self, id: u32) -> bool {
         self.profiles.borrow().contains_key(&id)
@@ -506,7 +518,7 @@ impl PropHost for World {
         self.prop(prop).map_or(PROP_CLASS, |p| p.class)
     }
     fn prop_properties(&self, prop: u64) -> Option<Rc<PropertyHolder>> {
-        self.prop(prop).map(|p| Rc::new(p.props))
+        self.prop_object(prop).map(|p| Rc::new(p.props))
     }
     fn prop_lot_tag(&self, prop: u64) -> Option<u32> {
         self.prop(prop).and_then(|p| p.tag)
@@ -517,7 +529,7 @@ impl PropHost for World {
         });
     }
     fn prop_type(&self, prop: u64) -> u32 {
-        self.prop(prop).map_or(0, |p| p.ptype)
+        self.prop_object(prop).map_or(0, |p| p.ptype)
     }
     fn prop_state(&self, prop: u64) -> u32 {
         self.prop(prop).map_or(0, |p| p.state)
@@ -1046,6 +1058,7 @@ fn expect(w: &World, op: &Json) -> R<()> {
         ("initialized".to_owned(), Json::Bool(s.initialized)),
         ("scan_flag".to_owned(), ji(s.scan_flag)),
         ("scanner".to_owned(), Json::Str(state.into())),
+        ("scan_byte".to_owned(), ji(s.scan_byte)),
         ("scan_at".to_owned(), Json::Array(vec![ji(it.x), ji(it.z)])),
         (
             "clip".to_owned(),

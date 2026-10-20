@@ -15,6 +15,7 @@ use std::sync::{Mutex, MutexGuard};
 use crate::curve::ResponseCurve;
 use crate::grid::{add_radius_effect, CellIterator, TractGrid, MODE_TABLE};
 use crate::rng::{CrtRand, RzRandomSuper, SeedSource};
+use crate::seeding::SharedSuper;
 use crate::variant::{Elem, Variant};
 use crate::x87::{ftol, ftol32, rhe};
 
@@ -417,7 +418,9 @@ pub struct PollutionSim {
     pub(super) s: Mutex<PollutionState>,
     pub(super) tuning: Mutex<Tuning>,
     pub(super) crt: RefCell<CrtRand>,
-    pub(super) fx: RefCell<RzRandomSuper>,
+    /// The visual-effect `cRZRandomSuper`, shared process-wide when built
+    /// by [`PollutionSim::process_wide`] (RN3).
+    pub(super) fx: SharedSuper,
     /// The shadow's replacement for the next tract-iterator shuffle (main
     /// thread only; see [`PollutionSim::set_shuffle_override`]).
     pub(super) shuffle_override: RefCell<Option<Vec<u16>>>,
@@ -432,8 +435,8 @@ impl PollutionSim {
         PollutionSim::with_fx(host, token, RzRandomSuper::new(fx_seed, seeds))
     }
 
-    /// A new simulator whose visual-effect generator is seeded from the
-    /// session seed (foundations §6.3 *[choice]*): the file-local
+    /// A new simulator whose visual-effect generator, of its own, is seeded
+    /// from the session seed (foundations §6.3 *[choice]*): the file-local
     /// `cRZRandomSuper` takes `derive(0x4C09C4D3)`.
     pub fn from_session(host: Rc<dyn PollutionHost>, token: u64, session: u32) -> Rc<PollutionSim> {
         let key = crate::seeding::keys::POLLUTION_EFFECTS;
@@ -444,14 +447,28 @@ impl PollutionSim {
         PollutionSim::with_fx(host, token, fx)
     }
 
+    /// A new simulator drawing its visual effects from the process-wide
+    /// generator (RN3): the file-local `cRZRandomSuper` is seeded once per
+    /// process with `derive(S, 0x4C09C4D3)` of the first session and keeps
+    /// its stream across city loads.
+    pub fn process_wide(host: Rc<dyn PollutionHost>, token: u64, session: u32) -> Rc<PollutionSim> {
+        let fx = crate::seeding::process_super(session, crate::seeding::keys::POLLUTION_EFFECTS);
+        PollutionSim::with_shared_fx(host, token, fx)
+    }
+
     fn with_fx(host: Rc<dyn PollutionHost>, token: u64, fx: RzRandomSuper) -> Rc<PollutionSim> {
+        PollutionSim::with_shared_fx(host, token, Rc::new(RefCell::new(fx)))
+    }
+
+    /// A new simulator drawing its visual effects from `fx`.
+    pub fn with_shared_fx(host: Rc<dyn PollutionHost>, token: u64, fx: SharedSuper) -> Rc<PollutionSim> {
         Rc::new(PollutionSim {
             host,
             token: Cell::new(token),
             s: Mutex::new(PollutionState::default()),
             tuning: Mutex::new(Tuning::default()),
             crt: RefCell::new(CrtRand::default()),
-            fx: RefCell::new(fx),
+            fx,
             shuffle_override: RefCell::new(None),
             cycle_resets: Cell::new(0),
         })
@@ -535,13 +552,20 @@ impl PollutionSim {
         *self.crt.borrow_mut() = crt;
     }
 
-    /// Replaces the visual-effect generator.
+    /// Replaces the visual-effect generator's state (shared: every
+    /// simulator drawing from the same generator sees it).
     pub fn set_effect_rng(&self, rng: RzRandomSuper) {
         *self.fx.borrow_mut() = rng;
     }
 
     pub fn effect_rng(&self) -> RzRandomSuper {
         self.fx.borrow().clone()
+    }
+
+    /// The visual-effect generator itself (shared with every simulator
+    /// drawing from the same one, RN3).
+    pub fn effect_generator(&self) -> &SharedSuper {
+        &self.fx
     }
 
     /// Runs `f` on a copy of the state and stores it back, so the lock is not

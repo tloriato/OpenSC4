@@ -594,11 +594,14 @@ unsafe fn emit_tokens(tokens: &[u64], cb: fc4_token_callback, ctx: *mut c_void) 
 
 macro_rules! lifetime {
     ($create:ident, $destroy:ident, $handle:ty, $t:ty) => {
+        lifetime!($create, $destroy, $handle, $t, new);
+    };
+    ($create:ident, $destroy:ident, $handle:ty, $t:ty, $ctor:ident) => {
         /// Creates the core object fronted by the GZCOM object `token`.
         #[no_mangle]
         pub unsafe extern "C" fn $create(host: *const fc4_budget_host, token: u64) -> *mut $handle {
             guard(std::ptr::null_mut(), || match host_of(host) {
-                Some(h) => Box::into_raw(Box::new(<$t>::new(h, token))) as *mut $handle,
+                Some(h) => Box::into_raw(Box::new(<$t>::$ctor(h, token))) as *mut $handle,
                 None => std::ptr::null_mut(),
             })
         }
@@ -612,7 +615,14 @@ macro_rules! lifetime {
     };
 }
 
-lifetime!(fc4_budget_create, fc4_budget_destroy, fc4_budget, BudgetSim);
+// The budget draws from the process-wide RiskyMoney generator (RN3).
+lifetime!(
+    fc4_budget_create,
+    fc4_budget_destroy,
+    fc4_budget,
+    BudgetSim,
+    process_wide
+);
 lifetime!(
     fc4_department_create,
     fc4_department_destroy,

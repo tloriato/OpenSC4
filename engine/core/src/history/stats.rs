@@ -250,6 +250,11 @@ pub fn statistics(points: &[Point], base: u32, prec: Precision) -> Stats {
 /// slope is 0 and the intercept the first point's value; otherwise
 /// `slope = mul(div(sy, sx), r)` and `intercept = div(add(Σy, −mul(slope,
 /// Σx)), n)`, the value at `x = 0` (the base date).
+///
+/// `GetPoint` fits this line over the widened range of one date (§4.7): at an
+/// interior point the range is the point and its two neighbours, so the answer
+/// is the smoothed value. The game's graph window is drawn from those answers
+/// alone, so this smoothing is visible in every graph and must be kept (HW2).
 pub fn fit_line(points: &[Point], base: u32, prec: Precision) -> Option<(f64, f64)> {
     let first = points.first()?;
     let st = statistics(points, base, prec);

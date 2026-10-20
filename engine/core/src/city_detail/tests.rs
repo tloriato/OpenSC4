@@ -358,16 +358,16 @@ fn increase_edge_cases() {
     );
 }
 
-/// §3.5: each increase pass of a session gets its own generator,
-/// `derive_seed(S, 0xEAD4BA36 ^ n)`.
+/// §3.5: each increase pass gets its own generator,
+/// `derive_seed(S, 0xEAD4BA36 ^ n)`, `n` counted per manager object from 0
+/// (CD5).
 #[test]
 fn session_generators() {
     let s = DetailSession::new(0x1234_5678);
     assert_eq!(s.pass_seed(0), derive_seed(0x1234_5678, 0xEAD4_BA36));
     assert_eq!(s.pass_seed(1), derive_seed(0x1234_5678, 0xEAD4_BA37));
-    let mut a = s.next_generator();
-    let mut b = s.next_generator();
-    assert_eq!(s.passes.get(), 2);
+    let mut a = s.generator(0);
+    let b = s.generator(1);
     let mut a2 = RzRandom::new(
         s.pass_seed(0),
         &FixedSeeds {
@@ -378,17 +378,93 @@ fn session_generators() {
     assert_eq!(a.lcg_state(), s.pass_seed(0));
     assert_eq!(b.lcg_state(), s.pass_seed(1));
     assert_eq!(DetailRandom::uniform_u32(&mut a, 1000), a2.uniform_u32(1000));
-    let _ = DetailRandom::uniform_u32(&mut b, 3);
     // A reduce pass does not count.
     let c = City::new();
     let m = CityDetailManager::new(c.clone(), s.clone(), 1);
-    m.set_level(3);
-    c.setting.set(2);
-    m.init();
-    assert_eq!(s.passes.get(), 2);
+    assert_eq!(m.passes(), 0);
+    m.set_level(1);
     c.setting.set(3);
     m.init();
-    assert_eq!(s.passes.get(), 3);
+    assert_eq!(m.passes(), 1);
+    c.setting.set(2);
+    m.init();
+    assert_eq!(m.passes(), 1);
+    c.setting.set(3);
+    m.init();
+    assert_eq!(m.passes(), 2);
+    // A new manager (the next city load) starts again at n = 0, even with
+    // the same session.
+    let m2 = CityDetailManager::new(c.clone(), s.clone(), 2);
+    assert_eq!(m2.passes(), 0);
+    m2.set_level(1);
+    m2.init();
+    assert_eq!((m.passes(), m2.passes()), (2, 1));
+}
+
+/// CD5: the n-th pass of a new manager draws as the n-th pass of the first.
+#[test]
+fn new_manager_repeats_the_draws() {
+    let run = |c: &Rc<City>, m: &CityDetailManager| {
+        m.set_level(1);
+        c.setting.set(3);
+        m.init();
+        c.take()
+    };
+    let lot = |c: &Rc<City>| {
+        c.lot(0x10, vec![obj(1, 0, 0xA)]);
+        c.ids
+            .borrow_mut()
+            .insert((0x10, 0), (0..97).map(|i| 0x100 + i).collect());
+    };
+    let s = DetailSession::new(0xCAFE_F00D);
+    let c1 = City::new();
+    lot(&c1);
+    let first = run(&c1, &CityDetailManager::new(c1.clone(), s.clone(), 1));
+    let c2 = City::new();
+    lot(&c2);
+    let second = run(&c2, &CityDetailManager::new(c2.clone(), s.clone(), 2));
+    assert_eq!(first, second);
+    let mut r = s.generator(0);
+    let k = DetailRandom::uniform_u32(&mut r, 97);
+    assert_eq!(first[1], format!("add_prop {:#x} at 0 0", 0x100 + k));
+}
+
+/// CD4: the presence test of step 3 counts flora and prop occupants by tag
+/// alone; any other occupant is ignored. Step 4 draws for any object type
+/// whose ID is needed; only props and flora create.
+#[test]
+fn cd4_presence_and_object_types() {
+    let c = City::new();
+    // Required prop A, required flora F, a required type-2 object sharing
+    // prop B's ID, required prop B.
+    c.lot(
+        0x10,
+        vec![obj(1, 0, 0xA), obj(4, 0, 0xF), obj(2, 0, 0xB), obj(1, 0, 0xB)],
+    );
+    // A building tagged A does not satisfy A.
+    c.occ(0x11, 0x10, 0x2781_28A0, Some(0xA));
+    // A prop tagged with the flora object's ID satisfies F.
+    c.occ(0x12, 0x10, OCCUPANT_TYPE_PROP, Some(0xF));
+    let m = manager(&c);
+    m.set_level(1);
+    m.set_next_random(Box::new(Queue(c.clone(), VecDeque::new())));
+    m.init();
+    assert_eq!(
+        c.take(),
+        [
+            "placement 0x10 0",
+            "draw 1",
+            "add_prop 0xa at 0 0",
+            "tag 0x9000 0xa",
+            "placement 0x10 2",
+            "draw 1",
+            "placement 0x10 3",
+            "draw 1",
+            "add_prop 0xb at 48 3",
+            "tag 0x9001 0xb",
+        ]
+    );
+    assert_eq!((m.last_outcome().draws, m.last_outcome().created), (3, 2));
 }
 
 #[test]

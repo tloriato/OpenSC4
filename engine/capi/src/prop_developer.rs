@@ -718,9 +718,10 @@ pub unsafe extern "C" fn fc4_prop_developer_get_state(p: *const fc4_prop_develop
         *o = fc4_prop_state {
             struct_size: std::mem::size_of::<fc4_prop_state>() as u32,
             scan_flag: i32::from(s.scan_flag),
+            // The stored byte (PV13): any value other than 0 and 2 runs.
             scanner_state: match it.state {
                 ScanState::Fresh => 0,
-                ScanState::Running => 1,
+                ScanState::Running => u32::from(s.scan_byte),
                 ScanState::Done => 2,
             },
             scanner_x: it.x,

@@ -291,7 +291,7 @@ fn cd8_reduce_and_increase() {
     g.occs.borrow_mut().insert(0x14, (0x10, FLORA, Some(0xD)));
     g.network.borrow_mut().push((4, 5, 0x50));
     unsafe {
-        // A unique session seed: this thread may have run other increases.
+        // The pass count n belongs to the handle (CD5); any seed will do.
         let seed = 0x00C1_7D37;
         let p = fc4_city_detail_create(&host(&g), seed, 0x77);
         assert!(read(p, &[0, 0, 0, 0, 3, 0, 0, 0]));
@@ -335,4 +335,35 @@ fn cd8_reduce_and_increase() {
         assert_eq!(s.session_passes, before + 1);
         fc4_city_detail_destroy(p);
     }
+}
+
+/// CD5: the pass count is per handle. Two handles created with the same
+/// session seed both run pass n = 0 first and draw the same.
+#[test]
+fn cd8_pass_count_per_handle() {
+    let run = || {
+        let g = Game::new();
+        g.lots.borrow_mut().push(0x10);
+        g.configs.borrow_mut().insert(
+            0x10,
+            vec![Obj {
+                object_type: 1,
+                flags: 0,
+                tag: 0xA,
+                ids: (0..97).map(|i| 0x100 + i).collect(),
+            }],
+        );
+        unsafe {
+            let p = fc4_city_detail_create(&host(&g), 0x4242_4242, 0x77);
+            assert_eq!(state(p).session_passes, 0);
+            assert!(read(p, &[0, 0, 0, 0, 1, 0, 0, 0]));
+            fc4_city_detail_init(p);
+            assert_eq!(state(p).session_passes, 1);
+            fc4_city_detail_destroy(p);
+        }
+        g.take()
+    };
+    let first = run();
+    assert!(first.iter().any(|l| l.starts_with("prop ")));
+    assert_eq!(run(), first);
 }

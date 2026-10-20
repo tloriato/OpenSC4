@@ -14,6 +14,12 @@
 //! departments), and references link them. Departments hold their line items;
 //! back-references (line → department, department → budget) are weak.
 //!
+//! The RiskyMoney generator is the budget file's static `cRZRandomSuper`,
+//! seeded once per process (RN3): [`BudgetSim::process_wide`] (the C ABI's
+//! create) shares the process-wide one of
+//! [`crate::seeding::process_super`], whose stream continues across city
+//! loads; [`BudgetSim::new`] builds a fresh one.
+//!
 //! Re-entrancy: no `RefCell` borrow is held across a call into another object
 //! or the host, except the host's property and query callbacks, which must not
 //! call back into the budget.
@@ -163,7 +169,8 @@ pub trait BudgetHost {
     fn try_start_disaster(&self, id: u32, x: f32, z: f32) -> bool;
     /// The session seed `S` (foundations §6.3 *[choice]*). The budget's
     /// file-local `cRZRandomSuper` (§6.2: wall clock XOR `0x6C09C3D7`) is
-    /// seeded with `derive(0x6C09C3D7)` of it.
+    /// seeded with `derive(0x6C09C3D7)` of it, once per process for
+    /// [`BudgetSim::process_wide`] (RN3).
     fn session_seed(&self) -> u32;
 
     // ---- strings ----

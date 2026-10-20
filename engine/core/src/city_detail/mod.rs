@@ -25,22 +25,27 @@
 //!
 //! - **The temporary generator** of §3.3 is an [`RzRandom`] seeded with
 //!   `derive_seed(S, 0xEAD4BA36 XOR n)`, `n` the number of earlier increase
-//!   passes in the session (§3.5, the spec's *[choice]*). The session (`S`
-//!   and `n`) is a [`DetailSession`] the host shares between managers; the
-//!   generator is behind the injectable [`DetailRandom`].
-//! - **`Init` compares at every call** (the spec has no "initialised"
-//!   flag): a second `Init` sees the level the first one stored and does
-//!   nothing [question].
+//!   passes **by this manager object**, from 0 at its construction (§3.5,
+//!   the spec's *[choice]*; CD5). The city makes a new manager for every
+//!   city, so `n` starts again at 0 at each city load. `S` comes from a
+//!   [`DetailSession`]; the generator is behind the injectable
+//!   [`DetailRandom`].
+//! - **`Init` compares at every call** (there is no "initialised" flag,
+//!   CD3): a second `Init` sees the level the first one stored and does
+//!   nothing.
 //! - **`Read`** is atomic: on a stream error or a version other than 0 the
 //!   stored level is unchanged [choice].
 //! - **A flora or prop occupant** is recognised by its occupant type
 //!   (`0x74758926` flora, `0xA823821E` prop, §3.2); an occupant "has a lot
 //!   tag" when the host's `GetLotTag` answers (occupant slot 27).
+//! - **The presence test of §3.3 step 3** (CD4) counts only flora and prop
+//!   occupants, by their lot tag alone: a prop tagged with a flora object's
+//!   ID satisfies it and the reverse; any other occupant type is ignored
+//!   whatever its tag.
 //! - **The objects of §3.3 step 4** are visited in array order; every
-//!   object whose ID is still in `need` is placed and drawn for (the
-//!   literal reading; an optional or non-prop object sharing a required
-//!   object's ID would be too [question]); type 1 creates a prop, type 4 a
-//!   flora occupant, any other type nothing.
+//!   object of any type whose ID is still in `need` is placed and, with a
+//!   non-empty ID list, drawn for (CD4); type 1 creates a prop, type 4 a
+//!   flora occupant, any other type nothing [quirk].
 //! - Threading (foundations §19.3): the state is a `Cell`; the manager is
 //!   main-thread only and no state is borrowed across a host call.
 
@@ -114,20 +119,16 @@ impl DetailRandom for RzRandom {
     }
 }
 
-/// What §3.5 keeps per session: the session seed `S` and the number of
-/// increase passes so far. Shared by every manager of the session.
+/// The session seed `S` of §3.5 (foundations §6.3). The pass count `n` is
+/// kept by each manager (CD5).
 #[derive(Debug)]
 pub struct DetailSession {
     pub seed: u32,
-    pub passes: Cell<u32>,
 }
 
 impl DetailSession {
     pub fn new(seed: u32) -> Rc<DetailSession> {
-        Rc::new(DetailSession {
-            seed,
-            passes: Cell::new(0),
-        })
+        Rc::new(DetailSession { seed })
     }
 
     /// The seed of the `n`-th increase pass (§3.5 *[choice]*):
@@ -136,10 +137,8 @@ impl DetailSession {
         derive_seed(self.seed, CLSID_CITY_DETAIL ^ n)
     }
 
-    /// The generator of the next increase pass; counts the pass.
-    pub fn next_generator(&self) -> RzRandom {
-        let n = self.passes.get();
-        self.passes.set(n.wrapping_add(1));
+    /// The generator of the `n`-th increase pass.
+    pub fn generator(&self, n: u32) -> RzRandom {
         let seed = self.pass_seed(n);
         RzRandom::new(
             seed,
@@ -231,6 +230,8 @@ pub struct InitOutcome {
 pub struct CityDetailManager {
     host: Rc<dyn CityDetailHost>,
     session: Rc<DetailSession>,
+    /// Increase passes by this object so far (`n` of §3.5, CD5; not saved).
+    passes: Cell<u32>,
     token: Cell<u64>,
     s: Cell<CityDetailState>,
     last: Cell<InitOutcome>,
@@ -245,6 +246,7 @@ impl CityDetailManager {
         Rc::new(CityDetailManager {
             host,
             session,
+            passes: Cell::new(0),
             token: Cell::new(token),
             s: Cell::new(CityDetailState::default()),
             last: Cell::new(InitOutcome::default()),
@@ -276,8 +278,13 @@ impl CityDetailManager {
         self.last.get()
     }
 
+    /// The increase passes this object has run (`n` of the next one, §3.5).
+    pub fn passes(&self) -> u32 {
+        self.passes.get()
+    }
+
     /// Replaces the generator of the next increase pass (tests, replays).
-    /// The session's pass count still advances.
+    /// The pass count still advances.
     pub fn set_next_random(&self, rng: Box<dyn DetailRandom>) {
         *self.next_random.borrow_mut() = Some(rng);
     }
@@ -384,8 +391,11 @@ impl CityDetailManager {
     /// Increase (§3.3).
     fn increase(&self, out: &mut InitOutcome) {
         let h = &*self.host;
-        // One temporary generator for the whole pass (§3.5).
-        let session_rng = self.session.next_generator();
+        // One temporary generator for the whole pass (§3.5), the n-th of
+        // this object (CD5).
+        let n = self.passes.get();
+        self.passes.set(n.wrapping_add(1));
+        let session_rng = self.session.generator(n);
         let mut rng: Box<dyn DetailRandom> = match self.next_random.borrow_mut().take() {
             Some(r) => r,
             None => Box::new(session_rng),
@@ -397,7 +407,7 @@ impl CityDetailManager {
             };
             // 2. Required objects only.
             let mut need = Self::object_ids(&objs, |o| o.flags & FLAG_OPTIONAL == 0);
-            // 3.
+            // 3. Flora and prop occupants only, by tag alone (CD4).
             for occ in h.occupants_in_lot_rect(lot) {
                 let t = h.occupant_type(occ);
                 if t != OCCUPANT_TYPE_FLORA && t != OCCUPANT_TYPE_PROP {
@@ -407,10 +417,9 @@ impl CityDetailManager {
                     need.remove(&tag);
                 }
             }
-            // 4. An ID stays in `need` after it is used [quirk]. [question]
-            // Literal reading: every object whose ID is in `need` is
-            // placed and drawn for, whatever its type and flags; only
-            // types 1 and 4 create anything.
+            // 4. An ID stays in `need` after it is used [quirk]. Every
+            // object whose ID is in `need` is placed and drawn for, whatever
+            // its type and flags; only types 1 and 4 create anything (CD4).
             for (i, o) in objs.iter().enumerate() {
                 if !need.contains(&o.tag) {
                     continue;

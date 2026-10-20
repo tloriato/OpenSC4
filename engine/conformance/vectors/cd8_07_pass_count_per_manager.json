@@ -1,0 +1,38 @@
+{
+  "format": 1,
+  "name": "city_detail_pass_count_per_manager",
+  "spec": ["city-detail 3.3", "city-detail 3.5"],
+  "description": "CD5: the pass number n of derive_seed(S, 0xEAD4BA36 XOR n) counts the increase passes of one manager object from 0; the game makes a new manager at every city load, so n starts again at 0. With S = 0x12345678 (creation off, so the lot stays empty) the first manager's first increase draws 3 then 0 as in cd8_06, its second increase is pass n = 1, and a new manager created afterwards with the same seed runs pass n = 0 again and draws 3 then 0.",
+  "steps": [
+    {"op": "cd_env", "session_seed": "0x12345678", "random": "session", "setting": 3, "create": false},
+    {"op": "cd_lot", "lot": "0x10", "objects": [
+      {"type": "prop", "tag": "0xA", "ids": ["0xA0", "0xA1", "0xA2", "0xA3"]},
+      {"type": "flora", "tag": "0xB", "ids": ["0xB0", "0xB1", "0xB2"]}
+    ]},
+    {"op": "cd_create"},
+    {"op": "cd_expect", "state": {"session_passes": 0}},
+    {"op": "cd_read", "hex": "00000000 01000000", "expect": true},
+    {"op": "cd_init"},
+    {"op": "cd_expect_events", "filter": {"event": "draw"}, "events": [
+      {"event": "draw", "n": 4, "value": 3},
+      {"event": "draw", "n": 3, "value": 0}
+    ]},
+    {"op": "cd_expect", "state": {"last_pass": 2, "created": 0, "draws": 2, "session_passes": 1}},
+    {"op": "cd_env", "setting": 1},
+    {"op": "cd_init"},
+    {"op": "cd_env", "setting": 3},
+    {"op": "cd_init"},
+    {"op": "cd_expect", "state": {"last_pass": 2, "draws": 2, "session_passes": 2}},
+    {"op": "cd_clear_events"},
+
+    {"op": "cd_create"},
+    {"op": "cd_expect", "state": {"session_passes": 0}},
+    {"op": "cd_read", "hex": "00000000 01000000", "expect": true},
+    {"op": "cd_init"},
+    {"op": "cd_expect_events", "filter": {"event": "draw"}, "events": [
+      {"event": "draw", "n": 4, "value": 3},
+      {"event": "draw", "n": 3, "value": 0}
+    ]},
+    {"op": "cd_expect", "state": {"last_pass": 2, "session_passes": 1}}
+  ]
+}

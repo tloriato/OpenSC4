@@ -2,7 +2,7 @@
   "format": 1,
   "name": "city_detail_session_generator",
   "spec": ["city-detail 3.3", "city-detail 3.5", "city-detail 8.5"],
-  "description": "[choice] The temporary cRZRandom of an increase pass is seeded with derive_seed(S, 0xEAD4BA36 XOR n), n the number of earlier increase passes in the session. With S = 0x12345678 the first pass's seed is 0xF8E0EC4E; RandomUint32Uniform(4) draws raw 0xE6351218 -> 3, then RandomUint32Uniform(3) draws raw 0x4178DB9F -> 0. A reduce pass does not count; the next increase is pass n = 1.",
+  "description": "[choice] The temporary cRZRandom of an increase pass is seeded with derive_seed(S, 0xEAD4BA36 XOR n), n the number of earlier increase passes by this manager object (CD5; cd8_07). With S = 0x12345678 the first pass's seed is 0xF8E0EC4E; RandomUint32Uniform(4) draws raw 0xE6351218 -> 3, then RandomUint32Uniform(3) draws raw 0x4178DB9F -> 0. A reduce pass does not count; the next increase is pass n = 1.",
   "steps": [
     {"op": "cd_env", "session_seed": "0x12345678", "random": "session", "setting": 3},
     {"op": "cd_lot", "lot": "0x10", "objects": [

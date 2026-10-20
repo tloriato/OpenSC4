@@ -1,0 +1,35 @@
+{
+  "format": 1,
+  "name": "city_detail_presence_and_object_types",
+  "spec": ["city-detail 3.3"],
+  "description": "CD4: the presence test of the increase pass's step 3 counts only flora and prop occupants, by their lot tag alone. Lot 0x10 lists required prop A, required flora F, required prop C, an object of type 2 with ID B and a required prop B. A building tagged A is ignored, so A is still needed; a prop tagged F satisfies the flora object F and a flora occupant tagged C satisfies the prop object C. Step 4 then places and draws for every object whose ID is needed, whatever its type: A (prop, created), the type-2 object (drawn for, creates nothing) and prop B (created, ID B being needed through prop B).",
+  "steps": [
+    {"op": "cd_lot", "lot": "0x10", "objects": [
+      {"type": "prop", "tag": "0xA"},
+      {"type": "flora", "tag": "0xF"},
+      {"type": "prop", "tag": "0xC"},
+      {"type": 2, "tag": "0xB"},
+      {"type": "prop", "tag": "0xB"}
+    ]},
+    {"op": "cd_occupant", "occupant": "0x11", "lot": "0x10", "type": "building", "tag": "0xA"},
+    {"op": "cd_occupant", "occupant": "0x12", "lot": "0x10", "type": "prop", "tag": "0xF"},
+    {"op": "cd_occupant", "occupant": "0x13", "lot": "0x10", "type": "flora", "tag": "0xC"},
+    {"op": "cd_env", "setting": 3, "u32s": [0, 0, 0]},
+    {"op": "cd_create"},
+    {"op": "cd_read", "hex": "00000000 01000000", "expect": true},
+    {"op": "cd_init", "expect": true},
+    {"op": "cd_expect_events", "events": [
+      {"event": "placement", "lot": "0x10", "index": 0},
+      {"event": "draw", "n": 1},
+      {"event": "add_prop", "id": "0xA", "occupant": "0x9000"},
+      {"event": "set_tag", "occupant": "0x9000", "tag": "0xA"},
+      {"event": "placement", "lot": "0x10", "index": 3},
+      {"event": "draw", "n": 1},
+      {"event": "placement", "lot": "0x10", "index": 4},
+      {"event": "draw", "n": 1},
+      {"event": "add_prop", "id": "0xB", "occupant": "0x9001"},
+      {"event": "set_tag", "occupant": "0x9001", "tag": "0xB"}
+    ]},
+    {"op": "cd_expect", "state": {"level": 3, "last_pass": 2, "created": 2, "draws": 3}}
+  ]
+}

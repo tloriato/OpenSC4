@@ -68,6 +68,10 @@ struct Fake {
     water: RefCell<BTreeSet<(u32, u32)>>,
     next_lot: Cell<u64>,
     create_fails: Cell<bool>,
+    /// Lot configuration IDs the manager does not have (PD5).
+    missing_configs: RefCell<BTreeSet<u32>>,
+    /// What `set_access_props_state` answers (props switched).
+    access_props: Cell<u32>,
     log: RefCell<Vec<String>>,
 }
 
@@ -76,6 +80,7 @@ impl Fake {
         let f = Fake {
             follow: Cell::new(true),
             next_lot: Cell::new(0x9000),
+            access_props: Cell::new(1),
             ..Default::default()
         };
         let mut f = f;
@@ -187,7 +192,7 @@ impl PortHost for Fake {
         self.lot(lot).compatible
     }
     fn lot_configuration(&self, id: u32) -> Option<u64> {
-        Some(u64::from(id))
+        (!self.missing_configs.borrow().contains(&id)).then_some(u64::from(id))
     }
     fn start_demolish_lot(&self, lot: u64) {
         self.log(format!("start_demolish {lot:#x}"));
@@ -214,12 +219,20 @@ impl PortHost for Fake {
         self.lots.borrow_mut().insert(t, l);
         Some(t)
     }
-    fn set_lot_configuration(&self, lot: u64, config: u64) {
-        self.edit(lot, |l| l.config = Some((config as u32, 2)));
-        self.log(format!("set_config {lot:#x} {config:#x}"));
+    fn set_lot_configuration(&self, lot: u64, config: Option<u64>) {
+        self.edit(lot, |l| l.config = config.map(|c| (c as u32, 2)));
+        self.log(format!("set_config {lot:#x} {:#x}", config.unwrap_or(0)));
     }
-    fn construct_default_lot(&self, lot: u64, config: u64) -> bool {
-        self.log(format!("construct {lot:#x} {config:#x}"));
+    fn construct_default_lot(&self, lot: u64, config: Option<u64>) -> bool {
+        self.log(format!("construct {lot:#x} {:#x}", config.unwrap_or(0)));
+        if config.is_none() {
+            // The lot developer with a null configuration (lot-developer.md
+            // §6.4): state 2, condition 1, true.
+            self.edit(lot, |l| {
+                l.state = 2;
+                l.condition = CONDITION_UNPOWERED;
+            });
+        }
         true
     }
     fn dezone(&self, r: CellRect) {
@@ -258,7 +271,7 @@ impl PortHost for Fake {
     }
     fn set_access_props_state(&self, lot: u64, prop: u32, state: u32) -> u32 {
         self.log(format!("props_state {lot:#x} {prop:#x} {state}"));
-        1
+        self.access_props.get()
     }
     fn set_altitude(&self, x: i32, z: i32, a: f32) {
         self.log(format!("altitude {x} {z} {a}"));
@@ -335,8 +348,8 @@ fn init_creates_the_department_and_agent() {
     assert_eq!(
         f.take(),
         [
-            "create_department 0x6a4119f0 0xaa369059 0x6a3ff01c 0xea493564 1.2 1",
-            "add_agent cSC4PortDeveloper 6 2"
+            "add_agent cSC4PortDeveloper 6 2",
+            "create_department 0x6a4119f0 0xaa369059 0x6a3ff01c 0xea493564 1.2 1"
         ]
     );
     assert_eq!(d.snapshot().department, Some(0xD));
@@ -345,6 +358,49 @@ fn init_creates_the_department_and_agent() {
     // A department that exists is reused.
     d.init();
     assert_eq!(f.take(), ["add_agent cSC4PortDeveloper 6 2"]);
+}
+
+// §12 test 13 (PD10): Init is guarded, Shutdown deletes the ports and the
+// types and keeps `tuningLoaded`.
+#[test]
+fn t13_init_guard_and_shutdown() {
+    let (f, d) = airport();
+    f.take();
+    assert!(d.init());
+    assert!(f.take().is_empty());
+    adopt(&f, &d, 0x100, 0x10, SMALL0, 3, 4);
+    assert!(read(&d, &EXAMPLE));
+    assert_eq!(d.ports().len(), 2);
+    f.take();
+    assert!(d.shutdown());
+    // The read port is resolved before it is deleted (no lot at (40, 52)
+    // here: nothing to log), then the agent goes.
+    assert_eq!(f.take(), ["remove_agent cSC4PortDeveloper"]);
+    assert!(d.ports().is_empty());
+    assert!(d.types().is_empty());
+    let s = d.snapshot();
+    assert!(s.tuning_loaded && !s.initialized);
+    assert_eq!(s.type_count, 3);
+    assert_eq!(s.department, None);
+    // A second Shutdown does nothing.
+    assert!(d.shutdown());
+    assert!(f.take().is_empty());
+    // [quirk] A re-Init does not reload the tuning: no port types, so a
+    // record with a port is rejected and nothing is adopted.
+    assert!(d.init());
+    assert!(d.types().is_empty());
+    assert!(!read(&d, &EXAMPLE));
+    add_lot(&f, 0x11, SMALL0, 9, 9);
+    f.occupants
+        .borrow_mut()
+        .insert(0x101, (false, OCCUPANT_TYPE_BUILDING, 0x1508, 0x11));
+    d.occupant_inserted(0x101);
+    assert!(d.ports().is_empty());
+    // Shutdown without Init does nothing.
+    let f2 = Fake::new();
+    let d2 = PortDeveloper::new(PortKind::Seaport, f2.clone(), 9);
+    assert!(d2.shutdown());
+    assert!(f2.take().is_empty());
 }
 
 // §12 test 1.
@@ -509,8 +565,8 @@ fn unfunded_trips_are_zero() {
     let p = d.ports()[0];
     assert_eq!(p.trips, 0);
     assert_eq!(p.efficiency, 1.0);
-    // usage 0 / cap 0 is NaN.
-    assert!(p.usage.is_nan());
+    // PD8: the month's usage uses the plain capacity: 0 / 10000.
+    assert_eq!(p.usage, 0.0);
     // funded 0: stressed once older than 90 days.
     f.edit(0x10, |l| l.days = 91);
     d.month_tick();
@@ -779,50 +835,200 @@ fn do_message_routes() {
     assert!(d.do_message(0x1234, 0, 0, 0));
 }
 
-#[test]
-fn seaport_terrain_grid() {
+/// A seaport developer whose type has a `rows × columns` grid of the
+/// values 1, 2, …, on a terrain of `size` cells.
+fn grid_seaport(rows: u8, columns: u8, size: (u32, u32)) -> (Rc<Fake>, Rc<PortDeveloper>) {
     let mut f = Fake::new();
     let mut h = (*f.exemplars[&0xCA2D_8CE6]).clone();
-    h.add(tuning::PROP_GRID_ROWS, Variant::Scalar(Elem::U8(2)));
-    h.add(tuning::PROP_GRID_COLUMNS, Variant::Scalar(Elem::U8(3)));
+    h.add(tuning::PROP_GRID_ROWS, Variant::Scalar(Elem::U8(rows)));
+    h.add(tuning::PROP_GRID_COLUMNS, Variant::Scalar(Elem::U8(columns)));
+    let n = u32::from(rows) * u32::from(columns);
     h.add(
         tuning::PROP_GRID,
         Variant::array(
             crate::variant::mem::FLOAT32,
-            (1..=6).map(|v| Elem::F32(v as f32)).collect(),
+            (1..=n).map(|v| Elem::F32(v as f32)).collect(),
         ),
     );
     Rc::get_mut(&mut f).unwrap().exemplars.insert(0xCA2D_8CE6, Rc::new(h));
+    f.size.set(size);
     let d = PortDeveloper::new(PortKind::Seaport, f.clone(), 2);
     d.init();
-    assert_eq!(d.types()[0].grid.as_ref().map(|g| g.values.len()), Some(6));
-    let mut l = Lot::new(0x4A52_917D, 1, 10, 20);
+    (f, d)
+}
+
+/// Adopts a seaport lot with this rectangle and facing; the altitude lines.
+fn grid_writes(f: &Fake, d: &PortDeveloper, token: u64, rect: (i32, i32, i32, i32), facing: u32) -> Vec<String> {
+    let mut l = Lot::new(0x4A52_917D, 1, rect.0 as i16, rect.1 as i16);
     l.rect = CellRect {
-        x0: 10,
-        z0: 20,
-        x1: 12,
-        z1: 21,
+        x0: rect.0,
+        z0: rect.1,
+        x1: rect.2,
+        z1: rect.3,
     };
-    f.lots.borrow_mut().insert(0x20, l);
+    l.facing = facing;
+    f.lots.borrow_mut().insert(token, l);
     f.take();
-    d.adopt(0x20);
-    let alt: Vec<String> = f.take().into_iter().filter(|l| l.starts_with("altitude")).collect();
+    assert!(d.adopt(token));
+    f.take().into_iter().filter(|l| l.starts_with("altitude")).collect()
+}
+
+// §4.8 steps 2–4 (PD4, PD6): the product use test, the walk without the last
+// row and column, the facings, metre coordinates as vertex indices.
+#[test]
+fn seaport_terrain_grid() {
+    // 3 rows × 2 columns; a 4 × 3-cell lot walks 3 × 2 cells.
+    let (f, d) = grid_seaport(3, 2, (64, 64));
+    assert_eq!(d.types()[0].grid.as_ref().map(|g| g.values.len()), Some(6));
+    let at = |v: &[(i32, i32, i32)]| -> Vec<String> {
+        v.iter().map(|(x, z, a)| format!("altitude {x} {z} {a}")).collect()
+    };
+    // Facing 0: rows along x (row = x − x1, column = z − z1).
     assert_eq!(
-        alt,
+        grid_writes(&f, &d, 0x20, (0, 0, 3, 2), 0),
+        at(&[(8, 8, 1), (24, 8, 3), (40, 8, 5), (8, 24, 2), (24, 24, 4), (40, 24, 6)])
+    );
+    // Facing 2: the 180° turn.
+    assert_eq!(
+        grid_writes(&f, &d, 0x21, (0, 0, 3, 2), 2),
+        at(&[(8, 8, 6), (24, 8, 4), (40, 8, 2), (8, 24, 5), (24, 24, 3), (40, 24, 1)])
+    );
+    // Facing 1: row = z2 − 1 − z, column = x2 − 1 − x; the flat index runs
+    // over the 3 × 2 grid as if it were 2 × 3 [quirk].
+    assert_eq!(
+        grid_writes(&f, &d, 0x22, (0, 0, 3, 2), 1),
+        at(&[(8, 8, 5), (24, 8, 4), (40, 8, 3), (8, 24, 3), (24, 24, 2), (40, 24, 1)])
+    );
+    // Facing 3: row = z − z1, column = x − x1.
+    assert_eq!(
+        grid_writes(&f, &d, 0x23, (0, 0, 3, 2), 3),
+        at(&[(8, 8, 1), (24, 8, 2), (40, 8, 3), (8, 24, 3), (24, 24, 4), (40, 24, 5)])
+    );
+    // Any other facing sets nothing.
+    assert!(grid_writes(&f, &d, 0x24, (0, 0, 3, 2), 4).is_empty());
+    // Another walk product is left alone (a 3 × 2-cell rectangle walks 2).
+    assert!(grid_writes(&f, &d, 0x25, (30, 20, 32, 21), 0).is_empty());
+    // An offset lot: cells (10..12, 20) and (10..12, 21), on a terrain
+    // large enough for its metre coordinates.
+    let (f, d) = grid_seaport(3, 2, (512, 512));
+    assert_eq!(
+        grid_writes(&f, &d, 0x26, (10, 20, 13, 22), 0),
+        at(&[
+            (168, 328, 1),
+            (184, 328, 3),
+            (200, 328, 5),
+            (168, 344, 2),
+            (184, 344, 4),
+            (200, 344, 6)
+        ])
+    );
+}
+
+#[test]
+fn seaport_terrain_grid_bounds() {
+    // 1 × 6 on a 3 × 2 walk: the products match, the sides do not; at facing
+    // 0 the index x · 6 + z runs past the six values for x ≥ 1 [choice: set
+    // nothing there].
+    let (f, d) = grid_seaport(1, 6, (64, 64));
+    assert_eq!(
+        grid_writes(&f, &d, 0x20, (0, 0, 3, 2), 0),
+        ["altitude 8 8 1", "altitude 8 24 2"]
+    );
+    // A vertex index outside the terrain's (cellsX + 1)(cellsZ + 1) vertices
+    // is skipped [choice]; one inside it is written even when x > cellsX,
+    // as the original's index would be.
+    // 21 × 21 vertices: the z = 0 row (pz 8) fits, x = 40 included
+    // (21 · 8 + 40 < 441); the z = 1 row (pz 24) does not.
+    let (f, d) = grid_seaport(3, 2, (20, 20));
+    assert_eq!(
+        grid_writes(&f, &d, 0x20, (0, 0, 3, 2), 0),
+        ["altitude 8 8 1", "altitude 24 8 3", "altitude 40 8 5"]
+    );
+    let (f, d) = grid_seaport(3, 2, (4, 4));
+    assert!(grid_writes(&f, &d, 0x20, (0, 0, 3, 2), 0).is_empty());
+}
+
+// PD4 corrected (PD6): the shipped 11 × 5 declaration with 55 values serves a
+// 12 × 6-cell lot (walk 11 × 5); 72 values are rejected at load.
+#[test]
+fn seaport_terrain_grid_shipped_size() {
+    let (f, d) = grid_seaport(11, 5, (256, 256));
+    assert_eq!(grid_writes(&f, &d, 0x20, (0, 0, 11, 5), 0).len(), 55);
+    assert!(grid_writes(&f, &d, 0x21, (0, 10, 12, 16), 0).is_empty());
+    let s = PortDeveloper::new(PortKind::Seaport, Fake::new(), 2);
+    s.init();
+    assert!(s.types()[0].grid.is_none());
+}
+
+// §12 test 11 (PD8): funding scales only the public query.
+#[test]
+fn t11_funding_only_in_the_query() {
+    let (f, d) = airport();
+    adopt(&f, &d, 0x100, 0x10, SMALL0, 3, 4);
+    f.follow.set(false);
+    f.line.set(Some((700, 350)));
+    *f.b.borrow_mut() = vec![0];
+    for (jobs, ratio, query) in [(4000, 0.4f32, (4000, 5000)), (6000, 0.6, (5000, 5000))] {
+        *f.a.borrow_mut() = vec![jobs];
+        d.month_tick();
+        assert_eq!(d.ports()[0].trips, jobs);
+        assert_eq!(d.ports()[0].usage, ratio);
+        assert_eq!(d.usage_values(0x10), Some(query));
+    }
+}
+
+// §12 test 12 (PD5): a missing next-stage configuration is not tested.
+#[test]
+fn t12_missing_configuration() {
+    let (f, d) = airport();
+    adopt(&f, &d, 0x100, 0x10, SMALL0, 3, 4);
+    *f.a.borrow_mut() = vec![9700];
+    *f.b.borrow_mut() = vec![0];
+    d.month_tick();
+    f.missing_configs.borrow_mut().insert(0xCA24_36C1);
+    f.follow.set(false);
+    f.line.set(Some((700, 700)));
+    f.take();
+    assert_eq!(d.grow_ports_to_next_stage(), 1);
+    let r = f.lot(0x10).rect;
+    assert_eq!(
+        f.take(),
         [
-            "altitude 10 20 1",
-            "altitude 11 20 2",
-            "altitude 12 20 3",
-            "altitude 10 21 4",
-            "altitude 11 21 5",
-            "altitude 12 21 6"
+            "start_demolish 0x10".to_string(),
+            "end_demolish 0x10".to_string(),
+            format!("create_lot {} {} 5 3 0", r.x0, r.z0),
+            "set_config 0x9000 0x0".to_string(),
+            "construct 0x9000 0x0".to_string(),
+            "withdraw 5700".to_string(),
+            "full 800".to_string(),
         ]
     );
-    // A lot of another area is left alone.
-    let mut l = Lot::new(0x4A52_917D, 1, 30, 20);
-    l.rect.x1 = 31;
-    l.rect.z1 = 20;
-    f.lots.borrow_mut().insert(0x21, l);
-    d.adopt(0x21);
-    assert!(!f.take().iter().any(|l| l.starts_with("altitude")));
+    let p = d.ports()[0];
+    assert_eq!((p.stage, p.lot), (1, Some(0x9000)));
+    let l = f.lot(0x9000);
+    assert_eq!((l.config, l.state, l.condition), (None, 2, CONDITION_UNPOWERED));
+    // Later months skip the port (condition 1); it never grows again.
+    d.month_tick();
+    assert_eq!(d.last_month().skipped, 1);
+    let mut p = d.ports()[0];
+    p.trips = 40_000;
+    d.set_port_fields(0, p);
+    assert_eq!(d.grow_ports_to_next_stage(), 0);
+}
+
+// PD9: every port without access raises the event, whatever its props.
+#[test]
+fn seaport_event_without_access_props() {
+    let f = Fake::new();
+    f.size.set((4, 3));
+    f.access_props.set(0);
+    let d = PortDeveloper::new(PortKind::Seaport, f.clone(), 2);
+    d.init();
+    add_lot(&f, 0x20, 0x4A52_917D, 2, 1);
+    assert!(d.adopt(0x20));
+    f.take();
+    d.month_tick();
+    let log = f.take();
+    assert!(log.contains(&"props_state 0x20 0xc98204b8 1".to_string()));
+    assert!(log.contains(&"event 0x4a490d33".to_string()));
 }

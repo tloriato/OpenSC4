@@ -863,3 +863,42 @@ fn ex39_a_scalar_item_cost_reads_as_empty() {
         assert!(!fc4_budget_get_budget_item_info(b, ht, None, std::ptr::null_mut()));
     }
 }
+
+thread_local! {
+    static SEED: Cell<u32> = const { Cell::new(0) };
+}
+
+unsafe extern "C" fn test_session_seed(_: *mut c_void) -> u32 {
+    SEED.with(|s| s.get())
+}
+
+/// RN3: the RiskyMoney generator is process-wide. The first budget seeds it
+/// with derive(S, 0x6C09C3D7); a budget created later (the next city load,
+/// even with another session seed) draws from the same stream.
+#[test]
+fn risky_money_generator_is_process_wide() {
+    use fc4_core::rng::RzRandomSuper;
+    use fc4_core::seeding::{clocks, keys, seed};
+    let g = Game::new();
+    let mut h = g.host();
+    h.session_seed = Some(test_session_seed);
+    unsafe {
+        SEED.with(|s| s.set(0x0BAD_5EED));
+        let a = fc4_budget_create(&h, 0x10);
+        let ga = (*(a as *const std::rc::Rc<fc4_core::budget::BudgetSim>))
+            .generator()
+            .clone();
+        let first = ga.borrow_mut().next_u32();
+        fc4_budget_destroy(a);
+        SEED.with(|s| s.set(0x1234_0000));
+        let b = fc4_budget_create(&h, 0x20);
+        let gb = (*(b as *const std::rc::Rc<fc4_core::budget::BudgetSim>))
+            .generator()
+            .clone();
+        assert!(std::rc::Rc::ptr_eq(&ga, &gb));
+        let mut fresh = RzRandomSuper::new(seed(0x0BAD_5EED, keys::BUDGET), &clocks(0x0BAD_5EED, keys::BUDGET));
+        assert_eq!(fresh.next_u32(), first);
+        assert_eq!(gb.borrow_mut().next_u32(), fresh.next_u32());
+        fc4_budget_destroy(b);
+    }
+}

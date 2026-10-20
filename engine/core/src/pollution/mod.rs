@@ -109,6 +109,10 @@
 //!   uses.
 //! - The visual-effect generator is a `cRZRandomSuper` seeded by the host
 //!   ([`PollutionSim::new`]); foundations §6.2 seeds it from the wall clock.
+//!   It is a file-local static of the original, seeded once per process
+//!   (RN3): [`PollutionSim::process_wide`] (the C ABI's create) shares the
+//!   process-wide one of [`crate::seeding::process_super`], whose stream
+//!   continues across city loads.
 //!
 //! [`CrtRand`]: crate::rng::CrtRand
 

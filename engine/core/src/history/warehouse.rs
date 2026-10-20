@@ -340,6 +340,14 @@ impl HistoryWarehouse {
     /// `GetPoint` (slot 8): the line of the widened range with
     /// `from = to = date`, at `date` (its intercept). `None` for a missing key
     /// or an empty series.
+    ///
+    /// At a date with points on both sides the widened range is those three
+    /// points and this is the regression value through them, which is **not**
+    /// the recorded value at that date (§4.8). That is not an optional
+    /// smoothing: the graph window (`cSC4GraphsViewWinProc`) draws every curve
+    /// from `GetPoint` alone and never calls `GetCount`, so a sample date that
+    /// falls on an interior point is drawn at this value (HW2). Answering the
+    /// recorded value here would change every graph in the game.
     pub fn get_point(&self, key: u32, date: u32, prec: Precision) -> Option<f32> {
         let s = self.series.get(&key)?;
         let r = widened_range(&s.points, date, date);

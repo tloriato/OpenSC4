@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "name": "port_developers_missing_configuration",
+  "spec": ["port-developers 4.5", "port-developers 10", "port-developers 12"],
+  "description": "Section 12 test 12 (PD5): the next stage's lot configuration 0xCA2436C1 is missing from the configuration manager. The swap does not test it: the old lot is demolished, the new one created, SetLotConfiguration(null) and ConstructDefaultLot(new, null) run (the scripted lot developer leaves an empty lot in state 2 with condition 1 and answers true, lot-developer 6.4), so the swap succeeds: the stage advances, 5700 is withdrawn and the budget updated. Later months skip the port (condition 1) and it never grows again (state 2).",
+  "steps": [
+    {"op": "pd_create", "kind": "airport"},
+    {"op": "pd_init"},
+    {"op": "pd_lot", "lot": "0x10", "config": ["0xCA2436C0", 1], "x": 3, "z": 4, "rect": [3, 4, 7, 6], "days": 91, "state": 3},
+    {"op": "pd_occupant", "occupant": "0x100", "lot": "0x10"},
+    {"op": "pd_message", "msg": "0x99EF1142", "data": "0x100"},
+    {"op": "pd_env", "offices": [[9700], [0]]},
+    {"op": "pd_month"},
+    {"op": "pd_env", "follow": false, "line": [700, 700], "missing_configs": ["0xCA2436C1"]},
+    {"op": "pd_clear_events"},
+    {"op": "pd_message", "msg": "0xEA394B74", "expect": true},
+    {"op": "pd_expect_events", "events": [{"event": "start_demolish", "lot": "0x10"}, {"event": "end_demolish", "lot": "0x10"}, {"event": "create_lot", "x": 3, "z": 4, "width": 5, "depth": 3, "facing": 0, "lot": "0x9000"}, {"event": "set_configuration", "lot": "0x9000", "config": null}, {"event": "construct", "lot": "0x9000", "config": null}, {"event": "withdraw", "amount": 5700}, {"event": "full_expenses", "value": 800}]},
+    {"op": "pd_expect_port", "index": 0, "state": {"stage": 1, "lot": "0x9000", "swapping": true}},
+    {"op": "pd_clear_events"},
+    {"op": "pd_month"},
+    {"op": "pd_expect", "state": {"month_ran": true, "skipped": 1}},
+    {"op": "pd_expect_event_count", "filter": {"event": "effects"}, "count": 0},
+    {"op": "pd_set_port", "index": 0, "trips": 40000},
+    {"op": "pd_clear_events"},
+    {"op": "pd_message", "msg": "0xEA394B74"},
+    {"op": "pd_expect_events", "events": []}
+  ]
+}

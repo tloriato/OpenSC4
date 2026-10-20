@@ -318,6 +318,12 @@ bool cFC4HistoryWarehouse::GetMinMaxAverage(uint32_t key, cFC4IGZDate const& fro
     return fc4_history_get_min_max_average(core_, key, f, t, prec, &min, &max, &avg);
 }
 
+// [HW2] The graph window (`cSC4GraphsViewWinProc`) reads a series through this
+// slot only — one call per sample date, never `GetCount` — so every curve the
+// game draws is a sequence of these answers. The core returns the regression
+// value through the sample and its two neighbours at an interior point, not the
+// recorded value there (history.md §4.7, §4.8); that smoothing is what the
+// graphs show and must not be "corrected" to the recorded value.
 bool cFC4HistoryWarehouse::GetPoint(uint32_t key, cFC4IGZDate const& date, float& v) {
     const uint32_t d = DayOf(date);
     const uint32_t prec = fc4::CallerPrecisionBits();

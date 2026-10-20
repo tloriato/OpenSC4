@@ -1,8 +1,8 @@
 {
   "format": 1,
   "name": "hw12_07_get_point",
-  "spec": ["history 4.6", "history 4.7", "history 4.8", "history 12"],
-  "description": "Test 7. GetPoint example of 4.8: points at 999, 1000, 1001 with 0, 10, 0: the widened range is all three, slope 0, the mean 10/3 (at 24 and 53 bits). Points 999 and 1001 (0 and 10): 5. Before the first point: the first value; after the last: the last value; exactly at the last and the first point: their values; between two points: linear interpolation (6 at 15). Missing key or empty series: false (null). GetCount counts the widened range: one point with neighbours 3, a gap 2, the whole series 4, an empty series 0.",
+  "spec": ["history 4.6", "history 4.7", "history 4.8", "history 9", "history 12", "HW2"],
+  "description": "Test 7. GetPoint example of 4.8: points at 999, 1000, 1001 with 0, 10, 0: the widened range is all three, slope 0, the mean 10/3 (at 24 and 53 bits). Points 999 and 1001 (0 and 10): 5. Before the first point: the first value; after the last: the last value; exactly at the last and the first point: their values; between two points: linear interpolation (6 at 15). Missing key or empty series: false (null). GetCount counts the widened range: one point with neighbours 3, a gap 2, the whole series 4, an empty series 0. HW2: the graph window draws its curves from GetPoint alone and never calls GetCount, so an interior point is drawn at the three-point regression value and not at its recorded one; the last steps pin that (recorded 3 at day 30, drawn 11) and that GetPoint and GetCount disagree at the same date.",
   "steps": [
     {"op": "hw_create"},
     {"op": "hw_series", "key": "0xAA11F837", "points": [[999, 0], [1000, 10], [1001, 0]]},
@@ -26,6 +26,12 @@
     {"op": "hw_call", "method": "get_count", "args": ["0xAA11F837", 45, 50], "expect": 1},
     {"op": "hw_call", "method": "get_count", "args": ["0x99", 0, 100], "expect": null},
     {"op": "hw_series", "key": "0xAA11F837", "points": []},
-    {"op": "hw_call", "method": "get_count", "args": ["0xAA11F837", 0, 100], "expect": 0}
+    {"op": "hw_call", "method": "get_count", "args": ["0xAA11F837", 0, 100], "expect": 0},
+    {"op": "hw_series", "key": "0xAA11F837", "points": [[10, 0], [20, 10], [30, 3], [40, 20], [50, 5]]},
+    {"op": "hw_call", "method": "get_point", "args": ["0xAA11F837", 30], "expect": 11},
+    {"op": "hw_call", "method": "get_point", "args": ["0xAA11F837", 30], "precision": 53, "expect": 11},
+    {"op": "hw_call", "method": "get_point", "args": ["0xAA11F837", 10], "expect": 0},
+    {"op": "hw_call", "method": "get_point", "args": ["0xAA11F837", 50], "expect": 5},
+    {"op": "hw_call", "method": "get_count", "args": ["0xAA11F837", 30, 30], "expect": 3}
   ]
 }

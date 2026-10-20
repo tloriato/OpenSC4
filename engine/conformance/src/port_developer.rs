@@ -66,6 +66,8 @@ pub(crate) struct World {
     water: RefCell<BTreeSet<(u32, u32)>>,
     create_lot: Cell<bool>,
     construct: Cell<bool>,
+    /// Lot configuration IDs the configuration manager does not have (PD5).
+    missing_configs: RefCell<BTreeSet<u32>>,
     next: Cell<u64>,
     records: RefCell<BTreeMap<String, Vec<u8>>>,
 }
@@ -88,6 +90,7 @@ impl World {
             water: RefCell::new(BTreeSet::new()),
             create_lot: Cell::new(true),
             construct: Cell::new(true),
+            missing_configs: RefCell::new(BTreeSet::new()),
             next: Cell::new(0x9000),
             records: RefCell::new(BTreeMap::new()),
         });
@@ -265,7 +268,7 @@ impl PortHost for World {
         self.lot(lot).compatible
     }
     fn lot_configuration(&self, id: u32) -> Option<u64> {
-        Some(u64::from(id))
+        (!self.missing_configs.borrow().contains(&id)).then_some(u64::from(id))
     }
     fn start_demolish_lot(&self, lot: u64) {
         self.events.push("start_demolish", vec![("lot", t(lot))]);
@@ -302,14 +305,25 @@ impl PortHost for World {
         );
         tok
     }
-    fn set_lot_configuration(&self, lot: u64, config: u64) {
-        self.edit(lot, |l| l.config = Some((config as u32, 2)));
-        self.events
-            .push("set_configuration", vec![("lot", t(lot)), ("config", t(config))]);
+    fn set_lot_configuration(&self, lot: u64, config: Option<u64>) {
+        self.edit(lot, |l| l.config = config.map(|c| (c as u32, 2)));
+        self.events.push(
+            "set_configuration",
+            vec![("lot", t(lot)), ("config", config.map_or(Json::Null, t))],
+        );
     }
-    fn construct_default_lot(&self, lot: u64, config: u64) -> bool {
+    fn construct_default_lot(&self, lot: u64, config: Option<u64>) -> bool {
         self.events
-            .push("construct", vec![("lot", t(lot)), ("config", t(config))]);
+            .push("construct", vec![("lot", t(lot)), ("config", config.map_or(Json::Null, t))]);
+        if config.is_none() {
+            // The lot developer with a null configuration (lot-developer.md
+            // §6.4, PD5): an empty lot in state 2 with condition 1, true.
+            self.edit(lot, |l| {
+                l.state = 2;
+                l.condition = 1;
+            });
+            return true;
+        }
         self.construct.get()
     }
     fn dezone(&self, r: CellRect) {
@@ -432,8 +446,11 @@ fn u32_list(j: &Json, what: &str) -> R<Vec<u32>> {
 /// (`[[CO$$ per subnetwork], [CO$$$ per subnetwork]]`); `terrain` (`[width,
 /// depth]`); `water` (`[[x, z]]` water cells, replacing the set);
 /// `create_lot` and `construct` (whether CreateLot and ConstructDefaultLot
-/// succeed); `exemplars` (`{"0xINSTANCE": {properties} | null}`
-/// replacing shipped exemplars, null removing one).
+/// succeed); `missing_configs` (lot configuration IDs the manager does not
+/// have, replacing the set; ConstructDefaultLot then acts as the lot
+/// developer does with a null configuration: state 2, condition 1, true);
+/// `exemplars` (`{"0xINSTANCE": {properties} | null}` replacing shipped
+/// exemplars, null removing one).
 fn env(w: &World, op: &Json) -> R<()> {
     if let Some(v) = opt(op, "kind") {
         w.kind.set(kind_of(v)?);
@@ -487,6 +504,9 @@ fn env(w: &World, op: &Json) -> R<()> {
     }
     if let Some(v) = opt(op, "construct") {
         w.construct.set(bool_of(v, "construct")?);
+    }
+    if let Some(v) = opt(op, "missing_configs") {
+        *w.missing_configs.borrow_mut() = u32_list(v, "missing_configs")?.into_iter().collect();
     }
     if let Some(v) = opt(op, "exemplars") {
         for (k, props) in v.as_object().ok_or("exemplars must be an object")? {
