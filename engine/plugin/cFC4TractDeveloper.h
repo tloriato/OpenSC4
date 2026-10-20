@@ -255,7 +255,13 @@ private:
 
     bool Enter(bool wait);
     void Leave();
+    // The snapshot is rewritten only when something could have changed it
+    // (MarkStylesChanged): Grow, Decline, UpdatePopulation and the getters
+    // cannot, and `UpdatePopulation` runs once per desirability tract of every
+    // growth-developer map update (12288 calls a month in a Konradshohe run),
+    // so refreshing on those was the tract developer's largest per-call cost.
     void RefreshSnapshot();
+    void MarkStylesChanged() { snapDirty_ = true; }
     void LogState(const char* what);
     void CreateCore();
 
@@ -269,6 +275,7 @@ private:
     bool destroying_ = false;
     bool growLog_ = false;
     bool noteStyles_ = false;
+    bool snapDirty_ = true;  // the snapshot may be stale; see RefreshSnapshot
     fc4::TractContext ctx_;
     fc4_tract_host host_{};
     fc4_tract* core_ = nullptr;

@@ -20,6 +20,7 @@
 #include "FC4Log.h"
 #include "FC4Properties.h"
 #include "FC4RefAudit.h"
+#include "FC4Seed.h"
 #include "FC4Streams.h"
 #include "FC4WriteCapture.h"
 #include "cFC4Message2Standard.h"
@@ -254,10 +255,18 @@ int32_t g_julian = 0;  // the last day delivered (the one-shot's date)
 bool g_testMode = false;
 const FC4TrafficShadowTestInput* g_test = nullptr;
 
-// The original simulator's agent (its cIGZMessageTarget2), per simulator.
+// The live simulator's agent (its cIGZMessageTarget2), per simulator: the
+// ORIGINAL's when the shadow is the differential, FreeCity4's own when it is
+// the replacement's self-check (g_selfCheck).
 const void* g_agentSim = nullptr;
 cIGZMessageTarget2* g_agent = nullptr;
 bool g_loggedOurs = false;
+// glue27: `enable = traffic` puts FreeCity4's class where the original's was.
+// The shadow then stays on as a class-layer self-check of that replacement
+// (glue21's shape for the prop / lot configuration managers): it reads
+// whatever the city holds, writes that class's own record and runs a private
+// core over it on a read-only host. See TrafficShadowStartup.
+bool g_selfCheck = false;
 bool g_loggedNoSerializable = false;
 bool g_listening = false;
 DWORD g_mainTid = 0;
@@ -348,20 +357,32 @@ cISC4City* CurrentCity() {
     return city;
 }
 
-// The original traffic simulator if `target` is its agent: its
+// The live traffic simulator if `target` is its agent: its
 // cIGZMessageTarget2 interface, or failing that (logged) an agent registered
 // under its name.
-cIGZUnknown* OriginalFor(cISC4City* city, cIGZMessageTarget2* target, const char* agentName) {
+//
+// Which class that is depends on the mode (TrafficShadowStartup):
+//   - the differential: the ORIGINAL traffic simulator, and FreeCity4's class
+//     is refused (it would be compared against itself);
+//   - the self-check (`enable = traffic`): FreeCity4's own class, which is
+//     then compared against a private second instance of the same core.
+cIGZUnknown* ReferenceFor(cISC4City* city, cIGZMessageTarget2* target, const char* agentName) {
     if (city == nullptr || target == nullptr) return nullptr;
     cIGZUnknown* raw = reinterpret_cast<cIGZUnknown*>(city->GetTrafficSimulator());  // borrowed
     if (raw == nullptr) return nullptr;
-    if (IsOurObject(raw)) {
+    const bool ours = IsOurObject(raw);
+    if (ours && !g_selfCheck) {
         if (!g_loggedOurs) {
             g_loggedOurs = true;
-            Log("traffic shadow: inactive: the city's traffic simulator is FreeCity4's own (the shadow compares "
-                "against the ORIGINAL traffic simulator: do not enable traffic)");
+            Log("traffic shadow: inactive: the city's traffic simulator is FreeCity4's own (without `enable = "
+                "traffic` the shadow compares against the ORIGINAL traffic simulator)");
         }
         return nullptr;
+    }
+    if (ours && !g_loggedOurs) {
+        g_loggedOurs = true;
+        Log("traffic shadow: the city's traffic simulator is FreeCity4's own (`enable = traffic`): the reference "
+            "for the comparison is that class, so this is its self-check");
     }
     if (raw != g_agentSim) {
         void* agent = nullptr;
@@ -374,7 +395,7 @@ cIGZUnknown* OriginalFor(cISC4City* city, cIGZMessageTarget2* target, const char
             FC4_RELEASE(a);  // the simulator keeps it alive; only its identity is kept
         }
         g_agentSim = raw;
-        Log("traffic shadow: the original traffic simulator %p has agent %p (%s)", static_cast<void*>(raw),
+        Log("traffic shadow: the live traffic simulator %p has agent %p (%s)", static_cast<void*>(raw),
             static_cast<void*>(g_agent), qi ? "its cIGZMessageTarget2 interface" : "no interface: matched by name");
     }
     const bool same = g_agent != nullptr && target == g_agent;
@@ -494,7 +515,14 @@ bool EnsureShadow(const void* city, const void* sim) {
     }
     DropShadow();
     MakeHost();
-    g_shadow = fc4_traffic_shadow_create(&g_host, kSeed, static_cast<uint32_t>(g_diffs),
+    // The copy's generator. Against the original its draws cannot be the
+    // original's (the generator is not readable, §4.15), so a fixed seed is as
+    // good as any: the draws are excluded from the comparison. In the
+    // self-check both sides are our core, so the copy takes the live class's
+    // session seed (fc4.h, foundations §6.3) and the excluded draws stay
+    // excluded for the reason they are named, not because the seeds differ.
+    const uint32_t seed = g_selfCheck ? fc4::SubsystemSeed("traffic_seed", "FC4_TRAFFIC_SEED", nullptr) : kSeed;
+    g_shadow = fc4_traffic_shadow_create(&g_host, seed, static_cast<uint32_t>(g_diffs),
                                          static_cast<uint32_t>(g_lines));
     if (g_shadow == nullptr) {
         if (g_shadowFailedFor != sim) {
@@ -514,7 +542,9 @@ bool EnsureShadow(const void* city, const void* sim) {
     g_shadowSim = sim;
     g_shadowDiffs = g_diffs;
     g_shadowLines = g_lines;
-    Log("traffic shadow: comparing with the original traffic simulator %p (city %p); differences named per line: "
+    // "the live" is the original's in the differential and FreeCity4's own in
+    // the self-check (ReferenceFor).
+    Log("traffic shadow: comparing with the live traffic simulator %p (city %p); differences named per line: "
         "%ld, delivery lines per month: %ld",
         sim, city, g_diffs, g_lines);
     return true;
@@ -671,21 +701,48 @@ void TrafficShadowStartup(bool simulatorReplaced, bool trafficReplaced) {
     if (!g_enabled) return;  // off by default: not a word in the log
     const char* src = "";
     Setting("traffic_shadow", "FC4_TRAFFIC_SHADOW", &src);
-    if (simulatorReplaced && !trafficReplaced) {
-        Log("traffic shadow: ON (traffic_shadow from %s): at each delivery to the ORIGINAL traffic simulator's "
-            "agents, FreeCity4's simulator (a private copy on the original's record and live inputs) is stepped "
-            "to where the original stopped and its record, trip lists, lot and connection holder arrays and "
-            "grids are compared bitwise; one line per month, at most %ld delivery lines a month, %ld differences "
-            "named per line. Not compared: the strategy draws (property 0x4A611773) and the pothole and accident "
-            "draws' choices (the original's generator is not readable), posted messages, history, incomes, "
-            "network costs, budget items, accidents",
+    if (!simulatorReplaced) {
+        // Without our simulator there is nothing to wrap the deliveries with.
+        Log("traffic shadow: requested (traffic_shadow from %s) but INACTIVE: it wraps the clock deliveries our "
+            "simulator makes, so it needs FreeCity4's simulator (do not `disable = simulator`); here traffic is %s",
+            src, trafficReplaced ? "ours" : "the original");
+        g_enabled = false;
+        return;
+    }
+    // glue27: with `enable = traffic` the city's traffic simulator is ours, so
+    // the original is no longer reachable through GetTrafficSimulator. Rather
+    // than keeping a second, unregistered copy of the game's class alive (a
+    // registry side channel that would have to be driven by hand), the shadow
+    // becomes a class-layer self-check of the replacement - the same choice
+    // glue21 made for the prop and lot configuration managers. Both sides are
+    // our core, so a difference is a defect in the replacement (a host callback
+    // that does not agree with the copy's read-only one, a record that does not
+    // round trip, or non-determinism the record does not carry), not a
+    // difference from the original. The original-vs-ours differential is still
+    // what `traffic_shadow = 1` does without `enable = traffic`.
+    g_selfCheck = trafficReplaced;
+    if (g_selfCheck) {
+        Log("traffic shadow: ON over FreeCity4's replacement (traffic_shadow from %s, `enable = traffic`): at each "
+            "delivery to our traffic simulator's agents, that class's own record (its Write into memory) and live "
+            "inputs start a private second instance of FreeCity4's traffic core on a read-only host, stepped to "
+            "where the live class stopped; its record, trip lists, lot and connection holder arrays and grids are "
+            "then compared bitwise with the live class's. One line per month, at most %ld delivery lines a month, "
+            "%ld differences named per line. Not compared: the strategy draws (property 0x4A611773) and the "
+            "pothole and accident draws' choices, posted messages, history, incomes, network costs, budget items, "
+            "accidents",
             src, g_lines, g_diffs);
         LogRetiredHypotheses();
-    } else {
-        Log("traffic shadow: requested (traffic_shadow from %s) but INACTIVE: it needs FreeCity4's simulator and "
-            "the original traffic simulator (do not enable traffic); here the simulator is %s and traffic is %s",
-            src, simulatorReplaced ? "ours" : "the original", trafficReplaced ? "ours" : "the original");
+        return;
     }
+    Log("traffic shadow: ON (traffic_shadow from %s): at each delivery to the ORIGINAL traffic simulator's "
+        "agents, FreeCity4's simulator (a private copy on the original's record and live inputs) is stepped "
+        "to where the original stopped and its record, trip lists, lot and connection holder arrays and "
+        "grids are compared bitwise; one line per month, at most %ld delivery lines a month, %ld differences "
+        "named per line. Not compared: the strategy draws (property 0x4A611773) and the pothole and accident "
+        "draws' choices (the original's generator is not readable), posted messages, history, incomes, "
+        "network costs, budget items, accidents",
+        src, g_lines, g_diffs);
+    LogRetiredHypotheses();
 }
 
 bool TrafficShadowDeliver(cIGZMessageTarget2* target, const char* agentName, cIGZMessage2* msg, uint32_t type,
@@ -703,7 +760,7 @@ bool TrafficShadowDeliver(cIGZMessageTarget2* target, const char* agentName, cIG
     // Cheap rejection for every other agent: ours registers by name (AddAgent).
     if (!g_testMode && target != g_agent && (agentName == nullptr || strcmp(agentName, kAgentName) != 0)) return false;
     cISC4City* city = CurrentCity();
-    cIGZUnknown* sim = OriginalFor(city, target, agentName);
+    cIGZUnknown* sim = ReferenceFor(city, target, agentName);
     if (sim == nullptr || !EnsureShadow(city, sim)) return false;
     if (g_mainTid == 0) g_mainTid = GetCurrentThreadId();
     Listen();

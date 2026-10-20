@@ -25,24 +25,41 @@
 //                                confirmed (traffic-simulator TS55-TS57) and are
 //                                the core's only behaviour
 //
-// It needs FreeCity4's simulator and the ORIGINAL traffic simulator (the
-// default: `traffic` is not enabled). Our simulator delivers the clock to the
-// original's agents ("cSC4TrafficSimulator": one-shot, day, month), and the
-// shadow wraps every delivery (cFC4Simulator::HostDeliver):
-//   1. before: the original's own Write (cIGZSerializable) into a capture
+// It needs FreeCity4's simulator (it wraps the clock deliveries that simulator
+// makes). Two modes, decided at game start by whether `enable = traffic` put
+// FreeCity4's class where the original's was (FC4TrafficShadow.cpp
+// TrafficShadowStartup):
+//
+//   differential (the default, `traffic` not enabled): the reference is the
+//   ORIGINAL traffic simulator and the copy is FreeCity4's core on its record;
+//   this is the original-vs-ours comparison.
+//
+//   self-check (`enable = traffic`): the original is no longer reachable
+//   through the city, so the reference is FreeCity4's own live class and the
+//   copy is a second instance of the same core on that class's record. Both
+//   sides are ours, so a difference is a defect in the replacement (a host
+//   callback that disagrees with the copy's read-only one, a record that does
+//   not round trip, or non-determinism the record does not carry) rather than
+//   a difference from the original. This is the shape glue21 chose for the
+//   prop and lot configuration managers.
+//
+// Our simulator delivers the clock to the reference's agents
+// ("cSC4TrafficSimulator": one-shot, day, month), and the shadow wraps every
+// delivery (cFC4Simulator::HostDeliver):
+//   1. before: the reference's own Write (cIGZSerializable) into a capture
 //      stream (bytes, and each reference queried for the grid, occupant and
 //      department interfaces); fc4_traffic_shadow_before starts FreeCity4's
 //      simulator on it (a private copy, at the first delivery), or resyncs
 //      the copy when the record differs from the copy's (something between
 //      two deliveries changed one side only), and snapshots the inputs the
 //      delivery may change (trip lists, lot and connection holder arrays);
-//   2. the original's DoMessage, unchanged;
+//   2. the reference's DoMessage, unchanged;
 //   3. after: the record again; fc4_traffic_shadow_after steps the copy one
-//      unit at a time to the cycle state and phase progress the original
-//      stopped at (the original's day ends on a 4 ms wall-clock deadline,
+//      unit at a time to the cycle state and phase progress the reference
+//      stopped at (its day ends on a 4 ms wall-clock deadline,
 //      traffic-simulator.md §3.3), then compares bitwise its record (fields
 //      named), every source's trip list, the lot and connection holder
-//      arrays and the grids with the original's.
+//      arrays and the grids with the reference's.
 // The copy reads the game through the traffic host table (cFC4TrafficSimulator's
 // read callbacks over this city; every write callback NULL but the lot
 // deactivation, which is a lookup of the holder's budget item) and the
@@ -77,14 +94,14 @@ class cISC4City;
 namespace fc4 {
 
 // Game start (after the subsystems are resolved): reads the settings and logs
-// whether the shadow can run in this configuration.
+// which of the two modes the shadow runs in (or why it cannot run).
 void TrafficShadowStartup(bool simulatorReplaced, bool trafficReplaced);
 
 // cFC4Simulator::HostDeliver, for every agent delivery: if the shadow is on
-// and `target` is the original traffic simulator's agent, runs before /
-// target->DoMessage(msg) / after, stores the agent's result in `finished`
-// and returns true. Otherwise returns false and does nothing (the caller
-// delivers).
+// and `target` is the reference traffic simulator's agent (the original's, or
+// ours in the self-check), runs before / target->DoMessage(msg) / after,
+// stores the agent's result in `finished` and returns true. Otherwise returns
+// false and does nothing (the caller delivers).
 bool TrafficShadowDeliver(cIGZMessageTarget2* target, const char* agentName, cIGZMessage2* msg, uint32_t type,
                           int64_t data1, bool* finished);
 

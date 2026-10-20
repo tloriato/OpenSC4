@@ -221,6 +221,7 @@ void cFC4TractDeveloper::CreateCore() {
     host_ = fc4::MakeTractHost(&ctx_);
     core_ = fc4_tract_create(&host_, seed_);
     if (core_ == nullptr) fc4::Log("cFC4TractDeveloper: core creation failed");
+    MarkStylesChanged();  // a fresh core; the snapshot is rebuilt at the next RefreshSnapshot
 }
 
 cFC4TractDeveloper::~cFC4TractDeveloper() {
@@ -339,8 +340,17 @@ cFC4TractDeveloper::Section::~Section() {
 // The snapshot and slot 9's vector from the core's own state (no host
 // calls): any thread holding the lock. The vector is rewritten only when the
 // styles changed, in place while its buffer is large enough.
+//
+// glue27: only when MarkStylesChanged said the state could have moved. The
+// style state changes on the year message (core `new_year`) and in the style
+// setters; Grow, Decline, UpdatePopulation and the getters leave it alone.
+// The refresh is 5 core calls plus a vector allocation, and
+// `UpdatePopulation` is called once per desirability tract of every growth
+// developer's map update (12288 calls a month in a Konradshohe run), so
+// refreshing there was about a quarter of that call's cost for nothing.
 void cFC4TractDeveloper::RefreshSnapshot() {
-    if (core_ == nullptr) return;
+    if (core_ == nullptr || !snapDirty_) return;
+    snapDirty_ = false;
     snap_.currentStyle = fc4_tract_current_style(core_);
     snap_.allStyles = fc4_tract_is_using_all_styles(core_);
     snap_.yearsBetween = fc4_tract_years_between_style_changes(core_);
@@ -430,6 +440,7 @@ bool cFC4TractDeveloper::Init() {
     mainTid_ = GetCurrentThreadId();
     Section sec(this, true);
     const bool ok = fc4_tract_init(core_);  // §1.3, all of it (the core drives every host call)
+    MarkStylesChanged();
     g_live = this;
     LogState(ok ? "Init" : "Init FAILED");
     return ok;
@@ -443,6 +454,7 @@ bool cFC4TractDeveloper::Shutdown() {
     {
         Section sec(this, true);
         fc4_tract_shutdown(core_);  // §1.4: message server, agent, filters, services
+        MarkStylesChanged();
         LogState("Shutdown");
     }
     cFC4TractDeveloper* self = this;
@@ -528,6 +540,7 @@ intptr_t cFC4TractDeveloper::SetActiveStyles(fc4::GameVector<uint32_t> const& st
             auto& v = const_cast<fc4::TractStyleVector&>(fc4::AsTract(styles));
             std::vector<uint32_t> copy(v.begin(), v.end());
             fc4_tract_set_active_styles(core_, copy.data(), copy.size());
+            MarkStylesChanged();
         }  // [choice] another thread that cannot get the lock: not set
     }
     return reinterpret_cast<intptr_t>(&styles_);
@@ -541,7 +554,10 @@ bool cFC4TractDeveloper::IsUsingAllStylesAtOnce() const {
 
 cFC4ISC4TractDeveloper* cFC4TractDeveloper::UseAllStylesAtOnce(bool all) {
     Section sec(this);
-    if (sec.ok()) fc4_tract_use_all_styles(core_, all);
+    if (sec.ok()) {
+        fc4_tract_use_all_styles(core_, all);
+        MarkStylesChanged();
+    }
     return this;
 }
 
@@ -553,7 +569,10 @@ int32_t cFC4TractDeveloper::GetYearsBetweenStyleChanges() const {
 
 cFC4ISC4TractDeveloper* cFC4TractDeveloper::SetYearsBetweenStyleChanges(int32_t years) {
     Section sec(this);
-    if (sec.ok()) fc4_tract_set_years_between_style_changes(core_, years);
+    if (sec.ok()) {
+        fc4_tract_set_years_between_style_changes(core_, years);
+        MarkStylesChanged();
+    }
     return this;
 }
 
@@ -566,7 +585,10 @@ bool cFC4TractDeveloper::DoMessage(cIGZMessage2* pMessage) {
     Section sec(this);
     if (!sec.ok()) return true;  // [choice] a message from another thread that cannot get the lock is dropped
     fc4_tract_do_message(core_, type);
-    if (type == kMsgYear) LogState("NewYear");
+    if (type == kMsgYear) {
+        MarkStylesChanged();  // core new_year may roll the style (§4.20)
+        LogState("NewYear");
+    }
     return true;  // §3: always
 }
 
@@ -604,6 +626,7 @@ bool cFC4TractDeveloper::Read(cIGZIStream& s) {
     Section sec(this, true);
     fc4::IStreamAdapter a(s);
     const bool ok = fc4_tract_read(core_, a.Get());
+    MarkStylesChanged();  // the whole record is replaced
     fc4::Log("tract Read -> %d", ok ? 1 : 0);
     LogState("Read");
     return ok;
