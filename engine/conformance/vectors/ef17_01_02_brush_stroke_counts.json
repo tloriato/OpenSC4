@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "name": "ef_brush_stroke_counts",
+  "spec": ["effects 6", "effects 8.3", "effects 17.1", "effects 17.2"],
+  "description": "The brush stroke's application count. Brush record 2 (rate 30, length 3.0, a stroke) at ticks of 33,333 us. 17 test 1: at dilation 1, dt' = 33333, dt = r24(0.033333), the per-tick n is 0, 1, 1, 1, ..., and the stroke ends after 91 ticks with 90 applications (t = 3.0333, leftover acc = 0.99909). 17 test 2: at dilation 1.5, dt' = trunc(49999.5) = 49999, n = 1, 1, 2, 1, 2, ..., 61 ticks, 91 applications. The tail of test 2: at 100,000 us and dilation 1 each tick applies exactly 3, for 31 ticks (93 applications).",
+  "steps": [
+    {"op": "ef_brush_stroke", "note": "17 test 1", "record": 2, "us": 33333, "dilation": 1.0, "ticks": 200,
+     "dt_prime": 33333, "dt": 0.033333, "per_tick": [0, 1, 1, 1], "tick_count": 91, "applications": 90,
+     "t": 3.0333, "acc": 0.99909},
+    {"op": "ef_brush_stroke", "note": "17 test 2", "record": 2, "us": 33333, "dilation": 1.5, "ticks": 200,
+     "dt_prime": 49999, "per_tick": [1, 1, 2, 1, 2], "tick_count": 61, "applications": 91},
+    {"op": "ef_brush_stroke", "note": "17 test 2 tail", "record": 2, "us": 100000, "dilation": 1.0, "ticks": 200,
+     "per_tick": [3, 3, 3], "tick_count": 31, "applications": 93}
+  ]
+}

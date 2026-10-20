@@ -1,0 +1,36 @@
+{
+  "format": 1,
+  "name": "ef_finish_rule",
+  "spec": ["effects 7", "effects 17.11", "effects 17.12"],
+  "description": "17 test 11: the finish rule. An effect finishes at the first draw-pass sweep at which it is started, its index >= 0, flags & 2 (no auto stop) is clear, every runtime component with (flags & 4) == 0 has IsActive false, and flags & 0x80 is clear or it is soft-stopping. Rule 1: not started, or index -1, counts as done at once with no stop and no message. 17 test 12: the bit the finish test tests is the runtime bit 2 (value 4), the copy of the description ignore bit -- not the description bit itself.",
+  "steps": [
+    {"op": "ef_runtime_flags", "note": "17 test 12: desc flags 1 becomes runtime bit 2 (4)", "desc_flags": 1, "type": 5, "runtime_flags": 6, "ignored": true},
+    {"op": "ef_runtime_flags", "note": "table type 5 also gets bit 1 (2)", "desc_flags": 0, "type": 5, "runtime_flags": 2, "ignored": false},
+    {"op": "ef_runtime_flags", "note": "particles are never ignored (EF3)", "desc_flags": 0, "type": 0, "runtime_flags": 0, "ignored": false},
+    {"op": "ef_runtime_flags", "note": "decals count too (EF3)", "desc_flags": 0, "type": 1, "runtime_flags": 0, "ignored": false},
+    {"op": "ef_runtime_flags", "note": "meta counts", "desc_flags": 0, "type": 2, "runtime_flags": 0, "ignored": false},
+    {"op": "ef_runtime_flags", "note": "brush counts", "desc_flags": 0, "type": 3, "runtime_flags": 2, "ignored": false},
+    {"op": "ef_runtime_flags", "note": "attractors are always ignored", "desc_flags": 1, "type": 4, "runtime_flags": 6, "ignored": true},
+    {"op": "ef_runtime_flags", "note": "cameras are always ignored", "desc_flags": 1, "type": 8, "runtime_flags": 6, "ignored": true},
+
+    {"op": "ef_finish_rule", "note": "17 test 11 rule 1: not started", "started": false, "end_message_type": 1,
+     "components": [], "expect": "done_without_message"},
+    {"op": "ef_finish_rule", "note": "17 test 11 rule 1: index -1", "started": true, "index": -1,
+     "end_message_type": 1, "components": [], "expect": "done_without_message"},
+    {"op": "ef_finish_rule", "note": "17 test 11 rule 2: no auto stop", "flags": 2, "end_message_type": 1,
+     "components": [], "expect": "still_running"},
+    {"op": "ef_finish_rule", "note": "17 test 11 rule 3: an active counting component holds it",
+     "end_message_type": 1, "components": [{"flags": 0, "active": true}], "expect": "still_running"},
+    {"op": "ef_finish_rule", "note": "17 test 12: an ignored component never holds it",
+     "end_message_type": 1, "components": [{"flags": 4, "active": true}], "expect": "finished_with_message"},
+    {"op": "ef_finish_rule", "note": "17 test 11 rule 4: bit 7 without a soft stop", "flags": 128,
+     "end_message_type": 1, "components": [], "expect": "still_running"},
+    {"op": "ef_finish_rule", "note": "17 test 11 rule 4: bit 7 with a soft stop", "flags": 128, "stopping": true,
+     "end_message_type": 1, "components": [], "expect": "finished_with_message"},
+    {"op": "ef_finish_rule", "note": "no end message type means no post", "end_message_type": 0,
+     "components": [], "expect": "finished_without_message"},
+    {"op": "ef_finish_rule", "note": "everything inactive finishes",
+     "end_message_type": 1, "components": [{"flags": 0, "active": false}, {"flags": 2, "active": false}],
+     "expect": "finished_with_message"}
+  ]
+}

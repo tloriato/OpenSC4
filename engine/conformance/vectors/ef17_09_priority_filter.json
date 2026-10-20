@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "name": "ef_priority_filter",
+  "spec": ["effects 4.1", "effects 17.9"],
+  "description": "17 test 9: two descriptions named x, with priorities 1 and 3. With max priority 2, x resolves to the priority-1 one. With max priority 3 or 5, to the priority-3 one. With max priority 0 no description qualifies (0 < p is never satisfied), so the index is -1 and the call still succeeds -- and an effect with index -1 never posts its end message (4.1 quirk). Ties are broken by the first entry met in the name map.",
+  "steps": [
+    {"op": "ef_priority", "max_priority": 2, "name": "x",
+     "descriptions": [{"name": "x", "priority": 1}, {"name": "x", "priority": 3}], "expect_index": 0},
+    {"op": "ef_priority", "max_priority": 3, "name": "x",
+     "descriptions": [{"name": "x", "priority": 1}, {"name": "x", "priority": 3}], "expect_index": 1},
+    {"op": "ef_priority", "max_priority": 5, "name": "x",
+     "descriptions": [{"name": "x", "priority": 1}, {"name": "x", "priority": 3}], "expect_index": 1},
+    {"op": "ef_priority", "note": "17 test 9: max priority 0 gives index -1", "max_priority": 0, "name": "x",
+     "descriptions": [{"name": "x", "priority": 1}, {"name": "x", "priority": 3}], "expect_index": -1},
+    {"op": "ef_priority", "note": "a tie is broken by name-map order: the first entry met wins", "max_priority": 5, "name": "x",
+     "descriptions": [{"name": "x", "priority": 3}, {"name": "x", "priority": 3}], "expect_index": 0}
+  ]
+}

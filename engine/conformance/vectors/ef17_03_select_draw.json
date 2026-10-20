@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "name": "ef_select_draw",
+  "spec": ["effects 5.3", "effects 14", "effects 17.3"],
+  "description": "The select-group draw. A fresh manager seeds its cRZRandomSuper with 0x1105 at construction and never reseeds it; the first tempered word is 0xAAE64AC3, so r = RandomUint32Uniform(0x10000) = 43750. volcano_control's nine meta creators carry weights 7281 x 8 and 7287, whose running sums 7281, 14562, ... first reach >= 43750 at the 7th member -- volcanocreator4a, brush record 8. The next five draws give r = 24188, 47502, 45072, 37594 and 53135, picking members 4, 7, 7, 6 and 8 (1-based).",
+  "steps": [
+    {"op": "ef_select", "note": "the generator's first tempered word", "first_word": "0xAAE64AC3"},
+    {"op": "ef_select", "note": "17 test 3: the first draw on a fresh manager", "weights": [7281, 7281, 7281, 7281, 7281, 7281, 7281, 7281, 7287], "expect_members": [7]},
+    {"op": "ef_select", "weights": [7281, 7281, 7281, 7281, 7281, 7281, 7281, 7281, 7287], "draws": [24188], "expect_members": [4]},
+    {"op": "ef_select", "weights": [7281, 7281, 7281, 7281, 7281, 7281, 7281, 7281, 7287], "draws": [47502], "expect_members": [7]},
+    {"op": "ef_select", "weights": [7281, 7281, 7281, 7281, 7281, 7281, 7281, 7281, 7287], "draws": [45072], "expect_members": [7]},
+    {"op": "ef_select", "weights": [7281, 7281, 7281, 7281, 7281, 7281, 7281, 7281, 7287], "draws": [37594], "expect_members": [6]},
+    {"op": "ef_select", "weights": [7281, 7281, 7281, 7281, 7281, 7281, 7281, 7281, 7287], "draws": [53135], "expect_members": [8]},
+    {"op": "ef_select", "note": "weights that never reach r create nothing", "weights": [10, 10], "draws": [100], "expect_members": []},
+    {"op": "ef_select", "note": "r = 0 takes the first member", "weights": [0, 0, 5, 5], "draws": [0], "expect_members": [1]}
+  ]
+}

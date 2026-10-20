@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "name": "ef_brush_apply",
+  "spec": ["effects 8.3", "effects 17.4", "effects 17.5"],
+  "description": "17 test 4: meteorcrater_b is brush record 12, a one-shot with rate 2, so its first update calls ApplyBrush(0x8A33E17A) twice from prev to cur -- level 3, strength 6, radius 0.7, data4 3, target 100 -- with redisplay off then on. The brush is then inactive with no long terrain operation. 17 test 5: a stroke whose prev is outside the city applies nothing and keeps the old prev.",
+  "steps": [
+    {"op": "ef_brush_one_shot", "note": "17 test 4", "record": 12, "applications": 2, "calls": 2,
+     "redisplay": [false, true], "level": 3, "strength_x100": 600, "radius_x100": 70, "data4": 3},
+    {"op": "ef_brush_bounds", "note": "17 test 5: prev out of bounds", "record": 2,
+     "prev_x": -5, "prev_z": 10, "cur_x": 10, "cur_z": 10, "cells_x": 64, "cells_z": 64, "n": 3,
+     "calls": 0, "prev_x_after": -5, "prev_z_after": 10},
+    {"op": "ef_brush_bounds", "note": "17 test 5: both ends inside", "record": 2,
+     "prev_x": 10, "prev_z": 10, "cur_x": 12, "cur_z": 12, "cells_x": 64, "cells_z": 64, "n": 3,
+     "calls": 3, "prev_x_after": 12, "prev_z_after": 12},
+    {"op": "ef_brush_bounds", "note": "n = 0 still advances prev", "record": 2,
+     "prev_x": 1, "prev_z": 2, "cur_x": 3, "cur_z": 4, "cells_x": 64, "cells_z": 64, "n": 0,
+     "calls": 0, "prev_x_after": 3, "prev_z_after": 4}
+  ]
+}

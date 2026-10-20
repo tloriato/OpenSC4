@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "name": "ef_game_records",
+  "spec": ["effects 9.2", "effects 9.3", "effects 17.6", "effects 17.8"],
+  "description": "17 test 6: game record 17 at cell (40, 40) in a 64 x 64 city runs IgniteCellRadius(40, 40, 0, 14), then SetCause(4), then DemolishRegion over cells [30, 50] x [30, 50] with flags 2 and dezone false, and posts no message. At cell (2, 60) the same rectangle clips to [0, 12] x [50, 63]. 17 test 8: game record 3 is a hidden pause of 5 s -- Start raises HiddenPause once, updates of 1.0 s run timer to 6 > 5 which stops and undoes the pause once, and a second Stop does nothing.",
+  "steps": [
+    {"op": "ef_game_actions", "note": "17 test 6", "record": 17, "x": 640, "z": 640, "cells_x": 64, "cells_z": 64,
+     "expect_actions": ["burn14", "cause4", "demolish(30,30,50,50,2,false)"], "count": 1, "cell_x": 40, "cell_z": 40},
+    {"op": "ef_game_actions", "note": "17 test 6: clipped at the city edge", "record": 17, "x": 32, "z": 960,
+     "cells_x": 64, "cells_z": 64,
+     "expect_actions": ["burn14", "cause4", "demolish(0,50,12,63,2,false)"], "count": 1, "cell_x": 2, "cell_z": 60},
+    {"op": "ef_game_actions", "note": "17 test 6: record 26 posts the tornado location", "record": 26,
+     "x": 16, "z": 16, "cells_x": 64, "cells_z": 64,
+     "expect_actions": ["demolish(0,0,5,5,4866,false)", "message0A36F1E9"], "count": 1, "cell_x": 1, "cell_z": 1},
+    {"op": "ef_game_actions", "note": "17 test 7: a second update in the same cell does not re-apply", "record": 29,
+     "x": 16, "z": 16, "cells_x": 64, "cells_z": 64, "updates": 3,
+     "expect_actions": ["burn2", "cause4"], "count": 1, "cell_x": 1, "cell_z": 1},
+    {"op": "ef_game_pause", "note": "17 test 8", "record": 3, "updates": 6,
+     "expect_start_pauses": ["HiddenPause"], "expect_undo_pauses": ["HiddenResume"],
+     "timer_x1000": 6000, "active": false, "second_stop": false},
+    {"op": "ef_game_pause", "note": "17 test 8: five updates do not stop it", "record": 3, "updates": 5,
+     "expect_start_pauses": ["HiddenPause"], "expect_undo_pauses": [],
+     "timer_x1000": 5000, "active": true}
+  ]
+}

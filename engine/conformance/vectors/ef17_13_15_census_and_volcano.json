@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "name": "ef_census_and_volcano",
+  "spec": ["effects 5.2", "effects 7", "effects 10.1", "effects 17.13", "effects 17.14", "effects 17.15"],
+  "description": "17 test 13: the shipped flag census -- flags = 0 on every particle, decal, meta, brush, sequence and model component, flags = 1 on all attractor, game and camera components and on 299 of 303 sound components. Particles and decals are not ignored: they are exactly the components that hold an effect (EF3). 17 test 14: 3373 shipped components of which 2533 are [1, 6) and 840 are not, so components do come and go with the zoom; the narrower claim is that everything reaching a brush or game record is [1, 6). 17 test 15: volcano_control finishes only after the chosen volcanocreator child has finished on a previous sweep and that child brush, 2-4 particle and 3 decal components are all inactive on this one; the attractor and the game record never hold it.",
+  "steps": [
+    {"op": "ef_shipped_counts", "brush_records": 25, "game_records": 57, "game_single": 1},
+
+    {"op": "ef_lod", "note": "17 test 14: the range that reaches a table", "type": 3, "min": 1, "max": 6,
+     "reaches_table": true, "at_1": true, "at_5": true},
+    {"op": "ef_lod", "note": "17 test 14: one of the 840 that do not", "type": 0, "min": 5, "max": 6,
+     "reaches_table": false, "at_1": false, "at_5": true},
+    {"op": "ef_lod", "note": "17 test 14", "type": 0, "min": 4, "max": 5,
+     "reaches_table": false, "at_4": true, "at_5": false},
+    {"op": "ef_lod", "note": "17 test 14", "type": 5, "min": 1, "max": 6,
+     "reaches_table": true, "at_1": true, "at_3": true, "at_5": true},
+
+    {"op": "ef_meta_waits", "note": "17 test 15 (i): not finished on an earlier sweep", "child_finished_earlier": false,
+     "expect_finishes": false},
+    {"op": "ef_meta_waits", "note": "17 test 15 (ii): the brush still holds it", "child_finished_earlier": true,
+     "brush_active": true, "expect_finishes": false},
+    {"op": "ef_meta_waits", "note": "17 test 15 (ii): a particle still holds it", "child_finished_earlier": true,
+     "particle_active": true, "expect_finishes": false},
+    {"op": "ef_meta_waits", "note": "17 test 15 (ii): a decal still holds it", "child_finished_earlier": true,
+     "decal_active": true, "expect_finishes": false},
+    {"op": "ef_meta_waits", "note": "17 test 15: the attractor and the game record never hold it",
+     "child_finished_earlier": true, "attractor_active": true, "game_active": true, "expect_finishes": true},
+    {"op": "ef_meta_waits", "note": "17 test 15: brush, particles and decals all inactive",
+     "child_finished_earlier": true, "expect_finishes": true}
+  ]
+}

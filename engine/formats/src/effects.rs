@@ -315,6 +315,210 @@ pub fn read_section(data: &[u8]) -> Result<EffectSection> {
     Ok(EffectSection { version, descriptions })
 }
 
+/// One brush description (`cSC4BrushDescription`, §8.1). The in-memory object
+/// is `0x34` bytes; the binary record (read `0x00581380`, write `0x00581400`)
+/// is **39 bytes**, packed with no padding after the one-shot byte.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BrushDescription {
+    /// Record version; shipped is 0.
+    pub version: u16,
+    /// `+0x0C`: a terrain brush's ID (terrain.md §9.1).
+    pub brush_id: u32,
+    /// `+0x10`: applications per effect-second, or the count of a one-shot.
+    pub rate: f32,
+    /// `+0x14`: stroke duration in effect-seconds; 0 means no limit.
+    pub length: f32,
+    /// `+0x18`: set by the text option `-apply`.
+    pub one_shot: u8,
+    /// `+0x1C`: `tBrushParameters.level`. The text option `-zoom n` stores `n − 1`.
+    pub level: u32,
+    /// `+0x20`, `+0x24`: the strength range. Every shipped record is degenerate.
+    pub strength: [f32; 2],
+    /// `+0x28`, `+0x2C`: the radius-scale range. Every shipped record is degenerate.
+    pub radius_scale: [f32; 2],
+    /// `+0x30`: the target height. Every shipped record uses 100.
+    pub target_height: f32,
+}
+
+/// The on-disk size of one brush description record (§8.1).
+pub const BRUSH_RECORD_SIZE: usize = 39;
+
+/// One brush description record (§8.1).
+pub(crate) fn read_brush_description(r: &mut Reader) -> Result<BrushDescription> {
+    Ok(BrushDescription {
+        version: r.u16()?,
+        brush_id: r.u32()?,
+        rate: r.f32()?,
+        length: r.f32()?,
+        one_shot: r.u8()?,
+        level: r.u32()?,
+        strength: [r.f32()?, r.f32()?],
+        radius_scale: [r.f32()?, r.f32()?],
+        target_height: r.f32()?,
+    })
+}
+
+/// The brush section (§3 step 3): a `u32` count, then the records. Shipped: 25
+/// records, the count at `0x98CA2` and the records at `0x98CA6`.
+pub fn read_brush_section(data: &[u8]) -> Result<Vec<BrushDescription>> {
+    let mut r = Reader::new(data, "brush descriptions");
+    let n = r.u32()?;
+    r.ensure(u64::from(n), BRUSH_RECORD_SIZE as u64)?;
+    let mut out = Vec::new();
+    for _ in 0..n {
+        out.push(read_brush_description(&mut r)?);
+    }
+    Ok(out)
+}
+
+/// One attractor description (§3 step 4): a `u16` version, a string and a
+/// `u8`. Shipped: 64 records. The attractor layer is out of scope (§Scope);
+/// the record is read so the directory can be walked in full.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AttractorDescription {
+    pub version: u16,
+    pub name: Vec<u8>,
+    /// The trailing `u8`; the spec does not name it. *[choice]*
+    pub field: u8,
+}
+
+/// One attractor description record (§3 step 4).
+pub(crate) fn read_attractor_description(r: &mut Reader) -> Result<AttractorDescription> {
+    Ok(AttractorDescription {
+        version: r.u16()?,
+        name: get_str(r)?,
+        field: r.u8()?,
+    })
+}
+
+/// The attractor section (§3 step 4): a `u32` count, then the records.
+/// Shipped: 64 records.
+pub fn read_attractor_section(data: &[u8]) -> Result<Vec<AttractorDescription>> {
+    let mut r = Reader::new(data, "attractor descriptions");
+    let n = r.u32()?;
+    r.ensure(u64::from(n), 1)?;
+    let mut out = Vec::new();
+    for _ in 0..n {
+        out.push(read_attractor_description(&mut r)?);
+    }
+    Ok(out)
+}
+
+/// One game ("scrubber") description (`cSC4ScrubberDescription`, §9.1). The
+/// in-memory object is `0x50` bytes; the binary record (read `0x005BD260`,
+/// write `0x005BCA60`) is **70 bytes at version 1**.
+///
+/// **The stream order is not the offset order.** `+0x28` and `+0x2C` (the toxic
+/// and extinguish amounts) are written last and only when the version is above
+/// 0.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GameDescription {
+    /// Shipped is 1.
+    pub version: u16,
+    /// `+0x0C`, masked to 7 bits: [`game_flags`].
+    pub flags: u32,
+    /// `+0x10`: read and written with the other `u32`s but named by no text
+    /// option in §9.1. *[choice]*
+    pub field_10: u32,
+    /// `+0x14`: `-demolish r`, in cells.
+    pub demolish_radius: u32,
+    /// `+0x18`: the demolition flags (demolition.md §4.9).
+    pub demolish_flags: u32,
+    /// `+0x1C`: `-minDemolishSize`, metres; 0 = no limit.
+    pub min_demolish_size: f32,
+    /// `+0x20`: `-maxDemolishSize`, metres; 0 = no limit.
+    pub max_demolish_size: f32,
+    /// `+0x24`: `-burn r`.
+    pub burn_radius: u32,
+    /// `+0x28`: `-toxic n`. Read only when the version is above 0.
+    pub toxic_amount: u32,
+    /// `+0x2C`: `-extinguishFire u`. Read only when the version is above 0.
+    pub extinguish_amount: u32,
+    /// `+0x30`: `-message type …`.
+    pub message_type: u32,
+    /// `+0x34`: the message's data. It becomes the game component's `+0x58`
+    /// `data` field until parameter 13 replaces it (§9.2).
+    pub message_data: u32,
+    /// `+0x38`: `-blob k …` / `-rect …`, the effect-map shape's `k` (1-8).
+    /// Render (§Scope).
+    pub map_kind: u32,
+    /// `+0x3C`..`+0x48`: the effect-map shape's remaining numbers. `+0x3C`
+    /// defaults to 16.0. Render. The record stores `+0x40` as 8 raw bytes.
+    pub map_params: [f32; 4],
+    /// `+0x4C`: the `d` of `-pauseSim`, in effect-seconds; 0 = none.
+    pub duration: f32,
+}
+
+/// The game-description flags (`+0x0C`, §9.1).
+pub mod game_flags {
+    /// `noNetworks`.
+    pub const NO_NETWORKS: u32 = 1;
+    /// `noFlora`.
+    pub const NO_FLORA: u32 = 2;
+    /// `dezone`.
+    pub const DEZONE: u32 = 4;
+    /// `single`: apply once on the first update, then stop.
+    pub const SINGLE: u32 = 8;
+    /// `-pauseSim [d]`.
+    pub const PAUSE_SIM: u32 = 0x10;
+    /// `-pauseSimHidden`.
+    pub const PAUSE_SIM_HIDDEN: u32 = 0x20;
+    /// `-pauseClock`.
+    pub const PAUSE_CLOCK: u32 = 0x40;
+}
+
+/// The on-disk size of one game description record at version 1 (§9.1).
+pub const GAME_RECORD_SIZE_V1: usize = 70;
+
+/// One game description record (§9.1).
+pub(crate) fn read_game_description(r: &mut Reader) -> Result<GameDescription> {
+    let version = r.u16()?;
+    let flags = r.u32()? & 0x7F;
+    let field_10 = r.u32()?;
+    let demolish_radius = r.u32()?;
+    let demolish_flags = r.u32()?;
+    let min_demolish_size = r.f32()?;
+    let max_demolish_size = r.f32()?;
+    let burn_radius = r.u32()?;
+    let message_type = r.u32()?;
+    let message_data = r.u32()?;
+    let map_kind = r.u32()?;
+    let map_params = [r.f32()?, r.f32()?, r.f32()?, r.f32()?];
+    let duration = r.f32()?;
+    // Only when the version is above 0: `+0x28` and `+0x2C` close the record.
+    let (toxic_amount, extinguish_amount) = if version > 0 { (r.u32()?, r.u32()?) } else { (0, 0) };
+    Ok(GameDescription {
+        version,
+        flags,
+        field_10,
+        demolish_radius,
+        demolish_flags,
+        min_demolish_size,
+        max_demolish_size,
+        burn_radius,
+        toxic_amount,
+        extinguish_amount,
+        message_type,
+        message_data,
+        map_kind,
+        map_params,
+        duration,
+    })
+}
+
+/// The game section (§3 step 5): a `u32` count, then the records. Shipped: 57
+/// records.
+pub fn read_game_section(data: &[u8]) -> Result<Vec<GameDescription>> {
+    let mut r = Reader::new(data, "game descriptions");
+    let n = r.u32()?;
+    r.ensure(u64::from(n), 1)?;
+    let mut out = Vec::new();
+    for _ in 0..n {
+        out.push(read_game_description(&mut r)?);
+    }
+    Ok(out)
+}
+
 /// One entry of the name map (§3 step 8).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NameEntry {
@@ -545,6 +749,158 @@ mod tests {
         for cut in [0, 1, 4, 8, 20] {
             let mut r = Reader::new(&v[..cut], "t");
             assert!(read_component(&mut r).is_err(), "cut at {cut}");
+        }
+    }
+
+    /// §8.1: the brush record is 39 bytes packed, with no padding after the
+    /// one-shot byte.
+    #[test]
+    fn brush_record_is_39_bytes() {
+        let mut v = Vec::new();
+        v.extend_from_slice(&0u16.to_le_bytes()); // version
+        v.extend_from_slice(&0xCA31_3035u32.to_le_bytes()); // VolcanoBrush
+        v.extend_from_slice(&30f32.to_le_bytes()); // rate
+        v.extend_from_slice(&3f32.to_le_bytes()); // length
+        v.push(0); // one-shot
+        v.extend_from_slice(&1u32.to_le_bytes()); // level
+        v.extend_from_slice(&1f32.to_le_bytes()); // strength s0
+        v.extend_from_slice(&1f32.to_le_bytes()); // s1
+        v.extend_from_slice(&0.5f32.to_le_bytes()); // radius w0
+        v.extend_from_slice(&0.5f32.to_le_bytes()); // w1
+        v.extend_from_slice(&100f32.to_le_bytes()); // target height
+        assert_eq!(v.len(), BRUSH_RECORD_SIZE, "§8.1 pins the record at 39 bytes");
+        assert_eq!(BRUSH_RECORD_SIZE, 2 + 4 + 4 + 4 + 1 + 4 + 4 + 4 + 4 + 4 + 4);
+
+        let mut r = Reader::new(&v, "brush");
+        let d = read_brush_description(&mut r).unwrap();
+        assert_eq!(r.remaining(), 0);
+        assert_eq!(d.version, 0);
+        assert_eq!(d.brush_id, 0xCA31_3035, "VolcanoBrush");
+        assert_eq!(d.rate, 30.0);
+        assert_eq!(d.length, 3.0);
+        assert_eq!(d.one_shot, 0);
+        assert_eq!(d.level, 1);
+        assert_eq!(d.strength, [1.0, 1.0]);
+        assert_eq!(d.radius_scale, [0.5, 0.5]);
+        assert_eq!(d.target_height, 100.0);
+
+        // Section form: a u32 count, then the records.
+        let mut s = Vec::new();
+        s.extend_from_slice(&1u32.to_le_bytes());
+        s.extend_from_slice(&v);
+        let list = read_brush_section(&s).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0], d);
+    }
+
+    /// §3 step 4: an attractor record is a `u16` version, a string and a `u8`.
+    #[test]
+    fn attractor_record_is_version_string_byte() {
+        let mut v = Vec::new();
+        v.extend_from_slice(&1u16.to_le_bytes());
+        v.extend_from_slice(&7u32.to_le_bytes());
+        v.extend_from_slice(b"volcano");
+        v.push(3);
+        let mut r = Reader::new(&v, "attractor");
+        let d = read_attractor_description(&mut r).unwrap();
+        assert_eq!(r.remaining(), 0);
+        assert_eq!(d.version, 1);
+        assert_eq!(d.name, b"volcano");
+        assert_eq!(d.field, 3);
+
+        let mut s = Vec::new();
+        s.extend_from_slice(&1u32.to_le_bytes());
+        s.extend_from_slice(&v);
+        assert_eq!(read_attractor_section(&s).unwrap().len(), 1);
+    }
+
+    /// §9.1: the game record is 70 bytes at version 1, and `+0x28` / `+0x2C`
+    /// come **last** — the stream order is not the offset order.
+    #[test]
+    fn game_record_is_70_bytes_at_version_one() {
+        let mut v = Vec::new();
+        v.extend_from_slice(&1u16.to_le_bytes()); // version
+        v.extend_from_slice(&0x1302u32.to_le_bytes()); // flags, masked to 7 bits
+        v.extend_from_slice(&9u32.to_le_bytes()); // +0x10
+        v.extend_from_slice(&10u32.to_le_bytes()); // +0x14 demolish radius
+        v.extend_from_slice(&2u32.to_le_bytes()); // +0x18 demolish flags
+        v.extend_from_slice(&3f32.to_le_bytes()); // +0x1C min
+        v.extend_from_slice(&4f32.to_le_bytes()); // +0x20 max
+        v.extend_from_slice(&14u32.to_le_bytes()); // +0x24 burn
+        v.extend_from_slice(&0x2A7B_582Eu32.to_le_bytes()); // +0x30 message type
+        v.extend_from_slice(&7u32.to_le_bytes()); // +0x34 message data
+        v.extend_from_slice(&5u32.to_le_bytes()); // +0x38 map kind
+        v.extend_from_slice(&16f32.to_le_bytes()); // +0x3C
+        v.extend_from_slice(&2f32.to_le_bytes()); // +0x40
+        v.extend_from_slice(&3f32.to_le_bytes()); // +0x44
+        v.extend_from_slice(&4f32.to_le_bytes()); // +0x48
+        v.extend_from_slice(&5f32.to_le_bytes()); // +0x4C duration
+        v.extend_from_slice(&20u32.to_le_bytes()); // +0x28 toxic, last
+        v.extend_from_slice(&10000u32.to_le_bytes()); // +0x2C extinguish, last
+        assert_eq!(v.len(), GAME_RECORD_SIZE_V1, "§9.1 pins the record at 70 bytes");
+
+        let mut r = Reader::new(&v, "game");
+        let d = read_game_description(&mut r).unwrap();
+        assert_eq!(r.remaining(), 0);
+        assert_eq!(d.version, 1);
+        // 0x1302 has bits outside the low 7, so the mask bites.
+        assert_eq!(d.flags, 0x1302 & 0x7F);
+        assert_eq!(d.field_10, 9);
+        assert_eq!(d.demolish_radius, 10);
+        assert_eq!(d.demolish_flags, 2);
+        assert_eq!(d.min_demolish_size, 3.0);
+        assert_eq!(d.max_demolish_size, 4.0);
+        assert_eq!(d.burn_radius, 14);
+        assert_eq!(d.message_type, 0x2A7B_582E);
+        assert_eq!(d.message_data, 7);
+        assert_eq!(d.map_kind, 5);
+        assert_eq!(d.map_params, [16.0, 2.0, 3.0, 4.0]);
+        assert_eq!(d.duration, 5.0);
+        assert_eq!(d.toxic_amount, 20, "+0x28 is read after +0x4C");
+        assert_eq!(d.extinguish_amount, 10000);
+
+        let mut s = Vec::new();
+        s.extend_from_slice(&1u32.to_le_bytes());
+        s.extend_from_slice(&v);
+        assert_eq!(read_game_section(&s).unwrap().len(), 1);
+    }
+
+    /// §9.1: at version 0 the toxic and extinguish amounts are not in the
+    /// record at all, so they read as 0 and the record is 62 bytes.
+    #[test]
+    fn game_record_version_zero_has_no_toxic_or_extinguish() {
+        let mut v = Vec::new();
+        v.extend_from_slice(&0u16.to_le_bytes());
+        // 15 four-byte fields (flags .. duration), no trailing +0x28 / +0x2C.
+        for _ in 0..15 {
+            v.extend_from_slice(&0u32.to_le_bytes());
+        }
+        assert_eq!(v.len(), GAME_RECORD_SIZE_V1 - 8);
+        let mut r = Reader::new(&v, "game");
+        let d = read_game_description(&mut r).unwrap();
+        assert_eq!(r.remaining(), 0);
+        assert_eq!(d.version, 0);
+        assert_eq!(d.toxic_amount, 0);
+        assert_eq!(d.extinguish_amount, 0);
+    }
+
+    /// A truncated brush or game record is a clean error, never a panic.
+    #[test]
+    fn brush_and_game_truncation_is_an_error() {
+        let mut brush = Vec::new();
+        brush.extend_from_slice(&0u16.to_le_bytes());
+        brush.extend_from_slice(&[0u8; BRUSH_RECORD_SIZE - 2]);
+        for cut in [0, 1, 2, 6, BRUSH_RECORD_SIZE - 1] {
+            let mut r = Reader::new(&brush[..cut], "brush");
+            assert!(read_brush_description(&mut r).is_err(), "cut at {cut}");
+        }
+
+        let mut game = Vec::new();
+        game.extend_from_slice(&1u16.to_le_bytes());
+        game.extend_from_slice(&[0u8; GAME_RECORD_SIZE_V1 - 2]);
+        for cut in [0, 2, 20, GAME_RECORD_SIZE_V1 - 1] {
+            let mut r = Reader::new(&game[..cut], "game");
+            assert!(read_game_description(&mut r).is_err(), "cut at {cut}");
         }
     }
 }
