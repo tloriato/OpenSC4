@@ -220,3 +220,87 @@ lane numbered these TR21-TR27.
   **DIFFERS** on §10.3: the SimNewDay `0x66956814` trigger is **unreachable** — the handler exists (`0x0074019A`)
   but `Init` never subscribes to it and there is no wildcard — so the dirty flag `+0x50` is set by the power-pole
   handlers (`0x007402A4`) and never read. `0x26D31EC5` is subscribed and its handler does nothing.
+- **TR38 - §15.5.8 / TR30:** the precondition of the edge-layer refresh `FUN_00755B60` that a replacement terrain
+  breaks. Runtime evidence (gt3-repl-4): the first queued `0x278E6003` after `DoPostCityInit` (whole-city rect
+  `(0, 0, 128, 128)`, data1 = data2 = `0x80`, a flat 300 m terrain, sea 250, 128 x 128 cells, `T+0x6C` a live
+  `0x24`-byte array) faults in the view at `0x00755C2B` (ACCESS_VIOLATION writing `0x16B23FF8`; caller
+  `0x00756AAC` in `FUN_007569F0`, under the view `DoMessage` `0x007575DE`). Registers: ecx `0x16B84C24`, edx
+  `0xFFF9F3D0`, esi `0xFFF9FFE8` (edx - esi = -24 x 129), edi `0x4102`, ebx 2, eax 6, ebp `0x437A0000` (250.0f).
+  The game itself posts whole-city heights redisplays (`SetSeaLevel`, `0x470BD214`, the grid toggle), so a
+  whole-city rect alone is not the fault. Which input does `FUN_00755B60` index with (terrain altitudes, slot 29,
+  terrain fields beyond §2.3, the edge records `0x64 + side`, or state set by §15.5.1 step 7's pair `0x00743B60` /
+  `0x007490B0`, TR33), and what range must it be in? The replacement keeps the TR33 whole-city redisplay; it is
+  the fault's trigger [choice: unchanged until answered]. What settles it: a byte walk of `0x00755B60`-`0x00755C47`
+  naming the array written at `0x00755C2B` and the source of its index.
+  **ANSWERED 2026-10-21 (re-terrain4):** DIFFERS — the fault is not a missing precondition of `FUN_00755B60`; the
+  delivered message rectangle was out of range. `FUN_007569F0` loops `x = x0…x1`, `z = z0…z1` straight from
+  data1/data2 with no clamp and calls `FUN_00755B60(side, k, alt, sea)` with `k = x`, `cellsZ − z`, `cellsX − x`, `z`
+  for sides 0–3; the arrays hold `2n` elements and need `0 ≤ k < n`. The fault registers give `x = 0x4102`, `z = 0`,
+  `side = 2`, `k = −16514`, `n = 129`: the view's statics were right and the loop ran to `x = 16642`, so the received
+  data1 low half was ≥ `0x4102`, not 128. `Init` already copies `{0, 0, cellsX, cellsZ}` itself. Rule (terrain.md
+  §15.5.12.1, §15.5.11 item 19): post each message on a fresh `cRZMessage2Standard` as helper `0x00743380` does,
+  never reuse or rewrite a posted object, and keep every rectangle inside `[0, cellsX] × [0, cellsZ]`; the TR33
+  whole-city post may stay.
+- **TR40 - §15.5.5 slot 67 / §15.5.9:** who initialises the view's city-edge layer state (`0x00B4C760`,
+  `0x00B4C790`, `InitializeCityEdgeLayerHeights` `0x00757300`) for a city, and what the terrain's slot 67
+  `DoLighting` (`0x00742930`, called once from `DrawTerrainLayers` with `V+0x34`) must do. Runtime evidence
+  (gt3-repl-5, the TR33 whole-city post switched off, slot 67 a no-op, no other change): the first draw faults at
+  `0x007540A5` (ACCESS_VIOLATION reading `0x00000008`; edx 8, esi 0, ebx `0x81`; `0x00B4C760` twice on the
+  stack; called from `0x0075BFA3` in `DrawTerrainLayers` under `Update` `0x0075C07E`). Together with TR38 this
+  says the edge-layer state is not set up when a replacement terrain is in place: is it set by §15.5.1 step 7's
+  `0x00743B60` / `0x007490B0` (TR33), by the original slot 67, or by a terrain field the view reads that §2.3 does
+  not list? [choice: slot 67 a no-op, as §15 calls it render] What settles it: the callers of `0x00757300` and a
+  description of `0x00742930`, `0x00743B60` and `0x007490B0`.
+  **ANSWERED 2026-10-21 (re-terrain4):** DIFFERS — the gt3-repl-5 fault is not the edge-layer state and not slot 67.
+  `DrawSideCliffs` binds texture id `0x11` from `table[level]` (`0x00B4C670[0x00B4C70C]`, per detail level); the
+  table is `0x00B4BC44` entries long and filled for the ids in `0x00B4BCD8[terrainType]`. Those two statics are
+  written only by `cSTETerrain::StaticInit` (`0x0074FE40`, from `cSTETerrain::Init` `0x0074FEAF`: `ReadTextureInfos`,
+  `ReadTerrainIniFile` → `ReadMiscTexturesForTerrainTypes`, `ReadTuningParameters`, `ReadBrushDescriptions`). Without
+  it `0x00B4BC44` = 0, the view allocates zero-length tables and reads past them. Rule (terrain.md §15.5.12.2,
+  §15.5.11 item 18): run `0x0074FE40` (no `this`, idempotent) or reproduce those statics before the first view
+  `Init`. The edge-layer arrays and depths are the view's own (§15.5.12.3). Slot 67 `DoLighting` lights record
+  `+0x04` normals into `+0x10` through the lighting object `0x00B43DDC` slot 28 (§15.5.12.4).
+- **TR39 - §13.1 slot 96:** who calls the terrain's `Load` (slot 96, `0x00747800`) on a city load, with which
+  segment, and when relative to `Read`, `Init` and `PostCityInit`. In gt3-repl-4 the replacement's slot 96 was
+  never called with a non-null segment (no Load log line; `Read` ran, then `Init`), so the replaced city ran on the
+  §2 flat default instead of its saved altitudes. Is slot 96 called by `cSC4City` (which function, which
+  interface pointer), or does the original terrain call `Load` itself from `Init` with a segment it obtains (from
+  where)? [choice: the replacement only answers slot 96] What settles it: the call sites of `0x00747800`.
+  **ANSWERED 2026-10-21 (re-terrain4):** DIFFERS — nobody outside the terrain calls slot 96. The terrain's own `Read`
+  (`0x00745380`, serializable slot 4 at `base+8`) reads the u16 version (> 2 fails), reads the view reference with
+  `SC4ReadGZSerializable(stream, 0xC9B84E10, &base[+0xE8], 0)`, gets the stream's segment with
+  `SC4GetIGZDBSegment(stream)` (`0x0045BA70`) and calls `base->Load(segment)` (slot 96, `0x007453C7`), returning its
+  AL. The only other entry is slot 95 `LoadObliterated`, a tail jump to slot 96. So the records load during `Read`,
+  before `Init` and `PostCityInit` (terrain.md §13.2).
+- **TR35 - §15.5.8 / §15.5.11 item 15:** who calls the view's `Shutdown` (`0x007560F0`, which unsubscribes the six
+  messages) and when: the terrain's own `Shutdown` / `PreCityShutdown`, the view's last `Release`, or the app.
+  The replacement only `Release`s its factory reference in the terrain's destructor [choice]. What settles it: the
+  call sites of `0x007560F0`.
+  **ANSWERED 2026-10-21 (re-terrain4):** DIFFERS — the terrain's own slot-4 `Shutdown` (`0x007435C0`, gated by
+  `+0x0C`) calls the view's `Shutdown` (`0x007560F0`, `ECX` = view base, no arguments, `0x007437BE`) when `+0xE8` is
+  set, then `Release`s the view (base slot 2), clears `+0xE8` and `+0xEC`. The view destructor `FUN_00756980` also
+  calls it when the view's `+0x18` init byte is still set. A replacement does those steps in its `Shutdown`, not only
+  a `Release` in its destructor (terrain.md §15.5.11 item 15a).
+- **TR33 - §15.5.1 step 7:** what `0x00743B60` and `0x007490B0` do with `&terrain+0x40` (the whole-city vertex
+  rect) right after `+0xEC` is set. The replacement does a whole-city `RedisplayTerrain(1, 1, rect, 0)` instead
+  [choice], because §15.5.8 makes the two redisplay posts the view's only channel for heights and water. Is that
+  the observable effect of the pair (and with which last argument), or do they also refresh textures/lighting?
+  What settles it: a description of the two functions' effects.
+  **ANSWERED 2026-10-21 (re-terrain4):** MATCHES in part, DIFFERS in effect: 0x00743B60 recomputes record normals and cliff flags 0x8/0x800 (slot-93 flips); 0x007490B0 updates water proximity, weather moisture, the three texture layers (+0x16..+0x21) and marks the view rows dirty. It posts nothing, so a whole-city RedisplayTerrain does not replace it. Rule in terrain.md 15.5.13.2-3.
+- **TR34 - §15.5.1 step 6:** what object terrain `+0x100` holds and what its slot 5 (`+0x14`) does. §2.3's field
+  table does not list `+0x100`, so the replacement does not call it [choice]. What settles it: the writer of
+  terrain `+0x100`.
+  **ANSWERED 2026-10-21 (re-terrain4):** DIFFERS: +0x100 is the city weather simulator (city slot 70, set in Init 0x00750064); step 6 calls its DoCompleteSimulation (slot 5, 0x007296F0, once-only). The replacement must make that call. Rule in terrain.md 15.5.13.1.
+- **TR36 - §15.5.11 item 12:** the source of the vertex record's `+0x16` surface texture id that
+  `ComputeTextureSpansForRow` and `DrawTerrainSurfaceRows` read. §2.2 gives the record layout but no writer of
+  `+0x16`; the replacement leaves it 0 [choice]. Which terrain function computes it (from altitude/slope, the
+  terrain type, or the brush texture accumulation `+0xC0`) and when? What settles it: the writers of record `+0x16`.
+  **ANSWERED 2026-10-21 (re-terrain4):** DIFFERS: record +0x16/+0x1A/+0x1E are three {u16 id, u16 weight} texture layers written only through 0x007490B0 (clear 0x00740890, add 0x007405E0, normalise 0x00740690). Leaving them 0 draws texture 0. Rule in terrain.md 15.5.13.3; detailed selection rules are TR41.
+- **TR37 - §15.5.8:** the terrain's hide/flip slots call the view's `SetTriangleIndicesForCell` (`0x00752AF0`)
+  directly for the touched cell. Its calling convention and arguments (view base or `+0x0C`; `(x, z)` order) are
+  not given, so the replacement does not call it [choice] and the view's index buffers only follow those slots
+  at its next whole-grid rebuild. What settles it: the call at `0x007411E1` and the prologue of `0x00752AF0`.
+  **ANSWERED 2026-10-21 (re-terrain4):** DIFFERS: thiscall ECX = view base (terrain+0xE8), stack args (z, x), ret 8; called synchronously after the flag write when +0xEC is set (flips only on change). Rule in terrain.md 15.5.13.4.
+- **TR41 - 15.5.13.2/15.5.13.3:** the exact rules of `MarkCliff` (`0x00742FC0`: when it flips through slot 93 and which corners get flag `0x8`), of the base-texture pass `0x007482C0` (per terrain type: which ids, which response curves, which weights from altitude, slope, water depth and moisture) and of the brush-texture pass `0x00748950` (the `+0x1B0` list and its fade). 15.5.13 gives their inputs, order and the layer add/normalise rules; the replacement cannot yet reproduce the chosen ids and weights. What settles it: a full read of the three functions and the per-type tables `0x00B4B414`/`0x00B4B420`.
+  **ANSWERED 2026-10-21 (re-terrain4):** DIFFERS: §15.5.13.6. MarkCliff 0x00742FC0 flips (slot 93, flag 0x800) only when both triangles are steep and the other diagonal is not all steep, else marks the steep triangles' corners 0x8; base pass 0x007482C0 = cliff id B414 w50, water 0x14 (<15) / 0x13, land B420[type][band 31-floor(30t)][moisture], low-dry B410 w1, each splatted by hash node curve/radius; brush pass 0x00748950 = id 0xE0 splat around flag-0x400 vertices faded by age/10000000; proximity grid 0x007440C0 = capped 4-neighbour distance.
+<!-- from: re-terrain4 (run4 round 2, 2026-10-21) -->
