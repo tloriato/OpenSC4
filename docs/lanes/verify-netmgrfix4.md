@@ -1,6 +1,20 @@
-| verify-netmgrfix4 | engine | NM10/NM11 lot-state boundary walk per network-manager.md 6.2/6.3 (tests 23/24) in core + netmgr shadow; NM10 exclusion removed | ready (gate PASS; vnmf4-turbo2032-a clean 73/73 exact, vnmf4-normal-a clean 7/7 exact; resyncs only on clock-seeded draw lines) |
+| verify-netmgrfix4 | engine | NM10/NM11 lot-state boundary walk per network-manager.md 6.2/6.3 (tests 23/24) in core + netmgr shadow; NM10 exclusion removed | blocked on NM12 (gate PASS at 14a7c938; vnmf4-turbo2032-a 73/73 mismatches=0 but 4 resyncs, vnmf4-normal-a 7/7 but 2 resyncs: not zero-resync exact) |
 
-## Report
+## Round 2 (2026-10-21): blocked on NM12
+
+Goal: zero resyncs by capturing the original's section 17 configuration draw as a typed external input before our
+step (no copying of the chosen configuration). The core already takes the draw through `NetworkLotRandom`
+(engine/core/src/network_manager/mod.rs), so only the capture source is missing. The public contract does not
+give one: the generator `0x00B44870` is a file-local `cRZRandomSuper` seeded at static initialisation (before the
+plugin loads) from `cRZTime()` XOR `0x8C09C379`, advanced also by the section 8.6 object draws; no interface slot
+(section 11.2) or message exposes its seed or state, foundations section 6.1 gives no object layout, and the glue
+rules allow other subsystems only through the game's interfaces. Filed NM12 (docs/specs/questions/network-manager.md;
+QUESTIONS.md index not regenerated: tools/ is off limits to this lane, the coordinator should run
+`tools/questions.py index`). No code changed this round, no game runs. The round-1 walk (dc2a3029, 2ede3e2f) stays.
+Next: on an NM12 answer that pins a capture point, implement a replaying `NetworkLotRandom` in the shadow, add
+input/lifetime tests, then the gate and runs `vnmf4-turbo2032-b` / `vnmf4-normal-b` (unique labels).
+
+## Report (round 1)
 
 **What changed**
 - `engine/core/src/network_manager/lots.rs`: new `lot_state_walk(rect)` (exported), the §6.3 iterator: starts at (0, 0),

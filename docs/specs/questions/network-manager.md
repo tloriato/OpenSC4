@@ -12,7 +12,7 @@
   seed, state or draw count, and foundations section 6.1 gives no in-memory layout of `cRZRandomSuper` (offset of
   the 624 state words and of the index) that a plugin may read. Questions: (a) is there a documented capture point
   (an interface, a message, or a specified object layout at `0x00B44870` plus a guarantee that reading it from the
-  plugin at a given boundary, e.g. before the `0x8A9C4C6D`/lot-state message that triggers `ProcessUpdateList`, is
+  plugin at a given boundary, e.g. before the section 6.2 zoning-changed or lot-state message that triggers `ProcessUpdateList`, is
   sanctioned) from which the shadow can take the generator's state and seed our `NetworkLotRandom` with it? (b) If
   not, is the configuration chosen among `count >= 2` compatible candidates officially outside exact comparison,
   so that the shadow's verdict is "exact except section 17 draws" and a resync after a draw-only difference is the
