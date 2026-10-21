@@ -308,10 +308,68 @@ def game_slots(ctx, arg):
     return 6, "default"
 
 
+def worker_pid_live(pid):
+    """Unknown process status retains the conservative activity proxy."""
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        return None
+    try:
+        if sys.platform != "win32":
+            os.kill(pid, 0)
+            return True
+        import ctypes
+        k = ctypes.WinDLL("kernel32", use_last_error=True)
+        k.OpenProcess.restype = ctypes.c_void_p
+        k.GetExitCodeProcess.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong)]
+        k.CloseHandle.argtypes = [ctypes.c_void_p]
+        h = k.OpenProcess(0x1000, False, pid)
+        if not h:
+            return False if ctypes.get_last_error() == 87 else None
+        code = ctypes.c_ulong()
+        try:
+            return code.value == 259 if k.GetExitCodeProcess(h, ctypes.byref(code)) else None
+        finally:
+            k.CloseHandle(h)
+    except ProcessLookupError:
+        return False
+    except (OSError, ValueError, OverflowError):
+        return None
+
+
+def dispatcher_workers(ctx):
+    """Prefer recorded workers; unknown/malformed records keep the old proxy."""
+    root = (ctx.main / "build-runs").resolve()
+    workers = {}
+    for path in sorted(root.glob("*-coordinator-state.json"), key=lambda p: p.stat().st_mtime):
+        data = read_json(path)
+        if not isinstance(data, dict) or not isinstance(data.get("lanes"), dict):
+            continue
+        for name, entry in data["lanes"].items():
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", name) or not isinstance(entry, dict):
+                continue
+            guard = root / "lane-guard" / (name + ".json")
+            gm = guard.stat().st_mtime if guard.is_file() else 0
+            complete = False
+            raw = entry.get("result")
+            if isinstance(raw, str) and raw:
+                result = Path(raw)
+                if not result.is_absolute():
+                    result = ctx.main / result
+                result = result.resolve()
+                if result.is_relative_to(root) and result.is_file():
+                    d = read_json(result)
+                    complete = (isinstance(d, dict) and ("result" in d or "subtype" in d)
+                                and gm <= result.stat().st_mtime)
+            # Complete output retires a worker even if Windows reused its PID.
+            live = False if complete else worker_pid_live(entry.get("pid"))
+            workers[name] = (live if live is True or complete else None, gm)
+    return workers
+
+
 def active_lanes(ctx):
     now = time.time()
     since = now - ACTIVE_MIN * 60
     wts = [w for w in list_worktrees(ctx)]
+    workers = dispatcher_workers(ctx)
 
     def probe(w):
         try:
@@ -322,9 +380,13 @@ def active_lanes(ctx):
 
     res = []
     for w, m in parallel(probe, wts):
-        if m < since:
+        worker, gm = workers.get(w["branch"], (None, 0))
+        if worker is False:
             continue
-        merged = is_ancestor(ctx.main, w["head"], ctx.branch) if w["head"] else True
+        m = max(m, gm)
+        if worker is not True and m < since:
+            continue
+        merged = False if worker is True else is_ancestor(ctx.main, w["head"], ctx.branch) if w["head"] else True
         if merged:
             # a lane that has not committed yet sits on an old main commit: count it while it is new or dirty
             try:
