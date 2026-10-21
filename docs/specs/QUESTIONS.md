@@ -102,7 +102,7 @@ generated index: the questions live one file per spec, so read only the file for
 
 | Spec | Open | Answered | Next free ID | File |
 |---|---:|---:|---|---|
-| advisors | 0 | 3 | AD4 | questions/advisors.md |
+| advisors | 2 | 3 | AD6 | questions/advisors.md |
 | application | 3 | 2 | AP6 | questions/application.md |
 | audio-ambience | 4 | 0 | AA5 | questions/audio-ambience.md |
 | aura | 1 | 15 | AU17 | questions/aura.md |
@@ -117,7 +117,7 @@ generated index: the questions live one file per spec, so read only the file for
 | clock24 | 0 | 22 | CK23 | - |
 | commercial-industrial | 0 | 12 | CM11, IN3 | - |
 | crime | 0 | 24 | CQ25 | - |
-| data-formats | 5 | 40 | EX46 | questions/data-formats.md |
+| data-formats | 0 | 45 | EX46 | questions/data-formats.md |
 | demand | 0 | 13 | DQ14 | - |
 | demolition | 0 | 16 | DM15, DQ5 | - |
 | disasters | 2 | 40 | DS42 | questions/disasters.md |
@@ -160,9 +160,9 @@ generated index: the questions live one file per spec, so read only the file for
 | renderer-driver | 4 | 1 | RD6 | questions/renderer-driver.md |
 | residential | 0 | 17 | RS18 | - |
 | residential-education-health | 0 | 46 | AQ12, EH15, RG29 | - |
-| span-render-1555 | 1 | 3 | SR1556 | questions/span-render-1555.md |
+| span-render-1555 | 2 | 3 | SR1556 | questions/span-render-1555.md |
 | span-render-4444 | 2 | 0 | SP3 | questions/span-render-4444.md |
-| span-render-565 | 1 | 0 | SR566 | questions/span-render-565.md |
+| span-render-565 | 4 | 0 | SR566 | questions/span-render-565.md |
 | terrain | 7 | 36 | TR44 | questions/terrain.md |
 | traffic-network | 0 | 29 | TN30 | - |
 | traffic-simulator | 0 | 93 | TG27, TS68 | questions/traffic-simulator.md |
@@ -171,4 +171,4 @@ generated index: the questions live one file per spec, so read only the file for
 | web-network | 0 | 0 | - | questions/web-network.md |
 | widget-toolkit | 5 | 1 | WT7 | questions/widget-toolkit.md |
 | zones | 2 | 56 | ZG43, ZQ17 | questions/zones.md |
-| **total** | **130** | **1008** | | |
+| **total** | **131** | **1013** | | |
