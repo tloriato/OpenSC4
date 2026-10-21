@@ -38,3 +38,4 @@
   (`0x00756C39`). Neither id is in `re/class_id_table.tsv`. Are they an `SC4DevInsight`-style tunable pair or
   compiled-in LUT classes? [unnamed] What settles it: a resource sweep for the two GUIDs in the DATs, or the Mac
   symbol table.
+<!-- from: glue-terrain3 (game run gt3-repl-4, enable = terrain, 2026-10-21) -->
