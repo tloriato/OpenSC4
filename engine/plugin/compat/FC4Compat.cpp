@@ -58,6 +58,9 @@ const ExecutableVersion kVersions[] = {
             0x005E3960,  // cSC4LotRetainingWallOccupant::UpdateSurroundingRetainingWalls
             0x005EEB70,  // cSC4PropOccupantBurntBuilding::SetBoundsFromOccupant (direct-calls.md; LD14)
             0x0075C420,  // terrain 3D view Init (direct-calls.md; terrain.md §15.5.4)
+            0x0074FE40,  // cSTETerrain::StaticInit (terrain.md §15.5.12.2; TR40)
+            0x007560F0,  // terrain 3D view Shutdown (terrain.md §15.5.11 item 15a; TR35)
+            0x0045BA70,  // SC4GetIGZDBSegment (terrain.md §13.2; TR39)
         },
         {0x00AB1160, 0x00AB2490},  // fire / police primary vtables (protection.md §15.1, §15.2)
         0x00AB3118,  // cSC4TractDeveloper primary vtable (tract-developer.md §1.1, §7.1)
@@ -489,7 +492,9 @@ uintptr_t DirectCall(Direct which) {
                                          "GenericConfirmationDialog",
                                          "AddRetainingWallOccupant", "UpdateRetainingWalls",
                                          "UpdateSurroundingRetainingWalls", "burnt building SetBoundsFromOccupant",
-                                         "terrain 3D view Init"};
+                                         "terrain 3D view Init",
+                                         "cSTETerrain::StaticInit", "terrain 3D view Shutdown",
+                                         "SC4GetIGZDBSegment"};
     static_assert(sizeof(kNames) / sizeof(kNames[0]) == static_cast<unsigned>(Direct::Count), "one name per target");
     static int state[static_cast<unsigned>(Direct::Count)] = {};  // 0 unknown, 1 available, -1 refused
     static uintptr_t address[static_cast<unsigned>(Direct::Count)] = {};

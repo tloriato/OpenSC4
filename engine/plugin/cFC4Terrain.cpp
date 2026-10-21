@@ -39,6 +39,7 @@
 #include "cIGZOStream.h"
 #include "cISC4App.h"
 #include "cISC4City.h"
+#include "cISC4WeatherSimulator.h"
 #include "cISC4DBSegment.h"
 #include "cIGZPersistDBSegment.h"
 #include "cGZPersistResourceKey.h"
@@ -51,7 +52,9 @@
 #include "cRZCOMDllDirector.h"
 #include "SC4List.h"
 
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstring>
 #include <vector>
 
@@ -249,21 +252,28 @@ void HostPost(void* u, const fc4_terrain_post* p) {
     c->posts.fetch_add(1, std::memory_order_relaxed);
     g_mirrorDirty.store(true, std::memory_order_release);  // §15.5.8: refresh the raw arrays first
     if (c->testMode) return;
+    // §15.5.11 item 19 / §15.5.12.1 (TR38): the view clamps nothing, so a heights / water rectangle
+    // outside [0, cellsX] x [0, cellsZ] (or inverted) is not posted at all.
+    if (p->msg_type == 0x278E6003u || p->msg_type == 0x678E6E3Au) {
+        const uint32_t d1 = static_cast<uint32_t>(p->data1), d2 = static_cast<uint32_t>(p->data2);
+        const uint32_t x0 = d1 >> 16, x1 = d1 & 0xFFFFu, z0 = d2 >> 16, z1 = d2 & 0xFFFFu;
+        const uint32_t cx = g_cellsX.load(std::memory_order_acquire), cz = g_cellsZ.load(std::memory_order_acquire);
+        if (x0 > x1 || z0 > z1 || x1 > cx || z1 > cz) {
+            Log("terrain: WARNING post 0x%08X refused: rectangle x %u..%u z %u..%u outside 0..%u x 0..%u (TR38)",
+                p->msg_type, x0, x1, z0, z1, cx, cz);
+            return;
+        }
+    }
     cIGZMessageServer2Ptr ms;
     if (!ms) return;
+    // §15.5.12.1 (TR38): a fresh message object per post, type + data1..4 only, never touched after
+    // MessagePost. gt3-repl-4's fault was SetVoid1(sender) here: void1 IS data1 (+0x10), so the view
+    // unpacked the sender's address as the rectangle. The original's helper sets no sender.
     cFC4Message2Standard* m =
         FC4MakeMessage(p->msg_type, static_cast<intptr_t>(p->data1), static_cast<intptr_t>(p->data2),
                        static_cast<intptr_t>(p->data3));
     if (m == nullptr) return;
     m->SetData4(static_cast<intptr_t>(p->data4));
-    // foundations §5: a message carries void1 = IGZUnknown = the sender. The
-    // four data words are the payload of §8.1; the sender is what a consumer
-    // reads back through GetVoid1()/GetIGZUnknown(), and a null one is what a
-    // consumer dereferences when it does not check.
-    if (c->self != nullptr) {
-        m->SetVoid1(c->self);
-        m->SetIGZUnknown(c->self);
-    }
     ms->MessagePost(m, false);
     m->Release();
 }
@@ -726,9 +736,22 @@ public:
     }
     bool Read(cIGZIStream& in) override {
         uint16_t version = 0;
-        const bool ok = in.GetUint16(version) && ReadRef(in);
+        const bool ok = in.GetUint16(version) && version <= 2 && ReadRef(in);
         Log("terrain: Read (class record = version + ref, §13.2) -> ok=%d version=%u", ok ? 1 : 0, version);
-        return ok;
+        if (!ok) return false;
+        // §13.2 (TR39): Read then loads the §13.1 records itself: segment = SC4GetIGZDBSegment(stream),
+        // then slot 96 Load(segment), and returns Load's result. §15.5.13.5 [choice]: the saved view
+        // reference is dropped (a fresh view is built in DoPostCityInit); its own record Read restores
+        // the only view state, the static grid flag.
+        const uintptr_t get = compat::DirectCall(compat::Direct::GetIGZDBSegment);
+        if (get == 0) {
+            Log("terrain: WARNING SC4GetIGZDBSegment unavailable; the saved grid is not loaded");
+            return true;
+        }
+        using GetSegmentFn = cIGZPersistDBSegment*(__cdecl*)(cIGZIStream*);
+        // Borrowed: the spec does not say the result carries a reference, so it is not released (§5.1b).
+        cIGZPersistDBSegment* segment = reinterpret_cast<GetSegmentFn>(get)(&in);
+        return Load(segment);
     }
     uint32_t GetGZCLSID() override { return kFC4_CLSID_cSTETerrain; }
 
@@ -745,6 +768,9 @@ private:
     bool CreateCore(uint32_t cellsX, uint32_t cellsZ);
     bool InstallCore(fc4_terrain* created);
     void DestroyCore();
+    void StepSevenWholeCity();                                        // §15.5.13.3 "Order after Init"
+    void CalculateNormalsAndAssignCliffs(const int32_t rect[4]);     // §15.5.13.2 (0x00743B60)
+    void MarkCliff(uint32_t v, bool steep0, bool steep1, float t);   // §15.5.13.6
     void Subscribe();
     void Unsubscribe();
     void OnViewUpdate(cIGZMessage2Standard* s);
@@ -949,7 +975,28 @@ bool cFC4STETerrain::Init() {
                 cx = cz = 64;
             }
         }
-        if (!CreateCore(cx, cz)) break;
+        // §15.5.12.2 / §15.5.11 item 18 (TR40): the terrain's per-process StaticInit fills the texture-id
+        // count and the per-type texture-id lists the view's own StaticInit sizes its tables from. The
+        // original calls it from Init, before DoPostCityInit creates the view; it guards itself.
+        if (const uintptr_t si = compat::DirectCall(compat::Direct::TerrainStaticInit)) {
+            using StaticInitFn = bool(__cdecl*)();
+            const bool r = reinterpret_cast<StaticInitFn>(si)();
+            FC4_X87_CHECK("cSTETerrain::StaticInit");
+            Log("terrain: cSTETerrain::StaticInit -> %d (TR40)", r ? 1 : 0);
+        } else {
+            Log("terrain: WARNING cSTETerrain::StaticInit unavailable; the view's texture tables stay empty");
+        }
+        // §13.2 (TR39): on a city load Read already ran slot 96 Load, which installed the saved grid.
+        if (core_ != nullptr && f_.cellsX == cx && f_.cellsZ == cz) {
+            Log("terrain: Init keeps the grid Load installed (%u x %u cells)", cx, cz);
+        } else {
+            if (core_ != nullptr) {
+                Log("terrain: WARNING the loaded grid %u x %u does not match the city %u x %u; rebuilt flat",
+                    f_.cellsX, f_.cellsZ, cx, cz);
+                DestroyCore();
+            }
+            if (!CreateCore(cx, cz)) break;
+        }
         f_.initialized = 1;
         Subscribe();
         Log("terrain: replacement ON (enable = terrain): %u x %u cells, sea=%.9g, default brush level=%d", cx,
@@ -973,6 +1020,19 @@ bool cFC4STETerrain::Shutdown() {
         }
     }
     Unsubscribe();
+    // §15.5.11 item 15a (TR35): the view's Shutdown (thiscall on the view base), then Release the one
+    // reference the terrain owns, then +0xE8 := 0 and the view-ready byte +0xEC := 0.
+    if (f_.view != nullptr) {
+        if (const uintptr_t vs = compat::DirectCall(compat::Direct::TerrainView3DShutdown)) {
+            using ViewShutdownFn = void(__fastcall*)(void* viewBase, void* edx);
+            reinterpret_cast<ViewShutdownFn>(vs)(f_.view, nullptr);
+            FC4_X87_CHECK("terrain view Shutdown");
+        }
+        FC4_RELEASE_CREATED(reinterpret_cast<cIGZUnknown*>(static_cast<uint8_t*>(f_.view) + kViewInterfaceOffset));
+        f_.view = nullptr;
+        Log("terrain: shutdown: the terrain 3D view shut down and released (TR35)");
+    }
+    f_.viewReady = 0;
     DestroyCore();
     f_.initialized = 0;
     f_.city = nullptr;
@@ -1049,27 +1109,178 @@ void cFC4STETerrain::DoPostCityInit() {
                     city != nullptr ? 1 : 0, (city != nullptr && city->GetSurfaceWater() != nullptr) ? 1 : 0);
             }
         }
-        // Step 6: the view-ready flag +0xEC (the §8.1 gate). [choice] the +0x100 object's slot 5 is not
-        // called: TerrainFields has no such object (the spec does not say what it is; question TR34).
+        // Step 6: the view-ready flag +0xEC (the §8.1 gate), then (§15.5.13.1, TR34) the weather
+        // simulator's slot 5 DoCompleteSimulation (the SDK header names that slot DoPostCityInit; same
+        // thiscall, no arguments, AL), result ignored. The original dereferences it unchecked; the
+        // plugin skips a null one.
         fc4_terrain_post_city_init(core_);
         f_.viewReady = 1;
-        // Step 7: 0x00743B60 and 0x007490B0 on the whole-city vertex rect are not named by the spec.
-        // [choice] the literal effect the view needs is its heights and water copied in (§15.5.8: the
-        // posts are its only channel), so redisplay the whole city once (question TR33).
-        // gt3-repl-4: this redisplay's 0x278E6003 faults in the view's edge-layer refresh (TR38).
-        // gt3-repl-5 (the post switched off): the view's first DrawTerrainLayers faults instead, on a
-        // null pointer next to the edge-layer statics (TR40). Either way something the original sets
-        // up before the view draws is missing; the choice stays as filed until TR33/TR38/TR40 answer.
-        constexpr bool kTR33WholeCityRedisplay = true;
-        if (viewInited && kTR33WholeCityRedisplay) {
-            fc4_terrain_rect r{0, 0, f_.cityRect[2], f_.cityRect[3]};
-            fc4_terrain_redisplay(core_, true, true, r, 0);
+        cISC4City* const cityNow = static_cast<cISC4City*>(f_.city);
+        if (cISC4WeatherSimulator* weather = cityNow != nullptr ? cityNow->GetWeatherSimulator() : nullptr) {
+            weather->DoPostCityInit();
+            FC4_X87_CHECK("weather DoCompleteSimulation");
         }
+        // Step 7 (§15.5.13.2-.3, TR33/TR36/TR41): normals + cliff marks, then the texture-layer update,
+        // on the whole city. Not RedisplayTerrain: the view's Init already copied the whole city.
+        StepSevenWholeCity();
+        (void)viewInited;
         // Steps 8-9 (+0xF0/+0xF4 := view +0x70/+0x74, +0xF8 := the overlay manager) are not kept:
         // those fields are not part of TerrainFields and nothing the replacement exports reads them.
         // renderObject (+0xE4, slot 54) stays the city: Init sets it so on purpose (in-game evidence).
     } while (false);
     Leave();
+}
+
+// ---- DoPostCityInit step 7 (terrain.md §15.5.13.2-.3, §15.5.13.6; TR33, TR41) --------------------
+
+namespace {
+constexpr uint16_t kFlagCliff = 0x0008;
+constexpr uint16_t kFlagCliffFlip = 0x0800;
+
+struct Tri {
+    float x, y, z;
+};
+
+// §15.5.13.2 step 3: s = 1/sqrt(x^2 + y^2 + z^2) summed in that order, unrounded, then each component
+// times s stored as float32. [choice] "unrounded" is the x87's 80-bit register; MSVC has no 80-bit
+// type, so the sum and s are carried in double (at most a last-bit difference; see TR41 rules).
+Tri Normalise(float x, float y, float z) {
+    const double s = 1.0 / std::sqrt(static_cast<double>(x) * x + static_cast<double>(y) * y +
+                                     static_cast<double>(z) * z);
+    return Tri{static_cast<float>(x * s), static_cast<float>(y * s), static_cast<float>(z * s)};
+}
+}  // namespace
+
+void cFC4STETerrain::MarkCliff(uint32_t v, bool steep0, bool steep1, float t) {
+    const uint32_t W = f_.vertsX;
+    const auto alt = [](uint32_t i) { return g_mirror.vertices[i].altitude; };
+    const auto mark = [W](uint32_t i) { SetFlagBit(i % W, i / W, kFlagCliff, true); };
+    if (steep0 != steep1) {
+        mark(v);
+        mark(v + W + 1);
+        mark(steep1 ? v + 1 : v + W);
+        return;
+    }
+    if (!steep0) return;
+    // Both steep: the other diagonal, origin c = alt(v+W).
+    const float c = alt(v + W);
+    const float p = alt(v) - c, q = alt(v + 1) - c, r = alt(v + W + 1) - c;
+    const float aqx = q * -16.0f, apx = p * -16.0f;
+    const float anx = aqx - apx;
+    const float apz = p * 16.0f, aqz = q * 0.0f;
+    const float anz = apz - aqz;
+    const float brz = r * -16.0f, bqz = q * 0.0f;
+    const float bnz = brz - bqz;
+    const float bqx = q * 16.0f, brx = r * 16.0f;
+    const float bnx = bqx - brx;
+    // NaN compares false: not steep (§15.5.13.6).
+    const double ya = std::fabs(1.0 / std::sqrt(static_cast<double>(anz) * anz + static_cast<double>(anx) * anx +
+                                                65536.0) * 256.0);
+    const double yb = std::fabs(1.0 / std::sqrt(static_cast<double>(bnx) * bnx + static_cast<double>(bnz) * bnz +
+                                                65536.0) * 256.0);
+    const bool steepA = ya < t, steepB = yb < t;
+    if (steepA && steepB) {
+        mark(v);
+        mark(v + 1);
+        mark(v + W);
+        mark(v + W + 1);
+        return;
+    }
+    // The flip removes at least one steep triangle: the terrain's own slot 93 (virtual), then 0x0800.
+    FlipInternalTriangulation(v % W, v / W, true);
+    SetFlagBit(v % W, v / W, kFlagCliffFlip, true);
+    if (steepA) {
+        mark(v);
+        mark(v + W);
+        mark(v + 1);
+    }
+    if (steepB) {
+        mark(v + 1);
+        mark(v + W);
+        mark(v + W + 1);
+    }
+}
+
+void cFC4STETerrain::CalculateNormalsAndAssignCliffs(const int32_t rect[4]) {
+    if (core_ == nullptr || g_mirror.vertices.empty()) return;
+    const int32_t cx = static_cast<int32_t>(f_.cellsX), cz = static_cast<int32_t>(f_.cellsZ);
+    const uint32_t W = f_.vertsX;
+    const int32_t x0 = rect[0], z0 = rect[1], x1 = rect[2], z1 = rect[3];
+    // [choice] the cliff threshold T is 0x00B0D620 = tuning 0x48CD7B65 (§2.4, shipped 0.5); the core's
+    // shipped tuning carries it as cliff_slope.
+    fc4_terrain_tuning tuning{};
+    tuning.struct_size = sizeof(tuning);
+    const float t = fc4_terrain_tuning_shipped(&tuning) ? tuning.cliff_slope : 0.5f;
+    // Step 1: clear 0x0008 on the ungrown rectangle.
+    for (int32_t z = std::max(z0, 0); z <= std::min(z1, cz); ++z)
+        for (int32_t x = std::max(x0, 0); x <= std::min(x1, cx); ++x)
+            SetFlagBit(static_cast<uint32_t>(x), static_cast<uint32_t>(z), kFlagCliff, false);
+    // Step 2: grow the low side by one, clamp the high side to the cell range, clear 0x0800.
+    const int32_t gx0 = std::max(x0 - 1, 0), gz0 = std::max(z0 - 1, 0);
+    const int32_t gx1 = std::min(x1, cx - 1), gz1 = std::min(z1, cz - 1);
+    for (int32_t z = gz0; z <= gz1; ++z)
+        for (int32_t x = gx0; x <= gx1; ++x)
+            SetFlagBit(static_cast<uint32_t>(x), static_cast<uint32_t>(z), kFlagCliffFlip, false);
+    if (gx1 < gx0 || gz1 < gz0) return;
+    // Step 3: two triangle normals per cell (a two-row buffer in the original; the whole block here,
+    // which changes nothing: MarkCliff writes flags only).
+    const int32_t bw = gx1 - gx0 + 1;
+    std::vector<Tri> tri(static_cast<size_t>(bw) * (gz1 - gz0 + 1) * 2);
+    const auto alt = [&](int32_t x, int32_t z) { return g_mirror.vertices[static_cast<size_t>(z) * W + x].altitude; };
+    const auto at = [&](int32_t x, int32_t z, int k) -> Tri& {
+        return tri[(static_cast<size_t>(z - gz0) * bw + (x - gx0)) * 2 + k];
+    };
+    for (int32_t z = gz0; z <= gz1; ++z) {
+        for (int32_t x = gx0; x <= gx1; ++x) {
+            const float a = alt(x, z), b = alt(x + 1, z), c = alt(x, z + 1), d = alt(x + 1, z + 1);
+            const float ca = c - a, da = d - a, ba = b - a;
+            const float ca16 = 16.0f * ca, da16 = 16.0f * da, ba16 = 16.0f * ba, da0 = 0.0f * da;
+            const Tri t0 = Normalise(ca16 - da16, 256.0f, da0 - ca16);
+            const Tri t1 = Normalise(da0 - ba16, 256.0f, ba16 - da16);
+            at(x, z, 0) = t0;
+            at(x, z, 1) = t1;
+            const bool s0 = std::fabs(t0.y) < t, s1 = std::fabs(t1.y) < t;
+            if (s0 || s1) MarkCliff(static_cast<uint32_t>(z) * W + static_cast<uint32_t>(x), s0, s1, t);
+        }
+    }
+    // Step 4: vertex normals of rows z0..gz1 (quirk: never the last vertex row z = cellsZ).
+    for (int32_t z = std::max(z0, gz0); z <= gz1; ++z) {
+        for (int32_t x = std::max(x0, 0); x <= std::min(x1, cx); ++x) {
+            float sx = 0.0f, sy = 0.0f, sz = 0.0f;
+            const auto add = [&](int32_t cxi, int32_t czi, int k) {
+                if (cxi < gx0 || cxi > gx1 || czi < gz0 || czi > gz1) return;  // outside the computed block
+                const Tri& n = at(cxi, czi, k);
+                sx += n.x;
+                sy += n.y;
+                sz += n.z;
+            };
+            if (x > 0 && z < cz) add(x - 1, z, 1);
+            if (x > 0 && z > 0) {
+                add(x - 1, z - 1, 0);
+                add(x - 1, z - 1, 1);
+            }
+            if (x < cx && z < cz) {
+                add(x, z, 0);
+                add(x, z, 1);
+            }
+            if (x < cx && z > 0) add(x, z - 1, 0);
+            if (sx == 0.0f && sy == 0.0f && sz == 0.0f) sx = sy = sz = 1.0f;
+            const Tri n = Normalise(sx, sy, sz);
+            VertexRecord& r = g_mirror.vertices[static_cast<size_t>(z) * W + x];
+            r.normal[0] = n.x;
+            r.normal[1] = n.y;
+            r.normal[2] = n.z;
+        }
+    }
+}
+
+void cFC4STETerrain::StepSevenWholeCity() {
+    // Part 1 on +0x40, the whole city.
+    CalculateNormalsAndAssignCliffs(f_.cityRect);
+    // Part 2, the texture-layer update 0x007490B0 (§15.5.13.3 steps 1-8, §15.5.13.6): not implemented
+    // in this round; the record layers stay empty (id 0).
+    Log("terrain: DoPostCityInit step 7: normals and cliff marks on the whole city; texture layers NOT "
+        "computed yet (§15.5.13.3)");
 }
 
 // TR9 (§2.3): "each view-update message 0xA6B79602 whose first data word

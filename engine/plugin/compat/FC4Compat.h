@@ -54,6 +54,12 @@ enum class Direct : unsigned {
     TerrainView3DInit,                // the terrain 3D view's Init: fastcall (ECX = view base, EDX unused,
                                       //   stack cISTETerrain* primary), pop 4, EAX 1 ok / 0 already
                                       //   (direct-calls.md; terrain.md §15.5.4)
+    TerrainStaticInit,                // cSTETerrain::StaticInit: no this, no arguments, AL 1, once per process
+                                      //   (terrain.md §15.5.12.2, §15.5.11 item 18; TR40)
+    TerrainView3DShutdown,            // the terrain 3D view's Shutdown: thiscall (ECX = view base), no
+                                      //   arguments (terrain.md §15.5.11 item 15a; TR35)
+    GetIGZDBSegment,                  // SC4GetIGZDBSegment: cdecl (stream), EAX = the DB segment the stream
+                                      //   reads from (terrain.md §13.2; TR39)
     Count
 };
 
