@@ -366,6 +366,133 @@ pub unsafe extern "C" fn fc4_exstore_failure(
     true
 }
 
+/// One exemplar or cohort record parsed for the plug-in factory (data-formats
+/// §4.1, §4.2, §8.1 SerialRead): the record bytes as the manager hands them
+/// (position 0, already decompressed; no QFS here), checked against the type
+/// it is stored under. Unlike `fc4_dbpf_read_exemplar` every property is kept,
+/// in record order (duplicates included: the holder's add replaces, §4.5),
+/// with Empty and kind-1 resource-key properties reported by kind.
+#[repr(C)]
+pub struct fc4_exrec {
+    _private: [u8; 0],
+}
+
+/// Parses `data` (`len` bytes) as a record stored under `type_id`
+/// (`Exemplar::parse_record`). NULL when the read fails. Destroy with
+/// `fc4_exrec_destroy`.
+#[no_mangle]
+pub unsafe extern "C" fn fc4_exrec_parse(type_id: u32, data: *const u8, len: usize) -> *mut fc4_exrec {
+    let Some(bytes) = slice_arg(data, len) else {
+        return std::ptr::null_mut();
+    };
+    match guard(None, || Exemplar::parse_record(type_id, bytes).ok()) {
+        Some(ex) => Box::into_raw(Box::new(ex)).cast(),
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// Frees a record from `fc4_exrec_parse` (NULL is ignored).
+#[no_mangle]
+pub unsafe extern "C" fn fc4_exrec_destroy(p: *mut fc4_exrec) {
+    if !p.is_null() {
+        drop(Box::from_raw(p.cast::<Exemplar>()));
+    }
+}
+
+unsafe fn exrec_ref<'a>(p: *const fc4_exrec) -> Option<&'a Exemplar> {
+    (p as *const Exemplar).as_ref()
+}
+
+/// The parent cohort key (type, group, instance) into `key3`; all zero = none.
+#[no_mangle]
+pub unsafe extern "C" fn fc4_exrec_parent(p: *const fc4_exrec, key3: *mut u32) -> bool {
+    let Some(ex) = exrec_ref(p) else {
+        return false;
+    };
+    write_key(key3, ex.parent);
+    true
+}
+
+/// The number of properties in record order.
+#[no_mangle]
+pub unsafe extern "C" fn fc4_exrec_count(p: *const fc4_exrec) -> usize {
+    exrec_ref(p).map_or(0, |ex| ex.properties().len())
+}
+
+/// Property `index` in record order. Returns its kind: 0 a value (`mem_type`,
+/// `is_array`, `data`, `count` as `fc4_props_set_typed` takes them; `data`
+/// borrowed until the record is destroyed), 1 Empty (no value), 2 a resource
+/// key (`key3`), -1 out of range. Pointers may be NULL.
+#[no_mangle]
+pub unsafe extern "C" fn fc4_exrec_prop(
+    p: *const fc4_exrec,
+    index: usize,
+    id: *mut u32,
+    mem_type: *mut u16,
+    is_array: *mut bool,
+    data: *mut *const u8,
+    count: *mut usize,
+    key3: *mut u32,
+) -> i32 {
+    let Some(prop) = exrec_ref(p).and_then(|ex| ex.properties().get(index)) else {
+        return -1;
+    };
+    if !id.is_null() {
+        *id = prop.id;
+    }
+    match &prop.values {
+        Values::Empty => 1,
+        Values::Resource(key) => {
+            write_key(key3, *key);
+            2
+        }
+        values => {
+            let (mt, ptr, n) = raw_of(values);
+            if !mem_type.is_null() {
+                *mem_type = mt;
+            }
+            if !is_array.is_null() {
+                *is_array = prop.stored_as_array();
+            }
+            if !data.is_null() {
+                *data = ptr;
+            }
+            if !count.is_null() {
+                *count = n;
+            }
+            0
+        }
+    }
+}
+
+/// The memory type, a pointer to the native-endian elements and the element
+/// count of a value (the same mapping as `typed`, without copying).
+fn raw_of(values: &Values) -> (u16, *const u8, usize) {
+    use fc4_core::variant::mem;
+    fn p<T>(v: &[T]) -> (*const u8, usize) {
+        (v.as_ptr().cast(), v.len())
+    }
+    let (mt, (ptr, n)) = match values {
+        Values::Empty | Values::Resource(_) => (mem::EMPTY, (std::ptr::null(), 0)),
+        Values::Bool(v) => (mem::BOOL, p(v)),
+        Values::Uint8(v) => (mem::UINT8, p(v)),
+        Values::Sint8(v) => (mem::SINT8, p(v)),
+        Values::Uint16(v) => (mem::UINT16, p(v)),
+        Values::Sint16(v) => (mem::SINT16, p(v)),
+        Values::Uint32(v) => (mem::UINT32, p(v)),
+        Values::Sint32(v) => (mem::SINT32, p(v)),
+        Values::Uint64(v) => (mem::UINT64, p(v)),
+        Values::Sint64(v) => (mem::SINT64, p(v)),
+        Values::Float32(v) => (mem::FLOAT32, p(v)),
+        Values::Float64(v) => (mem::FLOAT64, p(v)),
+        Values::String(v) => (mem::RZ_CHAR, p(v)),
+        Values::Char(v) => (mem::CHAR, p(v)),
+        Values::UnicodeChar(v) => (mem::UNICODE_CHAR, p(v)),
+        Values::Void(v) => (mem::EMPTY, p(v)),
+    };
+    (mt, ptr, n)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -500,5 +627,48 @@ mod tests {
         }
         let _ = std::fs::remove_file(a);
         let _ = std::fs::remove_file(b);
+    }
+
+    #[test]
+    fn exrec_keeps_empty_and_record_order() {
+        let mut rec = b"EQZB1###".to_vec();
+        for v in [0x0534_2861u32, 1, 2, 2] {
+            rec.extend_from_slice(&v.to_le_bytes());
+        }
+        rec.extend_from_slice(&0x10u32.to_le_bytes());
+        rec.push(0);
+        rec.extend_from_slice(&0u32.to_le_bytes());
+        rec.extend_from_slice(&0x11u32.to_le_bytes());
+        rec.push(0);
+        rec.extend_from_slice(&3u32.to_le_bytes());
+        rec.extend_from_slice(&7u32.to_le_bytes());
+        unsafe {
+            assert!(fc4_exrec_parse(0x0534_2861, rec.as_ptr(), rec.len()).is_null());
+            let p = fc4_exrec_parse(0x6534_284A, rec.as_ptr(), rec.len());
+            assert!(!p.is_null());
+            let mut key = [9u32; 3];
+            assert!(fc4_exrec_parent(p, key.as_mut_ptr()));
+            assert_eq!(key, [0x0534_2861, 1, 2]);
+            assert_eq!(fc4_exrec_count(p), 2);
+            let (mut id, mut mt, mut arr, mut n) = (0u32, 0u16, true, 0usize);
+            let mut data: *const u8 = std::ptr::null();
+            let null = std::ptr::null_mut();
+            assert_eq!(
+                fc4_exrec_prop(p, 0, &mut id, &mut mt, &mut arr, &mut data, &mut n, null),
+                1
+            );
+            assert_eq!(id, 0x10);
+            assert_eq!(
+                fc4_exrec_prop(p, 1, &mut id, &mut mt, &mut arr, &mut data, &mut n, null),
+                0
+            );
+            assert_eq!((id, mt, arr, n), (0x11, fc4_core::variant::mem::UINT32, false, 1));
+            assert_eq!(std::ptr::read_unaligned(data.cast::<u32>()), 7);
+            assert_eq!(
+                fc4_exrec_prop(p, 2, &mut id, null.cast(), null.cast(), null.cast(), null.cast(), null),
+                -1
+            );
+            fc4_exrec_destroy(p);
+        }
     }
 }
