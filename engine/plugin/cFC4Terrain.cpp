@@ -243,8 +243,25 @@ void SampleThreads() {
             using QueryObject = LONG(WINAPI*)(HANDLE, int, void*, ULONG, ULONG*);
             static QueryObject q = reinterpret_cast<QueryObject>(
                 GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryObject"));
-            for (unsigned i = 0; i < 16 && q != nullptr; ++i) {
-                const uintptr_t v = stack[i];
+            LogWait(1000, "terrain trace:   raw %08lX %08lX %08lX %08lX %08lX %08lX %08lX %08lX", stack[0], stack[1],
+                    stack[2], stack[3], stack[4], stack[5], stack[6], stack[7]);
+            // candidates: the words themselves and, for pointer-like words, the first 4 words they point at
+            // (WaitForMultipleObjects passes an array)
+            uintptr_t cand[16 * 5] = {};
+            unsigned nc = 0;
+            for (unsigned i = 0; i < 16; ++i) {
+                cand[nc++] = stack[i];
+                if (stack[i] >= 0x10000) {
+                    DWORD pv[4] = {};
+                    SIZE_T pg = 0;
+                    if (ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<const void*>(stack[i]), pv, sizeof(pv), &pg) &&
+                        pg == sizeof(pv)) {
+                        for (DWORD w : pv) cand[nc++] = w;
+                    }
+                }
+            }
+            for (unsigned i = 0; i < nc && q != nullptr; ++i) {
+                const uintptr_t v = cand[i];
                 if (v == 0 || v >= 0x10000 || (v & 3) != 0) continue;
                 alignas(8) uint8_t buf[512];
                 ULONG need = 0;
@@ -255,7 +272,7 @@ void SampleThreads() {
                 char tn[32] = {};
                 for (unsigned k = 0; k < 31 && k < *len16 / 2u; ++k) tn[k] = static_cast<char>(name[k]);
                 const DWORD wt = GetThreadId(reinterpret_cast<HANDLE>(v));
-                LogWait(1000, "terrain trace:   stack[%u] = handle 0x%X type %s%s%lu", i, static_cast<unsigned>(v), tn,
+                LogWait(1000, "terrain trace:   cand[%u] = handle 0x%X type %s%s%lu", i, static_cast<unsigned>(v), tn,
                         wt ? " thread id " : "", static_cast<unsigned long>(wt));
             }
         }
