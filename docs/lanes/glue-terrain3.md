@@ -1,43 +1,43 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| glue-terrain3 (enable = terrain glue over the TR21 3D view contract, terrain.md §15.5) | `glue-terrain3` / (engine lane) | in progress (run4 round 2: TR33-TR41 answered, merged main c5e6b495) | wait for answers to TR38/TR40 (edge-layer set-up) and TR39 (who calls slot 96 Load), then run gt3-repl-6 |
+| glue-terrain3 (enable = terrain glue over the TR21 3D view contract, terrain.md §15.5) | `glue-terrain3` / (engine lane) | wip: TR33-TR41 crash fixes landed on the branch (ed29ba77); the game now loads the saved grid and runs past the first month, but stalls in June 2026 (gt3-r2-1/2); the control run without the replacement is clean; full gate PASS | find the June 2026 stall; step 7 part 2 (the texture layers); the TR37 per-cell view call; Save |
 
-## Handoff
-Goal: enable = terrain clean through 2032 (turbo), ref_warnings=0, using TR33-TR41 answers (terrain.md 15.5.11-15.5.13).
-Done: merged main c5e6b495; ed29ba77 crash fixes (no SetVoid1 on posts = TR38 cause; StaticInit in Init; Read->SC4GetIGZDBSegment->Load; Shutdown->view Shutdown+Release; step 6 weather; step 7 part 1 normals+MarkCliff).
-gt3-r2-1 (ed29ba77): Load reads 128x128 saved grid, StaticInit->1, view Init->1, no fault, ref_warnings=0; but verdict stalled at 2026-06-03 (main thread inside fc4_sim_on_tick -> game 0x52E0F5 -> ntdll; last calls budget). Resent as gt3-r2-2 to check determinism.
-Next: if gt3-r2-2 stalls at the same date, find whether terrain is involved; then step 7 part 2 (texture update 15.5.13.3/.6, needs game statics by address), TR37 per-cell view call in slots 93/94 etc, Save slot 97.
-Facts: labels used gt3-repl-1..5, gt3-r2-1; next free gt3-r2-3.
-## Report (run4 round 1, 2026-10-21)
+## Report (run4 round 2, 2026-10-21)
 
-Goal: `enable = terrain` clean to 2032 under turbo with ref_warnings=0. Not reached. This is not ready to
-merge or count as a replacement.
+Goal: `enable = terrain` clean to 2032 under turbo with ref_warnings=0. **Not reached; not ready.**
 
-Code on the branch: c1b06da3 (creates the view and calls its Init, raw T+0x6C / W+0x18 mirrors, GetView =
-base+0x0C), 25a4ec76 (slot 96 Load reads the misc / altitude / property records), 44a73e47 (slot 96 Load logs
-when it is called; TR38/TR39 filed), plus this round's tip (a constexpr switch on the TR33 whole-city redisplay,
-left on, and TR40).
+Integration: main merged in (c5e6b495). questions/terrain.md is main's copy; all of TR33-TR41 are answered.
 
-Game evidence (no RE material read; registers and stacks from the harness logs only):
-- gt3-repl-4 (TR33 whole-city redisplay on): the first queued 0x278E6003 after DoPostCityInit faults in the
-  view's edge-layer refresh FUN_00755B60 at 0x00755C2B (write 0x16B23FF8, caller 0x00756AAC in FUN_007569F0),
-  before the first game date. Question TR38.
-- gt3-repl-5 (the same build with the post off): it reached 2026-01-27, then the first DrawTerrainLayers faults
-  at 0x007540A5 (reads 0x00000008, 0x00B4C760 edge-layer statics on the stack, called from 0x0075BFA3 under
-  Update). Question TR40.
-- Both runs: slot 96 Load is never called with a segment, so the replaced city runs on the flat 300 m default
-  rather than its saved altitudes. Question TR39 (the "Load: slot 96 called" log line was added for
-  gt3-repl-5 and does not appear). Both runs: ref_warnings=0, no Rust panics.
-- Diagnosis: the view's city-edge layer state is not set up when the replacement terrain is in place. The spec
-  does not name what sets it up: §15.5.1 step 7's 0x00743B60/0x007490B0 (TR33), slot 67 DoLighting (a no-op
-  here) or something else. Per the brief, no value was guessed.
+Code (ed29ba77, engine/plugin/cFC4Terrain.cpp and compat/FC4Compat.*; no core or ABI changes):
+- TR38, the cause found: HostPost called SetVoid1(sender). void1 is data1 (+0x10), so the view read the
+  sender's address as the rectangle. Posts now carry only the type and data1-4, in a fresh message each time.
+  A heights or water rectangle outside the grid is refused and logged (§15.5.11 item 19).
+- TR40: Init calls cSTETerrain::StaticInit (0x0074FE40, a new Direct entry) before the view exists.
+- TR39: Read checks version <= 2, then calls SC4GetIGZDBSegment (0x0045BA70, Direct) and then slot 96 Load,
+  and returns Load's result. Init keeps a grid that Load installed when its size matches the city.
+- TR35: Shutdown calls the view's Shutdown (0x007560F0, Direct), Releases the view and clears view-ready.
+- TR34: step 6 calls the weather simulator's slot 5 (DoCompleteSimulation; the SDK names it DoPostCityInit).
+- TR33/TR41: step 7 no longer runs RedisplayTerrain. Part 1 is in place (normals plus MarkCliff, §15.5.13.2
+  and §15.5.13.6; T = the core's shipped cliff_slope). Part 2 is **not implemented**: the texture-layer update
+  of §15.5.13.3 and §15.5.13.6, so record +0x16 stays 0.
 
-Gate (tip): qbuild all PASS: cargo 3576/0, clippy 0, ctest 62/62.
+Game evidence:
+- gt3-r2-1 and gt3-r2-2 (ed29ba77, enable = terrain, turbo): the 128x128 saved grid loads in Read; StaticInit
+  returns 1; view Init returns 1; no fault; ref_warnings=0. Both runs end `stalled`, at 2026-06-03 and
+  2026-06-09. Both stall with the same stack: fc4_sim_on_tick -> FreeCity4.dll+0x81BAE0 -> game 0x52E0F5 ->
+  0x36361F -> 0x5DA900 -> ntdll. The game date stops advancing several seconds before the watchdog fires.
+- gt3-r2-ctl-1 (the same build without the replacement): clean to 2027-01-15. **So the stall is caused by the
+  terrain replacement.**
 
-Questions filed in docs/specs/questions/terrain.md: TR33-TR37 (earlier rounds), TR38, TR39 and TR40 (this
-round). QUESTIONS.md still lists TR33 as the next free ID; the coordinator must regenerate it (next free: TR41).
+Gate (ed29ba77): qbuild all PASS. cargo 3578 passed, 0 failed; clippy 0; ctest 62/62.
 
-Next steps: (1) once TR38/TR40 are answered, implement the edge-layer set-up (step 7 pair / slot 67) and drop
-or keep the TR33 post as the answer says; (2) once TR39 is answered, make Load run on a city load; (3) send
-gt3-repl-6 (enable = terrain, turbo, end_date 2032-01-01) and then a normal-speed run; (4) Save (slot 97) is
-still unwired; (5) the coordinator adds `terrain` to the regress replace list and the coverage replace key.
+Questions: none filed this round.
+
+Next steps:
+1. Find what the sim agent at game 0x52E0F5 waits on with the replaced terrain. Log the terrain slots that are
+   called around the stall, for example a slot that returns a value the caller loops on.
+2. Step 7 part 2 (§15.5.13.3 steps 1-8 and §15.5.13.6). It reads the StaticInit statics in place, so it needs
+   compat data addresses, and calls the view's 0x00755ED0, 0x007574A0 and 0x007571D0.
+3. The TR37 call SetTriangleIndicesForCell (0x00752AF0, args (z, x), ECX = view base) in slots 93/94, the
+   hide slots and SetTerrainCellFlags, behind the +0xEC guard.
+4. Save (slot 97) is still not wired.
