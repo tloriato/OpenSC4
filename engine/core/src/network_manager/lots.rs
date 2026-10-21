@@ -300,17 +300,15 @@ impl NetworkLotManager {
         has_any(f, flag::SURFACE) && !has_all(f, flag::CONNECTION_NODE)
     }
 
-    /// The border cells (BoundaryIterator, simgrid.md §7.4) of `r` inside
-    /// the city, added to `pending` (§6.2 `0xE8BDA2E7`).
+    /// The cells of the §6.3 lot-state boundary walk of the grown rect `r`
+    /// inside the city, added to `pending` (§6.2 `0xE8BDA2E7`). The walk
+    /// starts at (0, 0), not at (x0, z0) *[quirk]* (answers NM10, NM11).
     pub fn add_border_to_pending(&self, r: CellRect) {
         let size = self.host.city_size();
         let mut s = self.s.borrow_mut();
-        for z in r.z1..=r.z2 {
-            for x in r.x1..=r.x2 {
-                let border = x == r.x1 || x == r.x2 || z == r.z1 || z == r.z2;
-                if border && inside(x, z, size) {
-                    s.pending.insert(lot_key(x, z));
-                }
+        for (x, z) in lot_state_walk(r) {
+            if inside(x, z, size) {
+                s.pending.insert(lot_key(x, z));
             }
         }
     }
@@ -813,6 +811,35 @@ impl NetworkLotManager {
 
 fn inside(x: i32, z: i32, size: (i32, i32)) -> bool {
     x >= 0 && z >= 0 && x < size.0 && z < size.1
+}
+
+/// The §6.3 lot-state boundary walk over the grown rect `r` (inclusive
+/// x1..x2, z1..z2), in visiting order, not clipped to the city. The
+/// iterator starts at (0, 0) with step 1 and only its rectangle is set
+/// (`x2 := max(x2, x1)`, `z2 := max(z2, z1)`) *[quirk]*:
+/// fresh → (0, 0); running → `x += step`, `x ≤ x2` → (x, z); else done if
+/// `z ≥ z2`, else `x := x1`, `z += 1`, `step := max(x2 − x1, 1)` if
+/// `z < z2` else 1, → (x1, z).
+pub fn lot_state_walk(r: CellRect) -> Vec<(i32, i32)> {
+    let (x0, z0) = (r.x1, r.z1);
+    let x1 = r.x2.max(x0);
+    let z1 = r.z2.max(z0);
+    let (mut x, mut z, mut step) = (0i32, 0i32, 1i32);
+    let mut out = vec![(x, z)];
+    loop {
+        x += step;
+        if x <= x1 {
+            out.push((x, z));
+            continue;
+        }
+        if z >= z1 {
+            return out;
+        }
+        x = x0;
+        z += 1;
+        step = if z < z1 { (x1 - x0).max(1) } else { 1 };
+        out.push((x, z));
+    }
 }
 
 impl SaveObject for NetworkLotManager {

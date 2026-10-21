@@ -105,8 +105,8 @@ pub use flags::{
     clear_network_flag, flag, has_all, has_any, pipe_model, set_network_flag, FlagChange, PipeModel, RemovalCounters,
 };
 pub use lots::{
-    LotEntry, NetworkLotManager, NetworkLotState, AVENUE_EDGE_KIND, FLIPPED_PROP_FLAG, POTHOLE_NAME, POTHOLE_RAIL_NAME,
-    RAIL_TEXTURE,
+    lot_state_walk, LotEntry, NetworkLotManager, NetworkLotState, AVENUE_EDGE_KIND, FLIPPED_PROP_FLAG, POTHOLE_NAME,
+    POTHOLE_RAIL_NAME, RAIL_TEXTURE,
 };
 pub use manager::{NetworkManager, NetworkManagerState, DESTROY_GROUPS};
 pub use ordered::OrderedMap;

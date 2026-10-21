@@ -1325,24 +1325,82 @@ fn t23_lot_state_ring() {
         unknown: Some(600),
         ..NetworkLotMessage::of_type(msg::LOT_STATE_CHANGED)
     });
+    // §16 test 23: 61 cells, row 0 from x = 0, columns 9 and 12 from z = 1,
+    // the full bottom row; not (10, 19), (11, 19) nor the lot's cells.
     let queried: BTreeSet<(i32, i32)> = f.s.borrow().tile_queries.iter().copied().collect();
     let mut want = BTreeSet::new();
-    for x in 9..=12 {
-        for z in 19..=23 {
-            if !(10..=11).contains(&x) || !(20..=22).contains(&z) {
-                want.insert((x, z));
-            }
-        }
+    for x in 0..=12 {
+        want.insert((x, 0));
     }
-    assert_eq!(want.len(), 14);
+    for z in 1..=22 {
+        want.insert((9, z));
+        want.insert((12, z));
+    }
+    for x in 9..=12 {
+        want.insert((x, 23));
+    }
+    assert_eq!(want.len(), 61);
     assert_eq!(queried, want);
+    assert!(!queried.contains(&(10, 19)) && !queried.contains(&(11, 19)));
+    assert!(!queried.contains(&(10, 20)) && !queried.contains(&(11, 22)));
     assert!(m.snapshot().pending.is_empty());
     assert_eq!(f.refs(600), 0);
 
-    // Directly: the ring lands in `pending`, clipped to the city.
+    // Directly: the walk lands in `pending`, clipped to the city.
     m.add_border_to_pending(rect(-1, -1, 1, 1));
     let pending: Vec<(i32, i32)> = m.snapshot().pending.iter().map(|&k| key_cell(k)).collect();
-    assert_eq!(pending, vec![(0, 1), (1, 0), (1, 1)]);
+    assert_eq!(pending, vec![(0, 0), (0, 1), (1, 0), (1, 1)]);
+}
+
+#[test]
+fn t24_lot_state_walk_top_edge() {
+    // §16 test 24: lot (5, 0), grown {4, -1, 6, 1}: row 0 in full from x = 0
+    // (the lot's own cell included), then row 1 from x = 4.
+    let walk = lot_state_walk(rect(4, -1, 6, 1));
+    let want: Vec<(i32, i32)> = (0..=6).map(|x| (x, 0)).chain((4..=6).map(|x| (x, 1))).collect();
+    assert_eq!(walk, want);
+
+    let (f, m, _) = lot_manager(vec![]);
+    f.s.borrow_mut().lot_rect.insert(600, rect(5, 0, 5, 0));
+    m.do_message(&NetworkLotMessage {
+        unknown: Some(600),
+        ..NetworkLotMessage::of_type(msg::LOT_STATE_CHANGED)
+    });
+    let queried: BTreeSet<(i32, i32)> = f.s.borrow().tile_queries.iter().copied().collect();
+    assert_eq!(queried, want.into_iter().collect());
+}
+
+#[test]
+fn lot_state_walk_order_and_edges() {
+    // The §6.3 example: lot 15..16 x 94..96, grown {14, 93, 17, 97}.
+    let w = lot_state_walk(rect(14, 93, 17, 97));
+    assert_eq!(w[..18], (0..=17).map(|x| (x, 0)).collect::<Vec<_>>()[..]);
+    assert_eq!(w[18..22], [(14, 1), (17, 1), (14, 2), (17, 2)]);
+    assert_eq!(
+        w[w.len() - 6..],
+        [(14, 96), (17, 96), (14, 97), (15, 97), (16, 97), (17, 97)]
+    );
+    assert_eq!(w.len(), 18 + 2 * 96 + 4);
+    assert!(w.contains(&(14, 40)) && w.contains(&(17, 40)));
+    assert!(!w.contains(&(15, 93)) && !w.contains(&(16, 93)));
+    let set: BTreeSet<_> = w.iter().copied().collect();
+    assert_eq!(set.len(), w.len());
+
+    // One column (x1 = x0): step 1, rows 1.. get (x0, z) once.
+    assert_eq!(
+        lot_state_walk(rect(3, 1, 3, 3)),
+        vec![(0, 0), (1, 0), (2, 0), (3, 0), (3, 1), (3, 2), (3, 3)]
+    );
+    // Rect left of x = 0: (0, 0) still first, row 0 stops at once.
+    assert_eq!(lot_state_walk(rect(-3, 0, -2, 1)), vec![(0, 0), (-3, 1), (-2, 1)]);
+    // z1 = 0: row 0 only; z1 = 1: row 1 is the full bottom row.
+    assert_eq!(lot_state_walk(rect(1, -1, 2, 0)), vec![(0, 0), (1, 0), (2, 0)]);
+    assert_eq!(
+        lot_state_walk(rect(1, 0, 2, 1)),
+        vec![(0, 0), (1, 0), (2, 0), (1, 1), (2, 1)]
+    );
+    // Reversed rect: x2 := max(x2, x1), z2 := max(z2, z1).
+    assert_eq!(lot_state_walk(rect(2, 1, 0, 0)), vec![(0, 0), (1, 0), (2, 0), (2, 1)]);
 }
 
 // ---- lot objects, removal and messages ----
