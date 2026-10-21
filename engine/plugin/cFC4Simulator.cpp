@@ -941,12 +941,18 @@ bool cFC4Simulator::AddAgent(cIGZMessageTarget2* pAgent, uint32_t agentType, cIG
     Stats(pAgent, static_cast<uint32_t>(agentType)).name = name.empty() ? std::string("(unnamed)") : name;
     const bool ok = fc4_sim_add_agent(sim_, AgentHandle(pAgent), static_cast<uint32_t>(agentType), name.data(),
                                       name.size(), static_cast<uint32_t>(flags));
-    if (ok && agentType == 10 && !fc4::PacingIsOurs(pAgent)) {
+    // A fixed-step idle agent gets its N SimIdle per day whether it is the
+    // original's or ours (glue-propdev4): FreeCity4's prop developer also
+    // does exactly one block step per Idle (prop-developer.md §3.3), so with
+    // the single SimIdle of our other (run-to-completion) idle agents it did
+    // 1 block step per day against the original's 20 under deterministic pacing.
+    if (ok && agentType == 10) {
         const uint32_t steps = fc4::PacingFixedIdleSteps(name.c_str());
         if (steps != 0) {
             fixedIdle_[reinterpret_cast<uintptr_t>(pAgent)] = steps;
-            fc4::Log("pacing: the original's idle agent '%s' (%p) gets %u SimIdle per day at the settle point",
-                     name.c_str(), static_cast<void*>(pAgent), steps);
+            fc4::Log("pacing: the %s idle agent '%s' (%p) gets %u SimIdle per day at the settle point",
+                     fc4::PacingIsOurs(pAgent) ? "FreeCity4" : "original's", name.c_str(),
+                     static_cast<void*>(pAgent), steps);
         }
     }
     FC4_LOGV("AddAgent(%p, level %u, '%s', flags %u) -> %d", static_cast<void*>(pAgent),

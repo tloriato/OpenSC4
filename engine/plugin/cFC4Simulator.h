@@ -183,7 +183,7 @@ private:
     uint32_t turboRefTicks_ = 0;   // ticks_ then
     int32_t turboRefJulian_ = 0;   // the date then
     // The hold until the city is ready (FC4Turbo.h): reset at each Init.
-    // Deterministic pacing: the original's idle agents paced with a fixed
+    // Deterministic pacing: the fixed-step idle agents (original or ours) paced with a fixed
     // number of SimIdle per day (FC4Pacing.h PacingFixedIdleSteps).
     std::map<uintptr_t, uint32_t> fixedIdle_;
     bool cityReady_ = false;          // this load's first ConnectionsReady was seen

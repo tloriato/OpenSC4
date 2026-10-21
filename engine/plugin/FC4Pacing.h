@@ -63,8 +63,9 @@ void PacingStartup();
 bool PacingIsOurs(const cIGZMessageTarget2* target);
 
 // [choice] Under deterministic pacing, the SimIdle deliveries per day at the
-// settle point for an ORIGINAL idle agent registered under `name` (level 10),
-// or 0 (not paced: it keeps the frame idle passes). Only agents that do a
+// settle point for an idle agent registered under `name` (level 10; the
+// original's or FreeCity4's own, since glue-propdev4 both get the same
+// count), or 0 (not paced: it keeps the frame idle passes). Only agents that do a
 // fixed amount of work per delivery are paced: the prop developer (one block
 // step per Idle, prop-developer.md §3.3) gets 20, the idle deliveries of a
 // day at the middle speed (1000 ms per day at 20 frames per second,
