@@ -1,7 +1,12 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| glue-terrain3 (enable = terrain glue over the TR21 3D view contract, terrain.md §15.5) | `glue-terrain3` / (engine lane) | blocked on TR38, TR39, TR40 (and TR33): `enable = terrain` still faults in the game's 3D view before the first month; full gate PASS | wait for answers to TR38/TR40 (edge-layer set-up) and TR39 (who calls slot 96 Load), then run gt3-repl-6 |
+| glue-terrain3 (enable = terrain glue over the TR21 3D view contract, terrain.md §15.5) | `glue-terrain3` / (engine lane) | in progress (run4 round 2: TR33-TR41 answered, merged main c5e6b495) | wait for answers to TR38/TR40 (edge-layer set-up) and TR39 (who calls slot 96 Load), then run gt3-repl-6 |
 
+## Handoff
+Goal: enable = terrain clean through 2032 (turbo), ref_warnings=0, using TR33-TR41 answers (terrain.md 15.5.11-15.5.13).
+Done: merged main c5e6b495 (questions/terrain.md taken from main; all TR33-TR41 answered).
+Next: crash fixes in engine/plugin/cFC4Terrain.cpp: fresh cRZMessage2Standard per post (15.5.12.1), StaticInit before view Init (15.5.12.2/3), Read->Load (15.5.13.5), then step 6/7 (15.5.13.1-.6).
+Facts: prior round evidence gt3-repl-4/5 (see git 094acd01 report). Game labels used: gt3-repl-1..5; next gt3-r2-1.
 ## Report (run4 round 1, 2026-10-21)
 
 Goal: `enable = terrain` clean to 2032 under turbo with ref_warnings=0. Not reached. This is not ready to
