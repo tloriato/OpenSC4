@@ -406,8 +406,14 @@ if(FC4_IS_WIN32_X86)
         plugin/cFC4NetworkTool.h
         plugin/FC4NetToolHost.cpp
         plugin/FC4NetToolHost.h
+        # The MySims shadow (mysims.md): mysims_shadow (no replacement).
+        plugin/FC4MySimsShadow.cpp
+        plugin/FC4MySimsShadow.h
         # The occupant manager shadow (occupant-manager.md): occmgr_shadow (no replacement).
-        plugin/FC4OccMgrShadow.cpp
+        # The occupant manager (occupant-manager.md): enable = occmgr; its shadow
+        # is occmgr_shadow and follows whichever manager is active.
+        plugin/cFC4OccMgr.cpp
+        plugin/cFC4OccMgr.h        plugin/FC4OccMgrShadow.cpp
         plugin/FC4OccMgrShadow.h
         # The prop manager, the lot configuration manager and the tutorial system
         # (prop-lotconfig.md, tutorial.md; the glue15 lane): enable = propmgr, lotcfg,
@@ -416,6 +422,15 @@ if(FC4_IS_WIN32_X86)
         plugin/cFC4Tutorial.h
         plugin/FC4PropLotShadow.cpp
         plugin/FC4PropLotShadow.h
+        # The two replacement classes (the glue21 lane): enable = propmgr, lotcfg.
+        plugin/FC4PropLotInterfaces.h
+        plugin/cFC4PropManager.cpp
+        plugin/cFC4PropManager.h
+        plugin/cFC4LotConfigManager.cpp
+        plugin/cFC4LotConfigManager.h
+        # The configuration class the replacement manager allocates (GLUE21-1).
+        plugin/cFC4LotConfiguration.cpp
+        plugin/cFC4LotConfiguration.h
         # The harness lane's tooling: sim_turbo, autotest_end_date, script, close_dialogs.
         plugin/FC4HarnessLogic.h
         # The prop developer and the city detail manager (glue12b1): `enable = propdev,

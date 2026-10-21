@@ -205,6 +205,7 @@ constexpr size_t kOffAuraGrid = 0x40;
 constexpr size_t kOffWorkGrid = 0x44;
 constexpr size_t kOffTransientGrid = 0x4C;
 constexpr size_t kOffState = 0x70;
+constexpr size_t kOffDepartmentCursor = 0x7C;  // aura.md §14.3 (u32, -1 = none)
 
 bool g_enabled = false;
 long g_cells = kDefaultCells;
@@ -297,6 +298,7 @@ struct RawRead {
     const void* vtable = nullptr;
     bool vtableOk = false;
     int32_t state = -1;
+    uint32_t departmentCursor = 0xFFFFFFFFu;
     const void* aura = nullptr;
     const void* work = nullptr;
     const void* transient = nullptr;
@@ -314,6 +316,7 @@ void ReadRaw(void* ctx) {
     r->vtableOk = r->vtable != nullptr && At<const void*>(r->obj, 0) == r->vtable;
     if (!r->vtableOk) return;
     r->state = At<int32_t>(r->obj, kOffState);
+    r->departmentCursor = At<uint32_t>(r->obj, kOffDepartmentCursor);
     r->aura = At<const void*>(r->obj, kOffAuraGrid);
     r->work = At<const void*>(r->obj, kOffWorkGrid);
     r->transient = At<const void*>(r->obj, kOffTransientGrid);
@@ -618,6 +621,18 @@ intptr_t Deliver(cISC4City* city, cISC4AuraSimulator* sim, cIGZMessageTarget2* t
         Log("aura shadow: the original aura simulator %p could not be read after a delivery; no longer followed",
             static_cast<const void*>(sim));
         return -2;
+    }
+    // §6.3: state 3 takes one department per call. When the original stayed
+    // in 3 but moved its cursor, ours runs one state-3 call too (the core's
+    // 3 -> 3 step), so both read each department grid at the same moment.
+    if (g_shadow != nullptr && g_followed && before.state == 3 && after.state == 3 &&
+        after.departmentCursor != before.departmentCursor) {
+        Call c;
+        c.sim = sim;
+        c.from = 3;
+        c.to = 3;
+        c.julian = julian;
+        Guarded(city, "aura shadow (state 3 department)", &CallStep, &c);
     }
     if (g_shadow != nullptr && g_followed && after.state != before.state) {
         Call c;

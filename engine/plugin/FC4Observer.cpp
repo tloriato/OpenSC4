@@ -42,6 +42,7 @@
 #include "FC4CityDetailShadow.h"  // the glue12b1 lane
 #include "cFC4PropDeveloper.h"    // the glue12b1 lane: the propdev month line
 #include "FC4AutomataShadow.h"  // the glue19 lane
+#include "FC4MySimsShadow.h"    // the mysims1 lane: mysims_shadow
 #include "FC4AutomataDriver.h"  // the glue19 lane: the riot / fire driver
 #include "FC4DisasterShadow.h"
 #include "FC4EffectsShadow.h"
@@ -601,6 +602,8 @@ public:
                 DisastersShadowCityLoaded(CurrentCity());  // disasters_shadow = 1 only
                 AutomataShadowCityLoaded(CurrentCity(), static_cast<int32_t>(PublishedJulian()));  // automata_shadow
                 fc4::AutomataDriverCityLoaded(CurrentCity());  // the automata riot / fire driver (automata.md 8)
+                fc4::MySimsShadowCityLoaded(CurrentCity());  // mysims_shadow = 1 only
+                fc4::MySimsShadowMonth(CurrentCity(), static_cast<int32_t>(PublishedJulian()));  // the load comparison
                 // The snapshot at the next tick (outside the city's init
                 // message), for comparison with the one before a save.
                 loadSnapshotDue_ = observe_ || saveAfterMonths_ > 0;
@@ -648,6 +651,7 @@ public:
                 AutomataShadowCityShutdown();  // automata_shadow: the shadow cores and their references
                 fc4::AutomataDriverCityShutdown();  // the automata riot / fire driver's per-city state
                 NetToolRegistry::LogSummary("city shutdown");
+                fc4::MySimsShadowCityShutdown();  // mysims_shadow: the summary line, then the core goes
                 NetToolRegistry::CityShutdown();  // the glue29 lane: the shared replacement tools
                 AutotestOnCityShutdown(false);
                 break;
@@ -693,6 +697,7 @@ public:
                 PropLotShadowMonth(CurrentCity(), julian);      // propmgr / lotcfg / tutorial shadows only                ++monthsSinceLoad_;
                 cFC4PropDeveloper::MonthLine(julian);           // enable = propdev only (the month status line)
                 PropDevShadowMonth(CurrentCity(), julian);      // propdev_shadow = 1 only
+                fc4::MySimsShadowMonth(CurrentCity(), julian);  // mysims_shadow = 1 only
                 ++monthsSinceLoad_;                if (saveAfterMonths_ > 0 && !saveStarted_ && monthsSinceLoad_ >= saveAfterMonths_) {
                     // [choice] Saved at the next framework tick, not inside the
                     // simulator's month-change message.

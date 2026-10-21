@@ -1787,6 +1787,33 @@ detail 14 records (8 bytes, 403 saves have none), all identical.
      city's Init phase faults at `SimCity 4.exe+0x0045BF1B` after all six records have read back, so `enable =
      automata` is inert until that is fixed (the lane report, question A4). The riot and fire host tables
      (`plugin/FC4AutomataHost.h`) and the U-Drive-It pause / resume are wired either way.
+   - **MySims shadow** (`mysims_shadow = 1`, env `FC4_MYSIMS_SHADOW`; off by default;
+     `plugin/FC4MySimsShadow.h`): a same-process differential of the original MySim agent simulator and its
+     advisors (mysims.md). Needs the **original** classes (there is no `enable = mysims`). At each city load the
+     five MySims (advisor ids 1-5) and the My Street sim (30) are captured read-only (each one's own
+     version-17 record via its own `Write`) and read into a shadow core (`fc4_advisors` with the MySim host, no
+     Lua), which then follows the original: the advisor system's ticker (advisors.md §5.1 daily/monthly) and the
+     agent's §3.2 messages are forwarded through the shadow's own message subscriptions. At load and each
+     SimNewMonth the decoded saved fields (state, slot, wealth, sign, is_male, age, birth_month, retired,
+     generation, home cell/position, neighbor/commute cells, jobless days, keys, bitmap, bio, portrait path,
+     last_local_disaster, last_player_trip_day, EQ/HQ rings at float32 bits), the advisor part (personal name,
+     month counter, current day, cursor, advice count), the agent slots (1-5, 30) and the getters
+     (`GetActiveMySims` ids + order, `MySimLivesHere` per residence) are compared field by field. Not compared
+     (named on the lines): `last_commute_time` (pathfinder timing), the pylon and dispatch tool (UI), the
+     unnamed pair/flag (question MS1), per-advice nextDay/expiry/active (no Lua in the shadow), the trip state,
+     and the active UI panel index (set only by the UI). Lines (always written):
+
+     ```
+     mysims shadow: ON (mysims_shadow from …): …                                          (game start)
+     mysims shadow yyyy-mm-dd load: sims=N … mismatches=N                                 (city load)
+     mysims shadow yyyy-mm-dd month: sims=N mismatches=N                                  (each month)
+     mysims shadow (cont.) id=N <date>: <field>=<orig>/<shadow>; …                        (details)
+     mysims shadow: city shutdown: months=N clean=M last_mismatches=K                     (city shutdown)
+     ```
+
+     Success is `mismatches=0` on every line. The core's per-MySim RNG derives from the session seed
+     (`derive(S, 0x4A1DBBBF ^ index)`), so its only draw (FindNewResidence's start position, mysims.md §8) is
+     deterministic in the shadow; the original's is wall-clock seeded and unreadable.
    - **Zone developer shadow** (`zonedev_shadow = 1`, env `FC4_ZONEDEV_SHADOW`; off by default;
      `plugin/FC4ZoneDevShadow.h`): a same-process differential of the lot manager. It needs the **original** zone
      developer (do not enable `zonedev`); otherwise it logs `zonedev shadow: requested … but INACTIVE`. At
@@ -1864,8 +1891,9 @@ detail 14 records (8 bytes, 403 saves have none), all identical.
    - **Occupant manager shadow** (`occmgr_shadow = 1`, env `FC4_OCCMGR_SHADOW`; off by default;
      `occmgr_shadow_samples = N`, default 4, 1..64; `occmgr_shadow_probe = 0/1`, default 1;
      `plugin/FC4OccMgrShadow.h`): a same-process differential of the city's occupant manager
-     (`docs/specs/occupant-manager.md`) against the `fc4_occmgr` core. FreeCity4 never replaces the occupant
-     manager, so the shadow always follows the **original**. At PostCityInit a core with a read-only host starts
+     (`docs/specs/occupant-manager.md`) against the `fc4_occmgr` core. It follows **whichever manager the city
+     holds** - the original, or the `enable = occmgr` replacement below, whose wrapper and record it then checks.
+     At PostCityInit a core with a read-only host starts
      from the original's record (its own `Write` into memory); each occupant's stored box and flag 1 are read from
      the occupant into the host's own state, which the core then changes instead of the occupant (nothing is
      posted, initialised or shut down; the core's references are audited AddRefs). The core follows the Insert,
@@ -1890,11 +1918,29 @@ detail 14 records (8 bytes, 403 saves have none), all identical.
      occmgr shadow: probe installed on 18 of 18 slots of vtable … (main thread …)
      occmgr shadow month yyyy-mm-dd: followed=yes|first|resynced occupants=N refs=R record=exact (P set aside)|D
        cells differ (P set aside); silent moves=S; messages ins/rem/move=a/b/c refused=r off-thread=t boxes=x/y;
-       queries on followed|fresh core q/Q (every slot exact)| differ: sN=e/t …; probe: slots=18 main=… other=… (threads tid:calls …)
+       queries on followed|fresh core q/Q (every slot exact)| differ: sN=e/t …; msgorder=a/b (exact)| destroy=o/n/e;
+       probe: slots=18 main=… other=… (threads tid:calls …)
        overlaps=… slot12=… overflow=0; stray releases=0; mismatches=N[; differences: …]
      occmgr shadow: city shutdown: N month lines, M with mismatches=0; resyncs=K; per slot exact/total: 25=…;
        probe: … thread tid (main): s1=… …
      ```
+
+     `msgorder` is the message-order comparison (glue25): the manager's own messages (Insert `0x99EF1142`, Remove
+     `0x99EF1143`, Move `0x99EF1146`) as the followed manager posts them against the core's own posts, element by
+     element on kind, occupant and data4. `destroy=o/n/e` is §5.3 step 4's interleaving over the `0x99EF1141`
+     stream: `o` Destroy messages immediately after their own Remove, `n` whose own Remove is outstanding but not
+     just before them (the Removes and the Destroys batched the other way round - a mismatch), and `e` of occupants
+     shut down outside the manager (counted only). Success is `msgorder=… (exact)` and `destroy=…/0/…`.
+   - **Occupant manager** (`enable = occmgr`; `plugin/cFC4OccMgr.*`, over the `fc4_occmgr` core): the city's
+     `cSC4OccupantManager` (class `0x098F964D`, city component 4). It answers `cISC4OccupantManager`
+     (occupant-manager.md §11, 50 slots in the game's compiled order - every overload pair has a unique name and
+     slots 46/47 are typed-first, §9.4), `cIGZSerializable` at +4 and `cIGZMessageTarget2` at +8. The grid of
+     192 x 192 64 m cells, the newest-first cell lists, the Insert / Remove / RemoveOccupants / Move message
+     order, the queries and the v1 save record all live in the core; the class adapts the interfaces and the
+     `fc4_occmgr_host` table (occupant AddRef / Release / Init / Shutdown / box / flags / `PostOccupantMessage`,
+     and `resolve_ref` for the save's references). `Read` runs before `Init` and sizes nothing from the city.
+     Lines: `occmgr Write|Read -> … (version 1, size … counts … rows=… holders=… nodes=…)`. **Off by default**;
+     the `occmgr_shadow` differential above follows this manager when it is on.
 
      Success is `mismatches=0` on every line (they count cell, box and query differences and stray releases).
      `refused` counts followed messages the core refused (an Insert of an occupant already read from the record, a
@@ -1990,6 +2036,64 @@ detail 14 records (8 bytes, 403 saves have none), all identical.
        pauses=…; posts original=… matched=… unmatched=0 pending=…; values=… differing=0; mismatches=0;
        comparisons=C clean=C
      ```
+   - **Prop manager and lot configuration manager replacements** (`enable = propmgr`, `enable = lotcfg`;
+     `plugin/cFC4PropManager.*`, `plugin/cFC4LotConfigManager.*`, over the `fc4_prop_manager` and
+     `fc4_lot_config_manager` cores, docs/specs/prop-lotconfig.md Parts A and B; the glue21 lane). Both are
+     **off by default** and swap in through the GZCOM registry (`disable` still wins). The prop manager is the
+     city's `cSC4PropManager` (class `0xA990BD10`, city component 5): the prop catalogue (process-wide, built
+     once), the catalogue queries, `CreateProp` / `CreateGenericProp`, adding and removing city, lot, street and
+     building props, and `Write` / `Read`. The lot configuration manager is `cSC4LotConfigurationManager`
+     (class `0x299062C0`, component 9): the configuration map and family set, the set queries, the building
+     tests and `Write` / `Read`. Neither interface is subclassed from the SDK's: `plugin/FC4PropLotInterfaces.h`
+     and `plugin/FC4TractInterfaces.h` declare `cFC4ISC4PropManager` / `cFC4ISC4LotConfigurationManager` with no
+     overloads, in the game's verified slot order (§A9 slots 0-40, §B7 slots 0-28; the last slot of each is the
+     class's scalar deleting destructor).
+
+     Two process-lifetime rules hold for both (glue15 found both the hard way): the catalogues are created once
+     and torn down only at `PreAppShutdown`, and `fc4_lot_config_unload` runs **once** there - never per city or
+     per run, or the map empties and the next rebuild takes a different bucket order than the original's.
+     Lines: `propmgr: process prop catalogue …`, `lotcfg: process configuration catalogue …`, `propmgr: command
+     … registered with the core …`, `propmgr: SetBuildingProps …`, `lotcfg: SetConfigObjects …`.
+
+     Known limit (GLUE21-1): `cSC4LotConfiguration` is **not** GZCOM-creatable (lot-configuration.md §1: "the
+     manager allocates it directly", 0xC0 bytes, constructor `0x004797A0`) and FreeCity4 does not replace that
+     class, so `enable = lotcfg` cannot build a configuration catalogue on a stock game. `create_configuration`
+     probes GZCOM for `0xA99062B4` and refuses when it does not answer rather than inventing a layout; the log
+     says `cSC4LotConfiguration (0xA99062B4) is not GZCOM-creatable … (GLUE21-1)`.
+   - **Prop manager, lot configuration and tutorial shadows** (`propmgr_shadow = 1`, `lotcfg_shadow = 1`,
+     `tutorial_shadow = 1`, env `FC4_PROPMGR_SHADOW` / `FC4_LOTCFG_SHADOW` / `FC4_TUTORIAL_SHADOW`; off by
+     default; `propmgr_shadow_cells = N` sample cells a run, default 32, 1..256; `plugin/FC4PropLotShadow.h`; the
+     glue15 lane). Same-process differentials of `cSC4PropManager`, `cSC4LotConfigurationManager` and
+     `cSC4TutorialSystem`: at `PostCityInit`, every `SimNewMonth` and `PreSave` the class the city holds is
+     written to memory, a FreeCity4 core is read from that record over a **read-only** host, and the answers are
+     compared. Compared: the prop catalogue in bucket order (each type's key and 0x1C-byte profile, each
+     family's members, the catalogue message's data2), `GetCityProps` / `GetLotProps` / `GetStreetProps` on
+     sample cells, `CreateProp` on sample types, both records byte for byte and reference by reference, the lot
+     configuration map and family set in bucket order, each configuration's object array at the city detail, the
+     ID-set queries and `GetObjectIDArray` on samples, and the tutorial's `IsTutorial`, task number and GUID.
+     Not compared (logged at start): `GetBuildingProps` (the `0xA8322B7F` property's layout is not in
+     docs/abi), every call that changes the city, the filter caches, the footprints, `PostCityInit`'s building
+     information, and the tutorial window, registry and cheat (TU6, TU7).
+
+     Since the glue21 lane the shadows stay **on** when a replacement is installed: they then compare
+     FreeCity4's own class against the private core, which is a class-layer self-check of the vtable, the QI
+     table and the record round trip (over the original it is the original-vs-core differential). The shadow and
+     the replacement keep separate process catalogues and neither tears the other's down. Lines
+     (`mismatches=N` on each):
+
+     ```
+     propmgr shadow (catalogue|queries|CreateProp|record) YYYY-MM-DD load|month|save: ...
+     lotcfg shadow (map|families|arrays|queries|record) YYYY-MM-DD load|month|save: ...
+     tutorial shadow (state|record) YYYY-MM-DD load|month|save: ...
+     ```
+
+     and at city shutdown one totals line per shadow:
+     `<name> shadow totals: lines=N exact=E mismatched=M incomplete=I`. Success is `mismatched=0`.
+   - **Tutorial system replacement** (`enable = tutorial`; `plugin/cFC4Tutorial.*`, over the `fc4_tutorial`
+     core, docs/specs/tutorial.md; the glue15 lane). The city's `cSC4TutorialSystem` (class `0xAA3836FB`, city
+     component 48): the 11-byte v2 record with the GUID mapping, `IsTutorial` and the getters, `Init` /
+     `Shutdown`, and `fc4::TutorialIsTutorial` (what the fire host and the flammability glue read instead of
+     tutorial slot 8). **Off by default**. There is no tutorial window, registry or cheat (TU6, TU7).
    - **Network manager and network lot manager** (`enable = netmgr`, `enable = netlot`;
      `plugin/cFC4NetworkManager.*`, `plugin/cFC4NetworkLotManager.*`, over the `fc4_netmgr` / `fc4_netlot` cores):
      the city's `cSC4NetworkManager` (class `0xC990BD46`, component 53, the slot 38 getter) and

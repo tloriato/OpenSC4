@@ -316,7 +316,24 @@ static_assert(sizeof(GameList<cIGZUnknown*>) == sizeof(void*), "list layout: the
 // The game passes its sets by reference (flora slots 13 and 14): we insert,
 // never construct or destroy them. Sets we create ourselves (tests) are
 // destroyed by the destructor (nodes and buckets freed to Alloc).
-template <typename Alloc = StlNodeAllocator>
+// The bucket of a value (allocators.md, hash_set: the identity for
+// hash_set<uint32_t>).
+struct IdentityHashU32 {
+    static uint32_t Of(uint32_t v) { return v; }
+};
+
+// The bucket hash of the game's hash_set<cISC4LotConfiguration*> (slots 9-11
+// of the lot configuration manager). MEASURED, not specified (question PL20):
+// glue21fix2-pin-1's growth-pass walk over a slot-9 set we filled with v mod n
+// jumped between buckets exactly as an increment that recomputes the bucket
+// as (v >> 2) mod n does (26 of 26 chain-end transitions; identity: 0), and
+// cycled over 6 nodes forever. The walk only terminates when the nodes sit
+// in the buckets the game's own hasher gives.
+struct PointerHashU32 {
+    static uint32_t Of(uint32_t v) { return v >> 2; }
+};
+
+template <typename Alloc = StlNodeAllocator, typename Hash = IdentityHashU32>
 class GameHashSetU32 {
 public:
     struct Node {
@@ -351,10 +368,35 @@ public:
     bool contains(uint32_t v) const {
         const size_t n = bucket_count();
         if (n == 0) return false;
-        for (Node* p = begin_[v % n]; p != nullptr; p = p->next) {
+        for (Node* p = begin_[Hash::Of(v) % n]; p != nullptr; p = p->next) {
             if (p->value == v) return true;
         }
         return false;
+    }
+
+    // Visits every value in bucket order (slot-12-style release walks).
+    template <typename F>
+    void ForEach(F&& f) {
+        for (Node** b = begin_; b != end_; ++b) {
+            for (Node* n = *b; n != nullptr; n = n->next) f(n->value);
+        }
+    }
+
+    // Empties the set: every node is freed to Alloc and every bucket head is
+    // nulled, so the game's own destructor afterwards finds empty chains and
+    // only frees the bucket buffer. Values are untouched: the caller has
+    // already released whatever references it added per element.
+    void ClearNodes() {
+        for (Node** b = begin_; b != end_; ++b) {
+            Node* n = *b;
+            while (n != nullptr) {
+                Node* next = n->next;
+                Alloc::Free(n);
+                n = next;
+            }
+            *b = nullptr;
+        }
+        count_ = 0;
     }
 
     // As the game's insert (0x00624DD0): resize(count + 1) first, then a value
@@ -364,7 +406,7 @@ public:
         if (!Rehash(count_ + 1)) return false;
         const size_t n = bucket_count();
         if (n == 0) return false;
-        Node*& head = begin_[v % n];
+        Node*& head = begin_[Hash::Of(v) % n];
         for (Node* p = head; p != nullptr; p = p->next) {
             if (p->value == v) return false;
         }
@@ -407,7 +449,7 @@ private:
             Node* p = begin_[i];
             while (p != nullptr) {
                 Node* next = p->next;
-                Node*& head = fresh[p->value % n];
+                Node*& head = fresh[Hash::Of(p->value) % n];
                 p->next = head;
                 head = p;
                 p = next;

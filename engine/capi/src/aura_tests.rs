@@ -342,6 +342,15 @@ pub(crate) unsafe extern "C" fn department_funding(u: *mut c_void, dept: u32, ou
     *out = game(u).funding.get();
     true
 }
+/// The landmark occupants of the state-3 test (0x77, 0x78) belong to
+/// department 0x1234 (a department grid with a non-zero instance).
+pub(crate) unsafe extern "C" fn budget_item_department(_: *mut c_void, occ: u64, _purpose: u32, out: *mut u32) -> bool {
+    if occ != 0x77 && occ != 0x78 {
+        return false;
+    }
+    *out = 0x1234;
+    true
+}
 pub(crate) unsafe extern "C" fn tax_rate(_: *mut c_void, _index: i32) -> f32 {
     9.0
 }
@@ -437,7 +446,7 @@ pub(crate) fn host(g: &Game) -> fc4_aura_host {
         occupant_property: Some(occupant_property),
         occupant_type: Some(occupant_type),
         occupant_position: Some(occupant_position),
-        budget_item_department: None,
+        budget_item_department: Some(budget_item_department),
         department_funding: Some(department_funding),
         tax_rate: Some(tax_rate),
         cumulative_offset: Some(cumulative_offset),
@@ -982,6 +991,19 @@ impl Follower {
         }
         assert!(message(self.a, msg_type, 5, 0));
         let to = state_of(self.a).state;
+        if from == 3 && to == 3 {
+            // §6.3: the original took one department (the plugin sees its
+            // cursor move); ours takes one too.
+            let step = fc4_aura_shadow_step_in {
+                struct_size: std::mem::size_of::<fc4_aura_shadow_step_in>() as u32,
+                from,
+                to,
+                julian: self.julian,
+                work_grid: 0,
+            };
+            self.calls.push(unsafe { fc4_aura_shadow_step(self.s, &step) });
+            return;
+        }
         if from == to {
             return;
         }
@@ -1082,12 +1104,18 @@ fn shadow_create_checks_its_arguments() {
         let mut bad = step;
         bad.struct_size = 16;
         assert_eq!(fc4_aura_shadow_step(s, &bad), -1);
-        for (from, to) in [(1, 18), (-1, 2), (3, 3)] {
+        for (from, to) in [(1, 18), (-1, 2), (4, 4)] {
             bad = step;
             bad.from = from;
             bad.to = to;
             assert_eq!(fc4_aura_shadow_step(s, &bad), -1);
         }
+        // 3 -> 3 is the department step (§6.3): with ours not in state 3 it
+        // runs nothing (0, a desync).
+        bad = step;
+        bad.from = 3;
+        bad.to = 3;
+        assert_eq!(fc4_aura_shadow_step(s, &bad), 0);
         fc4_aura_shadow_destroy(s);
         stop(a);
     }
@@ -1236,6 +1264,57 @@ fn shadow_follows_occupant_messages() {
     f.month(&g);
     let (_, l) = f.cycle(&g);
     assert!(l.contains("18 moves, 17 calls, 1 occupant messages)"), "{l}");
+    unsafe { fc4_aura_shadow_destroy(s) };
+    stop(a);
+}
+
+/// §6.3 / §14.3: state 3 takes one department per call. A landmark inserted
+/// between the original's department call and its copy call reaches the
+/// landmark map one cycle later on both sides, because ours takes its
+/// department call at the original's moment (verify-regress4: in game a
+/// landfill tile's cone, 208 tracts / 188, differed when ours summed every
+/// department at the 3 -> 4 move).
+#[test]
+fn shadow_follows_state_3_one_department_per_call() {
+    const LANDMARK: u64 = 0x77;
+    const LANDMARK2: u64 = 0x78;
+    let g = Game::new();
+    g.set(LANDMARK, ids::PROP_LANDMARK_EFFECT, mem::SINT32, true, &[-100i32, 8]);
+    g.set(LANDMARK2, ids::PROP_LANDMARK_EFFECT, mem::SINT32, true, &[-100i32, 8]);
+    let a = started(&g);
+    let s = shadow(&g);
+    assert!(baseline(s, a, &g).0);
+    let mut f = Follower::new(s, a);
+    // A department grid on both sides before the cycle.
+    assert!(message(a, msg::OCCUPANT_INSERTED, 0, LANDMARK));
+    assert!(unsafe { fc4_aura_shadow_occupant(s, LANDMARK, true) });
+    let (r, l) = f.cycle(&g);
+    assert_eq!(r, 0, "{l}");
+    let landmark = |p: *const fc4_aura| {
+        let t = unsafe { fc4_aura_grid(p, FC4_AURA_GRID_LANDMARK) };
+        g.value(t, 0, 0)
+    };
+    let before = landmark(a);
+    assert!(before < 0.0, "the first landmark's cone: {before}");
+    // Next cycle: the original takes its one department, then the second
+    // landmark arrives (to both), then the original copies and moves to 4.
+    f.month(&g);
+    f.until(&g, 3);
+    let n = f.calls.len();
+    f.deliver(&g, msg::SIM_IDLE);
+    assert_eq!(state_of(a).state, 3, "one department: still in state 3");
+    assert_eq!(f.calls[n..], [1], "ours took its department call");
+    assert!(message(a, msg::OCCUPANT_INSERTED, 0, LANDMARK2));
+    assert!(unsafe { fc4_aura_shadow_occupant(s, LANDMARK2, true) });
+    let (r, l) = f.cycle(&g);
+    assert_eq!(r, 0, "{l}");
+    assert!(l.contains("landmark map mismatches=0 max|d|=0;"), "{l}");
+    assert_eq!(landmark(a), before, "the second landmark is a cycle late");
+    // The cycle after: both maps take it.
+    f.month(&g);
+    let (r, l) = f.cycle(&g);
+    assert_eq!(r, 0, "{l}");
+    assert!(landmark(a) < before, "both landmarks now");
     unsafe { fc4_aura_shadow_destroy(s) };
     stop(a);
 }

@@ -119,6 +119,56 @@ LONG ClaimForeignReport(uintptr_t addr) {
     return 0;
 }
 
+// Registers, then the return addresses on the faulting stack, into the
+// executable or our image (who called what). Shared by the foreign and the
+// in-image fault reports. Runs on the faulting thread: no allocation, no
+// loader-lock calls, no waiting for the log lock (LogWait 0), and the stack
+// is read only within the thread's own stack bounds.
+void LogContextStack(const CONTEXT* c) {
+#if defined(_M_IX86)
+    if (c == nullptr) return;
+    LogWait(0, "  registers: eax=0x%08lX ebx=0x%08lX ecx=0x%08lX edx=0x%08lX esi=0x%08lX edi=0x%08lX ebp=0x%08lX",
+            static_cast<unsigned long>(c->Eax), static_cast<unsigned long>(c->Ebx),
+            static_cast<unsigned long>(c->Ecx), static_cast<unsigned long>(c->Edx),
+            static_cast<unsigned long>(c->Esi), static_cast<unsigned long>(c->Edi),
+            static_cast<unsigned long>(c->Ebp));
+    // The x87 state at the fault (FC4DiagContext.h): a stack full of
+    // leftovers or the indefinite NaN points at a wrong return channel.
+    char line[256];
+    FormatContextFpu(c, line, sizeof(line));
+    LogWait(0, "  %s", line);
+    const NT_TIB* tib = reinterpret_cast<const NT_TIB*>(NtCurrentTeb());
+    const uintptr_t top = reinterpret_cast<uintptr_t>(tib->StackBase);
+    const uintptr_t esp = c->Esp;
+    const uintptr_t* sp = reinterpret_cast<const uintptr_t*>(esp);
+    // The first 8 raw dwords at esp (arguments of the faulting call),
+    // read only within the thread's own stack.
+    const bool espReadable = esp >= reinterpret_cast<uintptr_t>(tib->StackLimit) && esp < top &&
+                             top - esp >= 8 * sizeof(uint32_t);
+    FormatEspDwords(line, sizeof(line), static_cast<uint32_t>(esp),
+                    espReadable ? reinterpret_cast<const uint32_t*>(esp) : nullptr);
+    LogWait(0, "  %s", line);
+    int found = 0;
+    int ours = 0;
+    if (esp >= reinterpret_cast<uintptr_t>(tib->StackLimit) && esp < top) {
+        const unsigned words = static_cast<unsigned>((top - esp) / sizeof(uintptr_t));
+        for (unsigned i = 0; i < 1024 && i < words && found < 24; ++i) {
+            const uintptr_t v = sp[i];
+            if (!(InImage(v) || InMainExe(v)) || !IsLikelyReturnAddress(v)) continue;
+            char w[96];
+            DescribeAddress(v, w, sizeof(w));
+            LogWait(0, "  stack[esp+0x%03X] = %s", i * 4, w);
+            ++found;
+            if (InImage(v)) ++ours;
+        }
+    }
+    if (found == 0) LogWait(0, "  no return address into the executable or FreeCity4.dll in the top 4 KiB of the stack");
+    else if (ours == 0) LogWait(0, "  no return address into FreeCity4.dll among them");
+#else
+    (void)c;
+#endif
+}
+
 // Runs on the faulting thread, which may hold any lock (the heap, the loader
 // lock, a game lock). So: no allocation, no loader-lock calls (module names
 // come from the watchdog's snapshot), no waiting for the log lock (LogWait 0
@@ -133,48 +183,8 @@ void LogForeign(EXCEPTION_POINTERS* ep, LONG report) {
                 "at most %ld for this address)", where, report, kReportsPerSite);
     LogException(0, prefix, ep->ExceptionRecord, ep->ContextRecord);
 #if defined(_M_IX86)
-    // Registers, then the return addresses on the faulting stack, into the
-    // executable or our image (who called what). The game's own call chain is
-    // what tells a bad size or pointer we returned from a game-side failure.
     if (ep->ContextRecord != nullptr) {
-        const CONTEXT* c = ep->ContextRecord;
-        LogWait(0, "  registers: eax=0x%08lX ebx=0x%08lX ecx=0x%08lX edx=0x%08lX esi=0x%08lX edi=0x%08lX ebp=0x%08lX",
-                static_cast<unsigned long>(c->Eax), static_cast<unsigned long>(c->Ebx),
-                static_cast<unsigned long>(c->Ecx), static_cast<unsigned long>(c->Edx),
-                static_cast<unsigned long>(c->Esi), static_cast<unsigned long>(c->Edi),
-                static_cast<unsigned long>(c->Ebp));
-        // The x87 state at the fault (FC4DiagContext.h): a stack full of
-        // leftovers or the indefinite NaN points at a wrong return channel.
-        char line[256];
-        FormatContextFpu(c, line, sizeof(line));
-        LogWait(0, "  %s", line);
-        const NT_TIB* tib = reinterpret_cast<const NT_TIB*>(NtCurrentTeb());
-        const uintptr_t top = reinterpret_cast<uintptr_t>(tib->StackBase);
-        const uintptr_t esp = c->Esp;
-        const uintptr_t* sp = reinterpret_cast<const uintptr_t*>(esp);
-        // The first 8 raw dwords at esp (arguments of the faulting call),
-        // read only within the thread's own stack.
-        const bool espReadable = esp >= reinterpret_cast<uintptr_t>(tib->StackLimit) && esp < top &&
-                                 top - esp >= 8 * sizeof(uint32_t);
-        FormatEspDwords(line, sizeof(line), static_cast<uint32_t>(esp),
-                        espReadable ? reinterpret_cast<const uint32_t*>(esp) : nullptr);
-        LogWait(0, "  %s", line);
-        int found = 0;
-        int ours = 0;
-        if (esp >= reinterpret_cast<uintptr_t>(tib->StackLimit) && esp < top) {
-            const unsigned words = static_cast<unsigned>((top - esp) / sizeof(uintptr_t));
-            for (unsigned i = 0; i < 1024 && i < words && found < 24; ++i) {
-                const uintptr_t v = sp[i];
-                if (!(InImage(v) || InMainExe(v)) || !IsLikelyReturnAddress(v)) continue;
-                char w[96];
-                DescribeAddress(v, w, sizeof(w));
-                LogWait(0, "  stack[esp+0x%03X] = %s", i * 4, w);
-                ++found;
-                if (InImage(v)) ++ours;
-            }
-        }
-        if (found == 0) LogWait(0, "  no return address into the executable or FreeCity4.dll in the top 4 KiB of the stack");
-        else if (ours == 0) LogWait(0, "  no return address into FreeCity4.dll among them");
+        LogContextStack(ep->ContextRecord);
     }
 #endif
     DumpCallRingWait(0, "  ");
@@ -193,6 +203,9 @@ LONG CALLBACK VectoredHandler(EXCEPTION_POINTERS* ep) {
     if (InImage(addr) && code != 0x406D1388 && code != 0x40010006 && code != 0x4001000A) {
         if (InterlockedIncrement(&g_vehLogged) <= kMaxVehLogs) {
             LogException(0, "first-chance exception in FreeCity4.dll", ep->ExceptionRecord, ep->ContextRecord);
+            // The same register + return-address walk the foreign faults get:
+            // an in-image AV needs its caller chain named to be fixable.
+            LogContextStack(ep->ContextRecord);
         }
     } else if (!InImage(addr) && (code == EXCEPTION_ACCESS_VIOLATION || code == EXCEPTION_ILLEGAL_INSTRUCTION ||
                                   code == EXCEPTION_PRIV_INSTRUCTION || code == EXCEPTION_INT_DIVIDE_BY_ZERO ||

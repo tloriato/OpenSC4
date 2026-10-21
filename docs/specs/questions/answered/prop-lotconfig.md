@@ -42,3 +42,30 @@ TU4-TU5 (tutorial.md already has TU3).
 <!-- from: From the prop manager, lot configuration manager and tutorial cores (2026-10-16) -->
 - ~~**PL14:** (§B5.7) what counts as a valid retaining wall ID for the slot 28 list in FixLotConfiguration, and is only
   the first invalid ID removed (code 6)? [a host callback decides; the first invalid ID is removed]~~ **ANSWERED 2026-10-16 (re-answers25):** MATCHES on "first invalid only"; the rule is no host choice: an ID is valid when building development slot 28 `GetLotRetainingWallKeyFromType` (the held simulator, `0x0048B800`) returns true, i.e. it is the instance of an `ExemplarType 0x15` exemplar in the simulator's wall catalogue (`0x00698FC0`, lookup `0x00698250`). The first invalid ID is erased and the slot returns at once (`0x0048B822`–`0x0048B858`): the earlier code, else 6. prop-lotconfig §B5.7.
+
+## From the parked glue21 lotcfg replacement (copied verbatim by re-pl19-run3, 2026-10-21)
+
+- **PL19:** (§B5.2, §B7 slot 9; the SimNewDay growth-pass release wave) with the PL18 double-add
+  (2 references per matched configuration per slot-9 query) the day-29 deletes are gone and the
+  deletes move to day 30 and shrink to the configurations with no game-lot reference - but they do
+  not stop: the game's release wave (SimCity 4.exe `0x00709798`) drains a touched configuration to
+  ZERO whatever its reference count. Measured with the per-op trace restored
+  (glue21fix2-ref2-2: no cushion; -ref2-3: a 40-reference diagnostic cushion per matched config):
+  per configuration the load is create +1, core `add_configuration` +1, creation release -1
+  (count 1), the game's own bulk wave +1 (exe `0x0069C385`), the game's per-candidate AddRefs
+  (exe `0x006BF53D`, 1..66 per configuration over 736 of 1909), the slot-9 query adds (+2 per
+  matched configuration: the core's §B5.2 add plus the plugin loop's), then the wave releases
+  -1 per configuration per pass until the wrapper is DELETED: in ref2-3 five configurations of
+  count 44 were released 43 logged times plus the deleting 44th; two others of the same count 44
+  were released exactly once and stopped; in ref2-2 (no cushion) a count-4 configuration was
+  released 4 times (deleted) and a count-5 one 4 times (survived at 1). The release count per
+  configuration therefore follows the game's own candidate/pass structure, not the references it
+  acquired (a configuration the game never AddRef'd was released 44 times), and no reference
+  hand-out can balance it. Which container does `0x00709798` iterate (the growth developer's
+  per-candidate list? the configuration set's entries per Grow pass), when does it stop, and what
+  does the ORIGINAL do so its configurations are never drained to 0 (its catalogue reference is
+  evidently never released)? Until this is answered from the exe, no FreeCity4 reading of slot 9 /
+  slot 20 can make the lotcfg replacement game-clean; the double-add is kept (it strictly improves
+  the ledger) and the fault stands between the run and a clean verdict.
+
+  **ANSWERED 2026-10-21 (re-pl19-run3):** DIFFERS — `0x00709798` is the return address of the Release at `0x00709795` in `cSC4TractDeveloper::ListPossibleLotConfigurations` (`0x00709650`, once per Grow at `0x0070D4EA`); it walks the fresh local hash set that slot 9 filled, releases each element once, stops at the end of the set. The original balances it inside slot 9: one AddRef per returned element on EVERY call, cache hit included (`0x0048B29F`-`0x0048B2BC`); the filter cache holds no references. Net per configuration per query is 0; no extra add elsewhere (the PL18 double-add is wrong). A per-query drain means the add is skipped on some calls (e.g. cache hits) or lands on another object than the one put in the set. Rule: prop-lotconfig.md §B5.2 "Slot 9 reference rule", §B5.4, §B7 slot 9.

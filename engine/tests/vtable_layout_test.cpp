@@ -554,6 +554,132 @@ const Expect kLot[] = {
 
 }  // namespace
 
+// ---- occupant manager (occupant-manager.md §11) ----------------------------------------------------
+//
+// 50 slots; slot 49 is the deleting destructor (not declared). The load-bearing
+// part is the overload order: 28/29 .. 44/45 are filter-first, but 46/47 are
+// TYPED-first (§9.4) - the only pair the game declares the other way round.
+// If either pair were laid out from the SDK's declaration order, the names here
+// would not run their own slot.
+
+#define PB(N, NAME, ...) bool NAME(__VA_ARGS__) override { g_hit = N; return false; }
+#define PI(N, NAME, ...) int32_t NAME(__VA_ARGS__) override { g_hit = N; return 0; }
+
+struct OccMgrProbe final : cFC4ISC4OccupantManager {
+    bool QueryInterface(uint32_t, void**) override { return false; }
+    uint32_t AddRef() override { return 1; }
+    uint32_t Release() override { return 1; }
+    PB(3, Init, )
+    PB(4, Shutdown, )
+    PB(5, SetCitySize, float, float)
+    PB(6, GetOccupantManagerCellSizes, float&, float&)
+    PB(7, GetWorldCellCount, int32_t&, int32_t&)
+    PB(8, GetOccupantManagerCellCount, int32_t&, int32_t&)
+    PB(9, GetOccupantManagerCellBounds, int32_t&, int32_t&, int32_t&, int32_t&)
+    PB(10, WorldCellToOccupantManagerCell, int32_t, int32_t, int32_t&, int32_t&)
+    PB(11, OccupantManagerCellToWorldCell, int32_t, int32_t, int32_t&, int32_t&)
+    PB(12, WorldCellToStandardCityCell, int32_t, int32_t, int32_t&, int32_t&)
+    PB(13, StandardCityCellToWorldCell, int32_t, int32_t, int32_t&, int32_t&)
+    PB(14, WorldCellToPosition, int32_t, int32_t, float&, float&)
+    PB(15, PositionToWorldCell, float, float, int32_t&, int32_t&)
+    PB(16, OccupantManagerCellToPosition, int32_t, int32_t, float&, float&)
+    PB(17, PositionToOccupantManagerCell, float, float, int32_t&, int32_t&)
+    PB(18, StandardCityCellToPosition, int32_t, int32_t, float&, float&)
+    PB(19, PositionToStandardCityCell, float, float, int32_t&, int32_t&)
+    PB(20, InsertOccupant, cISC4Occupant*, uint32_t)
+    PB(21, RemoveOccupant, cISC4Occupant*, bool, uint32_t)
+    PB(22, RemoveOccupants, cISC4OccupantFilter*, bool, uint32_t)
+    PB(23, RemoveOccupantsOfType, uint32_t, bool, uint32_t)
+    PB(24, MoveOccupant, cISC4Occupant*, bool)
+    PB(25, IsCellEmpty, int32_t, int32_t)
+    PI(26, GetBoundingCells, int32_t, int32_t, int32_t (*)[2], int32_t&)
+    PB(27, FindOccupant, cISC4Occupant*, bool, int32_t*, int32_t*)
+    PB(28, GetFirstOccupantByPositionFilter, cISC4Occupant*&, float, float, cISC4OccupantFilter*)
+    PB(29, GetFirstOccupantByPositionTyped, cISC4Occupant*&, float, float, uint32_t)
+    PB(30, GetFirstOccupantFilter, cISC4Occupant*&, int32_t, int32_t, cISC4OccupantFilter*)
+    PB(31, GetFirstOccupantTyped, cISC4Occupant*&, int32_t, int32_t, uint32_t)
+    PB(32, GetFirstOccupantByStandardCityCellFilter, cISC4Occupant*&, int32_t, int32_t, cISC4OccupantFilter*)
+    PB(33, GetFirstOccupantByStandardCityCellTyped, cISC4Occupant*&, int32_t, int32_t, uint32_t)
+    PB(34, GetFirstOccupantByStandardCityCellsFilter, cISC4Occupant*&, SC4Point<int> const*, SC4Point<int> const*,
+        cISC4OccupantFilter*)
+    PB(35, GetFirstOccupantByStandardCityCellsTyped, cISC4Occupant*&, SC4Point<int> const*, SC4Point<int> const*,
+        uint32_t)
+    PB(36, GetOccupantsByBBoxFilter, SC4List<cISC4Occupant*>&, float const*, float const*, cISC4OccupantFilter*,
+        uint32_t)
+    PB(37, GetOccupantsByBBoxTyped, SC4List<cISC4Occupant*>&, float const*, float const*, uint32_t, uint32_t)
+    PB(38, GetOccupantsByOccupantManagerCellsFilter, SC4List<cISC4Occupant*>&, int32_t const*, int32_t const*,
+        cISC4OccupantFilter*, uint32_t)
+    PB(39, GetOccupantsByOccupantManagerCellsTyped, SC4List<cISC4Occupant*>&, int32_t const*, int32_t const*,
+        uint32_t, uint32_t)
+    PB(40, GetOccupantsByStandardCityCellsFilter, SC4List<cISC4Occupant*>&, SC4Point<int> const*,
+        SC4Point<int> const*, cISC4OccupantFilter*, uint32_t)
+    PB(41, GetOccupantsByStandardCityCellsTyped, SC4List<cISC4Occupant*>&, SC4Point<int> const*,
+        SC4Point<int> const*, uint32_t, uint32_t)
+    PB(42, IterateOccupantsByBBoxFilter, bool (*)(cISC4Occupant*, void*), void*, float const*, float const*,
+        cISC4OccupantFilter*)
+    PB(43, IterateOccupantsByBBoxTyped, bool (*)(cISC4Occupant*, void*), void*, float const*, float const*, uint32_t)
+    PB(44, IterateOccupantsFilter, bool (*)(cISC4Occupant*, void*), void*, int32_t const*, int32_t const*,
+        cISC4OccupantFilter*)
+    PB(45, IterateOccupantsTyped, bool (*)(cISC4Occupant*, void*), void*, int32_t const*, int32_t const*, uint32_t)
+    PB(46, IterateOccupantsByStandardCityCellTyped, bool (*)(cISC4Occupant*, void*), void*, int32_t const*,
+        int32_t const*, uint32_t)
+    PB(47, IterateOccupantsByStandardCityCellFilter, bool (*)(cISC4Occupant*, void*), void*, int32_t const*,
+        int32_t const*, cISC4OccupantFilter*)
+    PB(48, ReleaseOccupantList, SC4List<cISC4Occupant*>&)
+};
+
+const Expect kOccMgr[] = {
+    {3, 0, false, "Init"},
+    {4, 0, false, "Shutdown"},
+    {5, 2, false, "SetCitySize"},
+    {6, 2, false, "GetOccupantManagerCellSizes"},
+    {7, 2, false, "GetWorldCellCount"},
+    {8, 2, false, "GetOccupantManagerCellCount"},
+    {9, 4, false, "GetOccupantManagerCellBounds"},
+    {10, 4, false, "WorldCellToOccupantManagerCell"},
+    {11, 4, false, "OccupantManagerCellToWorldCell"},
+    {12, 4, false, "WorldCellToStandardCityCell (bug)"},
+    {13, 4, false, "StandardCityCellToWorldCell"},
+    {14, 4, false, "WorldCellToPosition"},
+    {15, 4, false, "PositionToWorldCell"},
+    {16, 4, false, "OccupantManagerCellToPosition"},
+    {17, 4, false, "PositionToOccupantManagerCell"},
+    {18, 4, false, "StandardCityCellToPosition"},
+    {19, 4, false, "PositionToStandardCityCell"},
+    {20, 2, false, "InsertOccupant"},
+    {21, 3, false, "RemoveOccupant"},
+    {22, 3, false, "RemoveOccupants(filter)"},
+    {23, 3, false, "RemoveOccupants(type)"},
+    {24, 2, false, "MoveOccupant"},
+    {25, 2, false, "IsCellEmpty"},
+    {26, 4, false, "GetBoundingCells"},
+    {27, 4, false, "FindOccupant"},
+    {28, 4, false, "GetFirstOccupantByPosition(filter)"},
+    {29, 4, false, "GetFirstOccupantByPosition(type)"},
+    {30, 4, false, "GetFirstOccupant(filter)"},
+    {31, 4, false, "GetFirstOccupant(type)"},
+    {32, 4, false, "GetFirstOccupantByStandardCityCell(filter)"},
+    {33, 4, false, "GetFirstOccupantByStandardCityCell(type)"},
+    {34, 4, false, "GetFirstOccupantByStandardCityCells(filter)"},
+    {35, 4, false, "GetFirstOccupantByStandardCityCells(type)"},
+    {36, 5, false, "GetOccupantsByBBox(filter)"},
+    {37, 5, false, "GetOccupantsByBBox(type)"},
+    {38, 5, false, "GetOccupantsByOccupantManagerCells(filter)"},
+    {39, 5, false, "GetOccupantsByOccupantManagerCells(type)"},
+    {40, 5, false, "GetOccupantsByStandardCityCells(filter)"},
+    {41, 5, false, "GetOccupantsByStandardCityCells(type)"},
+    {42, 5, false, "IterateOccupantsByBBox(filter)"},
+    {43, 5, false, "IterateOccupantsByBBox(type)"},
+    {44, 5, false, "IterateOccupants(filter)"},
+    {45, 5, false, "IterateOccupants(type)"},
+    {46, 5, false, "IterateOccupantsByStandardCityCell(type first)"},
+    {47, 5, false, "IterateOccupantsByStandardCityCell(filter)"},
+    {48, 1, false, "ReleaseOccupantList"},
+};
+
+#undef PB
+#undef PI
+
 int main() {
     SimProbe sim;
     BudgetProbe budget;
@@ -599,6 +725,8 @@ int main() {
         }
     }
     Check("cISC4LineItem", static_cast<cISC4LineItem*>(&line), kLineItem);
+    OccMgrProbe occMgr;
+    Check("cISC4OccupantManager", static_cast<cFC4ISC4OccupantManager*>(&occMgr), kOccMgr);
     if (g_failures == 0) std::printf("vtable layout test: all checks passed\n");
     return g_failures == 0 ? 0 : 1;
 }

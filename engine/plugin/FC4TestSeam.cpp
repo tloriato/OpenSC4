@@ -17,6 +17,7 @@
 #include "FC4BudgetShadow.h"
 #include "FC4CrimeShadow.h"
 #include "FC4DemandShadow.h"
+#include "FC4MySimsShadow.h"  // the mysims1 lane: mysims_shadow
 #include "FC4DevelopmentShadow.h"
 #include "FC4Dialogs.h"
 #include "FC4FlammabilityShadow.h"
@@ -213,6 +214,8 @@ extern "C" __declspec(dllexport) intptr_t __cdecl FC4TestSeam(uint32_t op, void*
             return DispatchShadowTest(static_cast<FC4DispatchShadowTestInput*>(a));
         case kFC4SeamTerrainGlue:  // the glue18 lane (cFC4Terrain.h)
             return TerrainGlueTest(static_cast<FC4TerrainGlueTestInput*>(a));
+        case kFC4SeamMySimsShadow:  // the mysims1 lane (FC4MySimsShadow.h)
+            return fc4::MySimsShadowTest(static_cast<fc4::FC4MySimsShadowTestInput*>(a));
         case kFC4SeamParks:  // the cmglue lane (cFC4Parks.h)
             return a == nullptr ? -1 : fc4::ParksTestZooEscape(static_cast<const FC4ParksTestInput*>(a));
         case kFC4SeamNeighborsConfirm:  // the apply12 lane (NG35)

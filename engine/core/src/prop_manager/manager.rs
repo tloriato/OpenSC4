@@ -309,7 +309,11 @@ impl PropManager {
     // ---- creating props (§A6) ----
 
     /// The class of §A6.1 step 2–3: `class_id` (0 = the default class),
-    /// asked from GZCOM, else a built-in class. One reference.
+    /// asked from GZCOM, else a built-in class. One reference. GLUE21-2
+    /// (prop-developer.md §13.2): the original, when GZCOM does not answer,
+    /// allocates and constructs the occupant itself; the host's
+    /// `create_builtin_prop` is that fallback and 0 means neither route
+    /// produced an occupant.
     fn instantiate(&self, class_id: u32) -> u64 {
         let c = if class_id == 0 { class::DEFAULT_PROP } else { class_id };
         self.host
@@ -328,13 +332,24 @@ impl PropManager {
     }
 
     /// Slot 15 `CreateProp(id)` (§A6.1): the new prop (one reference, the
-    /// caller's), or `None` when `id` is not a prop type.
+    /// caller's), or `None` when `id` is not a prop type or no occupant
+    /// could be made. GLUE21-2 (prop-developer.md §13.2): the original
+    /// never hands back a null occupant - it validates the type, tries
+    /// GZCOM and otherwise allocates and constructs the occupant itself.
+    /// FreeCity4 has no route to that allocate-and-construct pair yet, so a
+    /// failed instantiation fails the call (the original's other exit,
+    /// §13.2 step 1) and every later step is skipped: setting the type on
+    /// or sizing a null token is what handed the game a null prop occupant
+    /// and faulted at `SimCity 4.exe+0x2F44EF`.
     pub fn create_prop(&self, id: u32) -> Option<u64> {
         if !self.is_prop_type_valid(id) {
             return None;
         }
         let class_id = self.prop_profile(id).class_id();
         let p = self.instantiate(class_id);
+        if p == 0 {
+            return None;
+        }
         self.host.set_prop_type(p, id);
         // Step 5: any missing piece skips the rest; always succeeds.
         if let Some(key) = self.prop_key_from_type(id) {
@@ -346,12 +361,16 @@ impl PropManager {
     }
 
     /// Slot 16 `CreateGenericProp(key)` (§A6.2): `None` when the exemplar
-    /// does not load through the global resource manager. The prop type is
+    /// does not load through the global resource manager or no occupant
+    /// could be made (GLUE21-2, as `create_prop`). The prop type is
     /// not set.
     pub fn create_generic_prop(&self, key: ResKey) -> Option<u64> {
         let ex = self.host.load_exemplar(key)?;
         let class_id = props::u32_of(&ex, prop::OCCUPANT_CLASS).unwrap_or(0);
         let p = self.instantiate(class_id);
+        if p == 0 {
+            return None;
+        }
         if let Some(ex) = self.host.attach_exemplar(p, key, true) {
             self.size_prop(p, &ex);
         }

@@ -107,14 +107,14 @@ Most agent loops visit **indices 0–4 only**. Index 5 (My Street sim) is visite
 
 | Field | Initial | Persisted | Notes |
 |---|---|---|---|
-| state | 0 | yes (u8) | 0 none (slot empty), 1 moving in / going home, 2 at home, 3 at work, 4/5/6 trip states (§4.7) |
+| state | 0 | yes (u8) | 0 none (slot empty), 1 moving in, 2 at home, 3 at work, 4 travelling to work, 5 travelling home, 6 travelling elsewhere (a dispatch-tool pylon or other target). Set by `cSC4MySim::DoMessage` on dispatch notifications (§3.3): **trip start** (sub-id `0x4BB71A7E`, `0x0042D364`): destination = default destination (home) → 5 unless the state is 1 (a move-in keeps 1); else destination = commute destination → 4, otherwise 6. **Arrival** (`0x0042D5B3`): current location = home → state 2 (when it was 1, `AnnounceMoveIn` is called right after state := 2); = commute destination → 3; elsewhere unchanged. `DispatchToolLockPylon` sets 6 when the dispatch accepts the pylon `GoTo`; `QuitJob` sets 2 unless 5 |
 | slot | 0 | yes | the UI slot passed to `MoveIn` |
 | residence | null | ref | `cISC4BuildingOccupant` |
 | home lot | null | no | looked up from the residence |
 | home cell x, z | 0 | yes | from the home lot's location |
 | home position x, y, z (metres) | 0 | yes (3 f32) | used by every distance (§4.10) |
 | job | null | ref | `cISC4BuildingOccupant` in this city |
-| neighbour job city | null | **no** | `cISC4RegionalCity`; re-resolved at Init from the saved cell *[inferred]* |
+| neighbour job city | null | **no** | `cISC4RegionalCity`; re-resolved by `Init` (§2.2.1) from the saved neighbour city cell. "Has a neighbour job" everywhere in this spec means this reference is non-null; there is no separate flag |
 | neighbour city cell x, z; commute destination cell x, z | 0 | yes (4 s32) | |
 | jobless days | 0 | yes | |
 | vehicle key | 0 | yes (res key) | |
@@ -131,16 +131,30 @@ Most agent loops visit **indices 0–4 only**. Index 5 (My Street sim) is visite
 | EQ ring index, EQ 6-month delta, EQ ring[6] | 0 | yes | float32 |
 | HQ ring index, HQ delta, HQ ring[6] | 0 | yes | float32 |
 | car key, pedestrian key | 0 | yes (res keys) | automata |
-| two unnamed s32 | 0 | yes (version ≥ 17) | *[inferred: idle offset]* |
+| reserved s32 pair | 0 | yes (version ≥ 17) | **dead data**: zeroed by the constructor, written and read, never otherwise used by any MySim method (all 69 scanned; Windows ctor `0x00429A9E`) — carry the read values and write them back |
 | dispatch | null | ref (`0xEB8B6F9A`) | automata |
 | pylon timer, dispatch tool | — | yes | UI |
-| unnamed bool | false | yes (version ≥ 14) | UI *[inferred]* |
+| pylon locked | false | yes (version ≥ 14) | set to the argument of `DispatchToolLockPylon` (`0x0042728E`); cleared by `DispatchToolDestroyPylon`, `LeaveCity`, `DispatchToolBegin`, `DeleteFromGame`, `Shutdown`; while false `is_pylon_location` is false, and `DispatchToolEnd` (`0x004264C0`) destroys the pylon of a still-active dispatch tool; the pylon timer (§3.3) and `UpdateTripVariables` (§4.6) only act on a locked pylon |
 | last player trip day | 0 | yes (s32, version ≥ 16) | |
-| commute check pending | false | no | set by neighbour-connection removal |
+| commute check pending | false | no | set by neighbour-connection removal and by `Init` (§2.2.1) |
 | last trip-update day | 0 | no | |
 | local building distances (map occupant group → metres) | empty | no | §4.9 |
 | per-MySim RNG | `cRZRandom`, seeded from the wall clock (`0xFFFFFFFF`) at construction | no | §8 |
 | Lua table handle | 0 | no | created on first use |
+
+#### 2.2.1 Neighbour job city at `Init` (`0x0042CCF0`, Windows `0x0042CEF3`–`0x0042CF44`)
+
+Only when state ≠ 0, after the dispatch is created and the home lot looked up:
+
+- If the MySim has **no job** and the saved neighbour city cell is not `(0, 0)` (x ≠ 0 **or** z ≠ 0): ask the
+  region (`cISC4App` slot 35 `+0x8C`, then `cISC4Region::GetCity(x, z)` slot 11 `+0x2C`) for the city at that
+  cell; if one is returned, it becomes the neighbour job city (a null result leaves the current reference as it is,
+  which after a load is null). In both cases the **commute-check flag is set**, so the next daily step runs
+  `CheckCommute` (§4.2 step 2, §4.7), which drops a neighbour job that no longer resolves or connects.
+- Otherwise (the MySim has a job, or the cell is `(0, 0)`): the neighbour job city reference is released.
+
+*[quirk]* A neighbour city at region cell `(0, 0)` is never re-resolved, so a MySim working there loses that
+neighbour job on every load.
 
 ---
 
@@ -224,14 +238,20 @@ The MySim subscribes (at its Init) to `0x0B6F3E27`, `0xAB6F3E2D`, `0x4B6F3EBF`, 
 3. Otherwise: the "tracking" flag := dispatch `CheckFlags(0x100)`.
 4. `UpdateVariables()` (§4.5).
 
-The **first arrival home** (dispatch notification, state 1 → 2) calls `AnnounceMoveIn` (slot 40): if the class's
-"announce" check passes *[inferred: not a reload]*, post `MySimMovedIn` `0xEA3ADA33` (void1 = home occupant,
+The **first arrival home** (dispatch notification, state 1 → 2) calls `AnnounceMoveIn` (slot 40): if `RequestToPlaySound()` (slot 56, `0x00424DE0`) returns true, post `MySimMovedIn` `0xEA3ADA33` (void1 = home occupant,
 data1 = is-male, data2 = wealth); then `UpdateVariables` and push the advisor event `MYSIM_MOVE_IN` `0xCA3E87A8`.
+`RequestToPlaySound` is a sound throttle, **not** a reload test: it is true only when state ≠ 0 and the MySim's
+wall-clock timer (`cRZTimer` in seconds, units 5, constructed with the MySim at `+0x2A0`) shows more than 4 whole seconds since the
+last time it returned true (initially 0; unsigned difference); when true it stores the current reading. So a
+move-in within 4 s of the previous announcement (or of the MySim's construction) posts no `MySimMovedIn`; the
+`UpdateVariables` and the `MYSIM_MOVE_IN` event happen in every case (`0x0042BFF2`).
 
 ### 4.2 Daily step (`simulate_day`, advisor `Simulate(0)`)
 
-Skipped entirely when state = 0, or when the UI service `0xA417445E` (instance `0x5A4`) reports a blocking UI
-state (its slot `+0xA8` returns true) *[inferred: a modal window]*. Otherwise, in order:
+Skipped entirely when state = 0, or while **a modal window is running**: the window manager (framework service
+`0xA417445E`, `cIGZWinMgr` IID `0x5A4`) slot 42 (`+0xA8`, `0x009DB025`) returns true when its modal depth (the
+counter `DoModalWin` increments around its loop) is not 0 — the same test as advisors.md §6 popup gate. The monthly
+step (§4.3) makes the same check. Otherwise, in order:
 
 1. **Job search.** If there is no job, no neighbour job, the MySim is **not retired**, and state = 2 (at home):
    `FindNewJob()`; if it returns false, jobless days += 1.
@@ -298,11 +318,11 @@ value *[quirk]*.
 | `desirability` | wealth 1/2/3 → building development simulator `GetDeveloper(0x1010 / 0x1020 / 0x1030)` → its desirability grid (developer slot 13) → `GetCellValue(homeX, homeZ)` (int16). Other wealth or no developer → not written. |
 | `home_occupant_wealth` | home lot `GetOccupantWealth()` |
 | `local_police_funding`, `local_fire_funding` | the **nearest** police / fire station (police `+0x54` / fire `+0x58` station lists; nearest by §4.10 distance, strict `<`, list order) → that station's funding fraction (`+0x1C` / `+0x20`, `SC4Percentage`), field = int(f × 100). No station → 0 (`kSC4PercentageZero`). |
-| `local_traffic_congestion` | maximum of the traffic congestion map over the home lot's rectangle grown by 1 cell on each side, clamped to `[0, CellCountX/Z − 1]` *[inferred: exact clamp edges from the Mac build]* |
+| `local_traffic_congestion` | the home lot's bounding rect (`cISC4Lot` slot 14, inclusive cells minX, minZ, maxX, maxZ) grown by 1 cell on each side; minX and minZ clamped up to 0, maxX **and maxZ** clamped down to `CellCountX − 1` (`cISC4City` slot 93 for both, *[quirk]*, invisible in square cities). Only the **border ring** of that rect is visited, not its interior: for x = minX..maxX the cells (x, maxZ) then (x, minZ); for z = minZ+1..maxZ−1 the cells (minX, z) then (maxX, z). A cell counts only if the traffic simulator's `GetCapacity(1, x, z)` (slot 23) is not 0.0; the value is the u8 maximum of the congestion map (slot 10, map slot 7 `Get(x, z)`) over counted cells, 0 if none (Windows `0x0042B3DE`–`0x0042B581`) |
 | `job_title`, `job_building`, `job_city` | strings (`GetJobTitle`, the job building's name, the neighbour city's name) |
 | `last_commute_time` | minutes (§4.7) |
 | `employed`, `unemployed_days` | 1 if job or neighbour job; jobless days |
-| `job_is_neighbor`, `job_condition`, `job_has_power`, `job_has_water` | for a city job: 0, job lot condition, power, water as for home. For a neighbour job: 1, then constants *[inferred: condition 0, power 1, water 1]* |
+| `job_is_neighbor`, `job_condition`, `job_has_power`, `job_has_water` | for a city job: 0; the job lot's condition (`cISC4Lot` slot 35, 0 when the job has no lot); power as for home; water: **1 when the job building's profile purpose is 5 (agriculture)** (BDS `GetBuildingProfile`, `0x0042BA92`), else as for home. For a neighbour job: 1, 0, 1, 1 (constants, `0x0042BB54`–`0x0042BC0F`) |
 
 `UpdateLocalBuildings` (§4.9) also runs inside the full refresh.
 
@@ -456,8 +476,14 @@ returns 0.
 
 **`DistanceToClosest(g)`** (slot 50) → `map[g]`, or `0xFFFFFFFF` (−1) when state = 0, there is no map, or `g` is
 absent. **`DistanceToClosestSpecial(type)`** (slot 51) → minimum distance over the building development
-simulator's special-building list (slot 44 *[inferred: landmarks and rewards]*) of buildings whose
-`GetBuildingType()` equals `type`; `0xFFFFFFFF` when none.
+simulator's special-building list (`cISC4City` slot 53 → BDS slot 44 `GetSpecialBuildings`) of buildings whose
+`GetBuildingType()` equals `type`; `0xFFFFFFFF` when none. That list holds exactly the occupants in occupant group
+`0x150A` (landmark) or `0x150B` (reward), excluding previews (building-development.md §3, messages
+`0x99EF1142`/`0x99EF1143`), in insertion order. Per entry (`0x00426AE0`): query `cISC4BuildingOccupant`
+(`0x87DDA3A9`, entries that fail are skipped), compare its type, take its position, distance =
+`sqrt(dx² + dz²)` (x and z only, home position minus building position, both float32; the products, sum and root
+stay on the x87 stack, no float32 rounding before `__ftol`) truncated toward zero to an integer;
+the result is the **unsigned** minimum, starting from `0xFFFFFFFF`.
 
 **`LocalSchoolGrade(group)` / `LocalHospitalGrade(group)`** (slots 52/53): over the residential simulator's school
 (slot 47) / hospital (slot 49) building list (all groups, including pending), take the building in occupant group
@@ -574,12 +600,12 @@ Version **17** (`0x11`). All integers little-endian; "ref" is foundations §2.7;
 | 22 | u8, f32, f32 × 6 | EQ ring index, EQ delta, EQ ring |
 | 23 | u8, f32, f32 × 6 | HQ ring index, HQ delta, HQ ring |
 | 24 | key, key | car key, pedestrian key |
-| 25 | s32, s32 | unnamed pair |
+| 25 | s32, s32 | reserved pair (dead data, §2.2) |
 | 26 | ref | dispatch (`0xEB8B6F9A`) |
 | 27 | u8, u64, u8 | pylon timer: units, elapsed, running |
 | 28 | bool | has dispatch tool (tool exists and its slot `+0x40` is false) |
 | 29 | ref | dispatch tool (`0xC9B6D7D6`), only if row 28 is true |
-| 30 | bool | unnamed flag |
+| 30 | bool | pylon locked (§2.2) |
 | 31 | s32 | last player trip day |
 | 32 | — | the `cSC4Advisor` record (advisors.md §11): advices, personal name, … |
 
@@ -738,8 +764,11 @@ the advisor system (advisors.md).
   and the Lua scripts.
 - MySims write nothing to the city: no population, jobs, demand, budget, ordinance, grid or lot change. A MySim's
   home and job are references only; the buildings do not know about them.
-- `CheckCommute`/`FindNewJob` only run pathfinder queries *[inferred: the traffic simulator's pathfinder does not
-  record trips into the traffic volume]*.
+- `CheckCommute` (`0x0042D9E0`) and `FindNewJob` (via the dispatch's `validateCommuteLocation`, `0x00432F50`) only
+  run pathfinder queries: neither calls `ApplyTraffic` (`cISC4PathFinder` slot 29, pathfinder.md §4.17) nor any
+  other traffic-volume writer, so **no trip is recorded** and the traffic data is unchanged. `CheckCommute` creates
+  its own pathfinder and releases it. The only shared state a query touches is the process-wide work-check
+  interval / adaptation counter of pathfinder.md §4.11 (timing, not traffic data).
 - Side outputs: advisor events and advices (news, balloons), the `my_sim_died` automata trigger, MySim cars and
   pedestrians, UI/audio messages (§5.1).
 
@@ -828,16 +857,13 @@ the MySims own no grid).
 
 ### 11.2 Open questions
 
-1. The unnamed pair and bool in the record (rows 25, 30).
-2. The exact meaning of UI service `0xA417445E` slot `+0xA8` that pauses MySims (§4.2).
-3. Whether MySim `Init` re-resolves the neighbour job city from the saved cell (§2.2) — the Init code calls the
-   app's region lookup, details not traced.
-4. The building development simulator's slot 44 list used by `DistanceToClosestSpecial` (landmarks and rewards?).
-5. The exact clamp and neighbourhood of `local_traffic_congestion`, and the neighbour-job constants of
-   `job_condition`/`job_has_power`/`job_has_water` (§4.5): taken from the Mac build, Windows not traced line by
-   line.
-6. Whether the traffic pathfinder used by `CheckCommute` has any side effect on traffic data (traffic spec).
-7. The "announce" check of `AnnounceMoveIn` (class slot) and the dispatch state numbering 4/5/6.
+1. *Answered (MS1, 2026-10-21):* row 25 is dead data, row 30 is the pylon-locked flag (§2.2).
+2. *Answered (MS2, 2026-10-21):* window-manager slot 42 = "a modal window is running" (§4.2).
+3. *Answered (MS3, 2026-10-21):* yes, see §2.2.1.
+4. *Answered (MS4, 2026-10-21):* groups `0x150A`/`0x150B` (landmarks and rewards), §4.9.
+5. *Answered (MS5, 2026-10-21):* traced on Windows, §4.5 (border ring only; agriculture jobs count as watered).
+6. *Answered (MS6, 2026-10-21):* no traffic-data side effect (§9).
+7. *Answered (MS7, 2026-10-21):* the check is the `RequestToPlaySound` throttle (§4.1); states 4/5/6 in §2.2.
 
 ---
 

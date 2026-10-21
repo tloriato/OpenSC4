@@ -23,7 +23,7 @@ Usage (run from the repository root, on `main`):
   python tools/merge-train.py run   [--size 8] [--no-regress] [--land]
   python tools/merge-train.py merge-batch [--size 8]
   python tools/merge-train.py gate
-  python tools/merge-train.py regress
+  python tools/merge-train.py regress [--add-replace occmgr,propmgr,lotcfg]
   python tools/merge-train.py land
   python tools/merge-train.py bisect
   python tools/merge-train.py enqueue --lane L --branch B --kind engine|tools|docs|test [--abi]
@@ -1141,14 +1141,36 @@ def gated_dll(cur, wt):
     return path, ""
 
 
-def run_regress(wt, tag, dll):
+def replacement_union(extra, script=None):
+    """Append candidate keys to every default replacement, before promoting the default list."""
+    if extra is None:
+        return None
+    keys = [k.strip().lower() for k in extra.split(",") if k.strip()]
+    if not keys or any(not re.fullmatch(r"[a-z][a-z0-9_]*", k) for k in keys):
+        raise ValueError("--add-replace needs comma-separated subsystem keys")
+    try:
+        text = (script or REPO / "tools" / "regress.ps1").read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError) as exc:
+        raise ValueError("cannot read the default replacement list") from exc
+    match = re.search(r'(?m)^\s*\[string\]\$Replace\s*=\s*"([^"]+)"', text)
+    if not match:
+        raise ValueError("cannot find the default replacement list")
+    defaults = [k.strip().lower() for k in match.group(1).split(",") if k.strip()]
+    if not defaults or any(not re.fullmatch(r"[a-z][a-z0-9_]*", k) for k in defaults):
+        raise ValueError("invalid default replacement list")
+    return ",".join(dict.fromkeys(defaults + keys))
+
+
+def run_regress(wt, tag, dll, replace=None):
     """Submit the two regress runs through the game queue and wait for the verdict."""
     log(f"regress {tag}: submitting to the game queue (about 10-20 min)")
-    p = sh(
-        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(REPO / "tools" / "regress.ps1"),
-         "-Tag", tag, "-Dll", str(dll), "-Queue", "-Turbo", "-TurboTimeout", "1800", "-QueueWait", "5400"],
-        check=False, timeout=7200,
-    )
+    command = [
+        "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(REPO / "tools" / "regress.ps1"),
+        "-Tag", tag, "-Dll", str(dll), "-Queue", "-Turbo", "-TurboTimeout", "1800", "-QueueWait", "5400",
+    ]
+    if replace is not None:
+        command += ["-Replace", replace]
+    p = sh(command, check=False, timeout=7200)
     out = (p.stdout or "") + (p.stderr or "")
     (LOG_DIR / f"regress-{tag}.out").write_text(out, encoding="utf-8")
     m = re.search(r"REGRESS\s+\S+:\s*(PASS|FAIL)", out)
@@ -1292,8 +1314,20 @@ def cmd_regress(args):
         cur["regress"] = {"ok": False, "verdict": "REFUSED", "why": why, "head": head}
         save_state(st)
         return 1
-    verdict, tail = run_regress(wt, cur["id"], dll)
-    cur["regress"] = {"ok": verdict == "PASS", "verdict": verdict, "head": head}
+    try:
+        replace = replacement_union(getattr(args, "add_replace", None))
+    except ValueError as exc:
+        cur["regress"] = {"ok": False, "verdict": "REFUSED", "why": str(exc), "head": head}
+        save_state(st)
+        log(f"regress {cur['id']}: refused: {exc}")
+        return 1
+    # An interrupted retry must not leave a previous PASS in place.
+    cur["regress"] = {"ok": False, "verdict": "RUNNING", "head": head}
+    if replace is not None:
+        cur["regress"]["replace"] = replace
+    save_state(st)
+    verdict, tail = run_regress(wt, cur["id"], dll, replace)
+    cur["regress"].update(ok=verdict == "PASS", verdict=verdict)
     save_state(st)
     log(f"regress {cur['id']}: {verdict}")
     if verdict != "PASS":
@@ -1508,7 +1542,9 @@ def main():
     p.add_argument("--lanes", default=None, help="comma-separated: batch exactly these queued lanes")
     sub.add_parser("gate")
     p = sub.add_parser("regress")
-    p.add_argument("--no-regress", action="store_true")
+    profile = p.add_mutually_exclusive_group()
+    profile.add_argument("--no-regress", action="store_true")
+    profile.add_argument("--add-replace", help="test candidate keys in addition to every default replacement")
     p = sub.add_parser("land")
     p.add_argument("--force", action="store_true")
     sub.add_parser("bisect")

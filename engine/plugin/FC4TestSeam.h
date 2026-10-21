@@ -303,6 +303,7 @@ enum : uint32_t {
     kFC4SeamDispatchShadow = 61,  // the glue17 lane (FC4DispatchShadow.h)
     kFC4SeamTerrainGlue = 67,  // the glue18 lane (cFC4Terrain.h FC4TerrainGlueTestInput; 59 taken by kFC4SeamCitySitShadow)
     kFC4SeamNeighborsConfirm = 66,  // the apply12 lane (NG35, cFC4Neighbors.h NeighborsTestSetConfirm)
+    kFC4SeamMySimsShadow = 68,  // the mysims1 lane (FC4MySimsShadow.h MySimsShadowTest)
 };
 
 using FC4PostSinkFn = void (*)(void* context, cIGZMessage2Standard* msg);

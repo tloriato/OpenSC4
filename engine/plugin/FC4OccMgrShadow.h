@@ -59,13 +59,26 @@
 //     calls per thread (the shadow's own calls excluded) and the entries made
 //     while another thread was inside one of those slots ("overlaps", an
 //     approximate count of lock contention).
+//   - The message-order comparison (glue25): the manager's own messages
+//     (Insert 0x99EF1142, Remove 0x99EF1143, Move 0x99EF1146, §5.5) are kept
+//     in delivery order as the original posts them, and in post order as the
+//     followed core posts them (its host records them; the Move call is made
+//     with post = true so the core posts one too, §5.4 step 9). The two
+//     streams must match element by element on kind, occupant and data4.
+//     Destroy 0x99EF1141 is subscribed but never replayed: it is only checked
+//     against §5.3 step 4's interleaving (Remove(o1), Destroy(o1), Remove(o2),
+//     Destroy(o2), ...). A Destroy that follows a Remove of ANOTHER occupant
+//     means the batch was posted the other way round and counts as a mismatch;
+//     a Destroy after anything else is an occupant shut down outside the
+//     manager and is only counted.
 //
 // Log lines (always written):
 //   occmgr shadow: ON (...) | requested but INACTIVE (...)            game start
 //   occmgr shadow: following the original occupant manager ...        city load
 //   occmgr shadow month YYYY-MM-DD: followed=yes|first|resynced occupants=N refs=R
 //     record=exact|D cells differ (P set aside); silent moves=S; messages ins/rem/move=a/b/c
-//     refused=r off-thread=t boxes=x/y; queries on followed|fresh core q/Q (every slot exact)| differ: sN=e/t ...;
+//     refused=r off-thread=t boxes=x/y; msgorder=a/b (exact)| destroy=o/n/e; queries on
+//     followed|fresh core q/Q (every slot exact)| differ: sN=e/t ...;
 //     probe: ...; stray releases=0; mismatches=M[; differences: ...]
 //   occmgr shadow: city shutdown: N month lines, M with mismatches=0; per slot ...; probe per thread ...
 #pragma once

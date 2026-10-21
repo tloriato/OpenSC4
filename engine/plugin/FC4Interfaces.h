@@ -69,8 +69,10 @@ class cISC4DemandSimulator;
 class cISC4NeighborDeal;
 class SC4NewCityPreferences;
 template <typename T> class SC4List;
+template <typename T> class SC4Point;
 template <typename T> class SC4Vector;
 template <typename T> class cISC4SimGrid;
+class cISC4OccupantManager;
 
 // cISC4Simulator (IID 0x8695664E), 34 slots.
 class cFC4ISC4Simulator : public cIGZUnknown {
@@ -1988,6 +1990,102 @@ public:
     virtual void SetStatusParameterValue(cIGZVariant const& value) = 0;    // 10
 };
 
+// ---- occupant manager (docs/specs/occupant-manager.md §11) ----------------------------------------
+
+class cISC4Occupant;
+class cISC4OccupantFilter;
+
+// cISC4OccupantManager (cSC4OccupantManager vtable 0x00A8F7F0; 50 slots, slot
+// 49 is the deleting destructor). docs/specs/occupant-manager.md §11.
+//
+// Every overload pair is given a unique name here, in the game's COMPILED
+// order: the filter overload first and the typed one second for slots 28/29 up
+// to 44/45, but **the other way round for 46/47 only** (§9.4: the SDK declares
+// the typed overload first for every pair, and MSVC's reversal rule then puts
+// the filter overload at 46 and the typed one at 47 - the opposite of the
+// game). The SDK's `RemoveOccupants(int32_t, ...)` is slot 23 (the typed one),
+// not an overload of slot 22.
+//
+// SDK errors fixed: GetBoundingCells' cells is `int32_t (*)[2]` (the SDK
+// declares `int* [2]`, an array of two pointers) and it returns n in EAX.
+// Slots 6-19 do not set AL in the original (§3.2 quirk): a replacement
+// returns true (§3.2 [choice]), which no shipped caller tests.
+class cFC4ISC4OccupantManager : public cIGZUnknown {
+public:
+    virtual bool Init() = 0;                                                                                 // 3
+    virtual bool Shutdown() = 0;                                                                             // 4
+    virtual bool SetCitySize(float fx, float fz) = 0;                                                        // 5
+    virtual bool GetOccupantManagerCellSizes(float& x, float& z) = 0;                                        // 6
+    virtual bool GetWorldCellCount(int32_t& x, int32_t& z) = 0;                                              // 7
+    virtual bool GetOccupantManagerCellCount(int32_t& x, int32_t& z) = 0;                                    // 8
+    virtual bool GetOccupantManagerCellBounds(int32_t& x0, int32_t& z0, int32_t& x1, int32_t& z1) = 0;        // 9
+    virtual bool WorldCellToOccupantManagerCell(int32_t x, int32_t z, int32_t& ox, int32_t& oz) = 0;         // 10
+    virtual bool OccupantManagerCellToWorldCell(int32_t x, int32_t z, int32_t& ox, int32_t& oz) = 0;         // 11
+    virtual bool WorldCellToStandardCityCell(int32_t x, int32_t z, int32_t& ox, int32_t& oz) = 0;            // 12 (bug, §3.2)
+    virtual bool StandardCityCellToWorldCell(int32_t x, int32_t z, int32_t& ox, int32_t& oz) = 0;            // 13
+    virtual bool WorldCellToPosition(int32_t x, int32_t z, float& fx, float& fz) = 0;                        // 14
+    virtual bool PositionToWorldCell(float fx, float fz, int32_t& x, int32_t& z) = 0;                        // 15
+    virtual bool OccupantManagerCellToPosition(int32_t x, int32_t z, float& fx, float& fz) = 0;              // 16
+    virtual bool PositionToOccupantManagerCell(float fx, float fz, int32_t& x, int32_t& z) = 0;              // 17
+    virtual bool StandardCityCellToPosition(int32_t x, int32_t z, float& fx, float& fz) = 0;                 // 18
+    virtual bool PositionToStandardCityCell(float fx, float fz, int32_t& x, int32_t& z) = 0;                 // 19
+    virtual bool InsertOccupant(cISC4Occupant* occ, uint32_t data4) = 0;                                     // 20
+    virtual bool RemoveOccupant(cISC4Occupant* occ, bool shutdown, uint32_t data4) = 0;                      // 21
+    virtual bool RemoveOccupants(cISC4OccupantFilter* filter, bool shutdown, uint32_t data4) = 0;            // 22
+    virtual bool RemoveOccupantsOfType(uint32_t occType, bool shutdown, uint32_t data4) = 0;                 // 23
+    virtual bool MoveOccupant(cISC4Occupant* occ, bool post) = 0;                                            // 24
+    virtual bool IsCellEmpty(int32_t x, int32_t z) = 0;                                                      // 25
+    virtual int32_t GetBoundingCells(int32_t x, int32_t z, int32_t (*cells)[2], int32_t& n) = 0;             // 26
+    virtual bool FindOccupant(cISC4Occupant* occ, bool searchAll, int32_t* x, int32_t* z) = 0;               // 27
+    virtual bool GetFirstOccupantByPositionFilter(cISC4Occupant*& out, float fx, float fz,
+                                                  cISC4OccupantFilter* filter) = 0;                          // 28
+    virtual bool GetFirstOccupantByPositionTyped(cISC4Occupant*& out, float fx, float fz, uint32_t occType) = 0;  // 29
+    virtual bool GetFirstOccupantFilter(cISC4Occupant*& out, int32_t x, int32_t z,
+                                        cISC4OccupantFilter* filter) = 0;                                    // 30
+    virtual bool GetFirstOccupantTyped(cISC4Occupant*& out, int32_t x, int32_t z, uint32_t occType) = 0;     // 31
+    virtual bool GetFirstOccupantByStandardCityCellFilter(cISC4Occupant*& out, int32_t x, int32_t z,
+                                                          cISC4OccupantFilter* filter) = 0;                  // 32
+    virtual bool GetFirstOccupantByStandardCityCellTyped(cISC4Occupant*& out, int32_t x, int32_t z,
+                                                         uint32_t occType) = 0;                              // 33
+    virtual bool GetFirstOccupantByStandardCityCellsFilter(cISC4Occupant*& out, SC4Point<int> const* min,
+                                                           SC4Point<int> const* max,
+                                                           cISC4OccupantFilter* filter) = 0;                 // 34
+    virtual bool GetFirstOccupantByStandardCityCellsTyped(cISC4Occupant*& out, SC4Point<int> const* min,
+                                                          SC4Point<int> const* max, uint32_t occType) = 0;   // 35
+    virtual bool GetOccupantsByBBoxFilter(SC4List<cISC4Occupant*>& list, float const* min3, float const* max3,
+                                          cISC4OccupantFilter* filter, uint32_t maxCount) = 0;               // 36
+    virtual bool GetOccupantsByBBoxTyped(SC4List<cISC4Occupant*>& list, float const* min3, float const* max3,
+                                         uint32_t occType, uint32_t maxCount) = 0;                          // 37
+    virtual bool GetOccupantsByOccupantManagerCellsFilter(SC4List<cISC4Occupant*>& list, int32_t const* min,
+                                                          int32_t const* max, cISC4OccupantFilter* filter,
+                                                          uint32_t maxCount) = 0;                            // 38
+    virtual bool GetOccupantsByOccupantManagerCellsTyped(SC4List<cISC4Occupant*>& list, int32_t const* min,
+                                                         int32_t const* max, uint32_t occType,
+                                                         uint32_t maxCount) = 0;                             // 39
+    virtual bool GetOccupantsByStandardCityCellsFilter(SC4List<cISC4Occupant*>& list, SC4Point<int> const* min,
+                                                       SC4Point<int> const* max, cISC4OccupantFilter* filter,
+                                                       uint32_t maxCount) = 0;                              // 40
+    virtual bool GetOccupantsByStandardCityCellsTyped(SC4List<cISC4Occupant*>& list, SC4Point<int> const* min,
+                                                      SC4Point<int> const* max, uint32_t occType,
+                                                      uint32_t maxCount) = 0;                               // 41
+    virtual bool IterateOccupantsByBBoxFilter(bool (*fn)(cISC4Occupant*, void*), void* data, float const* min3,
+                                              float const* max3, cISC4OccupantFilter* filter) = 0;          // 42
+    virtual bool IterateOccupantsByBBoxTyped(bool (*fn)(cISC4Occupant*, void*), void* data, float const* min3,
+                                             float const* max3, uint32_t occType) = 0;                      // 43
+    virtual bool IterateOccupantsFilter(bool (*fn)(cISC4Occupant*, void*), void* data, int32_t const* min,
+                                        int32_t const* max, cISC4OccupantFilter* filter) = 0;               // 44
+    virtual bool IterateOccupantsTyped(bool (*fn)(cISC4Occupant*, void*), void* data, int32_t const* min,
+                                       int32_t const* max, uint32_t occType) = 0;                           // 45
+    // 46/47 only: the TYPED overload comes first (§9.4).
+    virtual bool IterateOccupantsByStandardCityCellTyped(bool (*fn)(cISC4Occupant*, void*), void* data,
+                                                         int32_t const* min, int32_t const* max,
+                                                         uint32_t occType) = 0;                             // 46
+    virtual bool IterateOccupantsByStandardCityCellFilter(bool (*fn)(cISC4Occupant*, void*), void* data,
+                                                          int32_t const* min, int32_t const* max,
+                                                          cISC4OccupantFilter* filter) = 0;                 // 47
+    virtual bool ReleaseOccupantList(SC4List<cISC4Occupant*>& list) = 0;                                     // 48
+};
+
 namespace fc4 {
 // A parameter set travels as the SDK's pointer (cIGZCommandServer slot 5).
 inline cFC4IGZCommandParameterSet* AsGame(cIGZCommandParameterSet* p) {
@@ -2125,6 +2223,13 @@ inline cFC4ISC4Demolition* AsGame(cISC4Demolition* p) {
 }
 inline cFC4ISC4CitySituationManager* AsGame(cISC4CitySituationManager* p) {
     return reinterpret_cast<cFC4ISC4CitySituationManager*>(p);
+}
+// The occupant manager travels as the SDK's pointer (cISC4City's getter, city
+// field +0x12C); single inheritance, vtable at offset 0. Call it only through
+// the compiled declaration (occupant-manager.md §11) - in particular slots 46
+// and 47, whose overload order the SDK reverses (§9.4).
+inline cFC4ISC4OccupantManager* AsGame(cISC4OccupantManager* p) {
+    return reinterpret_cast<cFC4ISC4OccupantManager*>(p);
 }
 
 // The surface water travels as the SDK's pointer (cISC4City slot 83); call it

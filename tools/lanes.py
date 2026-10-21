@@ -447,15 +447,27 @@ def cmd_check(ctx, a):
             ok = dep in merged or is_ancestor(ctx.main, dep)
         if not ok:
             reasons.append(f"dep {dep}: not on {ctx.branch} yet (git merge-base --is-ancestor {dep} {ctx.branch} fails)")
-    # 2. the lane must not exist already
-    if lane in allb:
-        reasons.append(f"branch {lane} already exists" + (" (merged)" if lane in merged else " (unmerged)"))
-    if (ctx.wt_dir / lane).exists():
-        reasons.append(f"worktree .claude/worktrees/{lane} already exists")
-    for base in {ctx.main, ctx.src}:
-        if (base / "docs" / "lanes" / f"{lane}.md").exists():
-            reasons.append(f"docs/lanes/{lane}.md already exists")
-            break
+    # 2. new lanes must not exist; resumes must retain their branch/worktree identity.
+    # This is read-only: never unpark a lane or reset its watchdog/round ledger here.
+    if a.resume:
+        if lane not in allb:
+            reasons.append(f"resume: branch {lane} does not exist")
+        elif lane in merged:
+            reasons.append(f"resume: branch {lane} is already merged")
+        expected = (ctx.wt_dir / lane).resolve()
+        matching = [w for w in list_worktrees(ctx)
+                    if w["path"].resolve() == expected and w["branch"] == lane]
+        if not matching:
+            reasons.append(f"resume: expected worktree .claude/worktrees/{lane} on branch {lane}")
+    else:
+        if lane in allb:
+            reasons.append(f"branch {lane} already exists" + (" (merged)" if lane in merged else " (unmerged)"))
+        if (ctx.wt_dir / lane).exists():
+            reasons.append(f"worktree .claude/worktrees/{lane} already exists")
+        for base in {ctx.main, ctx.src}:
+            if (base / "docs" / "lanes" / f"{lane}.md").exists():
+                reasons.append(f"docs/lanes/{lane}.md already exists")
+                break
     # 3. possible duplicate work: another unmerged lane mentions a --touches key
     keys = [k.strip().lower() for k in (a.touches or "").split(",") if k.strip()]
     if keys:
@@ -1417,6 +1429,8 @@ def main(argv=None):
 
     p = sub.add_parser("check", help="refuse a spawn whose dependencies have not landed or that duplicates a lane")
     p.add_argument("lane")
+    p.add_argument("--resume", action="store_true",
+                   help="check an existing unmerged lane in its original worktree; retain all guard state")
     p.add_argument("--deps", help="comma-separated branches that must already be on main")
     p.add_argument("--touches", help="comma-separated keys other unmerged lanes must not mention")
     p.add_argument("--stale-days", type=float, default=3, help="an unmerged lane idle longer than this is ignored")

@@ -4,17 +4,22 @@
 // Copyright (C) 2026 FreeCity4 contributors
 // Licensed under GPL-3.0-or-later; see LICENSE at the repository root.
 
-//! The save sweep for the commercial, industrial, civic and park records
+//! The save sweep for the class records FreeCity4 reads and writes
 //! (commercial-industrial §12 test 9, civic-buildings §12 test 10, parks §12
-//! test 8): every class-record entry of those four classes in every distinct
-//! city save is read into a fresh object over the C ABI and written again.
+//! test 8, prop-developer.md §7, city-detail.md §4): every class-record entry
+//! of those classes in every distinct city save is read into a fresh object
+//! over the C ABI and written again.
 //!
-//! - commercial (`0x8990C080`), industrial (`0xA990C022`) and parks
-//!   (`0xAA3FE6BC`): the re-write must be byte-identical;
+//! - commercial (`0x8990C080`), industrial (`0xA990C022`), parks (`0xAA3FE6BC`)
+//!   and the city detail manager (`0xEAD4BA36`): the re-write must be
+//!   byte-identical;
 //! - civic (`0x0A413481`): the re-write must equal the record with every
 //!   multi-entry bucket chain of the exclusions and the statuses reversed
 //!   (civic §7, QUESTIONS CB6), and a second read → write must give the
-//!   record back byte-identically.
+//!   record back byte-identically;
+//! - the prop developer (`0x89C48F47`): `Write` always emits version 5, so a
+//!   corpus version-4 record is written back converted (and that conversion
+//!   must itself be stable) and a version-5 record byte-identically.
 //!
 //! Records are found as foundations §3.2 says: the class record
 //! `(classID, 0x299B2D1B, 0)`, entries `u32 entrySize, u32 crc, u32 objectID,
@@ -45,6 +50,10 @@ pub(crate) const CLSID_COMMERCIAL: u32 = 0x8990_C080;
 pub(crate) const CLSID_INDUSTRIAL: u32 = 0xA990_C022;
 pub(crate) const CLSID_CIVIC: u32 = 0x0A41_3481;
 pub(crate) const CLSID_PARKS: u32 = 0xAA3F_E6BC;
+/// The prop developer (prop-developer.md §7; the glue21 lane).
+pub(crate) const CLSID_PROP_DEVELOPER: u32 = 0x89C4_8F47;
+/// The city detail manager (city-detail.md §4).
+pub(crate) const CLSID_CITY_DETAIL: u32 = 0xEAD4_BA36;
 const CLASS_GROUP: u32 = 0x299B_2D1B;
 
 // ---- the save's stream encoding ---------------------------------------------------------------------
@@ -303,6 +312,31 @@ fn civic_chains_reversed(rec: &[u8]) -> Option<(Vec<u8>, usize)> {
 
 // ---- the sweep --------------------------------------------------------------------------------------
 
+/// What the prop developer must write back for a corpus record
+/// (prop-developer.md §7).
+///
+/// `Write` always emits version 5. A version-5 record round-trips byte for
+/// byte. A version-4 record (the 122-byte shipped template: it stops after the
+/// power list) comes back with the version word set to 5 and the five bytes of
+/// the v5 tail appended - `signsVisible` (the read leaves it 1) and an empty
+/// sign list. Any other version is None: `Read` rejects it (version < 4) or
+/// reads it as 5, and neither is a corpus shape.
+fn prop_developer_expected(rec: &[u8]) -> Option<Vec<u8>> {
+    let version = u16::from_le_bytes([*rec.first()?, *rec.get(1)?]);
+    match version {
+        5 => Some(rec.to_vec()),
+        4 => {
+            let mut out = rec.to_vec();
+            out[0] = 5;
+            out[1] = 0;
+            // signsVisible = 1, then the sign list's count (0).
+            out.extend_from_slice(&[1, 0, 0, 0, 0]);
+            Some(out)
+        }
+        _ => None,
+    }
+}
+
 const DEFAULT_DIR: &str = r"C:\Program Files (x86)\GOG Galaxy\Games\SimCity 4 Deluxe Edition";
 
 fn save_dir() -> Option<PathBuf> {
@@ -368,7 +402,10 @@ fn round_trip(class: u32, payload: &[u8]) -> Result<Vec<u8>, String> {
             r
         },
         CLSID_CIVIC => crate::civic_tests::sweep_round_trip(payload),
-        _ => crate::parks_tests::sweep_round_trip(payload),
+        CLSID_PARKS => crate::parks_tests::sweep_round_trip(payload),
+        CLSID_PROP_DEVELOPER => crate::prop_developer_tests::sweep_round_trip(payload),
+        CLSID_CITY_DETAIL => crate::city_detail_tests::sweep_round_trip(payload),
+        _ => Err(format!("class {class:08X}: no sweep")),
     }
 }
 
@@ -381,12 +418,17 @@ struct Tally {
     chains: usize,
     /// civic: a second round trip gives the record back.
     twice: usize,
+    /// prop developer: a version-4 record written back as version 5.
+    converted: usize,
+    /// a save with no record of this class (the city detail manager is only
+    /// written by a city that ran; the shipped templates have none).
+    missing: usize,
     sizes: BTreeMap<usize, usize>,
     failures: Vec<String>,
 }
 
 #[test]
-fn save_sweep_commercial_industrial_civic_parks() {
+fn save_sweep_class_records() {
     let Some(dir) = save_dir() else {
         eprintln!("save sweep: no save directory (FC4_SAVES_DIR / FC4_GAME_DIR / the GOG default); skipped");
         return;
@@ -394,10 +436,13 @@ fn save_sweep_commercial_industrial_civic_parks() {
     let mut files = Vec::new();
     collect(&dir, &mut files);
     let classes = [
-        ("commercial", CLSID_COMMERCIAL),
-        ("industrial", CLSID_INDUSTRIAL),
-        ("civic", CLSID_CIVIC),
-        ("parks", CLSID_PARKS),
+        ("commercial", CLSID_COMMERCIAL, true),
+        ("industrial", CLSID_INDUSTRIAL, true),
+        ("civic", CLSID_CIVIC, true),
+        ("parks", CLSID_PARKS, true),
+        ("prop-developer", CLSID_PROP_DEVELOPER, true),
+        // city-detail.md §4: only a city that ran and saved carries one.
+        ("city-detail", CLSID_CITY_DETAIL, false),
     ];
     let mut seen = BTreeSet::new();
     let mut distinct = 0;
@@ -420,10 +465,14 @@ fn save_sweep_commercial_industrial_civic_parks() {
                 continue;
             }
         };
-        for (label, class) in classes {
+        for (label, class, required) in classes {
             let t = tallies.entry(label).or_default();
             let Ok(rec) = pkg.read_tgi(&Tgi::new(class, CLASS_GROUP, 0)) else {
-                t.failures.push(format!("{name}: no class record"));
+                if required {
+                    t.failures.push(format!("{name}: no class record"));
+                } else {
+                    t.missing += 1;
+                }
                 continue;
             };
             let list = match entries(&rec) {
@@ -443,6 +492,37 @@ fn save_sweep_commercial_industrial_civic_parks() {
                         continue;
                     }
                 };
+                if class == CLSID_PROP_DEVELOPER {
+                    // The only class whose re-write is allowed to differ:
+                    // version 4 -> version 5 (prop_developer_expected).
+                    match prop_developer_expected(payload) {
+                        Some(expected) if once == expected => {
+                            if once == payload {
+                                t.identical += 1;
+                            } else {
+                                t.converted += 1;
+                            }
+                        }
+                        Some(_) => t.failures.push(format!(
+                            "{name} object {id:08X}: re-write is not the record as version 5"
+                        )),
+                        None => t
+                            .failures
+                            .push(format!("{name} object {id:08X}: unexpected record version")),
+                    }
+                    // The conversion must be stable: reading what we wrote and
+                    // writing it again gives the same bytes back.
+                    match round_trip(class, &once) {
+                        Ok(b) if b == once => t.twice += 1,
+                        Ok(_) => t
+                            .failures
+                            .push(format!("{name} object {id:08X}: second round trip differs")),
+                        Err(e) => t
+                            .failures
+                            .push(format!("{name} object {id:08X}: second round trip: {e}")),
+                    }
+                    continue;
+                }
                 if class != CLSID_CIVIC {
                     if once == payload {
                         t.identical += 1;
@@ -489,16 +569,18 @@ fn save_sweep_commercial_industrial_civic_parks() {
         eprintln!("save sweep: {f}");
     }
     let mut failed = !open_failures.is_empty();
-    for (label, _) in classes {
+    for (label, _, _) in classes {
         let t = tallies.remove(label).unwrap_or_default();
         let sizes: Vec<String> = t.sizes.iter().map(|(s, n)| format!("{s} B x{n}")).collect();
         eprintln!(
-            "save sweep {label}: records={} identical={} chains-reversed={} (chains {}) second-trip-identical={} failures={}; sizes: {}",
+            "save sweep {label}: records={} identical={} converted={} chains-reversed={} (chains {}) second-trip-identical={} missing={} failures={}; sizes: {}",
             t.records,
             t.identical,
+            t.converted,
             t.reversed,
             t.chains,
             t.twice,
+            t.missing,
             t.failures.len(),
             sizes.join(", ")
         );

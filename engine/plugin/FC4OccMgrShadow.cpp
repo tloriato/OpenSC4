@@ -49,7 +49,8 @@
 namespace fc4 {
 namespace {
 
-constexpr uint32_t kMsgInserted = 0x99EF1142;  // §5.5
+constexpr uint32_t kMsgDestroyed = 0x99EF1141;  // §5.5 (the occupant's Shutdown)
+constexpr uint32_t kMsgInserted = 0x99EF1142;   // §5.5
 constexpr uint32_t kMsgRemoved = 0x99EF1143;
 constexpr uint32_t kMsgMoved = 0x99EF1146;
 constexpr uint32_t kIID_cIGZMessageTarget2 = 0x452294AA;
@@ -104,11 +105,46 @@ const void* g_orig = nullptr;   // the original the followed core follows
 
 CoreCtx* Ctx(void* u) { return static_cast<CoreCtx*>(u); }
 
+// One message of the §5.5 stream, as it was posted (kind, occupant, data4).
+struct MsgRec {
+    uint32_t kind = 0;
+    uint64_t occ = 0;
+    uint32_t data4 = 0;
+    bool operator==(const MsgRec& o) const {
+        return kind == o.kind && occ == o.occ && data4 == o.data4;
+    }
+};
+
+const char* MsgName(uint32_t kind) {
+    switch (kind) {
+        case kMsgDestroyed: return "destroy";
+        case kMsgInserted: return "insert";
+        case kMsgRemoved: return "remove";
+        case kMsgMoved: return "move";
+        default: return "other";
+    }
+}
+
 // Counters since the last month line (messages) and since the city load.
 struct Follow {
     uint32_t ins = 0, rem = 0, mov = 0, refused = 0, boxTotal = 0, boxExact = 0, offThread = 0;
     std::string boxDiffs;
     size_t boxListed = 0;
+    // The message-order comparison (§5.5): the manager's own messages as the
+    // original posts them against the followed core's, in order.
+    std::vector<MsgRec> origMsgs, coreMsgs;
+    uint32_t msgExact = 0, msgTotal = 0;
+    std::string msgDiffs;
+    size_t msgListed = 0;
+    // RemoveOccupants' interleaving (§5.3 step 4): Remove(o1), Destroy(o1),
+    // Remove(o2), Destroy(o2), ... A Destroy of an occupant whose own Remove is
+    // outstanding but is NOT the message just before it means the batch was
+    // posted the other way round. A Destroy of an occupant with no outstanding
+    // Remove is an occupant shut down outside the manager (counted only).
+    std::unordered_set<uint64_t> removed;
+    uint32_t destroyOk = 0, destroyOther = 0, destroyElse = 0;
+    std::string rmDiffs;
+    size_t rmListed = 0;
 };
 Follow g_follow;
 
@@ -225,7 +261,12 @@ void HBox(void*, uint64_t t, fc4_occ_bbox* out) {
     out->max[2] = mx.fZ;
 }
 
-void HPost(void*, uint64_t, uint32_t, uint32_t) {}
+// The followed core's own posts, kept for the message-order comparison. The
+// fresh core (a month's query copy) is not followed and posts nothing here.
+void HPost(void* u, uint64_t occ, uint32_t msg_type, uint32_t data4) {
+    if (Ctx(u) != &g_fol) return;
+    g_follow.coreMsgs.push_back(MsgRec{msg_type, occ, data4});
+}
 
 bool HGetBox(void* u, uint64_t t, fc4_occ_cell_box* out) {
     const auto& state = Ctx(u)->state;
@@ -1347,14 +1388,20 @@ void MonthStep(void* ctx) {
     }
 }
 
+// The message-order comparison (§5.5), defined with the message handlers below.
+void CompareMessages();
+
 void LogMonth(const Month& mo) {
     if (mo.incomplete != nullptr) {
         Log("occmgr shadow month %s: INCOMPLETE (%s); not compared", DateText(mo.julian).c_str(), mo.incomplete);
         return;
     }
     ++g_months;
+    CompareMessages();
     const uint32_t stray = g_fol.stray + mo.strayFresh;
-    const uint32_t mismatches = mo.d.mismatches + (g_follow.boxTotal - g_follow.boxExact) + stray;
+    const uint32_t msgDiffer = g_follow.msgTotal - g_follow.msgExact;
+    const uint32_t mismatches = mo.d.mismatches + (g_follow.boxTotal - g_follow.boxExact) + stray + msgDiffer +
+                                g_follow.destroyOther;
     if (mismatches == 0) ++g_cleanMonths;
     char rec[96];
     if (std::strcmp(mo.followed, "first") == 0) {
@@ -1373,12 +1420,18 @@ void LogMonth(const Month& mo) {
              g_follow.refused, g_follow.offThread, g_follow.boxExact, g_follow.boxTotal, mo.queriesOn, mo.qExact,
              mo.qTotal, mo.queries.empty() ? " (every slot exact)" : "");
     g_fol.stray = 0;
-    std::string line = std::string(head) + (mo.queries.empty() ? "" : " differ:" + mo.queries) + "; " +
+    char msgPart[192];
+    snprintf(msgPart, sizeof(msgPart), "; msgorder=%u/%u%s destroy=%u/%u/%u", g_follow.msgExact, g_follow.msgTotal,
+             msgDiffer == 0 ? " (exact)" : "", g_follow.destroyOk, g_follow.destroyOther, g_follow.destroyElse);
+    std::string line = std::string(head) + (mo.queries.empty() ? "" : " differ:" + mo.queries) + msgPart + "; " +
                        ProbeText(false) + "; stray releases=" + std::to_string(stray) +
                        "; mismatches=" + std::to_string(mismatches) +
-                       (mo.d.listed.empty() && g_follow.boxDiffs.empty()
+                       (mo.d.listed.empty() && g_follow.boxDiffs.empty() && g_follow.msgDiffs.empty() &&
+                                g_follow.rmDiffs.empty()
                             ? std::string()
-                            : "; differences: " + mo.d.listed + (g_follow.boxDiffs.empty() ? "" : " " + g_follow.boxDiffs));
+                            : "; differences: " + mo.d.listed + (g_follow.boxDiffs.empty() ? "" : " " + g_follow.boxDiffs) +
+                                  (g_follow.msgDiffs.empty() ? "" : " " + g_follow.msgDiffs) +
+                                  (g_follow.rmDiffs.empty() ? "" : " " + g_follow.rmDiffs));
     LogShadowLine("occmgr shadow (cont.)", reinterpret_cast<const uint8_t*>(line.data()), line.size());
     g_follow = Follow{};
 }
@@ -1425,7 +1478,9 @@ void CallMessage(void* ctx) {
         if (!fc4_occmgr_remove(g_fol.core, m->occ, false, m->data4)) ++g_follow.refused;
     } else {
         ++g_follow.mov;
-        if (fc4_occmgr_move(g_fol.core, m->occ, false)) {
+        // post = true: the original posted this Move, so the core must post one
+        // too (§5.4 step 9, even when the box did not change). HPost drops it.
+        if (fc4_occmgr_move(g_fol.core, m->occ, true)) {
             if (RealFlag(m->occ)) CompareBox(m->occ, "move");
         } else {
             ++g_follow.refused;
@@ -1433,10 +1488,75 @@ void CallMessage(void* ctx) {
     }
 }
 
+// The §5.3 step 4 interleaving: Remove(o1), Destroy(o1), Remove(o2),
+// Destroy(o2), ... A Destroy that follows a Remove of another occupant is the
+// batched the-wrong-way-round order and is counted. A Destroy after anything
+// else (an occupant shut down outside the manager) is only counted.
+void NoteDestroy(uint64_t occ) {
+    auto it = g_follow.removed.find(occ);
+    if (it == g_follow.removed.end()) {
+        ++g_follow.destroyElse;  // shut down outside the manager
+        return;
+    }
+    g_follow.removed.erase(it);
+    const bool adjacent = !g_follow.origMsgs.empty() && g_follow.origMsgs.back().kind == kMsgRemoved &&
+                          g_follow.origMsgs.back().occ == occ;
+    if (adjacent) {
+        ++g_follow.destroyOk;
+        return;
+    }
+    ++g_follow.destroyOther;  // its own remove is outstanding, but not just before
+    if (g_follow.rmListed++ < 4) {
+        char b[160];
+        const char* prev = g_follow.origMsgs.empty() ? "nothing" : MsgName(g_follow.origMsgs.back().kind);
+        snprintf(b, sizeof(b), "[destroy of %p not after its own remove (prev %s of %p)]",
+                 static_cast<void*>(Occ(occ)), prev,
+                 static_cast<void*>(g_follow.origMsgs.empty() ? nullptr : Occ(g_follow.origMsgs.back().occ)));
+        g_follow.rmDiffs += b;
+    }
+}
+
+// The message-order comparison (§5.5): the manager's own messages, the
+// original's against the followed core's, in order. A core that posts one
+// message per original message and in the same order is exact.
+void CompareMessages() {
+    const size_t n = g_follow.origMsgs.size() < g_follow.coreMsgs.size() ? g_follow.origMsgs.size()
+                                                                        : g_follow.coreMsgs.size();
+    g_follow.msgTotal = static_cast<uint32_t>(g_follow.origMsgs.size() > g_follow.coreMsgs.size()
+                                                  ? g_follow.origMsgs.size()
+                                                  : g_follow.coreMsgs.size());
+    for (size_t i = 0; i < n; ++i) {
+        if (g_follow.origMsgs[i] == g_follow.coreMsgs[i]) {
+            ++g_follow.msgExact;
+            continue;
+        }
+        if (g_follow.msgListed++ < 4) {
+            char b[176];
+            snprintf(b, sizeof(b), "[msg %u orig %s of %p d4=%u core %s of %p d4=%u]", static_cast<unsigned>(i),
+                     MsgName(g_follow.origMsgs[i].kind), static_cast<void*>(Occ(g_follow.origMsgs[i].occ)),
+                     g_follow.origMsgs[i].data4, MsgName(g_follow.coreMsgs[i].kind),
+                     static_cast<void*>(Occ(g_follow.coreMsgs[i].occ)), g_follow.coreMsgs[i].data4);
+            g_follow.msgDiffs += b;
+        }
+    }
+    // Trailing messages on the longer side are differences too.
+    for (size_t i = n; i < g_follow.msgTotal; ++i) {
+        const bool ours = i < g_follow.coreMsgs.size();
+        const MsgRec& r = ours ? g_follow.coreMsgs[i] : g_follow.origMsgs[i];
+        if (g_follow.msgListed++ < 4) {
+            char b[176];
+            snprintf(b, sizeof(b), "[msg %u %s only: %s of %p d4=%u]", static_cast<unsigned>(i),
+                     ours ? "core" : "orig", MsgName(r.kind), static_cast<void*>(Occ(r.occ)), r.data4);
+            g_follow.msgDiffs += b;
+        }
+    }
+}
+
 void OnMessage(cIGZMessage2* msg) {
     if (msg == nullptr) return;
     const uint32_t type = msg->GetType();
-    if (type != kMsgInserted && type != kMsgRemoved && type != kMsgMoved) return;
+    const bool followed = type == kMsgInserted || type == kMsgRemoved || type == kMsgMoved;
+    if (!followed && type != kMsgDestroyed) return;
     void* p = nullptr;
     if (!msg->QueryInterface(GZIID_cIGZMessage2Standard, &p) || p == nullptr) return;
     cIGZMessage2Standard* s = static_cast<cIGZMessage2Standard*>(p);
@@ -1448,8 +1568,18 @@ void OnMessage(cIGZMessage2* msg) {
             m.type = type;
             m.data4 = static_cast<uint32_t>(s->GetData4());
             m.occ = Canonical(static_cast<cIGZUnknown*>(s->GetVoid1()));
-            if (GetCurrentThreadId() != g_mainTid) ++g_follow.offThread;
-            if (m.occ != 0) SehGuard("occmgr shadow (followed message)", &CallMessage, &m);
+            if (type == kMsgDestroyed) {
+                NoteDestroy(m.occ);
+            } else {
+                g_follow.origMsgs.push_back(MsgRec{type, m.occ, m.data4});
+                if (type == kMsgRemoved) {
+                    g_follow.removed.insert(m.occ);
+                } else if (m.occ != 0) {
+                    g_follow.removed.erase(m.occ);  // live again (insert), or never left (move)
+                }
+                if (GetCurrentThreadId() != g_mainTid) ++g_follow.offThread;
+                if (m.occ != 0) SehGuard("occmgr shadow (followed message)", &CallMessage, &m);
+            }
         }
     }
     FC4_RELEASE(s);
@@ -1493,7 +1623,9 @@ void Listen() {
     }
     Events().AddRef();  // our own reference (static object)
     bool ok = true;
-    for (uint32_t id : {kMsgInserted, kMsgRemoved, kMsgMoved}) {
+    // Destroy is subscribed for the §5.3 interleaving check only: it is
+    // counted, never replayed onto the core.
+    for (uint32_t id : {kMsgDestroyed, kMsgInserted, kMsgRemoved, kMsgMoved}) {
         ok = ms->AddNotification(static_cast<cIGZMessageTarget2*>(&Events()), id) && ok;
     }
     if (!ok) Log("occmgr shadow: a notification was refused; the shadow core can miss messages");

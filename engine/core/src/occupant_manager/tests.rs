@@ -1142,3 +1142,15 @@ fn identity_and_edges() {
     assert_eq!(occupants(&m, 191, 64), vec![2, 2, 2]);
     assert!(m.cell(189, 64).is_none());
 }
+
+/// glue25fix3 g5: a base texture over standard cell (3, 32) is found by slot 33.
+#[test]
+fn glue25fix3_first_by_standard_cell_typed_game_box() {
+    let (w, m) = city();
+    w.add(1, 0x497F_6D9D, [0.1, 0.0, 512.1], [63.9, 0.0, 575.9]);
+    assert!(m.insert(1, 0));
+    let mut l = Vec::new();
+    assert!(m.occupants_by_standard_cells(&mut l, Some((3, 32)), Some((3, 32)), Filter::All, -1));
+    assert_eq!(l, vec![1]);
+    assert_eq!(m.first_by_standard_cell_typed(3, 32, 0x497F_6D9D), Some(1));
+}

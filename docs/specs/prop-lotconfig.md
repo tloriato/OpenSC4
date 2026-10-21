@@ -593,6 +593,48 @@ is never released by slot 12.
 
 Slot 12 `ClearLotConfigurationSet(set)`: release every element once and empty the set.
 
+**Slot 9 reference rule (answers PL19).** On **every** call, slot 9 adds exactly one reference to each configuration
+it returns, on the same interface pointer it inserts (configuration slot 1 `AddRef`, vtable `+0x04`). This holds on
+all three paths of §B5.4, and in particular on the registered-filter path whether the cache was just built or is
+being reused: the cache-miss branch falls through into the same loop the cache-hit branch jumps to
+(`0x0048B1D8` → `0x0048B29F`), which calls `AddRef` once per cached element (`0x0048B2B0`–`0x0048B2BC`) and only
+then inserts the cached elements into the caller's set (`0x0048A170`, one insert-if-absent per element). The cache
+itself holds plain pointers, with **no** reference (built at `0x0048B222`). The count returned on that path is the
+cache length (`0x0048B2D3`–`0x0048B2DD`), not the number of new set entries. Nothing else in the manager gives out
+or takes back a reference for a slot-9 result: the caller owns the references and releases them.
+
+**The caller that releases them: the growth pass** (`cSC4TractDeveloper::ListPossibleLotConfigurations`,
+`0x00709650`, called once per `cSC4TractDeveloper::Grow` call at `0x0070D4EA`; the "release wave" at
+`0x00709798` is the return address of its `Release` call at `0x00709795`):
+
+1. A fresh, empty local hash set (100 buckets, `0x00709661`–`0x00709677`) is made per call.
+2. The developer keeps its own map (developer +0x130) from a two-value key (developer +0x80 slots `+0x20` and
+   `+0x1C`) to a 12-byte filter object (vtable `0x00AB30DC`). On a miss it creates the filter and **registers**
+   it (slot 18) once per key. So in a running city every growth query is the registered,
+   cached path of §B5.4: one cache build per (key, flush), then cache hits.
+3. Slot 9 (`set`, `filter`) is called once (`0x00709701`). A zero result returns 5 at once; nothing is released
+   (the set is empty).
+4. Otherwise it walks the **local result set** (the container `0x00709798` iterates) node by node in bucket
+   order: for each configuration it calls `IsLotConfigurationSuitable` (`0x00704C00`), counts the verdict in a
+   histogram (developer +0x170, +0x18), keeps the largest verdict, and on verdict `0x1B` inserts the bare pointer
+   into the developer's candidate set (developer +0xD8, `0x0049A050`: no `AddRef`); then it calls the
+   configuration's `Release` (vtable `+0x08`) **once**, whatever the verdict.
+5. The walk stops at the end of the set (next node null and no further non-empty bucket, `0x0047C1A0`); there is
+   no early exit. The set is then destroyed without any further release; the largest verdict is returned.
+
+Per configuration and per growth query the original's net is therefore zero: +1 in slot 9, −1 at `0x00709795`.
+The release count of a configuration equals the number of growth queries whose result contained it, which is
+why it follows the game's pass structure. Configurations are never drained, because nothing else releases the
+catalogue's own reference (§B3) and the per-lot references (`cSC4Lot::Init`, `0x006BF53D`) are balanced by the
+lot. The candidate set (+0xD8) and the filter cache both hold pointers kept alive only by the catalogue reference.
+
+What an implementation needs: one `AddRef` per returned element per slot-9 call, on every call (cache hit
+included), on the pointer whose `Release` the caller will call; no second add anywhere else (a second add makes
+the count grow by one per query instead of draining). A ledger that drains by one per query means some
+slot-9 calls handed out no reference on that pointer, for example a cache-hit path that skips the add, or the add
+landing on a different object than the one placed in the set. *(Which of these the parked glue21 build does is
+not decidable from the exe; the exe only fixes the contract above.)*
+
 ### B5.3 Building tests (slots 16, 17; pop 12, AL)
 
 Both set `*obj := null` first (when `obj` is given) and return false for a null configuration or a zero ID. They
@@ -612,7 +654,7 @@ On a hit `*obj :=` that record and the result is true.
   - null filter → every configuration;
   - registered filter → on first use, the configurations for which filter slot 3 is true are cached, in map bucket
     order; the cache is then reused (the filter is **not** asked again) until the next flush; each cached
-    configuration is added to the set with a reference;
+    configuration is added to the set with a reference, on every call, cache hit or not (§B5.2);
   - unregistered filter → filter slot 3 for each configuration.
 - **Flush** (`0x0048A080`): drops every cached result. It happens when a configuration is added (new ID) or erased
   through slot 6, and therefore during every catalogue rebuild.
@@ -735,7 +777,7 @@ detail level.
 | 6 | +0x18 | `AddLotConfiguration(cfg, add)` | 8 | AL = 1 | `0x0048A690` |
 | 7 | +0x1C | `RemoveLotConfiguration(id)` | 4 | AL | `0x0048A2D0` |
 | 8 | +0x20 | `GetLotConfiguration(id)` | 4 | EAX | `0x0048A320` |
-| 9 | +0x24 | `GetLotConfigurationsByFilter(set&, filter)` | 8 | EAX count | `0x0048B1A0` |
+| 9 | +0x24 | `GetLotConfigurationsByFilter(set&, filter)` | 8 | EAX count; +1 reference per returned element on every call (§B5.2 "Slot 9 reference rule") | `0x0048B1A0` |
 | 10 | +0x28 | `GetLotConfigurationsByFamily(set&, family)` | 8 | EAX count | `0x0048A7E0` |
 | 11 | +0x2C | `GetLotConfigurationsBySize(set&, x, z)` | 12 | EAX count | `0x0048A8B0` |
 | 12 | +0x30 | `ClearLotConfigurationSet(set&)` | 4 | — | `0x0048A370` |

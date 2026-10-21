@@ -1832,10 +1832,19 @@ void PropLotShadowStartup(bool propmgrReplaced, bool lotcfgReplaced, bool tutori
     };
     for (const Item& it : items) {
         if (!*it.on) continue;
+        // glue21: a replacement is installed (`enable = <key>`) and the shadow
+        // stays on. It reads whatever the city holds - FreeCity4's class when
+        // the replacement is in, the game's otherwise - writes that class's own
+        // record and runs a private core over it on a read-only host. With a
+        // replacement that is a class-layer self-check (the vtable, the QI
+        // table and the record round trip against the core's answers); with the
+        // original it is the original-vs-core differential of glue15. The two
+        // keep separate process catalogues and neither tears the other's down.
         if (it.replaced) {
-            Log("%s shadow: requested but INACTIVE: it compares the ORIGINAL, and `enable = %s` replaces it", it.name,
-                it.key);
-            *it.on = false;
+            Log("%s shadow: ON over FreeCity4's replacement (`enable = %s`): at PostCityInit, each SimNewMonth and "
+                "PreSave, the live class's own record (its Write into memory) loads a private core over a read-only "
+                "host and the answers are compared with the live class's. %s",
+                it.name, it.key, it.what);
             continue;
         }
         Log("%s shadow: ON: at PostCityInit, each SimNewMonth and PreSave, FreeCity4's core loaded from the "

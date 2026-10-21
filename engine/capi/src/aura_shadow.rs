@@ -732,6 +732,9 @@ impl Shadow {
             return -1;
         };
         let (from, to) = (s.from, s.to);
+        if from == 3 && to == 3 {
+            return self.step_department();
+        }
         if !(0..=17).contains(&from) || !(0..=17).contains(&to) || from == to {
             return -1;
         }
@@ -807,6 +810,30 @@ impl Shadow {
             }
         }
         calls.min(i32::MAX as u32) as i32
+    }
+
+    /// State 3 spread over calls (§6.3: one department per call, N departments
+    /// take N + 1 calls). `from == to == 3` means the original stayed in state 3
+    /// but moved its department cursor: ours runs one state-3 call too, so each
+    /// department grid is read at the original's moment (an occupant message
+    /// between two of the original's department calls reaches both sides the
+    /// same way). [choice] §14.3 names state 5 only; without this, ours summed
+    /// every department at the 3 -> 4 move, after the original had read the
+    /// earlier ones (verify-regress4, AU16). Returns 1, or 0 when ours is not
+    /// in state 3 (a desync, recorded).
+    fn step_department(&mut self) -> i32 {
+        let Some(ours) = self.ours.clone() else {
+            return -1;
+        };
+        let was = ours.data().state;
+        if was != 3 {
+            self.track.desync.push(format!("3->3 (department) with ours in {was}"));
+            return 0;
+        }
+        ours.do_message(&idle());
+        self.track.calls = self.track.calls.wrapping_add(1);
+        self.track.last = 3;
+        1
     }
 
     /// Before a delivery to the original in `state`: the transient grid that

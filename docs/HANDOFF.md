@@ -5,47 +5,35 @@ before it stops and moves the stop note it replaces, verbatim, to [docs/history/
 lives in [docs/ops/](ops/); history is `git log` and [docs/history/handoff-2026-10.md](history/handoff-2026-10.md).
 Keep §0 to the current state: what is true now, what is parked, and what is next. Narration goes in `git log`.
 
-## 0. Current state (2026-10-21, run 3 starting)
+## 0. Current state (2026-10-21, run 4 active)
 
-**The wind-down is lifted for run 3** (the user, 2026-10-21). The harness now enforces what was prompt text before:
-`.claude/lane-bin/laneguard.py` runs before every lane tool call and enforces the context budget, a cap on calls
-between commits, the STOP flag and parking. The RE gate checks that REA is reachable. See
-[ops/coordinating.md](ops/coordinating.md) "Lane guard". Lane output is capped (`q.py`, `qgrep.py`, `re_query.py`).
-A lane denied by the guard returns; do not route around it. To wind down: `python tools/lanes.py stop "<reason>"`,
-then land what is on disk.
+**Train25 landed bc937e312e (4 lanes):** PL19 replacement gate62/62 and union35-key regress PASS, both clean/ref0; aura71/71 and MySims73/73 remain exact, netmgr72/73 remains questioned. Terrain TR33-TR41 answers now landed; glue-terrain3 may resume after slots/check, with2 run4 rounds left. Audio and budget-window specs landed with export/asm evidence; default propmgr/lotcfg and exact-owner map promoted after69 tools tests. Coverage38.7/28.3/12.4/16.5 (run4 deltas+1.9/+0.0/+0.3/+0.6). Total21/60; five lanes active. The old noncanonical glue21 run narrative moved to history so run-table generation works.
 
-**Main** is pushed, the merge queue is empty, and no lane is running. The gate on main passes (clippy clean, build,
-ctest 62/62). Coverage: **36.8% specified / 28.3% implemented / 12.4% verified / 15.9% replaced** (replaced was 12.1% until the replace list caught up with the landed replacements, `regresslists6`). Run 2 (the
-lean-lane GLM run, 2026-10-20 20:31 → 10-21 08:24) landed trains 10-18. Its cost and what it bought are in
-[ops/efficiency-log.md](ops/efficiency-log.md).
+**Run4 checkpoint15/60:** trains21 and22 landed; coverage36.8/28.3/12.4/16.2 versus baseline36.8/28.3/12.1/15.9 (verified+0.3, replaced+0.3 points). Five live slots are refilled after checks; terrain RE is capped3/3 and ready awaiting a batch, never round4. Audio/panels returned supported-export specs but reported no live REA app; checking that workspace diagnostic separately from the guard before accepting their coverage.
 
-**Parked work** (every branch is on origin; every other worktree branch is fully in main):
+**Train22 landed 6df8889064:** occmgr replacement clean through2032, gate62/62 and union33-key regress PASS; default occmgr enabled only after landing (tools tests69 PASS). Coverage36.8/28.3/12.4/16.2, replaced +0.3 points. Terrain RE ready at its3-round cap (parked pending landing, never round4); five other lanes active, total13/60. Expanded budget recorded and pushed; finish batches at2+ ready.
 
-| Branch | Tip | What | Next |
-|---|---|---|---|
-| `glue21` | `405da5f0` | `enable = propmgr`/`lotcfg` glue; glue21fix2 rounds 1-5 | blocked on PL19 (the growth-pass wave drains lot configurations to zero); handoff in `docs/lanes/glue21fix2.md` on the branch |
-| `mysims1` | `53403af4` | the MySims shadow, `FC4MySimsShadow.cpp` (~1,750 lines); lane gate PASS | its game run, then the regress, then the train |
-| `re-answers35` | `aa328486` | lane file only. MS1-MS7 are unanswered | redo with REA available; the last attempt cost ~$16 for nothing |
-| `glue25` | `60a69143` | WIP from the 2026-10-16 halt: the occupant manager's GZCOM class, `enable = occmgr` | 5 days stale; rebase or redo |
-| `glue26` | `fca64f23` | WIP from the 2026-10-16 halt: zones ZG22 (slot 19 `*ok`), ZG24 (HighlightParcels region) | 5 days stale; rebase or redo |
+**Train21 landed 9e5a0dd8e9:** gate/regress PASS; aura restored71/71, netmgr72/73 with NM10/NM11 filed, unknown-key warning fixed. Coverage36.8/28.3/12.4/15.9 (specified/implemented/verified/replaced), verified up0.3 points. Run224 normal pair exact73/73 each; run225 is the combined train. At the expanded checkpoint13/60 rounds are dispatched: verify1 landed; occmgr2 in train22 (gate62/62 PASS, union regress running); glue21 round2 resolving current-main integration; terrain engine1 blocked pending the ready terrain RE docs, capped at3 rounds. Four new lanes run: widget, panels and audio RE, effects core. Never spawn terrain RE round4.
 
-**Open items, ranked:**
-1. `enable = propmgr`/`lotcfg`: PL19 (glue21 above).
-2. `enable = occmgr`: glue25 (parked above), now that the occupant specs have landed. Rebase it in one fix round.
-3. `enable = terrain`: the terrain 3D view contract (TR21, `terrain.md` §15.5) landed in train14. The glue is next.
-4. The MySims shadow (mysims1 above).
-5. ABI: 63 lane proposals disagree with main's row for the same key: [abi/unreconciled-rows.tsv](abi/unreconciled-rows.tsv).
-   Decide each one; don't apply in bulk.
-6. Efficiency: the context budget and stall kill are now enforced (laneguard). Still open: the provider routing (the
-   DigitalOcean pin did not hold in run 2). See "Next levers" in [ops/efficiency-log.md](ops/efficiency-log.md).
+**Run 4 is authorized; STOP was lifted by the user.** Limits, expanded by the user: 60 total lane rounds, 3 rounds per lane, 5 live lanes, at most 3 glue lanes. Refill a returned slot in the same turn after slots/check with explicit subsystem touches; do not wait for trains to land. Run batches as soon as 2 or more lanes are ready. Every 15 rounds record rounds, landed trains and coverage delta here. A lane with 3 rounds and no landing is parked and recorded here; do not restart it. Every workflow launch is maxRounds=1, with slots and check (resume for an existing worktree) before each launch. The guard is authoritative; no denied lane continues. At 60 rounds set STOP with reason run4 round limit, land ready work, regenerate and push. A usage/rate limit pauses refills until it clears; running lanes finish.
 
-After every landing: `python tools/gen_handoff_tables.py`, `python tools/coverage.py` and
-`python tools/coverage_treemap.py`, then push. Check `git merge-base --is-ancestor <lane> main` for each landed lane.
-Operator notes (union glue, ABI rows, stalls) are in [ops/coordinating.md](ops/coordinating.md) "Merge-train
-operator notes".
+The live round ledger is build-runs/run4-coordinator-state.json; load it after compaction along with this section and lanes.py guard before any spawn. It records dispatched rounds and process IDs; do not infer the count from old guard totals. Main must remain clean; tool changes require pytest tools/tests and their own immediate commit.
+
+**Work order:**
+1. Verified regressions: compare train17 fed3a354 with train19 832c7238. Netmgr 71/73 (record11 lots, April/May 2026), aura 70/71, and netmgr_shadow unknown-key warning; fix or file a numbered question. This should restore verified coverage, currently 12.1%.
+2. glue25fix3 at 209ff7fc: replacement g1 corrupt 2028-04-01; shadow-only g2 is not replacement evidence. Diagnose from branch logs. After a clean replacement run: regress including occmgr, train; only after landing add occmgr to regress Replace and coverage-map replace key.
+3. glue-terrain3 at d112c328: gt3-repl-4 corrupt before game date; view/raw-record contract and slot96 Load already committed and gate 62/62. Diagnose crash; TR33-TR37 must be questions, never guessed.
+4. glue21 at 405da5f0: PL19 is answered on main; implement per-call slot9 AddRef on every returned pointer including cache hits, remove the PL18 extra add, then validate against its trace.
+Then choose work from coverage-report.md subsystem bytes, largest eligible first: spec yes/core absent gets core; core yes/replace absent gets glue after core lands; nonexact shadows get verify; absent spec gets RE. Use explicit subsystem touch keys on every check. Skip glue26 and ABI reconciliation.
+
+**Baseline:** main 29e22e21, queue empty, no lane running at start. Train19 gate and full regress PASS, MySims exact73/73; train20 landed MS/PL documentation. Coverage 36.8% specified /28.3% implemented /12.1% verified /15.9% replaced. WIP branches above are pushed.
+
+**Runtime:** CLI hosts must set CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 and wait for TaskOutput. Use only the guarded saved fc4-lane workflow, never direct unguarded agents. The six-slot game queue is pid22296, started with a working Windows PowerShell module path after a Get-FileHash startup failure. RE spawns need a fresh REA preflight GO. After every train regenerate handoff tables, coverage and treemap; add a line here, commit and push.
+
+The previous stop note is preserved verbatim in [history/handoff-run3-stop-2026-10-21.md](history/handoff-run3-stop-2026-10-21.md).
 
 <!-- BEGIN GENERATED: latest-run -->
-- **Latest in-game run:** 221 (the network-tool replacement places roads and streets in the real game (inserts=8..69, valid=solved, failure 0), 20/20 scripted placements ok, city runs to 2032 clean with ref_warnings=0.); 216 (component 53 / 11 save round trip, record53 equal at load and save); 215 (devperf2 shadows over the replacement exact after the cell-walk host change); 214 (regress-style netmgr shadow, exact 72/73 to 2032 (the one difference is NM10)); 213 (devperf2 UpdatePopulation 3.52 -> 0.74-1.05 us/call, Grow 349 -> 267-413 us/call, shadows exact). See `docs/manual-checks.md`.
+- **Latest in-game run:** 227 (train25 four-lane PASS, PL19 replacement promoted, terrain spec blockers answered, coverage38.7/28.3/12.4/16.5); 226 (train22 PASS, occupant-manager replacement promoted, replaced coverage15.9 to16.2 percent); 225 (train21 PASS, aura restored to 71/71, verified coverage 12.1 to 12.4 percent; netmgr differences documented); 223 (train19 PASS, MySims shadow exact 73/73 alongside the full regression, ref_warnings=0); 222 (MySims shadow exact 73/73 through 2032, including load, ref_warnings=0). See `docs/manual-checks.md`.
 <!-- END GENERATED -->
 
 ## Where everything else is

@@ -48,6 +48,7 @@
 #include "FC4FlammabilityShadow.h"
 #include "FC4Clock24Shadow.h"
 #include "FC4AutomataShadow.h"  // the glue19 lane
+#include "FC4MySimsShadow.h"  // the mysims1 lane: mysims_shadow
 #include "cFC4Automata.h"  // the glue19 lane
 #include "FC4HistoryShadow.h"
 #include "FC4NetMgrShadow.h"
@@ -63,6 +64,7 @@
 #include "cFC4Terrain.h"        // the glue18 lane: the terrain replacement
 #include "cFC4NetworkManager.h"    // the glue24 lane: enable = netmgr
 #include "cFC4NetworkLotManager.h" // the glue24 lane: enable = netlot
+#include "cFC4OccMgr.h"          // the glue25 lane: enable = occmgr
 #include "FC4ResidentialShadow.h"
 #include "FC4ZonesShadow.h"
 #include "cFC4Residential.h"
@@ -96,6 +98,8 @@
 #include "cFC4Tutorial.h"    // the glue15 lane: tutorial
 #include "FC4PortsShadow.h"    // the glue12b2 lane: ports
 #include "cFC4PortDeveloper.h"  // the glue12b2 lane: ports
+#include "cFC4PropManager.h"  // the glue21 lane: propmgr
+#include "cFC4LotConfigManager.h"  // the glue21 lane: lotcfg
 #include "FC4Turbo.h"  // the harness lane: sim_turbo
 #include "FC4Script.h"  // the harness lane: script
 #include "FC4PropDevShadow.h"     // the glue12b1 lane: propdev_shadow
@@ -362,6 +366,18 @@ const ClassEntry kZoneDevClasses[] = {
 const ClassEntry kTutorialClasses[] = {
     {kFC4_CLSID_cSC4TutorialSystem, "cSC4TutorialSystem", &CreateFC4TutorialSystem},
 };
+// docs/specs/prop-lotconfig.md Part A: the prop manager (city component 5).
+// Off by default (the glue21 lane): `enable = propmgr`. Replaces the game's
+// cSC4PropManager; propmgr_shadow still compares the live class against the
+// core over a read-only host (FC4PropLotShadow.h).
+const ClassEntry kPropMgrClasses[] = {
+    {kFC4_CLSID_cSC4PropManager, "cSC4PropManager", &CreateFC4PropManager},
+};
+// docs/specs/prop-lotconfig.md Part B: the lot configuration manager (city
+// component 9). Off by default (the glue21 lane): `enable = lotcfg`.
+const ClassEntry kLotCfgClasses[] = {
+    {kFC4_CLSID_cSC4LotConfigManager, "cSC4LotConfigManager", &CreateFC4LotConfigManager},
+};
 
 // docs/specs/dispatch.md §1. Off by default (glue17): `enable = dispatch`.
 // The protection simulators and the air sources register with it (§8), and the
@@ -429,7 +445,13 @@ const ClassEntry kNetworkLotClasses[] = {
 // netmgr replacement's own create_tool callback hands out the real tool.
 const ClassEntry kNetToolClasses[] = {
     {kFC4_CLSID_cFC4NetworkTool, "cFC4NetworkTool", &CreateFC4NetworkToolEntry},
+};
 
+// docs/specs/occupant-manager.md §1, CLSID 0x098F964D. Off by default
+// (glue25): `enable = occmgr`. The city component table's #4 (foundations
+// §3.6); every manager query and the v1 save record go through it.
+const ClassEntry kOccMgrClasses[] = {
+    {kFC4_CLSID_cSC4OccupantManager, "cSC4OccupantManager", &CreateFC4OccupantManager},
 };
 
 const Subsystem kSubsystems[] = {
@@ -482,6 +504,10 @@ const Subsystem kSubsystems[] = {
     {"netmgr", nullptr, kNetworkManagerClasses, sizeof(kNetworkManagerClasses) / sizeof(kNetworkManagerClasses[0]),
      false},
     {"netlot", nullptr, kNetworkLotClasses, sizeof(kNetworkLotClasses) / sizeof(kNetworkLotClasses[0]), false},
+    // the glue21 lane
+    {"propmgr", nullptr, kPropMgrClasses, sizeof(kPropMgrClasses) / sizeof(kPropMgrClasses[0]), false},
+    {"lotcfg", nullptr, kLotCfgClasses, sizeof(kLotCfgClasses) / sizeof(kLotCfgClasses[0]), false},
+    {"occmgr", nullptr, kOccMgrClasses, sizeof(kOccMgrClasses) / sizeof(kOccMgrClasses[0]), false},
 };
 
 constexpr size_t kSubsystemCount = sizeof(kSubsystems) / sizeof(kSubsystems[0]);
@@ -651,7 +677,10 @@ void Resolve() {
     EffectsShadowStartup(enabledKey("effects"));
     TerrainShadowStartup();
     // The automata shadow (FC4AutomataShadow.h; it compares the original automata components).
-    AutomataShadowStartup(enabledKey("automata"));    // The turbo clock (FC4Turbo.h; tooling): only our simulator has it.
+    AutomataShadowStartup(enabledKey("automata"));
+    // The MySims shadow (FC4MySimsShadow.h; it compares the original MySim agent + advisors).
+    MySimsShadowStartup();
+    // The turbo clock (FC4Turbo.h; tooling): only our simulator has it.
     TurboReload(g_enabled[0]);
     // The network tool registry (glue29): with `enable = nettool` the plugin's
     // own tool callers take replacement tools instead of the manager's.

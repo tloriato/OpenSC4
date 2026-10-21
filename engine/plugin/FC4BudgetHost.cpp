@@ -221,6 +221,8 @@ int64_t NeighborExpense(void*) {
 // its visit. Main thread only.
 BudgetLotTapFn g_lotTap = nullptr;
 void* g_lotTapContext = nullptr;
+// Diagnostic tallies of the lots one scan visited (reset at each master-list scan).
+uint32_t g_scanSeen = 0, g_scanBuilding = 0, g_scanLivable = 0, g_scanLand = 0, g_scanValue = 0;
 
 // One lot of ForEachLot (§5.2), each read behind its lot_* sub-switch; an
 // off switch leaves the neutral value in `info`.
@@ -288,6 +290,12 @@ void VisitLot(cFC4ISC4Lot* lot, cISC4LandValueSimulator* lv, fc4_lot_visitor vis
             NoteSkipped(Sw::LotBuildingValue, "building QI + property 0xE91A0B5F (value 0)");
         }
     }
+    // Per-scan summary counters (diagnostic only; logged with the scan line).
+    ++g_scanSeen;
+    if (info.has_building) ++g_scanBuilding;
+    if (info.livable) ++g_scanLivable;
+    if (info.land_value != 0) ++g_scanLand;
+    if (info.building_value != 0) ++g_scanValue;
     visit(ctx, &info);
 }
 
@@ -500,6 +508,7 @@ bool WalkMasterList(cFC4ISC4LotManager* lm, cISC4LandValueSimulator* lv, fc4_lot
         return false;
     }
     uint32_t nulls = 0;
+    g_scanSeen = g_scanBuilding = g_scanLivable = g_scanLand = g_scanValue = 0;
     for (uint32_t i = 0; i < copy.count; ++i) {
         cISC4Lot* sdkLot = static_cast<cISC4Lot*>(lots[i]);
         if (sdkLot == nullptr) {
@@ -515,6 +524,8 @@ bool WalkMasterList(cFC4ISC4LotManager* lm, cISC4LandValueSimulator* lv, fc4_lot
     } else {
         Log("budget lot scan #%ld: %u lots (master list)", scan, copy.count);  // one line per scan
     }
+    Log("budget lot scan #%ld: visited %u, with building %u, livable %u, land value>0 %u, building value>0 %u", scan,
+        g_scanSeen, g_scanBuilding, g_scanLivable, g_scanLand, g_scanValue);
     return true;
 }
 

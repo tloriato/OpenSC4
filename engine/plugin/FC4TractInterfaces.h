@@ -99,38 +99,48 @@ inline GameVector<uint32_t>& AsGameB(TractStyleVector& v) { return reinterpret_c
 }  // namespace fc4
 
 // cISC4LotConfigurationManager (vtable 0x00A8EC58, 28 slots).
+//
+// Corrected by the glue21 lane against prop-lotconfig.md B7 and the `ret`
+// column of docs/abi/interfaces.tsv (no call site used the wrong shapes):
+// B7's SDK error - the header declares slot 5 as
+// AddLotConfiguration(cISC4LotConfiguration*, bool) and slot 6 as
+// AddLotConfiguration(cGZPersistResourceKey const&, void*), but the game's
+// slot 5 takes ONLY the key (pop 4) and slot 6 takes the configuration and the
+// flag (pop 8). The set queries return the count in EAX (SDK: bool).
 class cFC4ISC4LotConfigurationManager : public cIGZUnknown {
 public:
     virtual bool Init() = 0;                                                                   // 3
     virtual bool Shutdown() = 0;                                                               // 4
-    virtual bool AddLotConfiguration(cISC4LotConfiguration* config) = 0;                       // 5  (SDK: + bool)
-    virtual bool AddLotConfigurationByKey(cGZPersistResourceKey const& key, void* data) = 0;   // 6
+    virtual bool AddLotConfigurationByKey(cGZPersistResourceKey const& key) = 0;               // 5, pop 4
+    virtual bool AddLotConfiguration(cISC4LotConfiguration* config, bool add) = 0;             // 6, pop 8
     virtual bool RemoveLotConfiguration(uint32_t id) = 0;                                      // 7
     virtual cISC4LotConfiguration* GetLotConfiguration(uint32_t id) = 0;                       // 8  (no reference)
     // Inserts each matching configuration with one reference (the caller
-    // releases each); does not clear; EAX = the count (§8).
+    // releases each); does not clear; EAX = the count (B5).
     virtual uint32_t GetLotConfigurationsByFilter(fc4::GameHashSetU32<fc4::TractNodeAllocator>& configs,
                                                   cISC4LotConfigurationFilter* filter) = 0;    // 9
-    virtual bool GetLotConfigurationsByFamily(void* configs, uint32_t family) = 0;             // 10
-    virtual bool GetLotConfigurationsBySize(void* configs, uint32_t x, uint32_t z) = 0;        // 11
-    virtual bool ClearLotConfigurationSet(void* configs) = 0;                                  // 12
-    virtual bool GetLotConfigurationIDsByFilter(void* ids, cISC4LotConfigurationFilter* filter) = 0;  // 13
-    virtual bool GetLotConfigurationIDsByFamily(void* ids, uint32_t family) = 0;               // 14
-    virtual bool GetLotConfigurationIDsBySize(void* ids, uint32_t x, uint32_t z) = 0;          // 15
+    virtual uint32_t GetLotConfigurationsByFamily(void* configs, uint32_t family) = 0;         // 10, count
+    virtual uint32_t GetLotConfigurationsBySize(void* configs, uint32_t x, uint32_t z) = 0;    // 11, count
+    virtual void ClearLotConfigurationSet(void* configs) = 0;                                  // 12, no return
+    virtual uint32_t GetLotConfigurationIDsByFilter(void* ids, cISC4LotConfigurationFilter* filter) = 0;  // 13
+    virtual uint32_t GetLotConfigurationIDsByFamily(void* ids, uint32_t family) = 0;           // 14, count
+    virtual uint32_t GetLotConfigurationIDsBySize(void* ids, uint32_t x, uint32_t z) = 0;      // 15, count
     virtual bool LotConfigurationHasBuildingFamily(cISC4LotConfiguration* config, uint32_t family,
                                                    cSC4LotConfigurationObject** object) = 0;  // 16
     virtual bool LotConfigurationHasBuildingType(cISC4LotConfiguration* config, uint32_t type,
                                                  cSC4LotConfigurationObject** object) = 0;    // 17
-    virtual bool RegisterLotConfigurationFilter(cISC4LotConfigurationFilter* filter) = 0;      // 18
-    virtual bool UnregisterLotConfigurationFilter(cISC4LotConfigurationFilter* filter) = 0;    // 19
-    virtual intptr_t GetLotConfigurationMap() = 0;                                             // 20
-    virtual intptr_t GetLotConfigurationFamilyIDSet() = 0;                                     // 21
+    virtual void RegisterLotConfigurationFilter(cISC4LotConfigurationFilter* filter) = 0;      // 18, no return
+    virtual void UnregisterLotConfigurationFilter(cISC4LotConfigurationFilter* filter) = 0;    // 19, no return
+    virtual void* GetLotConfigurationMap() = 0;                                                // 20, EAX
+    virtual void* GetLotConfigurationFamilyIDSet() = 0;                                        // 21, EAX
     virtual bool CreateGenericLotConfiguration(cISC4LotConfiguration*& config, uint32_t id) = 0;  // 22
-    virtual bool FixLotConfiguration(cISC4LotConfiguration* config) = 0;                       // 23
-    virtual bool GetMaxFootprintForBuildingFamilies(void const* families, cS3DRect2D& rect) = 0;  // 24
-    virtual bool GetMaxFootprintForFloraFamilies(void const* families, cS3DRect2D& rect) = 0;     // 25
-    virtual bool GetMaxFootprintForPropFamilies(void const* families, cS3DRect2D& rect) = 0;      // 26
-    virtual bool GetObjectIDArray(cSC4LotConfigurationObject* object, void* ids) = 0;          // 27
+    virtual uint32_t FixLotConfiguration(cISC4LotConfiguration* config) = 0;                   // 23, EAX code
+    // B5.5-B5.6: no defined return value (interfaces.tsv eax-or-void).
+    virtual void GetMaxFootprintForBuildingFamilies(void const* families, cS3DRect2D& rect) = 0;  // 24
+    virtual void GetMaxFootprintForFloraFamilies(void const* families, cS3DRect2D& rect) = 0;     // 25
+    virtual void GetMaxFootprintForPropFamilies(void const* families, cS3DRect2D& rect) = 0;      // 26
+    virtual void GetObjectIDArray(cSC4LotConfigurationObject* object, void* ids) = 0;          // 27
+    // slot 28: the implementing class's `virtual ~` (scalar deleting dtor).
 };
 
 namespace fc4 {

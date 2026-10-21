@@ -22,7 +22,10 @@
 //   lotcfg_shadow = 1           (env FC4_LOTCFG_SHADOW)
 //   tutorial_shadow = 1         (env FC4_TUTORIAL_SHADOW)
 //
-// Each shadow only reads the original. At PostCityInit ("load"), at every
+// Each shadow only reads the class the city holds - the game's original, or
+// FreeCity4's replacement when `enable = propmgr` / `lotcfg` / `tutorial` is
+// on (glue21: a replacement does not turn its shadow off; over a replacement
+// the comparison is a class-layer self-check). At PostCityInit ("load"), at every
 // SimNewMonth ("month") and at PreSave ("save"), on the main thread, a core
 // of FreeCity4's (fc4_prop_manager / fc4_lot_config_manager / fc4_tutorial) reads
 // the original's own record (its cIGZSerializable::Write into memory,

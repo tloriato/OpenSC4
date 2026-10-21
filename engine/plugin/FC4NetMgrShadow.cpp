@@ -732,6 +732,32 @@ uint64_t NetworkOccupantOf(const void* ser) {
     return TokenOf(q);
 }
 
+// NM11 diagnostics (verify-regress4): for a lot held by one side only, the
+// network occupant's style inputs (variation, rotation, flip, IsUsable) and
+// whether the entry's configuration is compatible now under our zone and
+// wealth (§8.4, §8.5), so a later run shows which input differs.
+struct LotDetail {
+    char text[128] = "";
+};
+LotDetail DetailOf(const void* ser, uint32_t cfg, int32_t x, int32_t z, int32_t zone, int32_t wealth) {
+    LotDetail d;
+    const uint64_t n = NetworkOccupantOf(ser);
+    if (n == 0) {
+        std::snprintf(d.text, sizeof(d.text), "no network occupant;");
+        return d;
+    }
+    cISC4NetworkOccupant* net = NetOf(n);
+    const uint32_t var = net->GetVariation();
+    const int32_t rot = static_cast<int32_t>(net->GetRotation());
+    const int32_t flip = static_cast<int32_t>(net->GetFlip());
+    const bool usable = net->IsUsable();
+    const bool compat = fc4_netlot_is_lot_compatible(g_lot, cfg, x, z, zone, wealth, rot, flip);
+    NetMgrReleaseHeld(&g_ctx);
+    std::snprintf(d.text, sizeof(d.text), "variation 0x%X rotation %d flip %d usable %d, compatible now %d;", var,
+                  rot, flip, usable ? 1 : 0, compat ? 1 : 0);
+    return d;
+}
+
 // ---- one comparison -------------------------------------------------------------------------------------
 
 struct Run {
@@ -857,11 +883,15 @@ void RunStep(void* p) {
             }
             Diff& dl = Nm10Cell(x, z) ? nm10 : d;
             if (o == ol.lots.end()) {
-                dl.Add("lot at %d,%d: ours only (config 0x%08X)", x, z, u->second.second);
+                const LotDetail ld = DetailOf(u->second.first, u->second.second, x, z, zu, wu);
+                dl.Add("lot at %d,%d: ours only (config 0x%08X; %s zone/wealth orig %d/%d ours %d/%d)", x, z,
+                       u->second.second, ld.text, zo, wo, zu, wu);
                 continue;
             }
             if (u == ul.lots.end()) {
-                dl.Add("lot at %d,%d: the original's only (config 0x%08X)", x, z, o->second.second);
+                const LotDetail ld = DetailOf(o->second.first, o->second.second, x, z, zu, wu);
+                dl.Add("lot at %d,%d: the original's only (config 0x%08X; %s zone/wealth orig %d/%d ours %d/%d)", x,
+                       z, o->second.second, ld.text, zo, wo, zu, wu);
                 continue;
             }
             if (o->second.first != u->second.first) {
