@@ -1,19 +1,44 @@
-| verify-netmgrfix4 | engine | NM10/NM11 lot-state boundary walk per network-manager.md 6.2/6.3 (tests 23/24) in core + netmgr shadow; NM10 exclusion removed | round 3 in progress (NM12/NM13 answered); was blocked on NM12 (gate PASS at 14a7c938; vnmf4-turbo2032-a 73/73 mismatches=0 but 4 resyncs, vnmf4-normal-a 7/7 but 2 resyncs: not zero-resync exact) |
+| verify-netmgrfix4 | engine | NM12/NM13 exact draw replay: core pending as the SGI hash set (B persistent) + raw MT state load/read (tests 25-28), shadow captures generator + B before the original, replays, checks post-state; resync removed | wip/parked: gate PASS at b547f52c; vnmf4r3-turbo2032-a clean ref0 but 71/73 lines with mismatches: shadow configs lack §8.6 objects, so object draws are missing (orig draws 4-13 more per step) |
 
-## Handoff (round 3, 2026-10-21)
+## Report (round 3, 2026-10-21): parked, negative evidence
 
-Goal: exact draw replay per network-manager.md §17.3 + §8.5 replay contract (rules 1-6), zero resyncs, game
-runs turbo + normal to 2032 clean/ref0, then full gate and merge-queue file.
-Done: merged main (4df3e324, questions file = main's); core PendingSet (SGI hash_set, B=193, resize count+1,
-head pushes) + RzRandomSuper::from_raw/raw + lot manager load_random_raw/random_raw/pending_bucket_count/
-set_pending_bucket_count, tests t25-t28 (da495dfd); capi exports fc4_netlot_load_random_raw, _random_raw,
-_pending_bucket_count, _set_pending_bucket_count (additive, abi=true); shadow: PreCapture in the first listener
-before the original for 0x07699455/0xE8BDA2E7/0x89D3E9F3/0xA9B6C2D6 (624 words, left->k, next audit, vtable
-0x00AA7958, B, count=0), load before our step, PostCheck after (rng + B equality), pre-diff vs our previous
-post-state (unobserved draws, e.g. RedevelopLot), resync disabled, config diffs always mismatches;
-vector nm16_23 now in hash order.
-Next: qbuild all, then game runs vnmf4r3-turbo2032-a (turbo) and vnmf4r3-normal-a (normal).
-Facts: round-1/2 report below.
+**What changed**
+- Merged main (4df3e324; questions file taken from main, NM12 answered there).
+- Core (da495dfd): `network_manager/pending.rs` `PendingSet`, the SGI `hash_set<u16>` of the §8.5 replay contract
+  (identity hash, B = 193 from the request 100, resize with count+1 before every insert incl. duplicates, rehash
+  old buckets ascending each from head with head pushes, head push of new keys, erase never shrinks, iteration
+  buckets ascending from head); replaces the ascending-key BTreeSet ([choice] gone). `RzRandomSuper::from_raw/raw`
+  ((state[624], k)), `NetworkLotRandom::raw_state`, lot manager `load_random_raw`, `random_raw`,
+  `pending_bucket_count`, `set_pending_bucket_count` (refused while keys pending). Tests t25-t28 (§16 25-28,
+  incl. the rehash example: 0x1416 resize, buckets 359/368, B kept at 389).
+- capi (b547f52c, additive, abi=true, no version bump): `fc4_netlot_load_random_raw`, `fc4_netlot_random_raw`,
+  `fc4_netlot_pending_bucket_count`, `fc4_netlot_set_pending_bucket_count`.
+- Shadow (b547f52c): first listener (before the original) captures 0x00B44870 words, k = 624 - left (next audited),
+  B and count (+0x78/+0x7C/+0x84, vtable 0x00AA7958 audited) for 0x07699455/0xE8BDA2E7/0x89D3E9F3/0xA9B6C2D6; the
+  lot core loads them before its step; after it, words/k/B are compared with the original's (check, never copy);
+  a capture differing from our previous post-state is reported (rule 4). Resync removed (mgr and lot); a differing
+  configuration is always a mismatch. New line part `replay: ...` and a shutdown `replay` total line.
+- Vector nm16_23 follows the hash order (pending list, texture events 0x62, 0x60, 0x5F).
+
+**Gate** (b547f52c): qbuild all PASS: cargo test 3902 passed / 0 failed, clippy 0, build PASS, ctest 63/63.
+
+**Game** `vnmf4r3-turbo2032-a` (turbo, Konradshohe, to 2032-01-12): verdict clean, ref_warnings=0; 0 resyncs;
+73 lines, only 2 exact. Replay totals: captures 2055, bad 0, B max 389 (rule-5 count always 0, B diffs 0: the
+hash-order/B part is exact), but rng post diffs 21 (= pre-diffs 21). In every failing step the original drew
+MORE than ours: k orig/ours 322/318, 339/326, 349/341, 354/350, 389/385, 394/390, 401/396, 411/407. Cause: the
+shadow adds the configurations with `fc4_netlot_add_configuration_props(g_lot, 0, p, nullptr, 0)`: no §8.6
+objects and no object_ids, so our CreateLotObjects makes no prop/flora draws. After the first missed draw a
+configuration differs (e.g. lot at 30,108) and, without resync, stays different on later lines.
+Normal-speed run not made (the turbo result already fails; not worth a slot until the fix).
+
+**Questions**: none (a shadow host gap, not a spec gap).
+
+**Next**
+- Shadow: load the configurations' objects as cFC4NetworkLotManager::ReadConfigurations does (0x88EDC900+k
+  properties -> fc4_netlot_object, raw ID lists per token) and give the shadow host an `object_ids` with the
+  §B5.6 expansion (cFC4NetworkLotManager.cpp ObjectIds; factor it into a shared helper rather than copying).
+- Then reruns with new unique labels (e.g. vnmf4r4-turbo2032-a, vnmf4r4-normal-a), expecting rng diffs 0.
+- The avenue flood's local set (lots.rs `work` BTreeSet) may also need the original's order (§8.7); check.
 
 ## Round 2 (2026-10-21): blocked on NM12
 
