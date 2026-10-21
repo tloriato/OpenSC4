@@ -12032,6 +12032,18 @@ fc4_props* fc4_exstore_props(const fc4_exstore* p, size_t index, bool effective,
 size_t fc4_exstore_untyped_ids(const fc4_exstore* p, size_t index, bool effective, uint32_t* ids, size_t cap);
 bool fc4_exstore_failure(const fc4_exstore* p, size_t index, uint32_t* key3, uint8_t* buf, size_t cap);
 
+/* One exemplar/cohort record parsed for the plug-in resource factory
+ * (data-formats §4.1/§4.2/§8.1): every property in record order, Empty and
+ * kind-1 resource-key properties reported by kind (0 value, 1 Empty,
+ * 2 resource key, -1 out of range). Value data is borrowed from the record. */
+typedef struct fc4_exrec fc4_exrec;
+fc4_exrec* fc4_exrec_parse(uint32_t type_id, const uint8_t* data, size_t len);
+void fc4_exrec_destroy(fc4_exrec* p);
+bool fc4_exrec_parent(const fc4_exrec* p, uint32_t* key3);
+size_t fc4_exrec_count(const fc4_exrec* p);
+int32_t fc4_exrec_prop(const fc4_exrec* p, size_t index, uint32_t* id, uint16_t* mem_type, bool* is_array,
+                       const uint8_t** data, size_t* count, uint32_t* key3);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

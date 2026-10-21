@@ -14,6 +14,7 @@
 #include "FC4FormatsShadow.h"
 
 #include "FC4Config.h"
+#include "FC4ExemplarFactory.h"
 #include "FC4Log.h"
 #include "FC4Properties.h"
 #include "FC4RefAudit.h"
@@ -446,6 +447,13 @@ void FormatsShadowStartup() {
 void FormatsShadowCityLoaded() {
     if (!g_enabled || g_done) return;
     g_done = true;
+    // glue-exemplars4: with `enable = exemplars` GetResource returns the
+    // replacement's objects, so this run compares the Rust core with OUR
+    // factory (a consistency check of the replacement), not with the original.
+    const bool replaced = ExemplarFactoryActive();
+    Log("formats shadow: game side = %s", replaced ? "REPLACEMENT (enable = exemplars; ours vs core, not a native "
+                                                    "verification)"
+                                                  : "ORIGINAL factories (native verification)");
     const std::wstring dir = InstallDir();
     if (dir.empty()) {
         Log("formats shadow: install folder not found; not run");
