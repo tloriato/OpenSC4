@@ -237,6 +237,28 @@ void SampleThreads() {
             }
         }
         LogWait(1000, "%s", line);
+        // The objects a waiting thread may be blocked on: small handle-like words near the top of its stack,
+        // named by their kernel type (public NtQueryObject), and for a thread handle, the thread id.
+        if (stack[0] != 0 && got >= 64) {
+            using QueryObject = LONG(WINAPI*)(HANDLE, int, void*, ULONG, ULONG*);
+            static QueryObject q = reinterpret_cast<QueryObject>(
+                GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryObject"));
+            for (unsigned i = 0; i < 16 && q != nullptr; ++i) {
+                const uintptr_t v = stack[i];
+                if (v == 0 || v >= 0x10000 || (v & 3) != 0) continue;
+                alignas(8) uint8_t buf[512];
+                ULONG need = 0;
+                if (q(reinterpret_cast<HANDLE>(v), 2 /*ObjectTypeInformation*/, buf, sizeof(buf), &need) < 0) continue;
+                // OBJECT_TYPE_INFORMATION begins with a UNICODE_STRING TypeName
+                const auto* len16 = reinterpret_cast<const USHORT*>(buf);
+                const wchar_t* name = *reinterpret_cast<wchar_t* const*>(buf + 4);
+                char tn[32] = {};
+                for (unsigned k = 0; k < 31 && k < *len16 / 2u; ++k) tn[k] = static_cast<char>(name[k]);
+                const DWORD wt = GetThreadId(reinterpret_cast<HANDLE>(v));
+                LogWait(1000, "terrain trace:   stack[%u] = handle 0x%X type %s%s%lu", i, static_cast<unsigned>(v), tn,
+                        wt ? " thread id " : "", static_cast<unsigned long>(wt));
+            }
+        }
     }
     CloseHandle(snap);
 #endif
