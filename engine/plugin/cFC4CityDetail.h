@@ -28,6 +28,7 @@
 // Log lines (FreeCity4.log):
 //   citydetail Init: setting=.. level a->b pass=none|reduce|increase removed=.. created=.. draws=.. network-lots=..
 //   citydetail Read|Write -> 0|1 (level ..)
+//   citydetail Shutdown -> 1 (level .., inits=.., QueryInterface own=.. serializable=.. refused=.., GetCityDetail=..)
 #pragma once
 
 #include "FC4PropCityCommon.h"
@@ -35,6 +36,7 @@
 #include "cIGZUnknown.h"
 #include "fc4.h"
 
+#include <atomic>
 #include <cstdint>
 
 static const uint32_t kFC4_CLSID_cSC4CityDetailManager = 0xEAD4BA36;
@@ -101,6 +103,9 @@ private:
     fc4_city_detail_host host_{};
     fc4_city_detail* core_ = nullptr;
     uint32_t seed_ = 0;
+    // Trace counters for the Shutdown log line (atomic: §5.1, the game may
+    // query from its second thread).
+    std::atomic<uint32_t> qiOwn_{0}, qiSer_{0}, qiOther_{0}, getDetail_{0}, inits_{0};
 };
 
 // Factory for the subsystem table (reference count 0).

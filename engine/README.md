@@ -532,7 +532,7 @@ detail 14 records (8 bytes, 403 saves have none), all identical.
        (idle …, day …) removed=… created=… posts=… …` line per SimNewMonth.
      - `citydetail`: the city detail manager (`cSC4CityDetailManager`, CLSID `0xEAD4BA36`, city component 51;
        city-detail spec): Init's reduce / increase pass over every lot (the lot list's order) and
-       every network lot (IterateAllNetworkLots' callback answers true, question CD6), slot 5 and the record (version 0, 8 bytes). The setting is the preferences byte
+       every network lot (IterateAllNetworkLots' callback answers true: §3.4 redevelops every lot), slot 5 and the record (version 0, 8 bytes). The setting is the preferences byte
        (`videoPreferences.cityDetail`, default 3). `citydetail_seed = N` (env `FC4_CITYDETAIL_SEED`) fixes the
        session seed of the pass generator. The log has `citydetail Init: setting=… level a->b pass=none|reduce|increase
        removed=… created=… draws=… network-lots=…` and `citydetail Read|Write -> 0|1 (level …)`.
