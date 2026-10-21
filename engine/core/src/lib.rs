@@ -25,6 +25,7 @@ pub mod audio;
 pub mod aura;
 pub mod automata;
 pub mod budget;
+pub mod budget_window;
 pub mod calibration;
 pub mod city_detail;
 pub mod city_situation;
