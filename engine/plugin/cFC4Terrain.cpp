@@ -221,7 +221,7 @@ void SampleThreads() {
             emBase = reinterpret_cast<uintptr_t>(em);
             GetModuleFileNameA(em, mod, sizeof(mod));
         }
-        const char* base = strrchr(mod, '\');
+        const char* base = strrchr(mod, '\\');
         int len = snprintf(line, sizeof(line), "terrain trace: thread %lu eip=%s+0x%lX esp=0x%08lX:",
                            static_cast<unsigned long>(te.th32ThreadID), base ? base + 1 : mod,
                            static_cast<unsigned long>(ctx.Eip - emBase), static_cast<unsigned long>(ctx.Esp));
@@ -1789,14 +1789,6 @@ void cFC4STETerrain::ChangeTerrainLevel(bool up, float amount) {
 
 void cFC4STETerrain::SetAltitudeRect(SC4Rect<int32_t> const& r, float h, bool redisplay, uint32_t data4) {
     Enter();
-    // diagnostic: who asks, with what (the gt3-r2 June stall follows one of these)
-    trace::Note("Redisplay.caller", 0,
-                static_cast<uint32_t>(reinterpret_cast<uintptr_t>(_ReturnAddress()) -
-                                      reinterpret_cast<uintptr_t>(GetModuleHandleA(nullptr))));
-    trace::Note("Redisplay.flags", 0, (terrain ? 1u : 0u) | (water ? 2u : 0u) | (data4 << 8));
-    trace::Note("Redisplay.x0z0", 0, (static_cast<uint32_t>(r.topLeftX) << 16) | (static_cast<uint32_t>(r.topLeftY) & 0xFFFFu));
-    trace::Note("Redisplay.x1z1", 0,
-                (static_cast<uint32_t>(r.bottomRightX) << 16) | (static_cast<uint32_t>(r.bottomRightY) & 0xFFFFu));
     if (core_ != nullptr) {
         fc4_terrain_rect rect{r.topLeftX, r.topLeftY, r.bottomRightX, r.bottomRightY};
         fc4_terrain_set_altitude_rect(core_, rect, h, redisplay, data4);  // §6
@@ -1893,6 +1885,14 @@ void cFC4STETerrain::EndBrushScrub(uint32_t, uint32_t) {
 void cFC4STETerrain::RedisplayTerrainRect(bool terrain, bool water, SC4Rect<int32_t> const& r,
                                           uint32_t data4) {
     Enter();
+    // diagnostic: who asks, with what (the gt3-r2 June stall follows one of these)
+    trace::Note("Redisplay.caller", 0,
+                static_cast<uint32_t>(reinterpret_cast<uintptr_t>(_ReturnAddress()) -
+                                      reinterpret_cast<uintptr_t>(GetModuleHandleA(nullptr))));
+    trace::Note("Redisplay.flags", 0, (terrain ? 1u : 0u) | (water ? 2u : 0u) | (data4 << 8));
+    trace::Note("Redisplay.x0z0", 0, (static_cast<uint32_t>(r.topLeftX) << 16) | (static_cast<uint32_t>(r.topLeftY) & 0xFFFFu));
+    trace::Note("Redisplay.x1z1", 0,
+                (static_cast<uint32_t>(r.bottomRightX) << 16) | (static_cast<uint32_t>(r.bottomRightY) & 0xFFFFu));
     if (core_ != nullptr) {
         fc4_terrain_rect rect{r.topLeftX, r.topLeftY, r.bottomRightX, r.bottomRightY};
         fc4_terrain_redisplay(core_, terrain, water, rect, data4);  // §8.1
