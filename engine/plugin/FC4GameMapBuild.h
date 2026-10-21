@@ -80,10 +80,21 @@ inline void FreeGameSubtree(GameMapNode* n, void (*freeFn)(void*)) {
 // is left alone) with the n entries keys[i] -> values[i]. False, with `m`
 // untouched and nothing allocated, when the keys are not strictly
 // increasing or the allocator fails.
+template <class Alloc, class Less>
+bool BuildGameMapBy(GameMapObject& m, const uint32_t* keys, const uint32_t* values, size_t n, Less less);
+
 template <class Alloc>
 bool BuildGameMap(GameMapObject& m, const uint32_t* keys, const uint32_t* values, size_t n) {
+    return BuildGameMapBy<Alloc>(m, keys, values, n, [](uint32_t a, uint32_t b) { return a < b; });
+}
+
+// BuildGameMap for a map whose comparator is not the unsigned one (a
+// map<int32_t, T> compares signed: FC4AdvisorMaps.h): the keys must be
+// strictly increasing under `less`, which the tree's order then follows.
+template <class Alloc, class Less>
+bool BuildGameMapBy(GameMapObject& m, const uint32_t* keys, const uint32_t* values, size_t n, Less less) {
     for (size_t i = 1; i < n; ++i) {
-        if (keys[i - 1] >= keys[i]) return false;
+        if (!less(keys[i - 1], keys[i])) return false;
     }
     std::vector<GameMapNode*> nodes(n + 1, nullptr);
     for (size_t i = 0; i <= n; ++i) {
