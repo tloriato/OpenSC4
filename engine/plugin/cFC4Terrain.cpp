@@ -62,6 +62,8 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <tlhelp32.h>
+#include <cstdio>
 
 // Game calls (docs/abi/interfaces.tsv; a bool is only reliable in AL, a float
 // return is x87). Reads of a game return value below carry their citation:
@@ -115,6 +117,154 @@ std::atomic<fc4_terrain*> g_activeCore{nullptr};
 std::atomic<uint32_t> g_cellsX{0};
 std::atomic<uint32_t> g_cellsZ{0};
 std::atomic<bool> g_mirrorDirty{false};  // set by HostPost, consumed at the outermost Leave()
+
+// ---- bounded terrain call trace (diagnostic for the gt3-r2 June stall) ----------------------------------
+// A lock-free ring of the last kTraceRing terrain events (entry / exit of the locked slots, DoMessage,
+// HostPost) with the thread id, the owner of the terrain lock, and a monitor thread that, when no
+// SimNewDay reached the terrain for kStallMs, logs the ring once and samples every other thread's stack
+// (return addresses into the game or our image). Evidence only: it changes no behaviour.
+namespace trace {
+struct Ev {
+    DWORD ms;
+    DWORD tid;
+    const char* what;
+    int32_t phase;  // +1 enter, -1 leave, 0 point event; 2 = waited for the lock
+    uint32_t arg;
+};
+constexpr unsigned kTraceRing = 256;
+constexpr DWORD kStallMs = 2500;
+Ev g_ring[kTraceRing];
+std::atomic<unsigned> g_next{0};
+std::atomic<DWORD> g_lockOwner{0};
+std::atomic<const char*> g_lockSlot{nullptr};
+std::atomic<DWORD> g_lockSince{0};
+std::atomic<DWORD> g_lastNewDay{0};
+std::atomic<bool> g_stop{false};
+HANDLE g_monitor = nullptr;
+
+void Note(const char* what, int32_t phase, uint32_t arg = 0) {
+    const unsigned i = g_next.fetch_add(1, std::memory_order_relaxed) % kTraceRing;
+    g_ring[i] = Ev{GetTickCount(), GetCurrentThreadId(), what, phase, arg};
+}
+
+void DumpRing(const char* why, unsigned count) {
+    const unsigned n = g_next.load(std::memory_order_relaxed);
+    const unsigned c = n < count ? n : count;
+    LogWait(1000, "terrain trace: %s; lock owner tid %lu in %s since %lu ms ago; last %u of %u events:", why,
+            static_cast<unsigned long>(g_lockOwner.load()), g_lockSlot.load() ? g_lockSlot.load() : "-",
+            static_cast<unsigned long>(g_lockOwner.load() ? GetTickCount() - g_lockSince.load() : 0), c, n);
+    for (unsigned k = n - c; k != n; ++k) {
+        const Ev e = g_ring[k % kTraceRing];
+        LogWait(1000, "terrain trace:   [%lu ms] tid %lu %s %s 0x%08X", static_cast<unsigned long>(e.ms),
+                static_cast<unsigned long>(e.tid),
+                e.phase > 1 ? "WAITED" : (e.phase > 0 ? "enter" : (e.phase < 0 ? "leave" : "event")),
+                e.what ? e.what : "?", e.arg);
+    }
+}
+
+uintptr_t ModuleEnd(HMODULE m) {
+    const auto* b = reinterpret_cast<const uint8_t*>(m);
+    const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(b);
+    const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(b + dos->e_lfanew);
+    return reinterpret_cast<uintptr_t>(b) + nt->OptionalHeader.SizeOfImage;
+}
+
+// Suspends each other thread of the process in turn, copies up to 4 KB of its stack and logs the values
+// that point into the game or our image (candidate return addresses). Formatting runs after ResumeThread.
+void SampleThreads() {
+#if defined(_M_IX86)
+    HMODULE self = nullptr;
+    GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       reinterpret_cast<LPCSTR>(&SampleThreads), &self);
+    const HMODULE exe = GetModuleHandleA(nullptr);
+    const uintptr_t exeB = reinterpret_cast<uintptr_t>(exe), exeE = ModuleEnd(exe);
+    const uintptr_t ourB = reinterpret_cast<uintptr_t>(self), ourE = self ? ModuleEnd(self) : 0;
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (snap == INVALID_HANDLE_VALUE) return;
+    THREADENTRY32 te{};
+    te.dwSize = sizeof(te);
+    const DWORD pid = GetCurrentProcessId(), me = GetCurrentThreadId();
+    static DWORD stack[1024];
+    unsigned threads = 0;
+    for (BOOL ok = Thread32First(snap, &te); ok && threads < 32; ok = Thread32Next(snap, &te)) {
+        if (te.th32OwnerProcessID != pid || te.th32ThreadID == me) continue;
+        HANDLE th = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE,
+                               te.th32ThreadID);
+        if (th == nullptr) continue;
+        ++threads;
+        CONTEXT ctx{};
+        ctx.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+        SIZE_T got = 0;
+        bool have = false;
+        if (SuspendThread(th) != static_cast<DWORD>(-1)) {
+            have = GetThreadContext(th, &ctx) != FALSE;
+            if (have && !ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<const void*>(ctx.Esp), stack,
+                                           sizeof(stack), &got)) {
+                // the stack may end within 4 KB: retry with 1 KB
+                if (!ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<const void*>(ctx.Esp), stack, 1024,
+                                       &got)) {
+                    got = 0;
+                }
+            }
+            ResumeThread(th);
+        }
+        CloseHandle(th);
+        if (!have) continue;
+        char line[1024];
+        int len = snprintf(line, sizeof(line), "terrain trace: thread %lu eip=%s+0x%lX:",
+                           static_cast<unsigned long>(te.th32ThreadID),
+                           (ctx.Eip >= exeB && ctx.Eip < exeE) ? "exe" : ((ctx.Eip >= ourB && ctx.Eip < ourE) ? "dll" : "other"),
+                           static_cast<unsigned long>((ctx.Eip >= exeB && ctx.Eip < exeE) ? ctx.Eip - exeB
+                                                      : (ctx.Eip >= ourB && ctx.Eip < ourE) ? ctx.Eip - ourB : ctx.Eip));
+        unsigned found = 0;
+        for (unsigned i = 0; i < got / 4 && found < 28 && len > 0 && len < static_cast<int>(sizeof(line)) - 24; ++i) {
+            const uintptr_t v = stack[i];
+            if (v >= exeB + 0x1000 && v < exeE) {
+                len += snprintf(line + len, sizeof(line) - len, " exe+0x%X", static_cast<unsigned>(v - exeB));
+                ++found;
+            } else if (v >= ourB + 0x1000 && v < ourE) {
+                len += snprintf(line + len, sizeof(line) - len, " dll+0x%X", static_cast<unsigned>(v - ourB));
+                ++found;
+            }
+        }
+        LogWait(1000, "%s", line);
+    }
+    CloseHandle(snap);
+#endif
+}
+
+DWORD WINAPI Monitor(void*) {
+    bool reported = false;
+    while (!g_stop.load(std::memory_order_acquire)) {
+        Sleep(250);
+        const DWORD last = g_lastNewDay.load(std::memory_order_acquire);
+        if (last == 0 || reported) continue;
+        const DWORD idle = GetTickCount() - last;
+        if (idle < kStallMs) continue;
+        reported = true;
+        char why[96];
+        snprintf(why, sizeof(why), "no SimNewDay reached the terrain for %lu ms", static_cast<unsigned long>(idle));
+        DumpRing(why, 96);
+        SampleThreads();
+    }
+    return 0;
+}
+
+void StartMonitor() {
+    if (g_monitor != nullptr) return;
+    g_stop.store(false, std::memory_order_release);
+    g_monitor = CreateThread(nullptr, 64 * 1024, &Monitor, nullptr, 0, nullptr);
+}
+
+void StopMonitor() {
+    if (g_monitor == nullptr) return;
+    g_stop.store(true, std::memory_order_release);
+    WaitForSingleObject(g_monitor, 2000);
+    CloseHandle(g_monitor);
+    g_monitor = nullptr;
+    g_lastNewDay.store(0, std::memory_order_release);
+}
+}  // namespace trace
 
 // ---- the host context -----------------------------------------------------------------------------
 
@@ -250,6 +400,7 @@ void HostPost(void* u, const fc4_terrain_post* p) {
     auto* c = static_cast<HostContext*>(u);
     if (c == nullptr || p == nullptr) return;
     c->posts.fetch_add(1, std::memory_order_relaxed);
+    trace::Note("HostPost", 0, p->msg_type);
     g_mirrorDirty.store(true, std::memory_order_release);  // §15.5.8: refresh the raw arrays first
     if (c->testMode) return;
     // §15.5.11 item 19 / §15.5.12.1 (TR38): the view clamps nothing, so a heights / water rectangle
@@ -763,7 +914,7 @@ public:
     HostContext* Host() { return &host_; }
 
 private:
-    bool Enter() const;
+    bool Enter(const char* what = __builtin_FUNCTION()) const;
     void Leave() const;
     bool CreateCore(uint32_t cellsX, uint32_t cellsZ);
     bool InstallCore(fc4_terrain* created);
@@ -819,6 +970,7 @@ cFC4STETerrain::cFC4STETerrain() {
 }
 
 cFC4STETerrain::~cFC4STETerrain() {
+    trace::StopMonitor();
     DestroyCore();
     if (f_.view != nullptr) {
         // The view came from GZCOM()->GetClassObject: its QI took one reference, on base + 0x0C.
@@ -837,10 +989,19 @@ cFC4STETerrain::~cFC4STETerrain() {
     DeleteCriticalSection(&lock_);
 }
 
-bool cFC4STETerrain::Enter() const {
-    EnterCriticalSection(&lock_);
+bool cFC4STETerrain::Enter(const char* what) const {
+    if (!TryEnterCriticalSection(&lock_)) {
+        // Diagnostic only: record that this thread had to wait, and for whom; then wait as before.
+        trace::Note(what, 2, trace::g_lockOwner.load(std::memory_order_relaxed));
+        EnterCriticalSection(&lock_);
+    }
     if (mainTid_ == 0) mainTid_ = GetCurrentThreadId();
-    ++depth_;
+    if (++depth_ == 1) {
+        trace::g_lockOwner.store(GetCurrentThreadId(), std::memory_order_relaxed);
+        trace::g_lockSlot.store(what, std::memory_order_relaxed);
+        trace::g_lockSince.store(GetTickCount(), std::memory_order_relaxed);
+    }
+    trace::Note(what, 1, static_cast<uint32_t>(depth_));
     return true;
 }
 
@@ -848,7 +1009,11 @@ void cFC4STETerrain::Leave() const {
     // Outermost exit: anything that posted a redisplay changed what the view will copy when the posted
     // message arrives (§15.5.8), so refresh the raw arrays now, before the message pump delivers it.
     if (depth_ == 1 && g_mirrorDirty.exchange(false, std::memory_order_acq_rel)) SyncMirror(core_);
-    --depth_;
+    trace::Note(trace::g_lockSlot.load(std::memory_order_relaxed), -1, static_cast<uint32_t>(depth_));
+    if (--depth_ == 0) {
+        trace::g_lockOwner.store(0, std::memory_order_relaxed);
+        trace::g_lockSlot.store(nullptr, std::memory_order_relaxed);
+    }
     LeaveCriticalSection(&lock_);
 }
 
@@ -950,6 +1115,7 @@ void cFC4STETerrain::DestroyCore() {
 
 bool cFC4STETerrain::Init() {
     Enter();
+    trace::StartMonitor();  // diagnostic (gt3-r2 June stall); reports only after a SimNewDay
     bool ok = false;
     do {
         if (f_.initialized != 0) {
@@ -1008,6 +1174,7 @@ bool cFC4STETerrain::Init() {
 }
 
 bool cFC4STETerrain::Shutdown() {
+    trace::StopMonitor();
     Enter();
     if (core_ != nullptr) {
         fc4_terrain_state st{};
@@ -1313,6 +1480,8 @@ bool cFC4STETerrain::DoMessage(cIGZMessage2* msg) {
     if (msg == nullptr) return true;
     FC4_X87_SCOPE("terrain DoMessage", msg->GetType());
     const uint32_t type = msg->GetType();
+    trace::Note("DoMessage", 1, type);
+    if (type == kMsgSimNewDay) trace::g_lastNewDay.store(GetTickCount(), std::memory_order_release);
     cIGZMessage2Standard* s = nullptr;
     if (msg->QueryInterface(GZIID_cIGZMessage2Standard, reinterpret_cast<void**>(&s)) && s != nullptr) {
         FC4_ACQUIRED(s, "QueryInterface");
@@ -1347,6 +1516,7 @@ bool cFC4STETerrain::DoMessage(cIGZMessage2* msg) {
         default: break;
     }
     if (s != nullptr) FC4_RELEASE(s);
+    trace::Note("DoMessage", -1, type);
     return true;
 }
 
