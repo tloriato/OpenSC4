@@ -50,9 +50,9 @@
 //     (IsLotCompatible, §8.4): then it is a random draw (the original's
 //     generator is seeded from the clock, §8.5, §17), counted, not a
 //     mismatch. A core whose record differs restarts from the original's.
-//   - NM10 (open): the original does not restyle the first row's inner cells
-//     of a lot state message's grown rect; differences at the cells our core
-//     updated there are counted under NM10, not as mismatches.
+//   - NM10/NM11 (answered, network-manager.md §6.3): the lot state message
+//     walks from (0, 0); the core does too, and every cell is compared (the
+//     per-message comparison also covers the walk's cells off the rect).
 //
 // Log lines (always written, not the verbose channel):
 //   netmgr shadow: ON (...) | requested but INACTIVE (...)        game start

@@ -129,17 +129,8 @@ struct Counters {
 };
 Counters g_n;
 uint32_t g_lines = 0, g_exactLines = 0, g_draws = 0, g_resyncs = 0;
-// NM10 (open question, network-manager.md §6.2 0xE8BDA2E7): in game the
-// original never changes the road style of the first row's inner cells of a
-// lot state message's grown rect (x0 < x < x1, z = z0), where the spec walks
-// the whole border (and, rarely, restyles such a cell later, during another
-// message, as if its key had stayed pending). The cells our lot core updated
-// there since the city loaded; a style or lot difference at one of them is
-// counted under NM10, not as a mismatch, until the question is answered.
-std::set<std::pair<int32_t, int32_t>> g_nm10Cells;
-uint32_t g_nm10Lines = 0, g_nm10Total = 0;
-uint32_t g_nm10Pending = 0;  // tick-time NM10 differences since the last line
-std::string g_nm10PendingDiffs;
+// NM10/NM11 are answered (network-manager.md §6.3): the lot core walks the
+// original's boundary walk from (0, 0); every cell is compared as is.
 std::string g_pendingDiffs;  // tick-time differences, reported on the next line
 uint32_t g_pendingMismatches = 0;
 size_t g_pendingListed = 0;
@@ -160,6 +151,7 @@ struct SnapCell {
     int32_t x = 0, z = 0;
     uint32_t before = 0;
     int32_t zone = -1, wealth = -1;  // the original's slots 9, 10 before the original handled it
+    bool inMsg = false;              // a cell of the message: its rect, or (lot state) a §6.3 walk cell
 };
 std::map<uint64_t, SnapCell> g_snap;
 bool g_snapValid = false;
@@ -171,9 +163,11 @@ size_t g_geomListed = 0;
 // cell, the inner cells, its last cell; the middle rows at x0, at x1; the
 // last row): cells, the original changed, ours changed where the original
 // kept. Whole city session (reported at city shutdown).
-constexpr int kPlaces = 7;
+// Since §6.3 the walk also visits row 0 (from x = 0) and columns x0, x1
+// north of the rect: places 7 and 8.
+constexpr int kPlaces = 9;
 const char* const kPlaceNames[kPlaces] = {"first row x0", "first row inner", "first row x1", "middle x0", "middle x1",
-                                          "last row", "not on the border"};
+                                          "last row", "not on the border", "walk row 0", "walk columns north"};
 uint32_t g_place[kPlaces][3] = {};
 // netmgr_shadow_wide = N: the first N lot state messages are snapshotted over
 // the whole city (not only the grown rect), to see what the original changes
@@ -184,7 +178,11 @@ size_t g_wideListed = 0;
 bool g_snapWide = false;
 
 int PlaceOf(int32_t x, int32_t z, const fc4_cell_rect& r) {
-    if (x < r.x1 || x > r.x2 || z < r.z1 || z > r.z2) return 6;
+    if (x < r.x1 || x > r.x2 || z < r.z1 || z > r.z2) {
+        if (z == 0) return 7;
+        if (z < r.z1 && (x == r.x1 || x == r.x2)) return 8;
+        return 6;
+    }
     if (z == r.z1) return x == r.x1 ? 0 : (x == r.x2 ? 2 : 1);
     if (z == r.z2) return 5;
     if (x == r.x1) return 3;
@@ -269,20 +267,6 @@ struct Diff {
         listed += b;
     }
 };
-
-bool Nm10Cell(int32_t x, int32_t z) { return g_nm10Cells.count(std::make_pair(x, z)) != 0; }
-
-// A tick-time difference at an NM10 cell (counted, listed, not a mismatch).
-void PendingNm10(const char* fmt, ...) {
-    if (g_nm10Pending++ >= kMaxListed) return;
-    char b[200];
-    va_list ap;
-    va_start(ap, fmt);
-    _vsnprintf_s(b, sizeof(b), _TRUNCATE, fmt, ap);
-    va_end(ap);
-    if (!g_nm10PendingDiffs.empty()) g_nm10PendingDiffs += ", ";
-    g_nm10PendingDiffs += b;
-}
 
 void PendingDiff(const char* fmt, ...) {
     ++g_pendingMismatches;
@@ -538,9 +522,7 @@ void SettleStep(void*) {
         if (w.second.flags && !flags) bad = true;
         uint32_t cx = 0, cz = 0;
         if (bad) o->GetOccupiedCell(cx, cz);
-        if (bad && Nm10Cell(static_cast<int32_t>(cx), static_cast<int32_t>(cz))) {
-            PendingNm10("style at %u,%u: variation %u/%d (orig/ours)", cx, cz, got, w.second.variation);
-        } else if (bad) {
+        if (bad) {
             ++g_n.styleMismatches;
             // Now (after both): the original's and our zone / wealth for the
             // cell (slots 9, 10) and the variation they give (§8.7 step 7).
@@ -789,7 +771,6 @@ void RunStep(void* p) {
         return;
     }
     Diff d;
-    Diff nm10;  // differences at NM10 cells
     bool answered = false;
     const bool origMgrOk = g_origMgr.Capture(reinterpret_cast<cIGZUnknown*>(nm), &answered);
     const bool origLotOk = g_origLot.Capture(reinterpret_cast<cIGZUnknown*>(nlm), &answered);
@@ -881,7 +862,7 @@ void RunStep(void* p) {
                 ++wealthDiffs;
                 d.Add("wealth for network at %d,%d: %d/%d", x, z, wo, wu);
             }
-            Diff& dl = Nm10Cell(x, z) ? nm10 : d;
+            Diff& dl = d;
             if (o == ol.lots.end()) {
                 const LotDetail ld = DetailOf(u->second.first, u->second.second, x, z, zu, wu);
                 dl.Add("lot at %d,%d: ours only (config 0x%08X; %s zone/wealth orig %d/%d ours %d/%d)", x, z,
@@ -996,20 +977,8 @@ void RunStep(void* p) {
         g_pmFirst.clear();
         g_pmListed = 0;
     }
-    const uint32_t nm10Count = nm10.mismatches + g_nm10Pending;
-    AppendF(s, "; NM10 (lot state border's first row, open)=%u", nm10Count);
     if (!resync.empty()) AppendF(s, "; resynced:%s", resync.c_str());
     if (!d.listed.empty()) s += "; differences: " + d.listed;
-    if (nm10Count != 0) {
-        std::string l = nm10.listed;
-        if (!l.empty() && !g_nm10PendingDiffs.empty()) l += ", ";
-        l += g_nm10PendingDiffs;
-        s += "; NM10 differences: " + l;
-        ++g_nm10Lines;
-        g_nm10Total += nm10Count;
-    }
-    g_nm10Pending = 0;
-    g_nm10PendingDiffs.clear();
     r.mismatches = d.mismatches;
     r.done = true;
     g_n = Counters{};
@@ -1089,7 +1058,8 @@ void OrderProbe(const Msg& m) {
 
 // The cells a lot message updates (§6.2), for the per-message comparison:
 // the occupant's cell (usable), the zoning rect grown by one, the lot's
-// bounding rect grown by one (its border; the whole rect is taken).
+// bounding rect grown by one (the whole rect is taken; TakeSnapshot adds
+// the §6.3 walk cells off it).
 bool MessageCells(const Msg& m, fc4_cell_rect* r) {
     if (m.type == kMsgUsableChanged && m.unknown != 0) {
         const uint64_t n = g_lhost.query_network_occupant(g_lhost.user, m.unknown);
@@ -1118,6 +1088,27 @@ bool MessageCells(const Msg& m, fc4_cell_rect* r) {
 
 constexpr int32_t kMaxSnapCells = 4096;
 
+// network-manager.md §6.3: the lot state message's boundary walk over the
+// grown rect r, from (0, 0) (the cells compared per message besides r).
+void LotStateWalk(const fc4_cell_rect& r, std::set<std::pair<int32_t, int32_t>>* out) {
+    const int32_t x0 = r.x1, z0 = r.z1;
+    const int32_t x1 = r.x2 > x0 ? r.x2 : x0, z1 = r.z2 > z0 ? r.z2 : z0;
+    int32_t x = 0, z = 0, step = 1;
+    out->insert(std::make_pair(x, z));
+    for (;;) {
+        x += step;
+        if (x <= x1) {
+            out->insert(std::make_pair(x, z));
+            continue;
+        }
+        if (z >= z1) return;
+        x = x0;
+        ++z;
+        step = z < z1 ? (x1 - x0 > 1 ? x1 - x0 : 1) : 1;
+        out->insert(std::make_pair(x, z));
+    }
+}
+
 void TakeSnapshot(void* p) {
     const Msg& m = *static_cast<const Msg*>(p);
     g_snap.clear();
@@ -1130,14 +1121,22 @@ void TakeSnapshot(void* p) {
     g_snapWide = m.type == kMsgLotStateChanged && g_wideLeft > 0;
     if (g_snapWide) --g_wideLeft;
     const fc4_cell_rect area = g_snapWide ? fc4_cell_rect{0, 0, cx - 1, cz - 1} : r;
+    std::set<std::pair<int32_t, int32_t>> walk;
+    if (m.type == kMsgLotStateChanged) LotStateWalk(r, &walk);
+    std::set<std::pair<int32_t, int32_t>> cells = walk;
     for (int32_t z = area.z1; z <= area.z2; ++z) {
-        for (int32_t x = area.x1; x <= area.x2; ++x) {
+        for (int32_t x = area.x1; x <= area.x2; ++x) cells.insert(std::make_pair(x, z));
+    }
+    for (const auto& xz : cells) {
+        {
+            const int32_t x = xz.first, z = xz.second;
             if (x < 0 || z < 0 || x >= cx || z >= cz) continue;
             const uint64_t n = g_lhost.find_network_tile(g_lhost.user, x, z, 0x1F4F);  // borrowed
             if (n == 0) continue;
             SnapCell c{x, z, NetOf(n)->GetVariation() & 0xFFu};
             const bool inRect = x >= r.x1 && x <= r.x2 && z >= r.z1 && z <= r.z2;
-            if (cISC4NetworkLotManager* nlm = inRect && g_city ? g_city->GetNetworkLotManager() : nullptr) {
+            c.inMsg = inRect || walk.count(xz) != 0;
+            if (cISC4NetworkLotManager* nlm = c.inMsg && g_city ? g_city->GetNetworkLotManager() : nullptr) {
                 c.zone = static_cast<int32_t>(nlm->GetZoneTypeForNetwork(x, z));  // slot 9
                 c.wealth = static_cast<int32_t>(nlm->GetWealthForNetwork(x, z));  // slot 10
             }
@@ -1163,9 +1162,7 @@ void PmNote(const char* fmt, ...) {
 
 // After the original (snapshot -> now) and ours (g_msgWrites) handled the
 // same message: whose style writes changed what.
-bool InSnapRect(const SnapCell& c) {
-    return c.x >= g_snapRect.x1 && c.x <= g_snapRect.x2 && c.z >= g_snapRect.z1 && c.z <= g_snapRect.z2;
-}
+bool InSnapRect(const SnapCell& c) { return c.inMsg; }
 
 void CompareMessageStyle(const Msg& m, const std::map<uint64_t, uint32_t>& afterOrig) {
     // The geometry of a message where ours changed a cell the original kept:
@@ -1279,10 +1276,6 @@ void CallMessage(void* p) {
             for (const auto& c : g_snap) afterOrig[c.first] = NetOf(c.first)->GetVariation() & 0xFFu;
         }
         g_msgWrites.clear();
-        fc4_cell_rect nr{};
-        if (m.type == kMsgLotStateChanged && MessageCells(m, &nr)) {
-            for (int32_t x = nr.x1 + 1; x < nr.x2; ++x) g_nm10Cells.insert(std::make_pair(x, nr.z1));
-        }
         fc4_netlot_do_message(g_lot, m.type, m.d[0], m.d[1], m.d[2], m.void1, m.unknown, m.hasRect ? &m.rect : nullptr);
         NetMgrReleaseHeld(&g_ctx);
         if (compare) CompareMessageStyle(m, afterOrig);
@@ -1497,9 +1490,8 @@ void NetMgrShadowCityShutdown() {
     Settle();
     if (g_city != nullptr || g_mgr != nullptr || g_lot != nullptr) {
         Log("netmgr shadow: city shutdown: %u lines, %u with mismatches=0 (exact %u/%u); %u configuration draws not "
-            "compared; %u resyncs; NM10 (open question: the lot state message's border, first row) differences %u on %u "
-            "lines",
-            g_lines, g_exactLines, g_exactLines, g_lines, g_draws, g_resyncs, g_nm10Total, g_nm10Lines);
+            "compared; %u resyncs",
+            g_lines, g_exactLines, g_exactLines, g_lines, g_draws, g_resyncs);
         if (g_late) {
             std::string t;
             for (int i = 0; i < kPlaces; ++i) {
@@ -1522,9 +1514,6 @@ void NetMgrShadowCityShutdown() {
     g_city = nullptr;
     g_ctx.city = nullptr;
     g_lines = g_exactLines = g_draws = g_resyncs = 0;
-    g_nm10Lines = g_nm10Total = g_nm10Pending = 0;
-    g_nm10PendingDiffs.clear();
-    g_nm10Cells.clear();
     g_n = Counters{};
     g_pendingDiffs.clear();
     g_pendingMismatches = 0;
