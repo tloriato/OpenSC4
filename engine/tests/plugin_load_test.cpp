@@ -9468,7 +9468,7 @@ int ScriptIniTest(const std::string& dll, const std::string& ini, const std::str
     // the 13, the late script's one, the save script's 5 and its "waits" line
     CHECK(CountOf(text, "script: line ") == 20);
     CHECK(text.find("script: ERROR line 2: unknown action 'zonee' (zone, pricezone, dezone, network, speed, pause, "
-                    "resume, turbo, digest, mark, save, terrain, disaster, port)") != std::string::npos);
+                    "resume, turbo, digest, mark, save, terrain, disaster, port, tutorial)") != std::string::npos);
     CHECK(text.find("script: ERROR line 3: zone type '16' is not 0..15") != std::string::npos);
     CHECK(text.find("script: REFUSED '" + winDir + "fc4_script_bad.txt' (test seam): 2 parse error(s); no action of "
                     "it runs") != std::string::npos);

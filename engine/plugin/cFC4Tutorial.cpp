@@ -16,6 +16,7 @@
 #include "FC4Diag.h"
 #include "FC4Fpu.h"
 #include "FC4Log.h"
+#include "FC4PropCityCommon.h"
 #include "FC4RefAudit.h"
 #include "FC4Streams.h"
 
@@ -28,6 +29,7 @@
 #include "cISC4AdvisorSystem.h"
 #include "cISC4App.h"
 #include "cISC4City.h"
+#include "cISC4View3DWin.h"
 #include "cISCLua.h"
 #include "cRZBaseString.h"
 #include "cRZCOMDllDirector.h"
@@ -67,13 +69,12 @@ std::set<const void*>& Live() {
     return s;
 }
 
-// Logged once per process: a host route the shim does not have (TU6-TU8).
+// Logged once per process: a host route the shim does not have (TU6-TU9).
 void NoteOnce(std::atomic<bool>& flag, const char* what) {
     if (!flag.exchange(true)) fc4::Log("tutorial: %s", what);
 }
 std::atomic<bool> g_noteWindow{false};
 std::atomic<bool> g_noteRegistry{false};
-std::atomic<bool> g_noteView{false};
 std::atomic<bool> g_noteFilter{false};
 
 // ---- host callbacks (fc4_tutorial_host) ------------------------------------------------------------------
@@ -105,9 +106,9 @@ void AddRefCb(void*, uint64_t token) {
 void ReleaseCb(void*, uint64_t token) {
     if (cIGZUnknown* p = fc4::FromToken(token)) FC4_RELEASE(p);
 }
-// TU6: cSC4TutorialUIWinProc has no route in docs/abi: no window.
+// TU9: cSC4TutorialUIWinProc has no route in docs/abi: no window.
 uint64_t CreateWindowCb(void*) {
-    NoteOnce(g_noteWindow, "WARNING the tutorial window cannot be created (no route to cSC4TutorialUIWinProc, TU6); "
+    NoteOnce(g_noteWindow, "WARNING the tutorial window cannot be created (no route to cSC4TutorialUIWinProc, TU9); "
                            "the tutorial runs without a window");
     return 0;
 }
@@ -125,9 +126,24 @@ bool RegistryEntryEnabledCb(void*, uint32_t guid, bool* enabled) {
     if (enabled != nullptr) *enabled = false;
     return false;
 }
-// TU2: the 3D view's slots 60 and 59 are not named: not called.
-void ViewRestoreCb(void*) {
-    NoteOnce(g_noteView, "the 3D view's slots 60 and 59 of endTutorial are not called (TU2)");
+// §4.2 (TU2, answered): endTutorial calls the 3D view, when present, slot 60
+// CloseTertiaryMenu then slot 59 CloseSecondaryMenu (docs/abi interfaces.tsv
+// cISC4View3DWin 59 / 60; the SDK header has the same slots). The view is the
+// city view (main window child 0x6104489A, GetChildAs 0x9A47B417), one
+// reference taken and released. Deferred: a game call, made outside the lock.
+void ViewRestoreCb(void* u) {
+    cFC4TutorialSystem* s = Self(u);
+    s->Lock().Defer([] {
+        cISC4View3DWin* view = fc4::propcity::View3D();
+        if (view == nullptr) {
+            fc4::Log("tutorial endTutorial: no 3D view, slots 60 / 59 not called");
+            return;
+        }
+        view->CloseTertiaryMenu();   // slot 60
+        view->CloseSecondaryMenu();  // slot 59: eax-or-void in docs/abi, the result is not read
+        fc4::Log("tutorial endTutorial: 3D view CloseTertiaryMenu, CloseSecondaryMenu");
+        fc4::propcity::Drop(view);
+    });
 }
 uint64_t FetchLuaCb(void* u) { return Self(u)->FetchLuaContext(); }
 
@@ -219,8 +235,8 @@ uint32_t cFC4TutorialSystem::AddRef() {
     return ++refCount_;
 }
 
-// TU4 [inferred]: the shared advisor-system Release marks the object
-// destroyed without Shutdown. [choice] The C++ object is freed at the last
+// §1 / TU4 (answered): the last Release destroys and frees the object without
+// running Shutdown (the shipped city calls Shutdown first). [choice]The C++ object is freed at the last
 // reference; one still subscribed (Init without Shutdown) is shut down first
 // so that no subscription is left on a deleted object (as HW13's choice).
 uint32_t cFC4TutorialSystem::Release() {

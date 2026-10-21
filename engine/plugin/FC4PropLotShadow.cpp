@@ -1706,7 +1706,9 @@ void TutRunStep(void* p) {
         Line("tutorial", g_tutTotals, r, "record", -1, "the city has no tutorial system");
         return;
     }
-    if (OurTutorialSystem(t) != nullptr || IsOurObject(t)) return;  // enable = tutorial: logged at game start
+    // enable = tutorial (glue-tutorial4): the shadow runs over the live class
+    // too, as its game-start line says: a self-check of FreeCity4's record and
+    // slots 8 / 11 / 12 against a private core (this return skipped it).
     bool answered = false;
     if (!g_capOrig.Capture(reinterpret_cast<cIGZUnknown*>(t), &answered)) {
         Line("tutorial", g_tutTotals, r, "record", -1,
