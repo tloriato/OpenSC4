@@ -1,8 +1,19 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| glue-terrain3 (enable = terrain glue over the TR21 3D view contract, terrain.md §15.5) | `glue-terrain3` / (engine lane) | wip: TR33-TR41 crash fixes landed on the branch (ed29ba77); the game now loads the saved grid and runs past the first month, but stalls in June 2026 (gt3-r2-1/2); the control run without the replacement is clean; full gate PASS | find the June 2026 stall; step 7 part 2 (the texture layers); the TR37 per-cell view call; Save |
+| glue-terrain3 (enable = terrain glue over the TR21 3D view contract, terrain.md §15.5) | `glue-terrain3` / (engine lane) | in progress (run4 round 3) | diagnose the stall, step 7 part 2, TR37, Save |
 
-## Report (run4 round 2, 2026-10-21)
+## Handoff (round 3)
+- Goal: enable = terrain clean to 2032 (turbo), ref_warnings=0; then normal speed; full gate.
+- Done: 1e78a7ca/7d909d68 bounded terrain trace (ring of locked-slot enter/leave, DoMessage, HostPost words,
+  RedisplayTerrainRect caller) and a stall monitor (no SimNewDay 2.5 s: ring + every thread's stack, twice).
+- gt3-r3-d1 (1e78a7ca): stalled 2026-05-11. Terrain lock free (owner tid 0), no thread inside terrain code.
+  Main waits in game code inside the message-server pump (PacingFlush -> ms OnTick -> 0x52E016 -> 0x6E46E8 ->
+  0x5A6014 -> 0x36361F -> ... 0x5DA900 -> ntdll wait). Last terrain events before the stall: RedisplayTerrainRect
+  -> HostPost 0x870BC918 (texture redisplay, renderer only). Other threads idle (harness threads; game workers).
+- Next: read gt3-r3-d2 (labels unique; wait without --fresh): which caller/flags, which module the 2nd
+  thread waits in; then step 7 part 2 / TR37 / Save.
+
+## Round 2 report (run4 round 2, 2026-10-21)
 
 Goal: `enable = terrain` clean to 2032 under turbo with ref_warnings=0. **Not reached; not ready.**
 
