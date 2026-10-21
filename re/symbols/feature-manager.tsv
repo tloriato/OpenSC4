@@ -1,0 +1,18 @@
+va	name	evidence	mac_x86
+0046f740	cSC4FeatureManager::QueryInterface	feature-manager.md §1; vtable 0x00A88274 slot 0; answers IIDs 1 and 0x0B562673 only	
+0046f770	cSC4FeatureManager::Shutdown	feature-manager.md §4.3; slot 4; clears +4 only	
+0046f780	cSC4FeatureManager::IsExpansionPackInstalled	feature-manager.md §4.5; slot 6; tests bit (n-1)&31 of 0x00B21628	
+0046f7a0	cSC4FeatureManager::GetCurrentExpansionPack	feature-manager.md §4.6; slot 7; slot-6 calls for n = 32 down to 1	
+0046f7d0	cSC4FeatureManager::~cSC4FeatureManager	feature-manager.md §3; slot 8, deleting destructor (flag bit 0 frees to the global heap 0x005E5620)	
+0046f7f0	cSC4FeatureManager::Release	feature-manager.md §3; slot 2; count at +8, slot 4 then slot 8 when the count is 1 or less	
+0046f8b0	cSC4FeatureManager::cSC4FeatureManager	feature-manager.md §1; installs vtable 0x00A88274, +4 = 0, +8 = 0; sole caller cSC4App::Init 0x0044CAB6 after GlobalHeapAlloc(0xC)	
+0046fa20	cSC4FeatureManager::StaticShutdown	feature-manager.md §3; pushed at 0x0046FC13 for cISC4App slot 69 (RegisterShutdownCallbackFunction); clears 0x00B21624, 0x00B21628 and the set	
+0046fa80	cSC4FeatureManager::IsFeatureEnabled	feature-manager.md §4.4; slot 5; find in the set 0x00B2162C	
+0046fb10	cSC4FeatureManager::FeaturesIniEntryCallback	feature-manager.md §4.2; descriptive name, no Mac match; cRZIniFile::EnumEntries callback pushed at 0x0046FCED; RZConvertToUint32A key, value compared with 'off' 0x00A82B94	
+0046fbf0	cSC4FeatureManager::StaticInit	feature-manager.md §4.1; scans (0, 0x8A5971C5, 0x2B563701+k) for k = 0..31, section 'Features' 0x00A88298	
+0046fd50	cSC4FeatureManager::Init	feature-manager.md §4.1; slot 3; sole caller of StaticInit (0x0046FD5B)	
+00a71c70	cSC4FeatureManager::sEnabledFeatures static constructor	feature-manager.md §2; allocates the 0x14-byte header node (0x0090CF54) and registers 0x00A7AE50 with ___cxa_atexit	
+00a7ae50	cSC4FeatureManager::sEnabledFeatures static destructor	feature-manager.md §2; empties the set, frees the header node (0x0090CF63)	
+00b21624	cSC4FeatureManager::sStaticInitDone (data, bool)	feature-manager.md §2; set by StaticInit 0x0046FC0A, cleared by StaticShutdown 0x0046FA32	
+00b21628	cSC4FeatureManager::sInstalledPacks (data, uint32 bit mask)	feature-manager.md §2; bit k = pack k+1; OR-ed at 0x0046FCB9, read by IsExpansionPackInstalled 0x0046F78C	
+00b2162c	cSC4FeatureManager::sEnabledFeatures (data, std::set<uint32_t> header pointer; count at 0x00B21630)	feature-manager.md §2; filled by FeaturesIniEntryCallback, searched by IsFeatureEnabled	

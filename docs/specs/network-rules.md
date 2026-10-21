@@ -11,6 +11,8 @@ headers and general knowledge only. They must **not** consult decompiled or disa
 Amended 2026-10-16 (re-answers24): NR3–NR5 answered from the executable (§6.5, §8.3, §9.1, §10.8); the simulation
 parts of NR1 and NR2 answered (§10.9, §11.1); NR6 and NR7 filed (§14).
 
+Amended 2026-10-21 (re-netrules-boundary4): NR13 answered, the solver family's interoperability boundary (§2.4).
+
 Tags:
 
 - *[compat]*: observable; a replacement must match it.
@@ -202,6 +204,72 @@ Each type loads two tile rule files (instances of type `0x0A5BCF4B`, group `0xAA
 An evaluator is created and pushed onto the type's vector even when its file is missing or rejected; it then has no
 rules and never matches. In the shipped data, four files (Avenue's two, LightRail's `0xF`, Monorail's `0x15`) start
 with `#Transmogrify` (§4); the others carry their variants written out.
+
+### 2.4 Interoperability boundary (NR13)
+
+The rule solver family has **no GZCOM identity and no outside entry point**. Nothing outside the executable can create,
+reach or replace `cSC4TileEvaluator`, `cSC4TileRule`, `cSC4TileInfo` or `nSC4Networks::cIntRule` on its own; the
+only supported places where a replacement can take over their behaviour are the hosts listed in §2.4.3.
+
+#### 2.4.1 What the objects are
+
+| Owner | Kind | Calling convention and shape | Created / destroyed |
+|---|---|---|---|
+| `cSC4TileEvaluator` | plain C++ object, 0x10 bytes | `+0x00` vtable `0x00AA8338`; `+0x04` the rule tree's header node (0x34 bytes from the global allocator `0x0090CF54`); `+0x08` the rule count; `+0x0C` not written by the constructor. The vtable has **one** slot, the scalar deleting destructor `0x00622AE0` (flag bit 0 = free); the dword before it (`0x00010203`) is not an RTTI locator, so there is no RTTI, no QueryInterface, no reference count. | Only `cSC4NetworkTypeInfo::LoadEvaluator` (`0x0063D360`, thiscall on the type record, pops 12) allocates it (`GlobalHeapAlloc(0x10)`, `0x0063D367`), runs the constructor `0x00622A90` (its only caller, `0x0063D375`), calls `AddRulesFromResource(key*, 0)` (`0x00623020`, thiscall, pops 8) and appends it to the record's vector `+0x24`, even on failure (§2.3). `cSC4NetworkTypeInfo::Clear` (`0x006421D0`) pops the vector from the back, calling slot 0 with 1. The vtable address is stored only by the constructor and destructor (`0x00622A95`, `0x00622AE9`; no other reference in the image). |
+| `cSC4TileRule` | plain struct, 7 dwords, no vtable | the centre key and two 3-dword vectors (conditions, outputs); `Read(tokenizer*)` `0x00622870` is thiscall, pops 4 | built on `AddRulesFromResource`'s stack (zeroed at `0x0062308F`–`0x006230A7`), read, copied into the evaluator's tree; its only caller is `0x006230AB` |
+| `cSC4TileInfo` | not an object: free functions over static tables | `ConvertMetaToRelativePos` `0x00620D80` is cdecl (plain `RET`) and reads the byte tables `0x00B0B3D8`/`0x00B0B3F4`; `GetRotationalEquivalent` `0x00621F30` and `…OfMetaPos` `0x00621680` pop 8 | no lifecycle |
+| `nSC4Networks::cIntRule` | plain value class in the process-global hash map `0x00B452B0` (bucket vector `0x00B452B4`/`0x00B452B8`) | `Test` `0x00609A00` and `DoAutoComplete` `0x006097E0` thiscall, pop 12 | filled by `ReloadRules` (§2.1 step 4), destroyed by the CRT exit handler `0x00A7C170` |
+
+`Evaluate` (`0x006220D0`) is a thiscall on the evaluator with two stack arguments (the neighbourhood and the output
+list) and pops 8; its callers are `ApplyNetworkRules` (`0x006341EA`) and `SolveMultiTypeSeparation` (`0x0063401A`),
+reached by a direct call, never through the vtable.
+
+#### 2.4.2 Who reaches them (the complete caller set)
+
+- **Loading.** `ReloadRules` (`0x006253D0`) has exactly two callers, `cSC4NetworkTool::Init` (`0x00626A0D`) and
+  `cSC4PowerLineTool::StaticInit` (`0x006269B5`). Both run it only while the process flag `0x00B452A8` is clear, set
+  it, and register `0x006232F0` with the application object (`0x00B43C94` slot 69, `+0x114`, the static-data cleanup
+  list). That callback only clears `0x00B452A8`, so the next tool `Init` after the application's static-data cleanup
+  reloads every rule table. The 13 type records `0x00B452C8 + t × 0x114` are image globals (constructed by the CRT
+  initializer `0x00A73D10`, destroyed by `0x00A7C140`).
+- **Solving.** The evaluators are read only through the type records: `SolveNetwork` (`0x00635CB0`) →
+  `SolveUsingEvaluator` (`0x006358C0`) → `ApplyNetworkRules` (`0x006340D0`) → `Evaluate`; and
+  `SolveMultiTypeSeparation` → `Evaluate`. `SolveNetwork`'s callers are `PlaceNetwork` (`0x0063BAFE`),
+  `DestroyOccupantsAndResolve` (`0x0062B783`) and `InsertIsolatedHighwayIntersection` (`0x0062D2C2`), all methods of
+  the network tool.
+- **Highway intersection rules.** `cIntRule` is used by the network tool (`IdentifyHighwayIntersections`,
+  `InsertIsolatedHighwayIntersection`, `QueryUserForPotentialIntersections`, `InsertHighwayIntersection`,
+  `MarkIntersection`, `GetIntersectionRule`, …) and, outside it, **only** by
+  `cSC4ViewInputControlNetworkIntxTool` (the puzzle-piece placement control): `OnMouseDownL` (`0x00661078`) and
+  `OnMouseMove` (`0x00661657`) call `DoAutoComplete`, and `OnMouseMove` reads the global map's buckets inline
+  (`0x006615B8`, `0x006616E6`). That control is created by `new` in `cSC4View3DWin::InvokeCatalogItemCommand`
+  (`0x007EA3A5`), not through the COM director.
+
+Every caller above is a direct call inside the executable. A scan of the whole image for the 32-bit addresses of
+`Evaluate`, `AddRulesFromResource`, `cSC4TileRule::Read`, `ReloadRules`, `ReloadNetworkTypeInfo`, `LoadEvaluator`,
+`SolveNetwork`, `SolveUsingEvaluator`, `ApplyNetworkRules`, `SolveMultiTypeSeparation`, `cIntRule::Test`,
+`cIntRule::DoAutoComplete` and the three `cSC4TileInfo` functions finds **none**; the evaluator's destructor appears
+only in its own vtable (`0x00AA8338`), and the reload callback `0x006232F0` only as the two push immediates
+(`0x006269AB`, `0x00626A03`). So no interface vtable, class-factory table or message handler refers to them.
+
+#### 2.4.3 The supported boundaries that can host a replacement
+
+| Boundary | What it gives a replacement | Limits |
+|---|---|---|
+| **The rule resources** (§2.1, §2.3): type `0x0A5BCF4B`, group `0xAA5BCF57`, read through `SC4GetResourceAsFile` (`0x005F9670`, the GZCOM resource manager) by the tokenizer (`0x006210B0`) | a plugin data file that overrides an instance changes the rules the original solver runs (the way shipped mods change them) | data only: the matching algorithm stays the original's |
+| **The network tool**, interface cISC4NetworkTool (vtable `0x00AA8748`, network-tools.md §1) | a tool that implements the interface owns the whole solve: its placement, `SolveNetwork`, `InsertOccupantsForSolvedCells` (slot 55) and the evaluators it consults | the original creates its tools with `new` in `cSC4NetworkManager::GetNetworkTool` (slot 5, `0x006108D0`) and `Init`, never through the director, so a replacement tool is reachable only through a replacement network manager (class `0xC990BD46`, IID `0xA9764C8C`, network-manager.md §1) |
+| **The network manager**, class `0xC990BD46` | the only GZCOM class whose replacement controls which tool objects exist | see network-manager.md |
+
+There is **no** separate interception point for the solver: no class ID, no IID, no factory and no message names it,
+so a replacement must not invent one (no stub `CreateClass` for these owners). Two consequences for a host:
+
+1. A rule solver of ours runs **as a component of our own network tool** (behind the network tool's replacement), not
+   as its own switchable unit. While the original tool solves, the original evaluators run.
+2. When our tools replace the original's, so that neither `cSC4NetworkTool::Init` nor `cSC4PowerLineTool::Init`
+   of the original ever runs, the original `ReloadRules` never runs either and the global `cIntRule`
+   map `0x00B452B0` stays **empty** for the original puzzle-piece control, which then finds no rule (§2.1: an empty
+   table means "nothing applies"). A host that replaces the network tool must also own that control's catalogue
+   command, or keep the original rules loaded.
 
 ---
 
@@ -1130,6 +1198,16 @@ Answered 2026-10-16 (re-answers24), from the executable:
   `InsertHighwayIntersectionPiece` specified. The constraint layout's consumer is named
   (`InsertIntersectionConstraints`, `0x00644710`, height geometry); its codes' meaning is NR7.
 
+Answered 2026-10-21 (re-netrules-boundary4), from the executable:
+
+- **NR13** (§2.4): there is **no** game-reachable boundary of the solver family of its own. `cSC4TileEvaluator` is a
+  0x10-byte plain object with a one-slot vtable (deleting destructor) and no RTTI, created only by `LoadEvaluator`;
+  `cSC4TileRule` is a stack struct; `cSC4TileInfo` is free functions; `cIntRule` lives in an image-global map. All
+  callers are direct calls inside the network tool and, for `cIntRule`, the puzzle-piece input control; no image
+  pointer refers to any of them. The supported hosts are the rule resources (data) and the whole network tool,
+  reachable only through a replacement network manager (class `0xC990BD46`). So the premise of the question MATCHES:
+  a rule solver of ours is a component of our own network tool, with no switch of its own.
+
 ---
 
 ## 13. Quirks (summary)
@@ -1172,6 +1250,7 @@ Answered 2026-10-16 (re-answers24), from the executable:
   instead of borrowing the original's.
 - **NR7.** The constraint layout's codes 1–8 as `InsertIntersectionConstraints` (`0x00644710`) applies them: which
   vertex heights each code makes equal and which slope limits it sets (§10.3; network-geometry.md §9.4 step 4).
+- ~~**NR13.**~~ Answered (§2.4, §12): no boundary of its own; hosted by the network tool or the rule resources.
 - **NR12** (cores22: should `fc4_network_rules_cell` grow `+0x57` and the occupant's paired portal, or should a
   glue lane pass them another way?) — **ANSWERED 2026-10-16 (re-answers31): neither belongs in the cell struct
   as a carried field.** Both are *runtime* state of the one-way pass, not properties a cell keeps:

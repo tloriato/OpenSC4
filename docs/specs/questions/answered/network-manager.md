@@ -131,3 +131,22 @@ readings has been checked in game. The current choice is in brackets.
   their keys in ours' `pending`. 2026-02-01 shows the same pattern at 48,83, 50,81 and 51,110 (original only,
   compatible, same zone/wealth). What else adds keys to `pending`?
   **ANSWERED 2026-10-21 (re-netmgr-contracts4):** DIFFERS — no seventh message: `pending` is written only by the zoning and lot-state handlers, `UpdateRoadsInCell` is called only by `ProcessUpdateList` and usable changed, and `UpdateLot` also by the avenue flood (network-manager.md §8.5 table). The extra cells come from the §6.3 walk: every lot-state message adds columns x0 and x1 of its grown rect from row 1 down to the lot, and row 0 up to x1. So 20,103 and 16,93 are re-evaluated by any lot-state message whose grown rect has x0 or x1 = 20 (resp. 16) and z1 > 103 (resp. 93). Traffic piece updates arrive only as 0x89D3E9F3/0x99EF1143; a neighbour's style change enqueues nothing outside the avenue flood.
+
+<!-- from: verify-netmgrfix4 (2026-10-21) -->
+- **NM12 - section 8.5 step 3.3 and section 17 (the configuration draw as an external input):** the netmgr shadow
+  must replay the original's draws to compare component 11 without resyncing, but the spec gives no public point at
+  which that input can be captured before our step (generator `0x00B44870`, clock-seeded at static initialisation,
+  advanced by the section 8.6 prop and flora draws; no interface, message or layout exposes it). (a) Is there a
+  sanctioned capture point? (b) If not, is the draw officially outside exact comparison ("exact except section 17
+  draws", resync specified)? [current: no capture; 4 resyncs in vnmf4-turbo2032-a, 2 in vnmf4-normal-a]
+  **ANSWERED 2026-10-21 (re-netmgr-rng4):** DIFFERS — (a) yes, an in-process read of the §17.2 layout (`state[624]` at `0x00B44870`, `next` `0x00B45230`, `left` `0x00B45234`, position `k = 624 − left`; no vtable, fixed image base), sanctioned whenever no network lot manager function runs: the generator advances only at three draw sites (`0x0060D4AC`, `0x0060D512`, `0x0060DE59`), so a capture after the previous draw-performing operation is the next one's input (§17.1, §17.3). Load it as raw state, replay, and check (not copy) the post-state. (b) No: the configuration draw is compared exactly and a resync after a draw-only difference is not specified; the remaining exactness gap is the draw order inside one `ProcessUpdateList` pass (NM13). Vectors in §17.4.
+
+<!-- from: re-netmgr-rng4 (2026-10-21) -->
+- **NM13 - section 8.5 *[compat]* note and section 17.3 (draw order within one `ProcessUpdateList` pass):** exact
+  replay of the §17 draws needs the original's key order when two or more cells of one pass draw. `pending` is a hash
+  set at manager `+0x74` (bucket vector begin `+0x78`, end `+0x7C`, element count `+0x84`, read at
+  `0x0060FA14`–`0x0060FA3E`). Needed: its initial bucket count, the growth rule (prime list, when it grows), the
+  order of nodes within a bucket after insert and after a rehash, and whether the bucket count (which persists after
+  the set empties) must itself be part of the §17.3 capture. [current: ascending key order *[choice]*]
+  **ANSWERED 2026-10-21 (re-netmgr-rng4):** DIFFERS — the original iterates `pending` (SGI hash_set at `+0x74`) by ascending `key mod B`, latest insert first within a bucket; `B` starts at 193 (ctor asks 100, prime list `0x00A829B0`), grows on insert to the first prime not below `count + 1` with a head-pushing rehash (`0x00710DD0`), never shrinks, and is captured with the generator (§8.5 *[compat]*, §17.3). FreeCity4's ascending-key *[choice]* differs when two cells of one pass draw.
+  **ANSWERED 2026-10-21 (re-netmgr-rng4, round 2):** DIFFERS — exact contract in §8.5 "Replay contract for `pending`" rules 1-6: no insert can happen during a pass (both feeding messages are posted, queued), so the set is empty between messages and `B` is the only carried state; `B` = first prime of `0x00A829B0` not below `max(100, P)`, `P` the largest `count + 1` any insert asked for since the city's manager was created (duplicates included); zoning keys go in z-outer, x-inner; capture `B` (and check count 0) before the original handles the message; after a resize, within-bucket order follows the rehash (old buckets ascending, head-pushed), not "latest first" (worked example and §16 tests 27-28).

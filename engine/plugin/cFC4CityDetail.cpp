@@ -238,8 +238,10 @@ bool CollectNetworkLot(uint32_t x, uint32_t z, cISC4NetworkLot* lot, void* ctx) 
     n->x.push_back(static_cast<int32_t>(x));
     n->z.push_back(static_cast<int32_t>(z));
     n->lots.push_back(TokenOf(lot));
-    // [choice] (question CD6) true: go on with the next network lot (§3.4
-    // redevelops every one).
+    // true: go on with the next network lot. city-detail.md §3.4 redevelops
+    // every network lot, and IterateAllNetworkLots stops at the first false
+    // (network-manager.md, slot 11). (An earlier comment named a question CD6
+    // that was never filed; the two specs settle it.)
     return true;
 }
 
@@ -338,11 +340,14 @@ bool cFC4CityDetailManager::QueryInterface(uint32_t riid, void** ppvObj) {
         case GZIID_cIGZUnknown:
         case kFC4_IID_cISC4CityDetailManager:
             *ppvObj = static_cast<cFC4ISC4CityDetailManager*>(this);
+            ++qiOwn_;
             break;
         case kIID_cIGZSerializable:
             *ppvObj = static_cast<cIGZSerializable*>(this);
+            ++qiSer_;
             break;
         default:
+            ++qiOther_;
             return false;
     }
     AddRef();
@@ -363,6 +368,7 @@ uint32_t cFC4CityDetailManager::Release() {
 
 bool cFC4CityDetailManager::Init() {
     FC4_TRACE("CityDetailManager::Init");
+    ++inits_;
     if (core_ == nullptr) return true;
     const uint32_t before = fc4_city_detail_get_level(core_);
     ctx_.removes = ctx_.creates = ctx_.tags = ctx_.redevelops = 0;
@@ -380,15 +386,27 @@ bool cFC4CityDetailManager::Init() {
     return true;  // §3.1
 }
 
-bool cFC4CityDetailManager::Shutdown() { return core_ == nullptr || fc4_city_detail_shutdown(core_); }
+bool cFC4CityDetailManager::Shutdown() {
+    FC4_TRACE("CityDetailManager::Shutdown");
+    const bool ok = core_ == nullptr || fc4_city_detail_shutdown(core_);  // §3.1: true, nothing else
+    // The counters exclude this line's own GetCityDetail read (the core's getter).
+    fc4::Log("citydetail Shutdown -> %d (level %d, inits=%u, QueryInterface own=%u serializable=%u refused=%u, "
+             "GetCityDetail=%u)",
+             ok ? 1 : 0, core_ ? static_cast<int>(fc4_city_detail_get_level(core_)) : -1, inits_.load(),
+             qiOwn_.load(), qiSer_.load(), qiOther_.load(), getDetail_.load());
+    return ok;
+}
 
-uint32_t cFC4CityDetailManager::GetCityDetail() { return core_ ? fc4_city_detail_get_level(core_) : 0xFFFFFFFFu; }
+uint32_t cFC4CityDetailManager::GetCityDetail() {
+    ++getDetail_;
+    return core_ ? fc4_city_detail_get_level(core_) : 0xFFFFFFFFu;
+}
 
 bool cFC4CityDetailManager::Write(cIGZOStream& s) {
     FC4_TRACE("CityDetailManager::Write");
     fc4::OStreamAdapter a(s);
     const bool ok = core_ != nullptr && fc4_city_detail_write(core_, a.Get());
-    fc4::Log("citydetail Write -> %d (level %d)", ok ? 1 : 0, static_cast<int>(GetCityDetail()));
+    fc4::Log("citydetail Write -> %d (level %d)", ok ? 1 : 0, static_cast<int>(core_ ? fc4_city_detail_get_level(core_) : 0xFFFFFFFFu));
     return ok;
 }
 
@@ -396,7 +414,7 @@ bool cFC4CityDetailManager::Read(cIGZIStream& s) {
     FC4_TRACE("CityDetailManager::Read");
     fc4::IStreamAdapter a(s);
     const bool ok = core_ != nullptr && fc4_city_detail_read(core_, a.Get());
-    fc4::Log("citydetail Read -> %d (level %d)", ok ? 1 : 0, static_cast<int>(GetCityDetail()));
+    fc4::Log("citydetail Read -> %d (level %d)", ok ? 1 : 0, static_cast<int>(core_ ? fc4_city_detail_get_level(core_) : 0xFFFFFFFFu));
     return ok;
 }
 

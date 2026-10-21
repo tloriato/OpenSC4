@@ -22,3 +22,18 @@ side: what city-situation slots or messages reach `fc4_automata_pause_all` / `_r
 (countdown start, countdown end, mission end)? A replacement wiring this from the outside (glue19 wires them
 to the manager's `MissionActivate` / countdown-end points through the city-situation interfaces) needs the
 receiver names to check it against the game's own call sites.
+
+## From the verify-automatarefs4 lane (2026-10-21)
+
+**AT21.** Where does the original controller manager (city slot 47) drop the references it holds on its
+controllers, and on the occupants and automata of its record, at city close? §3.4 says the manager keeps the
+reference its Read returned, §7.1 (AM7 step 3) that a removed controller is shut down (slot 4) and released, and
+§10 lists `0x99EF1143` RemoveOccupant as "drops the occupant's controllers [inferred]", but no section names the
+manager's own `Shutdown` (slot 4) or destructor behaviour. In a city loaded and then saved (foundations §2.7 SV1:
+the load's object table is gone), run sg4-c1 (2026-10-21) shows 214 generator (`0x4A1628C5`) and 24 attractor
+(`0x6A1628BA`) controllers whose last reference is the manager's. Please state: (a) which of `PreCityShutdown`
+`0x26D31EC2`, the RemoveOccupant handler during the occupant manager's shutdown, slot 4 `Shutdown` or the
+destructor releases them, in which order relative to the occupant manager's shutdown; (b) whether each controller
+is shut down (controller slot 4) before that release; (c) whether the queue entries (§3.3) and the 24-hour clock
+reference (§3.1 field 2) go at the same point. verify-automatarefs4 keeps them to the destructor (the literal
+reading of "the manager holds them") and declares that release the manager's own (FC4_RELEASE_AT_DESTRUCTION).

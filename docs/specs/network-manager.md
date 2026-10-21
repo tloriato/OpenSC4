@@ -708,8 +708,79 @@ Steps 2 and 3 run even when the cell has no network lot.
 
 *[compat]* The original's order is its hash set's order: ascending `key mod bucketCount`, and the latest insert first
 within a bucket. Only two things depend on it: which cell starts an avenue flood (§8.7) and the order of the random
-draws. The generator is seeded from the wall clock, so draws are not reproducible anyway. FreeCity4 processes keys in
-ascending key order *[choice]*.
+draws. The generator is seeded from the wall clock, so draws are not reproducible from a seed; they are reproducible
+from a capture of its state (§17.3), which makes the draw order observable. FreeCity4 processes keys in
+ascending key order *[choice]*; where two cells of one pass draw, this differs from the original (NM13). The
+original's order, exactly (answers NM13):
+
+- `pending` is an SGI `hash_set<u16>`: hashtable object at manager `+0x74`, bucket vector begin `+0x78`, end
+  `+0x7C`, element count `+0x84`. The hash is the key itself; a key's bucket is `key mod B`, `B` the bucket count.
+- The constructor (`0x0060EE50`, `PUSH 0x64` at `0x0060EF0D`, call `0x00829BC0` at `0x0060EF12`) asks for 100
+  buckets, so `B` starts at **193**: the first entry not below the request in the 28-entry prime list at
+  `0x00A829B0` (53, 97, 193, 389, 769, 1543, 3079, 6151, 12289, 24593, 49157, 98317, … , 4294967291).
+- Insert (`0x0060E210`) first calls resize (`0x00710DD0`) with `count + 1`, even when the key is already present.
+  If `B < count + 1`, `B` becomes the first prime not below `count + 1` and every node moves: old buckets in
+  ascending order, each from its head, each node pushed to the **head** of its new bucket. Then a new key is pushed
+  to the head of its bucket; an existing key is left where it is.
+- Erase never shrinks `B`; nothing else touches the bucket vector (Shutdown does not). `B` therefore depends on the
+  manager's history (it passes 193 only once some message has queued more than 193 keys at once, for example a zoning rect of
+  more than 193 cells after growing it by one)
+  and is part of the §17.3 capture: `B = (dword[+0x7C] − dword[+0x78]) / 4`, read on the cISC4NetworkLotManager
+  pointer (the object, vtable `0x00AA7958` at +0).
+- Iteration (`ProcessUpdateList` takes `begin()` each time, `0x0060FA2E`-`0x0060FA4A`: scan from bucket 0 to the
+  first non-null head, copy that node's key, call `UpdateRoadsInCell`, then erase **by key value**): buckets
+  ascending, each from its head. A key that `UpdateAvenueStyle` already erased is simply never reached; erasing the
+  current key a second time is a no-op. Within one bucket the order is "latest inserted first" **only if no resize
+  happened after those keys went in** (see the rehash example below).
+
+Example (`B = 193`): a lot-state message queues, in this order, keys `0x0102` (258, bucket 65), `0x0201` (513,
+bucket 127), `0x0143` (323, bucket 130) and `0x00C3` (195, bucket 2). Processing order: `0x00C3`, `0x0102`,
+`0x0201`, `0x0143`. Ascending key order would give `0x00C3`, `0x0102`, `0x0143`, `0x0201`, so if `0x0201` and
+`0x0143` both create a lot, their configuration draws are swapped. With keys 2 (bucket 2) inserted before 195
+(bucket 2), the order is 195 then 2.
+
+**Replay contract for `pending`** *[compat]* (NM13, round 2; for exact shadow replay of the draw order):
+
+1. *No insert during a pass.* The only insert call sites are `0x0060FE45` and `0x0060FFBF` (§8.5 table below), both
+   inside `DoMessage` for `0x07699455` and `0xE8BDA2E7`, and each runs `ProcessUpdateList` after its own insert
+   loop. Both messages reach the manager **queued**: the zone manager's `PlaceZone` posts `0x07699455`
+   (landfill.md, answered Q4) and `cSC4Lot::SetState` posts `0xE8BDA2E7` (`0x006C3100`, lot-developer.md §3.2), so
+   lots created or removed inside a pass cannot re-enter the handler. Nothing reachable from `UpdateRoadsInCell`
+   inserts. So no resize happens during a pass, and the processing order is fixed when the insert loop ends.
+2. *Empty between messages.* `ProcessUpdateList` loops while the count (`+0x84`) is non-zero, so `pending` is empty
+   whenever no handler is running. The **only** state that carries from one message to the next is `B`. The set is
+   not saved (§2) and no other code touches it (the constructor `0x0060EE50` is its only setup; the manager is created
+   with the city, §1, so `B = 193` at every city creation or load).
+3. *Closed form for `B`.* Let `P` be the largest value of `count + 1` passed to resize by any insert call since the
+   manager was created (duplicates count: an insert of a key that is already present still asks for `count + 1`).
+   Then `B` is the first prime of the `0x00A829B0` list that is not below `max(100, P)`. Within one message, `count`
+   before an insert is the number of distinct keys inserted so far by that message. For the zoning handler every key
+   of the grown rect is distinct, so `P` for that message is the number of rect cells inside the city. For example,
+   `B` stays 193 until a message inserts its 194th distinct key (or calls insert with 193 keys present), then becomes
+   389, then 769 from the 389th, and so on.
+4. *Insertion order of one message.* Zoning (`0x0060FD6C`-`0x0060FE4A`): the rect `{x0−1, z0−1, x1+1, z1+1}`
+   (inclusive) walked with **x fastest**: for z ascending, for x ascending; cells with `x < 0`, `z < 0`,
+   `x ≥ city cells x` or `z ≥ city cells z` are skipped; key `= (x & 0xFF) << 8 | z`. Lot state: the §6.3 walk order,
+   duplicates included.
+5. *What a shadow must capture, and when.* Before the original handles the message (any time after its previous
+   `0x07699455`/`0xE8BDA2E7` handler returned; by 2, there is no in-flight state): `B = (dword[+0x7C] −
+   dword[+0x78]) / 4` on the cISC4NetworkLotManager object. `dword[+0x84]` must read 0; anything else is a capture
+   difference to report. Together with the §17.3 generator capture this is the complete input of the pass's draw
+   order. A shadow may instead track `B` itself by rule 3 from 193 at city creation or load, provided it sees every
+   insert call; the captured value is the check.
+6. *Typed replay.* Start from an empty set with the captured `B`; for each key in rule-4 order apply the insert rule
+   (resize with `count + 1`, then head-push unless present); then process by rule 1's iteration, skipping keys
+   already erased by an avenue flood. After the pass, compare the shadow's `B` with the original's (read the same
+   way): a check, never a copy. Do not substitute ascending key order or adopt the original's output order.
+
+Rehash example (from the rules above, not game output; reproduced by a simulation of rules 3, 4 and 6): a zoning
+change of the 12 × 12 rect x 10–21, z 10–21 in a city of at least 23 × 23 cells inserts the 196 keys of x 9–22,
+z 9–22, starting from `B = 193`. The 194th insert (key `0x1416`, x 20, z 22) resizes to `B = 389`; the last two keys
+go in afterwards. Processing then starts `0x1409`, `0x140A`, `0x140B`, … (buckets 72, 73, 74, …: `key mod 389`), not
+at the lowest key `0x0909`. Bucket 359 holds `0x0C0A` (18th insert, old bucket 187) and `0x0F14` (161st insert, old
+bucket 0). The rehash walks old bucket 0 first, so `0x0F14` lands in bucket 359 first and `0x0C0A` is pushed on its
+head: `0x0C0A` is processed **before** `0x0F14`, although it went in earlier. Six buckets of this example are ordered
+earliest-first in this way (359, 360, 361, 368, 369, 370), so "latest first" is not a rule once a resize has happened.
 
 **Every path that changes network lots** (answers NM11; from the call and cross-reference graph of the
 executable, no data references to any of these functions):
@@ -1127,6 +1198,12 @@ The tools, models, remap tables and retrofit are presentation or legacy. A FreeC
   null reference is a successful read), NM7 (§7.10, every entry released once in the walk, the list always emptied),
   NM8 (§8.2, §8.4, §8.7, no range checks: out-of-range values read neighbouring data; the FreeCity4 choices are
   confirmed) and NM9 (§7.6, **DIFFERS**: each kind runs only when its occupant list is not empty).
+- ~~**NM12.** Can the configuration draw's input be captured before our step?~~ **Answered (re-netmgr-rng4):** yes,
+  by an in-process read of the generator's layout between network lot manager operations (§17.1–§17.3); the draw
+  is compared exactly, no resync.
+- ~~**NM13.** The original's key order within one `ProcessUpdateList` pass.~~ **Answered (re-netmgr-rng4):**
+  **DIFFERS** from FreeCity4's ascending key order: hash order `key mod B`, latest first unless a resize intervened, `B` from 193 up; capture and
+  typed-replay rules in §8.5 "Replay contract for `pending`".
 
 ---
 
@@ -1185,6 +1262,19 @@ Each test names its section. "City" means a fresh 64 × 64 city unless stated ot
     z = 1..22; (9..12, 23). Not (10, 19), (11, 19) nor the lot's own 6 cells.
 24. **Walk at the top edge** (§6.3). A 1 × 1 lot at (5, 0) (grown {4, −1, 6, 1}) → keys (0..6, 0) and (4..6, 1):
     row 0 is walked in full from x = 0, so it includes the lot's own cell (5, 0).
+25. **Raw-state replay** (§17.2–§17.4). Load the generator from seed `0x9E3D9501` and draw 3, 4, 2 → 2, 2, 1.
+    Load it raw at `k = 622` (the words of that seed after 622 draws) and draw 3, 4, 2 → 1, 3, 1, ending at
+    `left = 623`, `k = 1` after a reload. The post-state equals that of the seeded generator after 625 draws.
+26. **Pending order** (§8.5, NM13). `B = 193`, keys queued `0x0102`, `0x0201`, `0x0143`, `0x00C3` → processed
+    `0x00C3`, `0x0102`, `0x0201`, `0x0143`. Keys 2 then 195 (same bucket) → 195 first. 194 distinct keys queued
+    from empty → `B = 389` after the 194th insert.
+27. **Pending rehash order** (§8.5 replay contract). `B = 193`, city ≥ 23 × 23, zoning change rect x 10–21,
+    z 10–21 → 196 keys inserted, resize to `B = 389` at insert 194 (key `0x1416`); processing starts `0x1409`,
+    `0x140A`, `0x140B`, `0x140C`; bucket 359 yields `0x0C0A` then `0x0F14`, bucket 368 `0x0909` then `0x0C13`.
+    After the pass `B = 389`, count 0. A following zoning change of one cell from that state keeps `B = 389`
+    (its 9 keys run by `key mod 389`).
+28. **Duplicate insert resizes** (§8.5 rule 3). With 193 distinct keys present at `B = 193`, inserting one of them
+    again resizes to `B = 389` and adds nothing (count stays 193).
 
 ---
 
@@ -1201,3 +1291,91 @@ props and flora and creates new ones, which may differ from the old ones. The pr
 state therefore change, while component 11 (the lot and its configuration) does not.
 
 The network manager draws nothing.
+
+### 17.1 Ownership and advance sites (answers NM12)
+
+The generator is a file-local static object of the Windows build, not a member of the manager. Its whole lifetime:
+
+| Site | Instruction | Effect |
+|---|---|---|
+| static initialiser `0x00A73BF0` | `MOV ECX,0xB44870` (`b9 70 48 b4 00`) at `0x00A73C01`, then the constructor `0x00913B74` | seeded once per process with `cRZTime() XOR 0x8C09C379` (foundations §6.3) |
+| `CreateLotObjects`, prop object | `0x0060D4A7` / call `0x00913A06` at `0x0060D4AC` | one `RandomUint32Uniform(n)` |
+| `CreateLotObjects`, flora object | `0x0060D50D` / call at `0x0060D512` | one `RandomUint32Uniform(n)` |
+| `DoNetworkOccupantInserted`, configuration | `0x0060DE54` / call at `0x0060DE59` | one `RandomUint32Uniform(count)`, skipped when `count = 0` (`0x0060DE4F`) |
+
+No other instruction of the executable holds the address `0x00B44870` or any address inside the object
+(`0x00B44870`–`0x00B45237`; the next static, at `0x00B45238`, belongs to other code), and the export has no data
+reference to it. The generator is never re-seeded, never saved and never loaded (foundations §6.2): its stream runs
+on across city loads within one process. So it advances **only** inside the three network lot manager draw sites,
+and those are reached only from:
+
+- `DoNetworkOccupantInserted`, through `UpdateLot` (§8.5 table: `ProcessUpdateList` on messages `0x07699455` and
+  `0xE8BDA2E7`, the usable-changed handler on `0x89D3E9F3`, and the avenue flood inside either);
+- `CreateLotObjects`, through `DoNetworkOccupantInserted`, `RedevelopLot` (slot 12; only caller the city detail
+  pass, city-detail.md §3.4) and message `0xA9B6C2D6` (`0x00610002`; never posted, §6).
+
+*[compat]* Between two of those operations the generator's state is constant.
+
+### 17.2 Layout (Windows build, image base `0x00400000`, relocations stripped, no ASLR)
+
+`cRZRandomSuper` has no vtable. Its 0x9C8 bytes, from the constructor (`0x00913B7B` `83 a6 c0 09 00 00 00`,
+`0x00913B82` `c7 86 c4 09 00 00 70 02 00 00`), the draw (`0x009139B9`) and the reload (`0x009138A9`, which ends with
+`left := 0x270`, `next := &state[0]` at `0x00913961`–`0x0091396B`):
+
+| Offset | Absolute (this generator) | Field |
+|---|---|---|
+| +0x000 | `0x00B44870`–`0x00B4522F` | `state[624]`, u32, the MT19937 words |
+| +0x9C0 | `0x00B45230` | `next`, a pointer to the next word to temper |
+| +0x9C4 | `0x00B45234` | `left`, signed i32 |
+
+One draw: `left := left − 1`; if `left < 0`: reload (standard twist of all 624 words, `left := 624`,
+`next := &state[0]`) and `left := left − 1` again; then temper `*next` and advance `next` by one word. Seeding ends
+with a reload, so a fresh generator holds `left = 624`. Between draws `0 ≤ left ≤ 624` and
+`next = 0x00B44870 + 4 × (624 − left)`. The **position** `k := 624 − left` is the index of the next word to temper;
+`k = 624` means the next draw reloads first. `(state[0..623], k)` is the complete state: the seed is neither stored nor
+needed.
+
+### 17.3 Capturing the draw input *[compat]* (for comparison and shadow harnesses)
+
+No interface slot (§11), message or saved record exposes the generator; the capture is an in-process read of the
+§17.2 layout of this build. It is sanctioned at any instant when no network lot manager function is executing
+(between message dispatches; never from inside a callback the manager is running). By §17.1, a capture taken after
+the last draw-performing operation and before the next one is exactly that operation's input, wherever between the
+two it is taken. A harness that runs its step after the original's (both answer the same message) therefore takes
+the **pre-state** of step n+1 at the end of its handling of step n, and must observe every trigger listed in §17.1
+(the three messages, the city detail pass's `RedevelopLot` calls, and `0xA9B6C2D6` should anything post it).
+
+Replay rule:
+
+1. Load the captured `(state, k)` into FreeCity4's generator as raw state (not as a seed: the seed is lost).
+2. Run the step. Every draw of §8.5 step 3.3 and §8.6 then sees the original's word; `cfg`, `pick` and the objects
+   become deterministic outputs and are compared like any other field of component 11 and the prop and flora state.
+3. After the step, FreeCity4's `(state, k)` must equal the original's, read the same way. This is a check, never a
+   copy: a difference means a different number or order of draws. The next capture is the next step's input.
+4. A capture that differs from FreeCity4's post-state of the previous step means a draw the harness did not
+   observe; it is reported, not absorbed.
+
+So the configuration draw is **not** outside exact comparison: with the capture, a cell whose configuration
+differs among `count ≥ 2` compatible candidates is a mismatch, and a resync after it is not specified behaviour.
+Exactness also needs the original's draw order. Within one `ProcessUpdateList` pass that order follows the hash
+set's iteration order (§8.5 *[compat]* note, NM13), which FreeCity4 currently replaces by ascending key order
+*[choice]*. The two orders agree whenever at most one cell of the pass draws. For exact replay when several draw,
+the capture also takes `pending`'s bucket count `B` (§8.5) and the step processes keys in the original's order;
+the §8.5 replay contract (rules 1-6) gives what to capture, when, and the typed replay.
+
+### 17.4 Worked vectors (from foundations §6.1; implementers compare their generator against these)
+
+Session seed `S = 0x12345678`, so the seed is `derive(0x8C09C379) = 0x9E3D9501`. After seeding, `state[0] =
+0x3508F7E2`, `state[623] = 0x06CD7FA3`, `left = 624`, `k = 0`.
+
+| Draw | Word (tempered) | Use | Result |
+|---|---|---|---|
+| k = 0 | `0xB0602CE4` | configuration, 3 candidates | `(w × 3) >> 32` = 2 → third candidate |
+| k = 1 | `0x88C93DBB` | prop object, 4 IDs | 2 |
+| k = 2 | `0xDD056A8E` | flora object, 2 IDs | 1 |
+
+Reload crossing, the reason `left` must be captured with the words: the same generator after 622 draws holds
+`k = 622`, `left = 2`, `next = 0x00B45228`. A lot with 3 candidates and two objects (4 IDs, then 2 IDs) draws
+`state[622]` → `0x902AFD71` → 1 (`left` 1), `state[623]` → `0xC2CB90BE` → 3 (`left` 0), then reloads and draws the
+new `state[0]` → `0xB7E822C6` → 1 (`left` 623, `k` 1). The captured words are the pre-reload words: the replayer
+must run the reload itself on them, and the words alone (without `left`) do not say which word is next.

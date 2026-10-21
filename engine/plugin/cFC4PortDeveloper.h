@@ -63,6 +63,7 @@
 #include <atomic>
 #include <cstdint>
 #include <map>
+#include <string>
 #include <vector>
 
 class cIGZMessageServer2;
@@ -216,3 +217,13 @@ public:
 // Factories for the subsystem table (reference count 0).
 cIGZUnknown* CreateFC4AirportDeveloper();
 cIGZUnknown* CreateFC4SeaportDeveloper();
+
+// Tooling (the harness script's `port` action, FC4Script.h; glue-portdev4): builds
+// the stage-0 lot of port type `type` (the tuning exemplar's list 0x8A270FC3,
+// the type's lot configuration list 0xCA271781 entry 0) with its top-left cell
+// at (x, z), as the swap of port-developers.md §4.5 builds a stage: lot manager
+// slot 23 CreateLot (size from the configuration, slot 7), SetLotConfiguration,
+// UpdateZoneType, lot developer slot 7 ConstructDefaultLot(lot, cfg, 0, true).
+// Works through the game's interfaces only, so the original developers adopt it
+// as ours do (§3 0x99EF1142). Returns the result text for the script log.
+std::string PortScriptBuild(uint32_t kind, uint32_t type, int32_t x, int32_t z, uint32_t facing);

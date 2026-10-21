@@ -418,6 +418,26 @@ def queue_json_files(ctx, include_merged=False):
     return files
 
 
+def split_touch_keys(value):
+    """Separate keys without splitting canonical names such as automata (managers, records)."""
+    keys, start, depth = [], 0, 0
+    value = value or ""
+    for i, char in enumerate(value):
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth < 0:
+                raise ValueError("unbalanced parentheses in --touches")
+        elif char == "," and depth == 0:
+            keys.append(value[start:i].strip().lower())
+            start = i + 1
+    if depth:
+        raise ValueError("unbalanced parentheses in --touches")
+    keys.append(value[start:].strip().lower())
+    return [key for key in keys if key]
+
+
 def cmd_check(ctx, a):
     lane = a.lane
     reasons = []
@@ -469,7 +489,11 @@ def cmd_check(ctx, a):
                 reasons.append(f"docs/lanes/{lane}.md already exists")
                 break
     # 3. possible duplicate work: another unmerged lane mentions a --touches key
-    keys = [k.strip().lower() for k in (a.touches or "").split(",") if k.strip()]
+    try:
+        keys = split_touch_keys(a.touches)
+    except ValueError as exc:
+        reasons.append(str(exc))
+        keys = []
     if keys:
         wts = {w["branch"]: w["path"] for w in list_worktrees(ctx) if w["branch"]}
         now = time.time()
@@ -1432,7 +1456,7 @@ def main(argv=None):
     p.add_argument("--resume", action="store_true",
                    help="check an existing unmerged lane in its original worktree; retain all guard state")
     p.add_argument("--deps", help="comma-separated branches that must already be on main")
-    p.add_argument("--touches", help="comma-separated keys other unmerged lanes must not mention")
+    p.add_argument("--touches", help="comma-separated keys; commas inside parentheses stay in the key")
     p.add_argument("--stale-days", type=float, default=3, help="an unmerged lane idle longer than this is ignored")
     p.add_argument("--kind", choices=("engine", "re", "tool", "mech"),
                    help="lane kind (default: re for lanes named re-*, else engine); re adds the REA pre-flight")

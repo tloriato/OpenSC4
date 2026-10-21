@@ -1,0 +1,69 @@
+va	name	evidence	mac_x86
+0043af80	cRZPath::~cRZPath	paths.md §2.2; destroys the strings at +0x50, +0x3C, +0x28, +0x14 and +0	
+005f8fe0	IsPathSeparator	paths.md §1; was cRZCriticalSection::Lock; true for '\' or '/' (cdecl, one char); 39 call sites in the path and directory code	
+00917ae0	IsASCIILetter	paths.md §1; descriptive name; true for 'A'-'Z' and 'a'-'z' (signed compares); used by the current-directory Fullpath 0x00918625	
+00917bcb	Splitpath	paths.md §1.5; drive if the second char is ':', dir to the last separator, the last dot after it starts ext, 255-char parts	
+00917d1a	SplitDirectory	paths.md §1.6; parts from the end, 260 bytes each, trailing '\' added; a single part without trailing separator loses its last char	
+00917e7c	Fullpath	paths.md §1.2; the normaliser against a base: 521-byte work buffer, '.' and '..' components, ':' guard, trailing separator restored; malloc result for a null out	
+00918080	IsFullPath	paths.md §1.1; descriptive name; isalpha + ':' + '\', or '\\', and no strstr '\.' (0x00ACEFC0) or '/.' (0x00ACEFBC)	
+009185c4	Fullpath	paths.md §1.3; UNC prefix, drive letter, _getdrive / _getdcwd, then 0x00917E7C	
+009186e7	IsFullPath (cRZString)	paths.md §1.1; descriptive name; 0x00918080 on the string's buffer; caller ResolvePath 0x00919740	
+009194a0	Splitpath	paths.md §1.5; the cRZString form; the drive is written into its own 4-byte argument slot	
+00919672	Fullpath	paths.md §1.4; the cRZString form of 0x009185C4 with max 0x208; out unchanged on failure	
+009196cc	Fullpath	paths.md §1.4; the cRZString form of 0x00917E7C with a base (null base text = empty)	
+00919738	ResolvePath	paths.md §1.4; IsFullPath copies as is, else Fullpath with or without base	
+0091ad3e	cRZDirectory::HasEntryNamed	paths.md §3.3; descriptive name, no Mac match; scans the entry list for a name equal to the argument (STL operator==); used before adding '.' and '..'	
+0091ad83	cRZDirectory::GetNthEntry	paths.md §3.2; node + 8 of the n-th node, null when n >= the count +4	
+0091ada7	std::list<cRZDirectoryEntry,std::allocator<cRZDirectoryEntry>>::list	paths.md §3.1; descriptive name; allocates the 0x24-byte head node linked to itself	
+0091adc2	cRZDirectoryEntry::cRZDirectoryEntry	paths.md §3.1; descriptive name; owner +0 := 0, name +4, kind +0x18 := 0	
+0091adff	cRZDirectoryEntry::~cRZDirectoryEntry (deleting destructor)	paths.md §3.1; descriptive name; destroys the name, GlobalHeapFree on flag bit 0	
+0091ae1e	cRZDirectory::AlphabetizeEntryList	paths.md §3.2; list sort with the caller's comparison	
+0091ae31	cRZDirectory::MakeSurePathEndsWithSeparator	paths.md §3.2; appends '\' when +8 is empty or does not end with a separator	
+0091ae66	RZFileFindFinish	paths.md §4; FindClose on +0x2C unless INVALID_HANDLE_VALUE, then frees the search object	
+0091ae8e	std::list<cRZDirectoryEntry,std::allocator<cRZDirectoryEntry>>::erase	paths.md §3.3; descriptive name; unlinks one node, destroys its entry, frees it	
+0091aeed	cRZDirectoryEntry::cRZDirectoryEntry	paths.md §3.1; descriptive name; the copy constructor (owner, name, kind)	
+0091af16	std::list<cRZDirectoryEntry,std::allocator<cRZDirectoryEntry>>::erase	paths.md §3.3; descriptive name; the range overload, used to clear the entries	
+0091b017	cRZDirectory::SplitDirectoryPath	paths.md §3.9; SplitDirectory with two 260-byte parts; copies both even when one was written	
+0091b0a1	RZFileFindFirst	paths.md §4; ConvertStringEncoding, FindFirstFileA, a 0x30-byte search object (name, directory bit 0x10, pattern, handle +0x2C)	
+0091b21d	RZFileFindNext	paths.md §4; descriptive name, no Mac match; FindNextFileA, name and directory bit refreshed; AL false at the end	
+0091b2d6	std::list<cRZDirectoryEntry,std::allocator<cRZDirectoryEntry>>::_M_create_node	paths.md §3.3; descriptive name; a 0x24-byte node with a copied entry at +8	
+0091b2f7	cRZDirectory::~cRZDirectory	paths.md §3.2; destroys +0x1C, +8 and the entry list	
+0091b312	cRZDirectory::DoesAnyEntryExistThatMatchesPattern	paths.md §3.6; RZFileFindFirst then RZFileFindFinish	
+0091b349	std::list<cRZDirectoryEntry,std::allocator<cRZDirectoryEntry>>::insert	paths.md §3.3; descriptive name; links a new node before the given position	
+0091b36e	cRZDirectory::ReadDirectorySpecificEntriesIntoStringList	paths.md §3.4; flags 1 '.', 2 '..', 4 directories, 8 files; '.' / '..' put at the front for the filter '*' (0x00B169A0)	
+0091b6ca	cRZDirectory::DoesDirectoryExist	paths.md §3.6; path + separator + '*'	
+0091b738	cRZDirectory::CreateDirectoryA	paths.md §3.7; static; the \\server\ prefix skipped, _mkdir per missing component, rollback with _rmdir in creation order	
+0091b9c7	cRZDirectory::ReadDirectoryFileEntriesIntoStringList	paths.md §3.4; flags 8	
+0091b9d5	cRZDirectory::ReadDirectoryDirectoryEntriesIntoStringList	paths.md §3.4; flags (dots & 3) | 4	
+0091b9ec	std::list<cRZDirectoryEntry,std::allocator<cRZDirectoryEntry>>::push_front	paths.md §3.3; descriptive name; insert before the first node	
+0091ba08	std::list<cRZDirectoryEntry,std::allocator<cRZDirectoryEntry>>::push_back	paths.md §3.3; descriptive name; insert before the head node	
+0091ba22	cRZDirectory::ReadDirectoryEntries	paths.md §3.3; clears the list, searches path + filter, kinds 4 / 8, '.' and '..' by +0x31 / +0x30	
+0091bcad	cRZDirectory::ChangeDirectory	paths.md §3.2; assigns +8, separator, optional read	
+0091bcd7	cRZDirectory::SetNewDirectoryEntryFilter	paths.md §3.2; empty filter becomes '*'	
+0091bd31	cRZDirectory::cRZDirectory	paths.md §3.2; (path, read, includeParent +0x30, includeSelf +0x31), filter '*'	
+0091bd88	cRZDirectory::ReadDirectoryFileEntriesIntoStringListRecursive	paths.md §3.5; depth counter 0x00B62914, ChangeDirectory on the object, files then subdirectories	
+0091bf93	cRZDirectory::RemoveDirectoryA	paths.md §3.8; descriptive name (the A suffix as in CreateDirectoryA); static (path, recursive); RemoveDirectoryA, GetLastError 2 / 3 / 0x13 stop, subdirectories then files, then again; callers cSC4Nation::DeleteRegion, cSC4Region::Delete, cSC4WinSnapshotAlbum::DeleteAlbum	
+0091c264	cRZPath::GetFileName	paths.md §2.2; returns +0x28 unchanged	
+0091c268	cRZPath::SetPath	paths.md §2.2; descriptive name, no Mac match; ResolvePath(+0x50, p, 0) then Splitpath into +0, +0x14, +0x28, +0x3C; sole caller the constructor	
+0091c298	cRZPath::FileName	paths.md §2.2; re-splits the name from the buffer when the name is empty	
+0091c2c5	cRZPath::cRZPath	paths.md §2.2; five empty strings, then SetPath	
+0091c2fe	cRZPath::FixExtensionString	paths.md §2.2; inserts '.' at 0 when not empty and not starting with one	
+0091c31f	cRZPath::GetExtension	paths.md §2.2; fix then return +0x3C	
+0091c32d	cRZPath::FixDirectoryString	paths.md §2.2; '\' (0x00A85AD8) inserted at 0 and appended when not already a separator	
+0091c37e	cRZPath::GetDirectory	paths.md §2.2; fix then return +0x14	
+0091c38c	cRZPath::FixDriveString	paths.md §2.2; resize to 2, a non-isalpha first char becomes 'C', the second ':'	
+0091c3cf	cRZPath::GetDrive	paths.md §2.2; fix then return +0	
+0091c3dc	cRZPath::SetFileName	paths.md §2.2; when the string differs (0x00454BB0): assign, or Splitpath's name part	
+0091c41b	cRZPath::SetExtension	paths.md §2.2; when it differs from the fixed extension: assign and fix, or Splitpath's extension part	
+0091c46e	cRZPath::SetBuffer	paths.md §2.2; clears +0x50, then appends drive (bit 0), directory (bit 1), name (bit 2), extension (bit 3)	
+0091c507	cRZPath::GetPath	paths.md §2.2; SetBuffer(15)	
+0091c52a	cRZPath::GetDriveAndDirectory	paths.md §2.2; SetBuffer(3)	
+0091c54d	cRZPath::GetFileNameAndExtension	paths.md §2.2; SetBuffer(12)	
+00b16998	cRZDirectory::sSelfName (data, char const*)	paths.md §3.3; points at '.' (0x00AA1B74)	
+00b1699c	cRZDirectory::sParentName (data, char const*)	paths.md §3.3; points at '..' (0x00ABF638)	
+00b169a0	cRZDirectory::sAllFilter (data, char const*)	paths.md §3.2; points at '*' (0x00A870D4), the default filter	
+00b62914	cRZDirectory::sRecursionDepth (data, int)	paths.md §3.5; incremented and decremented by 0x0091BD88	
+00b6291c	RZFileFindFirstHook (data, function pointer)	paths.md §4; read by RZFileFindFirst, never written	
+00b62920	RZFileFindNextHook (data, function pointer)	paths.md §4; read by RZFileFindNext, never written	
+00b62924	RZCreateDirectoryHook (data, function pointer)	paths.md §4; read by CreateDirectoryA, never written	
+00b62928	RZRemoveDirectoryHook (data, function pointer)	paths.md §4; read by CreateDirectoryA and RemoveDirectoryA, never written	

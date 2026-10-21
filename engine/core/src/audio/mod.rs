@@ -27,6 +27,7 @@
 //! - [`data`]: `Sound.dat`, the audio configuration record, AEMS banks and
 //!   tuning (§10).
 //! - [`save`]: nothing in the audio layer is saved (§12).
+//! - [`ambience`]: `cSC4AudioAmbienceManager` (audio-ambience.md).
 //!
 //! # Choices made where the spec is open (`[choice]`)
 //!
@@ -70,6 +71,8 @@
 //! publishes a snapshot behind a `Mutex` for the getters, exactly as the other
 //! cores do.
 
+/// `cSC4AudioAmbienceManager` (`docs/specs/audio-ambience.md`).
+pub mod ambience;
 pub mod automaton;
 pub mod data;
 pub mod director;

@@ -1,0 +1,46 @@
+va	name	evidence	mac_x86
+00910bd3	RZParseDelimitedText	command-system.md §2; cdecl, 20 bytes of arguments, AL; blanks are space and tab; even-quote rule; outer quotes stripped; the right trim tests the first non-blank byte (0x00910C0F)	
+00929676	cGZCommandParameterSet::QueryInterface	command-system.md §1.3; slot 0, pop 8; IIDs 0x4B8C39E4, 0x4B8C39E5 and 1	
+009296a5	cGZCommandParameterSet::SetStatusParameterValue	command-system.md §1.5; slot 10, pop 4; Sint32 under 0x2B999D2B	
+009296d5	cGZCommandParameterSet::ValidateParameter	command-system.md §1.3; slot 12, pop 8; true only when the parameter exists and the second argument is 0xFF	
+009296f5	cGZStringCommandGenerator::QueryInterface	command-system.md §3.3; slot 0, pop 8; IIDs 0x0B90251F, 0x0B90251E and 1	
+00929724	cGZStringCommandGenerator::Release	command-system.md §3.2; slot 2; deletes through slot 7 at a count of 1 or less	
+00929740	cGZStringCommandGenerator::ConvertStringToArgumentString	command-system.md §3.5; pop 8, ignores this; quotes a string that holds a space or tab; callers 0x0092A76D, 0x0092A7AB, 0x0092A85F	
+009297a8	cGZMessage2CommandDispatcherMessage::Release	command-system.md §4.5; descriptive name; slot 2 of 0x00AD1638; this + 4, then the standard message's Release 0x009132C1	
+009297b0	cGZMessage2CommandDispatcherMessage::QueryInterface	command-system.md §4.5; slot 0 of 0x00AD1638; IIDs 0x4B99446A and 0x0B903CC5, else the standard message's QI on +4	
+009297de	cGZMessage2CommandDispatcher::QueryInterface	command-system.md §4.2; slot 0, pop 8; IIDs 0x0B903CC3, 0x0B903CC4 and 1	
+0092994d	cGZStringCommandGenerator::Init	command-system.md §3.2; slot 3; framework service 0xEB903A32 with IID 0xCB90253A (the command server)	
+00929979	cGZStringCommandGenerator::Shutdown	command-system.md §3.2; slot 4; releases the server and the unused +0x18 set	
+00929994	cGZStringCommandGenerator::ExecuteCommand	command-system.md §3.7; slot 8, pop 0xC; 2 without a server or when slot 9 fails, else server slot 20	
+009299f5	cGZMessage2CommandDispatcherMessage::~cGZMessage2CommandDispatcherMessage	command-system.md §4.5; descriptive name; releases +0x34 and +0x30, then the standard part; sole caller 0x00929C58	
+00929a29	cGZMessage2CommandDispatcherMessage::QueryInterface (thunk)	command-system.md §4.5; was __ZThn4_N35cGZMessage2CommandDispatcherMessage14QueryInterfaceEmPPv; this - 4; slot 0 of the +4 vtable 0x00AD15A0	
+00929a39	cGZMessage2CommandDispatcherMessage::Release (thunk)	command-system.md §4.5; descriptive name; this - 4 to 0x009297A8; slot 2 of 0x00AD15A0	
+00929a41	cGZMessage2CommandDispatcherMessage::~cGZMessage2CommandDispatcherMessage (thunk)	command-system.md §4.5; descriptive name; this - 4 to 0x00929C58; slot 37 of 0x00AD15A0	
+00929a49	cGZMessage2CommandDispatcher::~cGZMessage2CommandDispatcher	command-system.md §4.1; descriptive name; releases +0x18, +0x14, +0x10, +0xC, +8; sole caller the deleting destructor	
+00929a90	cGZMessage2CommandDispatcher::Shutdown	command-system.md §4.3; slot 4	
+00929ad5	cGZMessage2CommandDispatcher::ExecuteCommand	command-system.md §4.4; slot 5, pop 0xC; 2 without a message server; default sets cleared through slot 4; MessageSend; status 0x2B999D2B through the variant's slot 27, else SetStatusParameterValue(0) and 0	
+00929c2b	cGZMessage2CommandDispatcherMessage::cGZMessage2CommandDispatcherMessage	command-system.md §4.5; the standard message's constructor on +4, both set references null; only from the dispatcher's Init	
+00929c58	cGZMessage2CommandDispatcherMessage::~cGZMessage2CommandDispatcherMessage (deleting destructor)	command-system.md §4.5; descriptive name; 0x009299F5 then the framework operator delete 0x00913409 on flag bit 0	
+00929c74	cGZMessage2CommandDispatcher::cGZMessage2CommandDispatcher	command-system.md §4.1; zeroes every member	
+00929c91	cGZMessage2CommandDispatcher::~cGZMessage2CommandDispatcher (deleting destructor)	command-system.md §4.1; was cGZMessage2CommandDispatcher::~cGZMessage2CommandDispatcher; slot 6	
+00929e19	cGZCommandParameterSet::AppendParameter	command-system.md §1.3, §1.4; slot 8, pop 4; slot 7 with 0 for an empty set, else the highest ID (0x0040D500) + 1	
+00929e40	cGZCommandParameterSet::GetFirstParameterID	command-system.md §1.3; slot 13; the lowest key or 0xFFFFFFFF	
+0092a112	cGZCommandParameterSet::SetParameterCount	command-system.md §1.3, §1.4; slot 4, pop 4; appends Empty (slot 8) while the count is below n, then erases the highest ID while above	
+0092a162	cGZCommandParameterSet::operator[]	command-system.md §1.3, §1.4; slot 5, pop 4; the node's value, or the fallback variant at +0x14 for a missing ID	
+0092a186	cGZCommandParameterSet::GetParameter	command-system.md §1.3; slot 6, pop 4; the node's value or null	
+0092a1a5	cGZCommandParameterSet::RemoveParameter	command-system.md §1.3; slot 9, pop 4	
+0092a1c9	cGZCommandParameterSet::GetNextParameterID	command-system.md §1.3, §1.4; slot 14, pop 4; find(prev) then the tree successor; a missing prev gives 0xFFFFFFFF	
+0092a4fa	cGZCommandParameterSet::~cGZCommandParameterSet	command-system.md §1.2; was std::_Rb_tree<unsigned_long,...cRZVariant...>::~_Rb_tree; installs vtable 0x00AD16C8, destroys the fallback variant +0x14, then the tree +8 (0x0092A278); sole caller the deleting destructor	
+0092a514	cGZStringCommandGenerator::~cGZStringCommandGenerator	command-system.md §3.2; descriptive name; installs vtable 0x00AD1708, releases +0x18, destroys the word vector +0xC, releases the server; sole caller the deleting destructor	
+0092a5b0	cGZCommandParameterSet::cGZCommandParameterSet	command-system.md §1.2; count 0, empty map, fallback Empty	
+0092a5d1	cGZCommandParameterSet::~cGZCommandParameterSet (deleting destructor)	command-system.md §1.2; was cGZCommandParameterSet::~cGZCommandParameterSet; slot 15; 0x0092A4FA then GlobalHeapFree on flag bit 0	
+0092a5ed	cGZCommandParameterSet::CompareParameterString	command-system.md §1.4; slot 11, pop 0xC; id -2 tries every parameter; else GetValString, cRZString::Find and an equal-length test	
+0092a6c4	cGZStringCommandGenerator::cGZStringCommandGenerator	command-system.md §3.2; empty words, +0x18 := a new parameter set	
+0092a704	cGZStringCommandGenerator::~cGZStringCommandGenerator (deleting destructor)	command-system.md §3.2; was cGZStringCommandGenerator::~cGZStringCommandGenerator; slot 7; 0x0092A514 then the global heap	
+0092a720	cGZStringCommandGenerator::ConvertCommandToString	command-system.md §3.6; slot 10, pop 0xC; clears out first, server GetCommandInfo, quoted name and values	
+0092a810	cGZStringCommandGenerator::ConvertCommandOutputToString	command-system.md §3.6; slot 11, pop 8; every parameter in ID order, the status included	
+0092a8b0	cGZMessage2CommandDispatcher::Init	command-system.md §4.3; slot 3; message server 2 (0x04FA845B / 0x652294C7), the command message, two default sets, a string generator	
+0092abeb	cGZCommandParameterSet::SetParameter	command-system.md §1.3; slot 7, pop 8; find or insert, then copy the cIGZVariant	
+0092b139	cGZStringCommandGenerator::ConvertStringToCommand	command-system.md §3.4; slot 9, pop 0x10; RZParseDelimitedText with capacities 1, 2, 4, ... 256, server slot 12 on word 0, a new 0x28-byte parameter set of string parameters	
+00ad15a0	cGZMessage2CommandDispatcherMessage::vftable_1	command-system.md §4.5; the +4 standard-message vtable, 38 slots	
+00ad1638	cGZMessage2CommandDispatcherMessage::vftable	command-system.md §4.5; 3 slots: 0x009297B0, 0x009297A0 (shared), 0x009297A8	

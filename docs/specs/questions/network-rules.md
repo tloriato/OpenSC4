@@ -16,15 +16,3 @@ Spec: [network-rules.md](network-rules.md) §14. RE-side follow-ups; nothing her
 - **NR7:** the constraint layout's codes 1–8 as `InsertIntersectionConstraints` (`0x00644710`) applies them: which
   vertex heights each code makes equal and which slope limits it sets (network-rules.md §10.3; network-geometry.md
   §9.4 step 4). [not specified]
-
-## From the glue-netrules4 lane (2026-10-21)
-
-<!-- from: glue-netrules4 (2026-10-21) -->
-- **NR13:** interoperability boundary for the rule solver. `cSC4TileEvaluator`, `cSC4TileRule`, `cSC4TileInfo` and
-  `nSC4Networks` (§6, §9, §10) have no rows in docs/abi (no CLSID, IID, vtable or factory), and the spec names
-  them only as internals of `cSC4NetworkTool::SolveNetwork`. Is there any game-reachable, supported boundary (a GZCOM
-  class/interface the game creates through the COM director, a resource-loader/exemplar hook, or a message) through
-  which the original game would call a replacement of these owners? If not, should the landed Rust
-  `network_rules` (capi `fc4_network_rules_*`) be wired only as a component of our own network tool
-  (engine/plugin/FC4NetToolHost.cpp `InsertOccupantsForSolvedCells`, today piece id 0, active under
-  `enable = netmgr`), with no separate `enable = netrules` key? [blocks: glue for nr owners; no interception invented]

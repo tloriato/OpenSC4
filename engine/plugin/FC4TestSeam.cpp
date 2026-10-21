@@ -52,6 +52,7 @@
 #include "cFC4Plumbing.h"
 #include "cFC4Power.h"
 #include "cFC4TrafficSimulator.h"
+#include "cFC4Automata.h"  // the verify-automatarefs4 lane (AutomataCmTeardownTest)
 #include "cFC4ZoneManager.h"
 #include "cFC4TractDeveloper.h"
 #include "cFC4LotDeveloper.h"
@@ -237,6 +238,9 @@ extern "C" __declspec(dllexport) intptr_t __cdecl FC4TestSeam(uint32_t op, void*
                 fc4::FpuTick();  // the observer's per-tick check, without the rest of OnTick
             }
             return 1;
+        case kFC4SeamAutomataCmTeardown:  // the verify-automatarefs4 lane (cFC4Automata.h)
+            return a == nullptr ? -1
+                                : AutomataCmTeardownTest(static_cast<cIGZUnknown*>(a), static_cast<cIGZUnknown*>(b));
         default:
             return 0;
     }

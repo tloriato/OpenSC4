@@ -35,6 +35,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod command_values;
 pub mod dbpf;
 pub mod effects;
 pub mod error;

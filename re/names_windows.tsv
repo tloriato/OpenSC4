@@ -153,17 +153,19 @@ va	name	source	confidence	note
 00416030	cSC4AdvisorSafety::update_occupant_variables	auto:A	high	mac 00337768 score 0.817 support 0
 004166b0	cSC4AdvisorSafety::update_variables	auto:A	high	mac 00337fe2 score 0.906 support 0
 004169e0	cSC4AdvisorSafety::DoMessage	auto:A	high	mac 003383f8 score 0.866 support 0
-00417730	cRZTime::LocalSecs	auto:B0	medium	mac 005f6b30 score 0.824 support 2.0
+00417600	cRZTime::BeginDST	manual:dates.tsv	high	dates.md §2.2; descriptive name; 1974 Jan 6, 1975 Feb 23, else Sunday on or before Apr 8 (0x009130BE(4, 8, y) then 0x00912C42(7)), 02:00 + _timezone
+004176e0	cRZTime::EndDST	manual:dates.tsv	high	dates.md §2.2; descriptive name; Sunday on or before Oct 31, 01:00 + _timezone
+00417730	cRZTime::IsDST	manual:dates.tsv	high	dates.md §2.2; was cRZTime::LocalSecs; false when _daylight (0x00B18BAC) is 0, else BeginDST(Y) <= t < EndDST(Y)
 004177b0	gCombineGUIDs	auto:B6	low	mac 00303be6 score 0.964 support 1.0
 0041783a	lib::Catch@0041783a	library	medium	Function ID
-00417840	cRZDate::Set	auto:B1	medium	mac 000287d8 score 0.952 support 1.0
-00417870	cRZTime::Hour	auto:D	medium	mac 005f6b60 score 0.5 support 2
-004178b0	cRZTime::Minute	auto:D	medium	mac 005f6ba8 score 0.5 support 2
+00417840	cRZTime::LocalSecs	manual:dates.tsv	high	dates.md §2.3; was cRZDate::Set; t - _timezone (0x00B18BA8), plus 3600 under IsDST; called by cRZDate::Set(cRZTime) 0x00913223
+00417870	cRZTime::Hour	manual:dates.tsv	high	dates.md §2.3; (LocalSecs mod 86400) / 3600
+004178b0	cRZTime::Minute	manual:dates.tsv	high	dates.md §2.3; (LocalSecs mod 3600) / 60
 004178f0	cADVString::init	auto:A	high	mac 00303a68 score 0.861 support 0
 004179a0	gAdviceMessageBox	auto:D	medium	mac 00303b7c score 0.5 support 2
 00417a00	cADVString::FromScriptText	auto:B0	medium	mac 00303dbe score 0.917 support 3.0
 00417a30	cADVString::cADVString	auto:B0	medium	mac 00303b1c score 0.914 support 2.0
-00417a70	cGZDate::Year	auto:B4	medium	mac 0002834c score 0.868 support 3.0
+00417a70	std::basic_string<char>::push_back	manual:dates.tsv	high	dates.md lane; was cGZDate::Year; appends one char and the terminating NUL, growing through 0x0040F1B0; callers gConvertURLFromEndodedForm, cSC4MySim::GetPersonalName, std::operator+, cSC4App::PreFrameWorkInit
 00417af0	gAdviceDetokenizerFunction	auto:A	high	mac 00303df2 score 0.778 support 0
 004184b0	gConvertURLFromEndodedForm	auto:B1	medium	mac 00303cc2 score 0.904 support 2.0
 00418630	cSC4AdvisorSystem::GetGZCLSID	auto:C	low	mac 006c0028 score 1.0 support 1
@@ -189,8 +191,8 @@ va	name	source	confidence	note
 004190b0	cSC4AdvisorSystem::PushEvent	auto:C	high	mac 001e5d46 score 1.0 support 1
 00419140	std::vector<cRZString,std::allocator<cRZString>>::~vector	auto:D	medium	mac 005edcde score 0.5 support 6
 00419230	std::_Rb_tree<long,std::pair<long_const,cRZAutoRefCount<cISC4Advisor>>,std::_Select1st<std::pair<long_const,cRZAutoRefCount<cISC4Advisor>>>,std::less<long>,std::allocator<std::pair<long_const,cRZAutoRefCount<cISC4Advisor>>>>::insert_unique	auto:B0	medium	mac 006c20b8 score 0.812 support 1.0
-00419490	cRZCmdLine::~cRZCmdLine	auto:B0	medium	mac 005edd24 score 0.968 support 13.0
-00419500	cRZCmdLine::~cRZCmdLine	auto:C	high	mac 005ef7ec score 1.0 support 1
+00419490	cRZCmdLine::~cRZCmdLine	manual:command-line.tsv	high	command-line.md §1.2; destroys +0x28, +0x14 and each argument (cRZString virtual +0x70 with 0), frees the vector at +8
+00419500	cRZCmdLine::~cRZCmdLine (deleting destructor)	manual:command-line.tsv	high	command-line.md §1.2; slot 15 of vtable 0x00A82A20 (Release 0x008D29B9 calls +0x3C with 1); 0x00419490 then GlobalHeapFree on flag bit 0
 00419520	cSC4AdvisorSystem::SetLocalValue	auto:A	high	mac 001e569e score 1.0 support 0
 00419640	std::map<long,cRZAutoRefCount<cISC4Advisor>,std::less<long>,std::allocator<std::pair<long_const,cRZAutoRefCount<cISC4Advisor>>>>::operator[]	auto:D	medium	mac 006c21a8 score 0.5 support 1
 004197e0	cSC4AdvisorSystem::AddAdvisor	auto:A	high	mac 001e7b50 score 1.0 support 0
@@ -540,7 +542,7 @@ va	name	source	confidence	note
 0043ab70	lib::operator==<char,class__STL::char_traits<char>,class__STL::allocator<char>_>	library	medium	Function ID
 0043aba0	std::list<cRZString,std::allocator<cRZString>>::clear	auto:B1	medium	mac 00606b2a score 0.861 support 6.0
 0043af20	std::_List_base<cRZString,std::allocator<cRZString>>::~_List_base	auto:D	medium	mac 005ef252 score 0.5 support 5
-0043af80	cRZPath::~cRZPath	auto:D	medium	mac 0068f156 score 0.5 support 5
+0043af80	cRZPath::~cRZPath	manual:paths.tsv	high	paths.md §2.2; destroys the strings at +0x50, +0x3C, +0x28, +0x14 and +0
 0043b180	cISC4MySimPool::tMySimTemplate::~tMySimTemplate	auto:B1	medium	mac 006e2a32 score 0.879 support 2.0
 0043b200	cSC4MySimPool::FindTheSimsInstallation	auto:C	high	mac 00550242 score 1.0 support 1
 0043b360	std::vector<cISC4MySimPool::tMySimTemplate,std::allocator<cISC4MySimPool::tMySimTemplate>>::erase	auto:D	medium	mac 006e2c5a score 0.5 support 1
@@ -628,11 +630,12 @@ va	name	source	confidence	note
 00442200	cSC4TutorialUIWinProc::tick_self	auto:A	high	mac 000852b6 score 1.0 support 0
 004422a0	SC4CellRegion<long>::SC4CellRegion	auto:B6	medium	mac 0061ff36 score 0.938 support 10.0
 00442340	cSC4TutorialUIWinProc::HandleCatalogView	auto:B1	medium	mac 000856fc score 0.933 support 1.0
-004425c0	cSLTokenSerialRecordIO_Text::GetToken	auto:D	medium	mac 0037ebb0 score 0.5 support 1
-004427f0	std::vector<CookieData,std::allocator<CookieData>>::size	auto:B2	medium	mac 007a3d76 score 0.857 support 2.0
+004425c0	std::basic_string<char>::erase	manual:command-line.tsv	high	command-line.md §4.1; was cSLTokenSerialRecordIO_Text::GetToken; STLport erase(pos, n): out_of_range ('basic_string', 0x009DD0A0) when pos > size, else memmove of the tail; 238 call sites
+004427f0	std::basic_string<char>::find	manual:command-line.tsv	high	command-line.md §4.3; was std::vector<CookieData>::size; STLport find(char const* s, pos, n): npos when pos + n > size, else search 0x004426C0 from begin + pos; 21 call sites
 00442880	std::vector<cRZAutoRefCount<cSC4TutorialTask>,std::allocator<cRZAutoRefCount<cSC4TutorialTask>>>::reserve	auto:D	medium	mac 006231de score 0.5 support 1
 00442c80	cSC4TutorialUIWinProc::Shutdown	auto:B3	medium	mac 0008585e score 0.954 support 5.0
 00442e40	std::vector<cRZAutoRefCount<cSC4TutorialTask>,std::allocator<cRZAutoRefCount<cSC4TutorialTask>>>::push_back	auto:D	medium	mac 006230b4 score 0.5 support 1
+00442e90	std::basic_string<char>::resize	manual:command-line.tsv	high	command-line.md §4.2; descriptive name; STLport resize(n, c): truncates when n <= size, else appends n - size copies of c (0x00442A80); 35 call sites
 00443090	cSC4TutorialUIWinProc::load_task_script	auto:B18	medium	mac 00085dc4 score 0.924 support 1.0
 00443180	cSC4TutorialUIWinProc::ShowUIHintsForUsers	auto:B0	medium	mac 00088920 score 0.941 support 2.0
 00443410	cSC4TutorialUIWinProc::DoSpecialDocumentProcessing	auto:A	high	mac 000866aa score 1.0 support 0
@@ -762,6 +765,7 @@ va	name	source	confidence	note
 0044a520	cSC4App::Shutdown	auto:A	high	mac 0000b1e6 score 0.89 support 0
 0044a900	cSC4App::GetAppIniFileName	auto:A	high	mac 000069b0 score 1.0 support 0
 0044a940	cSC4App::GetAppPreferencesFileName	auto:A	high	mac 00006a08 score 1.0 support 0
+0044aa00	std::basic_string<char>::find	manual:command-line.tsv	high	command-line.md §4; descriptive name; STLport find(char c, pos): npos when pos >= size, else find_if (lib::__find_if 0x0044A4B0); 35 call sites, e.g. the switch-prefix test against '/-\' 0x00ACECC8
 0044abe0	cRZString::cRZString	auto:B2	medium	mac 005edeaa score 0.935 support 7.0
 0044acd0	cSC4App::cSC4App	auto:A	high	mac 00007ba4 score 1.0 support 0
 0044b490	cGZApp::AsIGZSystemService	auto:C	low	mac 005edfbc score 1.0 support 1
@@ -801,6 +805,7 @@ va	name	source	confidence	note
 0044d810	cSC4App::SetupWinCtrlMgr	auto:A	high	mac 0000d190 score 0.912 support 0
 0044e980	cSC4App::LaunchExceptionReportUploader	auto:A	high	mac 00009700 score 1.0 support 0
 0044eaf0	cSC4App::AddDynamicLibraryByPath	auto:B1	medium	mac 00010b5a score 0.986 support 3.5
+0044ed40	std::basic_string<char>::assign	manual:command-line.tsv	high	command-line.md §4.2; descriptive name; STLport assign(string const& s, pos, n): out_of_range when pos > s.size, else assign(begin + pos, begin + pos + min(n, size - pos)) through 0x00408A70; 21 call sites
 0044eda0	std::vector<cRZString,std::allocator<cRZString>>::_M_insert_aux	auto:D	medium	mac 005ef4f8 score 0.5 support 1
 0044eed0	cSC4App::ReadCommandLine	auto:A	high	mac 0000e87e score 1.0 support 0
 0044fe70	cSC4App::FindAndPossiblyFixIniFiles	auto:B1	medium	mac 00009ab2 score 0.954 support 4.0
@@ -1101,32 +1106,35 @@ va	name	source	confidence	note
 0046efb0	cSC4DispatchVehicleView::UntrackOccupant	auto:B0	medium	mac 0019cbd8 score 0.988 support 2.0
 0046f120	cSC4DispatchVehicleView::cSC4DispatchVehicleView	auto:B1	medium	mac 0019b53e score 0.985 support 1.0
 0046f240	cSC4DispatchVehicleView::TrackOccupant	auto:B0	medium	mac 0019e1ea score 0.981 support 7.5
-0046f740	cSC4FeatureManager::QueryInterface	auto:C	high	mac 0048cf06 score 1.0 support 1
-0046f770	cSC4FeatureManager::Shutdown	auto:C	high	mac 0048cf98 score 1.0 support 1
-0046f780	cSC4FeatureManager::IsExpansionPackInstalled	auto:C	high	mac 0048cfb0 score 1.0 support 1
-0046f7a0	cSC4FeatureManager::GetCurrentExpansionPack	auto:C	high	mac 0048cfce score 1.0 support 1
-0046f7d0	cSC4FeatureManager::~cSC4FeatureManager	auto:C	high	mac 0048cef0 score 1.0 support 1
-0046f7f0	cSC4FeatureManager::Release	auto:C	high	mac 0048cf72 score 1.0 support 1
+0046f740	cSC4FeatureManager::QueryInterface	manual:feature-manager.tsv	high	feature-manager.md §1; vtable 0x00A88274 slot 0; answers IIDs 1 and 0x0B562673 only
+0046f770	cSC4FeatureManager::Shutdown	manual:feature-manager.tsv	high	feature-manager.md §4.3; slot 4; clears +4 only
+0046f780	cSC4FeatureManager::IsExpansionPackInstalled	manual:feature-manager.tsv	high	feature-manager.md §4.5; slot 6; tests bit (n-1)&31 of 0x00B21628
+0046f7a0	cSC4FeatureManager::GetCurrentExpansionPack	manual:feature-manager.tsv	high	feature-manager.md §4.6; slot 7; slot-6 calls for n = 32 down to 1
+0046f7d0	cSC4FeatureManager::~cSC4FeatureManager	manual:feature-manager.tsv	high	feature-manager.md §3; slot 8, deleting destructor (flag bit 0 frees to the global heap 0x005E5620)
+0046f7f0	cSC4FeatureManager::Release	manual:feature-manager.tsv	high	feature-manager.md §3; slot 2; count at +8, slot 4 then slot 8 when the count is 1 or less
 0046f820	std::_Rb_tree<unsigned_long,unsigned_long,std::_Identity<unsigned_long>,std::less<unsigned_long>,std::allocator<unsigned_long>>::clear	auto:B0	medium	mac 0062357e score 0.989 support 2.0
+0046f8b0	cSC4FeatureManager::cSC4FeatureManager	manual:feature-manager.tsv	high	feature-manager.md §1; installs vtable 0x00A88274, +4 = 0, +8 = 0; sole caller cSC4App::Init 0x0044CAB6 after GlobalHeapAlloc(0xC)
 0046f910	std::_Rb_tree<unsigned_long,unsigned_long,std::_Identity<unsigned_long>,std::less<unsigned_long>,std::allocator<unsigned_long>>::erase	auto:B5	medium	mac 0069f228 score 0.837 support 2.0
 0046f9d0	std::_Rb_tree<unsigned_long,unsigned_long,std::_Identity<unsigned_long>,std::less<unsigned_long>,std::allocator<unsigned_long>>::~_Rb_tree	auto:B5	medium	mac 005f99aa score 0.833 support 2.0
-0046fa80	cSC4FeatureManager::IsFeatureEnabled	auto:C	high	mac 0048cffc score 1.0 support 1
+0046fa20	cSC4FeatureManager::StaticShutdown	manual:feature-manager.tsv	high	feature-manager.md §3; pushed at 0x0046FC13 for cISC4App slot 69 (RegisterShutdownCallbackFunction); clears 0x00B21624, 0x00B21628 and the set
+0046fa80	cSC4FeatureManager::IsFeatureEnabled	manual:feature-manager.tsv	high	feature-manager.md §4.4; slot 5; find in the set 0x00B2162C
 0046fab0	std::_Rb_tree<unsigned_long,unsigned_long,std::_Identity<unsigned_long>,std::less<unsigned_long>,std::allocator<unsigned_long>>::erase	auto:B4	medium	mac 0069f27c score 0.977 support 2.0
-0046fbf0	cSC4FeatureManager::StaticInit	auto:A	high	mac 0048d066 score 1.0 support 0
-0046fd50	cSC4FeatureManager::Init	auto:B0	medium	mac 0048d1be score 0.906 support 1.0
+0046fb10	cSC4FeatureManager::FeaturesIniEntryCallback	manual:feature-manager.tsv	high	feature-manager.md §4.2; descriptive name, no Mac match; cRZIniFile::EnumEntries callback pushed at 0x0046FCED; RZConvertToUint32A key, value compared with 'off' 0x00A82B94
+0046fbf0	cSC4FeatureManager::StaticInit	manual:feature-manager.tsv	high	feature-manager.md §4.1; scans (0, 0x8A5971C5, 0x2B563701+k) for k = 0..31, section 'Features' 0x00A88298
+0046fd50	cSC4FeatureManager::Init	manual:feature-manager.tsv	high	feature-manager.md §4.1; slot 3; sole caller of StaticInit (0x0046FD5B)
 0046fd70	cSC4ActiveFireOccupantFilter::IsOccupantIncluded	auto:A	high	mac 00348694 score 1.0 support 0
 0046fdc0	cSC4FireOccupant::GetGZCLSID	auto:C	low	mac 0071ef3c score 1.0 support 1
 0046fe00	cSC4FireOccupant::Extinguish	auto:B2	medium	mac 0034876a score 0.995 support 2.0
 0046fe30	cSC4FireOccupant::QueryInterface	auto:C	high	mac 00348790 score 1.0 support 1
 0046fe60	lib::fill<void**,void*>	library	medium	Function ID
 0046ffc0	cS3DBoundingBox::Center	auto:B0	medium	mac 00660b5e score 0.965 support 3.0
-00470010	cRZTime::cRZTime	auto:D	medium	mac 005f69da score 0.5 support 1
+00470010	cRZTime::cRZTime (date, hour, minute, second)	manual:dates.tsv	high	dates.md §2.1; ((day - 2415386) * 24 + h - 1) * 3600 + m * 60 + s, + _timezone, DST adjustment, gap hour gives 0
 004700a0	cSC4Flame::Read	auto:B0	medium	mac 00348fb8 score 0.987 support 3.0
 00470130	cSC4FireOccupant::Write	auto:C	high	mac 00348ed8 score 1.0 support 2
 00470210	cSC4FireOccupant::GetPosition	auto:C	high	mac 003487d0 score 1.0 support 1
 00470230	cSC4FireOccupant::GetBoundingBox	auto:C	high	mac 00348734 score 1.0 support 1
 00470250	cSC4FireOccupant::SetVisible	auto:B5	medium	mac 003489bc score 0.95 support 1.0
-00470b50	cRZTime::cRZTime	auto:B0	medium	mac 005f6a5e score 0.959 support 4.0
+00470b50	cRZTime::cRZTime	manual:dates.tsv	high	dates.md §2, crime.md §9; now, from localtime(time())
 00470bc0	std::vector<cSC4Flame*,std::allocator<cSC4Flame*>>::resize	auto:B1	medium	mac 007210fa score 0.838 support 1.0
 00470ca0	cSC4Flame::UpdateTransform	auto:B4	medium	mac 00348c6c score 0.904 support 2.0
 00470dc0	cSC4FireOccupant::Shutdown	auto:B1	medium	mac 00349f44 score 0.986 support 2.5
@@ -1339,6 +1347,7 @@ va	name	source	confidence	note
 00485040	cSC4WinLotConfigurationEditor::MoveObject	auto:B1	medium	mac 00322524 score 0.966 support 3.0
 004851b0	cSC4WinLotConfigurationEditor::MoveObject	auto:B0	medium	mac 00322226 score 0.911 support 2.0
 00485230	__gnu_cxx::hashtable<std::pair<unsigned_long_const,cRZString>,unsigned_long,__gnu_cxx::hash<unsigned_long>,std::_Select1st<std::pair<unsigned_long_const,cRZString>>,std::equal_to<unsigned_long>,std::allocator<cRZString>>::find_or_insert	auto:D	medium	mac 0065a486 score 0.5 support 1
+00485280	std::copy (cRZString range)	manual:command-line.tsv	high	command-line.md §3 slot 14; descriptive name; cdecl wrapper passing (first, last, dest) to the cRZString copy loop 0x0051FF00; sole caller the vector erase 0x00914B90
 004852a0	cSC4WinLotConfigurationEditor::Save	auto:A	high	mac 0031b024 score 1.0 support 0
 00485445	cSC4WinLotConfigurationEditor::SaveAs	auto:A	high	mac 0031de7c score 1.0 support 0
 00485710	cSC4WinLotConfigurationEditor::GZOnKeyDown	auto:B0	medium	mac 003271ee score 0.985 support 5.0
@@ -2438,6 +2447,7 @@ va	name	source	confidence	note
 00505090	__ZThn4_N20cSC4EmergencyVehicle4InitEv	auto:B1	low	mac 006d3638 score 0.96 support 1.0
 005050a0	__ZThn4_N20cSC4EmergencyVehicle8ShutdownEv	auto:B1	low	mac 006d3642 score 0.96 support 1.0
 00505100	cSC4City::GetCitySituationManager	auto:C	low	mac 0002ff86 score 1.0 support 1
+00505330	cSC4OccupantGroupTemplate::GetSourceBuildingGroup	manual:occupant-groups.tsv	high	occupant-groups.md §4.4; descriptive name; first non-zero +0x6C (source_building) up the +0x0C parent chain; callers InitExemplarData 0x0050FC46, CreateAutomatonForPlayerDrive 0x00529367
 00505480	cSC4AutomataManager::QueryInterface	auto:D	medium	mac 000bafba score 0.5 support 1
 00505510	cSC4AutomataManager::AddRef	auto:C	high	mac 000bb010 score 1.0 support 1
 00505520	cSC4Automaton::GetPosition	auto:C	high	mac 000bca62 score 1.0 support 12
@@ -2636,8 +2646,10 @@ va	name	source	confidence	note
 0051c140	cSC4AutomataControllerManager::Init	auto:C	high	mac 000b7d2e score 1.0 support 1
 0051c2d0	cSC4AutomataScriptSystem::GetAutomataGroup	auto:C	low	mac 00159784 score 1.0 support 1
 0051c2e0	cSC4AutomataScriptSystem::QueryInterface	auto:C	high	mac 0015992e score 1.0 support 2
-0051c380	cSC4OccupantGroupTemplate::IsOccupantGroup	auto:D	medium	mac 0015a028 score 0.5 support 1
-0051c4a0	cSC4OccupantGroupTemplate::GetGroupHierarchyDepth	auto:D	medium	mac 00159a5c score 0.5 support 1
+0051c380	cSC4OccupantGroupTemplate::IsOccupantGroup	manual:occupant-groups.tsv	high	occupant-groups.md §4.2; compares the id with +0x10 of this group and each +0x0C ancestor
+0051c3b0	cSC4OccupantGroupTemplate::GetClassID	manual:occupant-groups.tsv	high	occupant-groups.md §4.3; descriptive name; first non-zero +0x14 (class_id) up the parent chain; sole caller CreateAutomatonInternal 0x0051079F
+0051c3d0	cSC4OccupantGroupTemplate::IsOccupantIncluded	manual:occupant-groups.tsv	high	occupant-groups.md §4.1; vtable 0x00A96C0C slot 3; property 0xAA1DD396 against +0x10, then the +0x2C percentage draw
+0051c4a0	cSC4OccupantGroupTemplate::GetGroupHierarchyDepth	manual:occupant-groups.tsv	high	occupant-groups.md §4.5; counts the +0x0C chain, 0 for a null this
 0051c4b0	cSC4AutomataScriptSystem::DoMessage	auto:A	high	mac 00159770 score 1.0 support 0
 0051c4c0	cSC4AutomataScriptSystem::InitScripts	auto:A	high	mac 00159b14 score 0.827 support 0
 0051c5d0	cSC4AutomataScriptSystem::ImportLotFlags	auto:A	high	mac 00159e08 score 1.0 support 0
@@ -2647,13 +2659,13 @@ va	name	source	confidence	note
 0051cb40	cSC4AutomataScriptSystem::ImportCalendarField	auto:A	high	mac 0015ad08 score 1.0 support 0
 0051cbf0	cSC4AutomataScriptSystem::ImportSFXList	auto:B1	medium	mac 0015af74 score 0.974 support 4.0
 0051cd20	cSC4AutomataScriptSystem::ImportIgnoreStateList	auto:A	high	mac 0015ac9a score 1.0 support 0
-0051cd90	cSC4OccupantGroupTemplate::GetGroupIDVariant	auto:D	medium	mac 0015adf8 score 0.5 support 1
+0051cd90	cSC4OccupantGroupTemplate::GetGroupIDVariant	manual:occupant-groups.tsv	high	occupant-groups.md §4.6; caches the chain's non-zero IDs in the +0x18 variant
 0051cf60	cSC4AutomataScriptSystem::GetAutomataGroup	auto:C	high	mac 0015d3e0 score 1.0 support 1
 0051cf90	cSC4AutomataScriptSystem::GetControllerTemplate	auto:C	high	mac 0015a5ca score 1.0 support 1
 0051cfc0	cSC4AutomataScriptSystem::GetOccupantGroup	auto:C	high	mac 0015d408 score 1.0 support 1
 0051cff0	cSC4AutomataScriptSystem::GetOccupantGroup	auto:C	high	mac 0015ac28 score 1.0 support 1
-0051d040	tKeyEffect::tKeyEffect	auto:B0	medium	mac 00688164 score 0.814 support 2.0
-0051d0d0	tKeyEffect::~tKeyEffect	auto:D	medium	mac 006881b6 score 0.5 support 1
+0051d040	tKeyEffect::tKeyEffect	manual:occupant-groups.tsv	high	occupant-groups.md §3.3; three empty cRZStrings (+0x00 fx, +0x14 bone, +0x28 controller) and flags +0x3C = 0
+0051d0d0	tKeyEffect::~tKeyEffect	manual:occupant-groups.tsv	high	occupant-groups.md §3.3; frees the three strings
 0051d120	cSC4AutomataScriptSystem::GetHexFromVariant	auto:B0	medium	mac 00159794 score 0.944 support 2.0
 0051d1d0	cSC4AutomataScriptSystem::GetDriveCommand	auto:C	high	mac 0015a3f4 score 1.0 support 1
 0051d220	cSC4AutomataScriptSystem::sCreateAutomaton	auto:A	high	mac 0015a1d4 score 1.0 support 0
@@ -2669,6 +2681,9 @@ va	name	source	confidence	note
 0051f2a0	cSC4AutomataScriptSystem::ImportEffectTriggerList	auto:A	high	mac 0015a6fa score 1.0 support 0
 0051f5c0	cSC4AutomataScriptSystem::LinkOccupantGroups	auto:A	high	mac 0015d0f2 score 1.0 support 0
 0051fa60	cSC4AutomataScriptSystem::ImportDriveCommandKeyMap	auto:B0	medium	mac 0015b486 score 0.954 support 4.0
+0051fb90	tKeyEffect::tKeyEffect (copy)	manual:occupant-groups.tsv	high	occupant-groups.md §3.3; copies the three strings and the flag word; used by the key-effect map insert 0x00520520
+0051fc80	cSC4OccupantGroupTemplate::ClearKeyEffects	manual:occupant-groups.tsv	high	occupant-groups.md §4.8; descriptive name; empties the +0x70 hash map of tKeyEffect nodes; sole caller the destructor 0x00520454
+0051fd30	tKeyEffect::operator=	manual:occupant-groups.tsv	high	occupant-groups.md §4.7; assigns the three strings and the flag word; sole caller GetKeyEffect 0x00520510
 0051fdc0	__gnu_cxx::hashtable<std::pair<std::string_const,cSC4OccupantGroupTemplate*>,std::string,__gnu_cxx::hash<std::string>,std::_Select1st<std::pair<std::string_const,cSC4OccupantGroupTemplate*>>,std::equal_to<std::string>,std::allocator<cSC4OccupantGroupTemplate*>>::insert_unique	auto:B0	medium	mac 0068df0a score 0.83 support 2.0
 0051ff00	std::vector<cRZString,std::allocator<cRZString>>::erase	auto:B1	medium	mac 005efa7a score 0.992 support 1.0
 00520050	cSC4AutomataScriptSystem::GetGZCLSID	auto:A	low	mac 00687ffa score 1.0 support 0
@@ -2678,8 +2693,10 @@ va	name	source	confidence	note
 00520090	cSC4AutomataScriptSystem::GetOccupantGroupIDMap	auto:C	low	mac 00688028 score 1.0 support 1
 005200a0	cSC4AutomataScriptSystem::GetSpecialFilterOccupantGroups	auto:C	low	mac 00688034 score 1.0 support 1
 005200b0	cSC4AutomataScriptSystem::GetTrackBuildingGroups	auto:C	low	mac 00688040 score 1.0 support 1
-005204d0	cSC4OccupantGroupTemplate::GetKeyEffect	auto:D	medium	mac 0015b93a score 0.5 support 1
-005206b0	cSC4OccupantGroupTemplate::cSC4OccupantGroupTemplate	auto:B0	medium	mac 0068d9d4 score 0.968 support 2.5
+00520410	cSC4OccupantGroupTemplate::~cSC4OccupantGroupTemplate	manual:occupant-groups.tsv	high	occupant-groups.md §4.8; frees +0x60/+0x64, clears +0x70, +0x54, +0x50, +0x48, +0x34, +0x30, +0x18, then the base destructor 0x005E95C0
+005204d0	cSC4OccupantGroupTemplate::GetKeyEffect	manual:occupant-groups.tsv	high	occupant-groups.md §4.7; looks up the low byte of the command in the +0x70 map
+005206b0	cSC4OccupantGroupTemplate::cSC4OccupantGroupTemplate	manual:occupant-groups.tsv	high	occupant-groups.md §2; base 0x005EA080, vtables 0x00A96C0C / 0x00A96BF4, +0x2C = 1.0, +0x4C = +0x4E = -2; sole caller CreateOccupantGroup 0x00520BF2 (0x84 bytes)
+00520780	cSC4OccupantGroupTemplate::~cSC4OccupantGroupTemplate (deleting destructor)	manual:occupant-groups.tsv	high	occupant-groups.md §4.8; vtable 0x00A96C0C slot 6; destructor 0x00520410, then GlobalHeapFree when flag bit 0 is set
 005208a0	cSC4AutomataScriptSystem::Shutdown	auto:C	high	mac 0015d060 score 1.0 support 1
 00520ac0	cSC4AutomataScriptSystem::CreateControllerTemplate	auto:A	high	mac 0015d57c score 1.0 support 0
 00520bd0	cSC4AutomataScriptSystem::CreateOccupantGroup	auto:A	high	mac 0015e19a score 1.0 support 0
@@ -4484,7 +4501,7 @@ va	name	source	confidence	note
 005f8fa0	__ZThn4_N10cGZWinGrid4InitEv	auto:B3	low	mac 006b1362 score 0.96 support 1.0
 005f8fb0	__ZThn4_N10cGZWinGrid8ShutdownEv	auto:B10	low	mac 006b1e00 score 0.96 support 1.0
 005f8fc0	__ZThn4_N10cGZWinGrid7SetAreaEllll	auto:B1	low	mac 006b1e50 score 0.96 support 1.0
-005f8fe0	cRZCriticalSection::Lock	auto:D	medium	mac 0002551a score 0.5 support 1
+005f8fe0	IsPathSeparator	manual:paths.tsv	high	paths.md §1; was cRZCriticalSection::Lock; true for '\' or '/' (cdecl, one char); 39 call sites in the path and directory code
 005f9000	SC4GetPopupModalDialogsSafe	auto:B2	medium	mac 00024c80 score 0.974 support 3.0
 005f9090	SC4GetPopupModalDialogsEnabled	auto:B0	medium	mac 00024db8 score 0.931 support 4.0
 005f90d0	cSC4AutoFlushInputMessageQueue::~cSC4AutoFlushInputMessageQueue	auto:D	medium	mac 00023ca8 score 0.5 support 3
@@ -5139,21 +5156,52 @@ va	name	source	confidence	note
 00647b20	cSC4NetworkWorldCache::Clear	auto:B4	medium	mac 005411ce score 0.867 support 3.0
 00647bb0	__gnu_cxx::hash_map<unsigned_int,cSC4NetworkCellInfo,__gnu_cxx::hash<unsigned_int>,std::equal_to<unsigned_int>,std::allocator<cSC4NetworkCellInfo>>::operator[]	auto:D	medium	mac 0082a6ae score 0.5 support 1
 00647e10	cSC4NetworkWorldCache::CreateCell	auto:D	medium	mac 005412b2 score 0.5 support 2
-00648040	cSC4PipeConnectionOccupant::GetGZCLSID	auto:C	low	mac 006ff038 score 1.0 support 1
-00648050	cSC4PipeConnectionOccupant::Init	auto:A	high	mac 002f016c score 1.0 support 0
+00648040	cSC4PipeConnectionOccupant::GetGZCLSID	manual:underground-occupants.tsv	high	underground-occupants.md §1; main slot 37 of 0x00AA9578 and +4 slot 5; returns 0xEA0A5ACF
+00648050	cSC4PipeConnectionOccupant::Init	manual:underground-occupants.tsv	high	underground-occupants.md §4; main slot 3; +0x24 := 0x2A183167, then the base Init 0x00654710(0xEA0A5ACF, 0x00B0B6D0)
 00648070	icf::cSC4PipeConnectionOccupant::Shutdown	folded	folded	2 names: cSC4PipeConnectionOccupant::Shutdown | cSC4SubwayConnectionOccupant::Shutdown
-00648080	cSC4PipeConnectionOccupant::QueryInterface	auto:C	high	mac 002f01b0 score 1.0 support 1
+00648080	cSC4PipeConnectionOccupant::QueryInterface	manual:underground-occupants.tsv	high	underground-occupants.md §1; main slot 0; IID 0xEA0A5ACF, else cSC4UndergroundConnectionOccupant::QueryInterface 0x00654030
+006480b0	cSC4PipeConnectionOccupant::GetSortValue	manual:underground-occupants.tsv	high	underground-occupants.md §4; descriptive name; virtual-base vtable 0x00AA9480 slot 17 through 0x006482D0; out := 0xEA0A5ACF, pop 4
+006480c0	cSC4PipeConnectionOccupant::QueryInterface (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 4; +4 vtable 0x00AA955C slot 0, used by no other class
+006480f0	cSC4PipeConnectionOccupant::QueryInterface (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 8; +8 vtable 0x00AA94F8 slot 0, used by no other class
+00648120	cSC4PipeConnectionOccupant::~cSC4PipeConnectionOccupant (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 8; 0x00AA94F8 slot 22, used by no other class
+00648150	cSC4PipeConnectionOccupant::QueryInterface (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 0x1C; +0x1C vtable 0x00AA94E0 slot 0, used by no other class
+00648180	cSC4PipeConnectionOccupant::QueryInterface (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 0x34; +0x34 vtable 0x00AA94D0 slot 0, used by no other class
+006481b0	cSC4PipeConnectionOccupant::~cSC4PipeConnectionOccupant (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 0x38; +0x38 vtable 0x00AA94CC slot 0, used by no other class
+006481c0	cSC4PipeConnectionOccupant::QueryInterface (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; vtordisp, this - [this - 4] - 0x24C; virtual-base vtable 0x00AA9480 slot 0, used by no other class
 00648280	__ZThn56_N33cSC4UndergroundConnectionOccupant4DrawEP14SC4DrawContextb	auto:B3	low	mac 006d3270 score 0.96 support 1.0
-006482f0	cSC4PipeConnectionOccupant::~cSC4PipeConnectionOccupant	auto:C	high	mac 002f011c score 1.0 support 1
-00648360	cSC4UndergroundConnectionOccupant::GetTransform	auto:C	high	mac 0022f58a score 1.0 support 1
-006484c0	cSC4PipeOccupant::GetModelInstanceOffset	auto:A	low	mac 00677d84 score 1.0 support 0
-006484d0	cSC4PipeOccupant::QueryInterface	auto:B0	medium	mac 001367de score 0.885 support 2.0
-00648800	cSC4PipeOccupant::Write	auto:C	high	mac 0013671e score 1.0 support 1
-00648840	cSC4PipeOccupant::Read	auto:C	high	mac 00136772 score 1.0 support 1
-006489f0	cSC4PipeOccupant::~cSC4PipeOccupant	auto:C	high	mac 00136b62 score 1.0 support 1
-00648a90	cSC4PipeOccupant::StaticInit	auto:D	medium	mac 001368d8 score 0.5 support 1
-00648bc0	cSC4PipeOccupant::Init	auto:C	high	mac 00136a92 score 1.0 support 1
-00648bf0	cSC4PipeOccupant::Init	auto:B0	medium	mac 00136a36 score 0.94 support 1.5
+006482d0	cSC4PipeConnectionOccupant::GetSortValue (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; vtordisp, this - [this - 4], to 0x006480B0; 0x00AA9480 slot 17, used by no other class
+006482f0	cSC4PipeConnectionOccupant::~cSC4PipeConnectionOccupant (deleting destructor)	manual:underground-occupants.tsv	high	underground-occupants.md §4; was cSC4PipeConnectionOccupant::~cSC4PipeConnectionOccupant; base destructor 0x00654DB0, GlobalHeapFree on flag bit 0
+00648360	cSC4PipeConnectionOccupant::QueryOccupantInterface	manual:underground-occupants.tsv	high	underground-occupants.md §4; was cSC4UndergroundConnectionOccupant::GetTransform; main slot 44 (the subway connection's Mac-named counterpart is 0x00652BD0); occ QueryInterface 0x49C05B9F, then 0x4A10AFC2 into out; pop 8, AL
+006483c0	cSC4PipeConnectionOccupant::cSC4PipeConnectionOccupant	manual:underground-occupants.tsv	high	underground-occupants.md §1; flag 1 sets +0x3C (0x00AA962C) and +0x24C; cSC4UndergroundConnectionOccupant constructor 0x00654F00; vtables 0x00AA9578, 0x00AA955C, 0x00AA94F8, 0x00AA94E0, 0x00AA94D0, 0x00AA94CC, 0x00AA9480; also called by cSC4ViewInputControlPlaceLot::PlaceLot 0x004C1C9E
+00648440	GZCOM_CreatecSC4PipeConnectionOccupant	manual:underground-occupants.tsv	high	underground-occupants.md §1; registered with class 0xEA0A5ACF by cSC4COMDirector 0x004606C5; GlobalHeapAlloc(0x250), constructor 0x006483C0(1)
+006484b0	cSC4PipeOccupant::GetModelDescriptor	manual:underground-occupants.tsv	high	underground-occupants.md §1; descriptive name, no Mac match; main slot 101 (pure in the underground base); returns 0x00B0BED0, which Init also passes to the base Init
+006484c0	cSC4PipeOccupant::GetModelInstanceOffset	manual:underground-occupants.tsv	high	underground-occupants.md §1; main slot 105; returns 0x06000000
+006484d0	cSC4PipeOccupant::QueryInterface	manual:underground-occupants.tsv	high	underground-occupants.md §1; main slot 0 of 0x00AA97B8; IIDs 0x49C05B9F and 0xA9764C8C, else cSC4UndergroundOccupant::QueryInterface 0x0065A080
+00648500	cSC4PipeOccupant::GetSortValue	manual:underground-occupants.tsv	high	underground-occupants.md §2.2; descriptive name (the subway counterpart's Mac name); slot 17 of the virtual-base vtable 0x00AA9648 through 0x006487B0; piece id +0xFC when flags +0x13C & 0x06000000, else 0x49C05B9F
+00648540	cSC4PipeOccupant::SetWateredState	manual:underground-occupants.tsv	high	underground-occupants.md §2.2; non-virtual, pop 4; plumbing.md §6.4 calls it; watered +0x270, tail call of main slot 100 with 0 on a change
+00648580	cSC4PipeOccupant::PoolNewPage	manual:underground-occupants.tsv	high	underground-occupants.md §1; descriptive name; slot 2 of the pipe pool vtables 0x00AA9960 / 0x00AA9978: a 64 KiB page of 102 free 0x280-byte blocks
+006485c0	cSC4PipeOccupant::QueryInterface (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 4; +4 vtable 0x00AA9730 slot 0, used by no other class
+006485f0	cSC4PipeOccupant::QueryInterface (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 8; +8 vtable 0x00AA9714 slot 0, used by no other class
+00648620	cSC4PipeOccupant::QueryInterface (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 0xC; +0xC vtable 0x00AA96B0 slot 0, used by no other class
+00648650	cSC4PipeOccupant::~cSC4PipeOccupant (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 0xC; 0x00AA96B0 slot 22, used by no other class
+00648660	cSC4PipeOccupant::QueryInterface (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 0x20; +0x20 vtable 0x00AA9698 slot 0, used by no other class
+00648690	cSC4PipeOccupant::~cSC4PipeOccupant (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 0x38; +0x38 vtable 0x00AA9694 slot 0, used by no other class
+006486a0	cSC4PipeOccupant::QueryInterface (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; vtordisp, this - [this - 4] - 0x27C; virtual-base vtable 0x00AA9648 slot 0, used by no other class
+00648760	cSC4PipeOccupant::Draw (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; vtordisp, this - [this - 4] - 8, to cSC4UndergroundOccupant::Draw 0x0065B290; 0x00AA9648 slot 12, used by no other class
+006487b0	cSC4PipeOccupant::GetSortValue (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; vtordisp, this - [this - 4], to 0x00648500; 0x00AA9648 slot 17, used by no other class
+006487d0	cSC4PipeOccupant::operator new	manual:underground-occupants.tsv	high	underground-occupants.md §1; descriptive name; pops a block from the pool 0x00B0BEC0 (new page through 0x0090CF9A); caller 0x00648D9B
+00648800	cSC4PipeOccupant::Write	manual:underground-occupants.tsv	high	underground-occupants.md §2.3; slot 3 of 0x00AA9714 (this = +8): u16 3, cSC4UndergroundOccupant::Write, u32 watered
+00648840	cSC4PipeOccupant::Read	manual:underground-occupants.tsv	high	underground-occupants.md §2.3; slot 4 of 0x00AA9714: version must be 3, base Read 0x0065E510, u32 into watered, +0x260 := 1
+006488a0	cSC4PipeOccupant::GetTint	manual:underground-occupants.tsv	high	underground-occupants.md §2.2; descriptive name; main slot 103; the RGB triple at 0x00B0BE88 + 12 * watered (+0x270)
+006488d0	cSC4PipeOccupant::Write (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 4; 0x00AA96B0 slot 23, used by no other class
+006488e0	cSC4PipeOccupant::Read (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 4; 0x00AA96B0 slot 24, used by no other class
+006488f0	cSC4PipeOccupant::cSC4PipeOccupant	manual:underground-occupants.tsv	high	underground-occupants.md §1; flag 1 sets the virtual-base table +0x3C (0x00AA9970) and +0x27C; installs vtables 0x00AA97B8, 0x00AA9730, 0x00AA9714, 0x00AA96B0; watered := 0
+00648970	cSC4PipeOccupant::PoolFree	manual:underground-occupants.tsv	high	underground-occupants.md §1; descriptive name; slot 1 of the pipe pool vtables: returns a block to its 64 KiB page, releases or relinks the page
+006489b0	GZCOM_CreatecSC4PipeOccupant	manual:underground-occupants.tsv	high	underground-occupants.md §1; registered with class 0x49C05B9F by cSC4COMDirector 0x004606A1; pool block, constructor 0x006488F0(1), returns the +4 sub-object
+006489f0	cSC4PipeOccupant::~cSC4PipeOccupant (deleting destructor)	manual:underground-occupants.tsv	high	underground-occupants.md §1; was cSC4PipeOccupant::~cSC4PipeOccupant; reinstalls the vtables, cSC4UndergroundOccupant destructor 0x0065C0C0, then returns the block to the pool on flag bit 0
+00648a90	cSC4PipeOccupant::StaticInit	manual:underground-occupants.tsv	high	underground-occupants.md §2.5; five xz lengths from 0x00B0BA68 with index lists 0x00B0BC60 / 0x00B0BC88, ratios to 0x00B46708 and 0x00B46720, flag 0x00B46730
+00648bc0	cSC4PipeOccupant::Init	manual:underground-occupants.tsv	high	underground-occupants.md §2.2; slot 3 of the occupant interface 0x00AA9730: StaticInit once, then unless IsInitialized the base Init 0x0065C070 and 0x0065AE80
+00648bf0	cSC4PipeOccupant::Init	manual:underground-occupants.tsv	high	underground-occupants.md §2.2; main slot 3, pop 4: StaticInit once, unless IsInitialized the base Init 0x0065C6B0(arg, 0x49C05B9F, 0x00B0BED0), watered := 0
 00648cc0	cSC4WaterOccupantFilter::IsPropertyHolderIncluded	auto:A	high	mac 0012cb26 score 1.0 support 0
 00648ec0	cSC4PipeTool::cSC4PipeTool	auto:D	medium	mac 0012cb84 score 0.5 support 1
 00648ef0	cSC4ViewInputControl::OnMouseExit	auto:D	low	mac 0007ba6e score 0.5 support 1
@@ -5244,23 +5292,52 @@ va	name	source	confidence	note
 006520c0	cSC4PowerLineTool::FindNewPolePosition	auto:B1	medium	mac 0022e152 score 0.997 support 3.0
 006522f0	cSC4PowerLineTool::UpdateOnZoneChange	auto:B2	medium	mac 0022e388 score 0.975 support 2.0
 00652980	cSC4PowerLineTool::DoNetworkSpecificPlacement	auto:B1	medium	mac 0022e052 score 0.983 support 3.0
-00652a70	cSC4SubwayConnectionOccupant::GetGZCLSID	auto:C	low	mac 006ff0ce score 1.0 support 1
-00652a80	cSC4SubwayConnectionOccupant::Init	auto:A	high	mac 002f03a8 score 1.0 support 0
-00652aa0	cSC4SubwayConnectionOccupant::QueryInterface	auto:C	high	mac 002f03ec score 1.0 support 1
-00652b60	cSC4SubwayConnectionOccupant::~cSC4SubwayConnectionOccupant	auto:C	high	mac 002f0358 score 1.0 support 1
-00652bd0	cSC4SubwayConnectionOccupant::QueryOccupantInterface	auto:A	high	mac 002f0436 score 1.0 support 0
-00652ce0	cSC4SubwayOccupant::GetModelInstanceOffset	auto:A	low	mac 00677ed6 score 1.0 support 0
+00652a70	cSC4SubwayConnectionOccupant::GetGZCLSID	manual:underground-occupants.tsv	high	underground-occupants.md §1; main slot 37 of 0x00AAA188 and +4 slot 5; returns 0xCA15ED6B
+00652a80	cSC4SubwayConnectionOccupant::Init	manual:underground-occupants.tsv	high	underground-occupants.md §4; main slot 3; +0x24 := 0x8A13918A, then the base Init 0x00654710(0xCA15ED6B, 0x00B0C388)
+00652aa0	cSC4SubwayConnectionOccupant::QueryInterface	manual:underground-occupants.tsv	high	underground-occupants.md §1; main slot 0; IID 0xCA15ED6B, else the underground connection's QueryInterface
+00652ad0	cSC4SubwayConnectionOccupant::GetSortValue	manual:underground-occupants.tsv	high	underground-occupants.md §4; descriptive name; virtual-base vtable 0x00AAA090 slot 17 through 0x00652B50; out := 0xCA15ED6B
+00652ae0	cSC4SubwayConnectionOccupant::QueryInterface (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 4; +4 vtable 0x00AAA16C slot 0, used by no other class
+00652af0	cSC4SubwayConnectionOccupant::QueryInterface (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 8; +8 vtable 0x00AAA108 slot 0, used by no other class
+00652b00	cSC4SubwayConnectionOccupant::~cSC4SubwayConnectionOccupant (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 8; 0x00AAA108 slot 22, used by no other class
+00652b10	cSC4SubwayConnectionOccupant::QueryInterface (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 0x1C; +0x1C vtable slot 0, used by no other class
+00652b20	cSC4SubwayConnectionOccupant::QueryInterface (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 0x34; +0x34 vtable slot 0, used by no other class
+00652b30	cSC4SubwayConnectionOccupant::~cSC4SubwayConnectionOccupant (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 0x38; +0x38 vtable slot 0, used by no other class
+00652b40	cSC4SubwayConnectionOccupant::QueryInterface (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; vtordisp, this - [this - 4] - 0x24C; virtual-base vtable 0x00AAA090 slot 0, used by no other class
+00652b50	cSC4SubwayConnectionOccupant::GetSortValue (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; vtordisp, this - [this - 4], to 0x00652AD0; 0x00AAA090 slot 17, used by no other class
+00652b60	cSC4SubwayConnectionOccupant::~cSC4SubwayConnectionOccupant (deleting destructor)	manual:underground-occupants.tsv	high	underground-occupants.md §4; was cSC4SubwayConnectionOccupant::~cSC4SubwayConnectionOccupant; base destructor, GlobalHeapFree on flag bit 0
+00652bd0	cSC4SubwayConnectionOccupant::QueryOccupantInterface	manual:underground-occupants.tsv	high	underground-occupants.md §4; main slot 44; occ QueryInterface 0xCA16374F, then 0x4A10AFC2 into out; pop 8, AL
+00652c30	cSC4SubwayConnectionOccupant::cSC4SubwayConnectionOccupant	manual:underground-occupants.tsv	high	underground-occupants.md §1; the pipe connection's constructor with the subway connection's vtables; also called by cSC4ViewInputControlPlaceLot::PlaceLot 0x004C1D82
+00652cb0	GZCOM_CreatecSC4SubwayConnectionOccupant	manual:underground-occupants.tsv	high	underground-occupants.md §1; GlobalHeapAlloc(0x250), constructor 0x00652C30(1)
+00652cd0	cSC4SubwayOccupant::GetModelDescriptor	manual:underground-occupants.tsv	high	underground-occupants.md §1; descriptive name, no Mac match; main slot 101; returns 0x00B0CDC8
+00652ce0	cSC4SubwayOccupant::GetModelInstanceOffset	manual:underground-occupants.tsv	high	underground-occupants.md §1; main slot 105; returns 0x07000000
 00652cf0	icf::cSC4PipeOccupant::Shutdown	folded	folded	2 names: cSC4PipeOccupant::Shutdown | cSC4SubwayOccupant::Shutdown
-00652d00	cSC4SubwayOccupant::QueryInterface	auto:B1	medium	mac 00136ce6 score 0.9 support 1.5
-00652d30	cSC4SubwayOccupant::GetSortValue	auto:A	high	mac 00136d22 score 1.0 support 0
-00652fc0	__ZThn56_NK18cSC4SubwayOccupant12GetSortValueERm	auto:B0	low	mac 00677f66 score 0.96 support 1.0
-00653010	cSC4SubwayOccupant::Write	auto:C	high	mac 00136c56 score 1.0 support 1
-00653040	cSC4SubwayOccupant::Read	auto:C	high	mac 00136c92 score 1.0 support 1
-006535a0	cSC4SubwayOccupant::~cSC4SubwayOccupant	auto:C	high	mac 001377ea score 1.0 support 1
-00653640	cSC4SubwayOccupant::StaticInit	auto:D	medium	mac 0013756a score 0.5 support 1
-00653770	cSC4SubwayOccupant::Init	auto:C	high	mac 0013771a score 1.0 support 1
-006537a0	cSC4SubwayOccupant::Init	auto:B0	medium	mac 001376c8 score 0.932 support 1.5
-006537e0	cSC4SubwayOccupant::GetPathInfo	auto:A	high	mac 00137320 score 1.0 support 0
+00652d00	cSC4SubwayOccupant::QueryInterface	manual:underground-occupants.tsv	high	underground-occupants.md §1; main slot 0 of 0x00AAA3C8; IID 0xCA16374F, else cSC4UndergroundOccupant::QueryInterface
+00652d30	cSC4SubwayOccupant::GetSortValue	manual:underground-occupants.tsv	high	underground-occupants.md §3.2; virtual-base vtable 0x00AAA258 slot 17 through 0x00652FC0; piece id +0xFC when flags +0x13C & 0x06000000, else 0xCA16374F
+00652d70	cSC4SubwayOccupant::GetAltitude	manual:underground-occupants.tsv	high	underground-occupants.md §3.3; descriptive name (network-manager.md: occupant slot 56); main slot 56, pop 8: the floor quad +0x270 interpolated over the u = w diagonal, times 0.0625 (0x00AAA250), minus 0.5 (0x00AAA574)
+00652e00	cSC4SubwayOccupant::PoolNewPage	manual:underground-occupants.tsv	high	underground-occupants.md §1; descriptive name; subway pool vtable 0x00AAA578 slot 2: a page of 90 free 0x2D8-byte blocks
+00652e40	cSC4SubwayOccupant::QueryInterface (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 4; +4 vtable 0x00AAA340 slot 0, used by no other class
+00652e60	cSC4SubwayOccupant::QueryInterface (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 8; +8 vtable 0x00AAA324 slot 0, used by no other class
+00652e70	cSC4SubwayOccupant::QueryInterface (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 0xC; +0xC vtable 0x00AAA2C0 slot 0, used by no other class
+00652e80	cSC4SubwayOccupant::~cSC4SubwayOccupant (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 0xC; 0x00AAA2C0 slot 22, used by no other class
+00652e90	cSC4SubwayOccupant::QueryInterface (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 0x20; +0x20 vtable 0x00AAA2A8 slot 0, used by no other class
+00652ea0	cSC4SubwayOccupant::~cSC4SubwayOccupant (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 0x38; +0x38 vtable 0x00AAA2A4 slot 0, used by no other class
+00652eb0	cSC4SubwayOccupant::QueryInterface (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; vtordisp, this - [this - 4] - 0x2D4; virtual-base vtable 0x00AAA258 slot 0, used by no other class
+00652f70	cSC4SubwayOccupant::Draw (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; vtordisp, this - [this - 4] - 0x60, to cSC4UndergroundOccupant::Draw 0x0065B290; 0x00AAA258 slot 12, used by no other class
+00652fc0	cSC4SubwayOccupant::GetSortValue (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; was __ZThn56_NK18cSC4SubwayOccupant12GetSortValueERm (the Mac mangled thunk name, which the coverage tool cannot read); vtordisp, this - [this - 4], to 0x00652D30; 0x00AAA258 slot 17
+00652fe0	cSC4SubwayOccupant::operator new	manual:underground-occupants.tsv	high	underground-occupants.md §1; descriptive name; pops a block from the pool 0x00B0CDB8
+00653010	cSC4SubwayOccupant::Write	manual:underground-occupants.tsv	high	underground-occupants.md §3.5; slot 3 of 0x00AAA324: u16 2 then cSC4UndergroundOccupant::Write
+00653040	cSC4SubwayOccupant::Read	manual:underground-occupants.tsv	high	underground-occupants.md §3.5; slot 4 of 0x00AAA324: version must be 2, base Read, +0x260 := 1
+00653090	cSC4SubwayOccupant::Write (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 4; 0x00AAA2C0 slot 23, used by no other class
+006530a0	cSC4SubwayOccupant::Read (thunk)	manual:underground-occupants.tsv	high	underground-occupants.md §5; descriptive name; this - 4; 0x00AAA2C0 slot 24, used by no other class
+006530b0	cSC4SubwayOccupant::cSC4SubwayOccupant	manual:underground-occupants.tsv	high	underground-occupants.md §1; flag 1 sets +0x3C (0x00AAA588) and +0x2D4; vtables 0x00AAA3C8, 0x00AAA340, 0x00AAA324, 0x00AAA2C0
+00653130	cSC4SubwayOccupant::UpdateFloor	manual:underground-occupants.tsv	high	underground-occupants.md §3.3; descriptive name; new main slot 106; four corner vertices into +0x270 from the vertex list +0x1B4, or for piece ids 0x300 / 0x4B00 from +0x1E4 (vertices 4, 5, 7, 6, rotated)
+00653520	cSC4SubwayOccupant::PoolFree	manual:underground-occupants.tsv	high	underground-occupants.md §1; descriptive name; subway pool vtable slot 1
+00653560	GZCOM_CreatecSC4SubwayOccupant	manual:underground-occupants.tsv	high	underground-occupants.md §1; registered with class 0xCA16374F by cSC4COMDirector 0x004606B3; pool block, constructor 0x006530B0(1), returns the +4 sub-object
+006535a0	cSC4SubwayOccupant::~cSC4SubwayOccupant (deleting destructor)	manual:underground-occupants.tsv	high	underground-occupants.md §1; was cSC4SubwayOccupant::~cSC4SubwayOccupant; base destructor, then the block back to the pool 0x00B0CDB8 on flag bit 0
+00653640	cSC4SubwayOccupant::StaticInit	manual:underground-occupants.tsv	high	underground-occupants.md §3.6; the pipe's algorithm on 0x00B0C960 / 0x00B0CB58 / 0x00B0CB80, ratios to 0x00B467F8 and 0x00B46810, flag 0x00B46820
+00653770	cSC4SubwayOccupant::Init	manual:underground-occupants.tsv	high	underground-occupants.md §3.2; slot 3 of the occupant interface 0x00AAA340
+006537a0	cSC4SubwayOccupant::Init	manual:underground-occupants.tsv	high	underground-occupants.md §3.2; main slot 3, pop 4: base Init 0x0065C6B0(arg, 0xCA16374F, 0x00B0CDC8)
+006537e0	cSC4SubwayOccupant::GetPathInfo	manual:underground-occupants.tsv	high	underground-occupants.md §3.4; main slot 49; resource {0x296678F7, 0xA966883F, piece id | 0x06000000} through 0x00B45254, every point y := GetAltitude(x, z), 3D path lengths
 00653b80	cSC4SubwayOccupantFilter::IsOccupantSubwayStation	auto:B0	medium	mac 0012c6fe score 0.997 support 1.5
 00653c00	cSC4SubwayOccupantFilter::IsOccupantIncluded	auto:A	high	mac 0012c78c score 0.73 support 0
 00653cc0	cSC4SubwayOccupantFilter::IsPropertyHolderIncluded	auto:A	high	mac 0012c65a score 1.0 support 0
@@ -9913,20 +9990,28 @@ va	name	source	confidence	note
 0088d0b0	nSGLDX7::TranslateGDFormatToSourceFormat	auto:B1	medium	mac 00428422 score 0.988 support 2.0
 0088f890	nSGLDX7::Init_PopulateFormatConversionTable	auto:D	medium	mac 00428bce score 0.5 support 1
 0088f8d0	nSGLDX7::Init_PopulateInternalFormatTable	auto:B2	medium	mac 00429788 score 0.968 support 1.0
-0088fedf	cIGZSerializable::cIGZSerializable	auto:B6	medium	mac 005f9a30 score 0.965 support 6.0
-0088fefb	cRZTimer::IsTimerRunning	auto:B0	medium	mac 00555d30 score 0.946 support 10.0
-0088ff0a	cRZTimer::Reset	auto:B0	medium	mac 00555d0c score 0.832 support 8.0
-0088ff19	cRZTimer::GetTimerCycle	auto:B0	low	mac 00556174 score 0.879 support 1.0
-00890181	cRZTimer::SetUnits	auto:B0	medium	mac 005561ca score 0.888 support 4.0
+0088fdc0	cRZTimer::MeasureFrequencies	manual:timers.tsv	high	timers.md §1.5; descriptive name, no Mac match; sole caller Calibrate (0x0088FFA4); writes F to 0x00B13420 (QueryPerformanceFrequency) and C to 0x00B13428 (= F when the raw rdtsc / QPC ratio is within 0.98..1.02, else cycles over SleepEx(100) loops of at least 0.33 s)
+0088fedf	cRZTimer::cRZTimer	manual:timers.tsv	high	timers.md §1.1; was cIGZSerializable::cIGZSerializable (no vtable store); stores the unit argument at +0, zeroes +8..+0x17; 98 call sites (clock24.md §4.3: the clock's 0x0044596F)
+0088fefb	cRZTimer::IsTimerRunning	manual:timers.tsv	high	timers.md §1.3; start tick +8/+0xC non-zero
+0088ff0a	cRZTimer::Reset	manual:timers.tsv	high	timers.md §1.3; zeroes start and accumulated, keeps the unit
+0088ff19	cRZTimer::GetTimerCycle	manual:timers.tsv	high	timers.md §1.3; QueryPerformanceCounter into the argument
+0088ff24	cRZTimer::GetNanosecondsPerTick	manual:timers.tsv	high	timers.md §1.4; descriptive name, no Mac match; fld 0x00B54360; called by cGZMiscCommandSystemSupport::DoMessage
+0088ff2b	cRZTimer::GetMicrosecondsPerTick	manual:timers.tsv	high	timers.md §1.4; descriptive name, no Mac match; fld 0x00B54364
+0088ff32	cRZTimer::GetMillisecondsPerTick	manual:timers.tsv	high	timers.md §1.4; descriptive name, no Mac match; fld 0x00B54368
+0088ff39	cRZTimer::GetSecondsPerTick	manual:timers.tsv	high	timers.md §1.4; descriptive name, no Mac match; fld 0x00B5436C; also called by cSC4GlyphTextureManager
+0088ff40	cRZTimer::GetMinutesPerTick	manual:timers.tsv	high	timers.md §1.4; descriptive name, no Mac match; fld 0x00B54370
+0088ff47	cRZTimer::GetMillisecondsPerCycle	manual:timers.tsv	high	timers.md §1.4; descriptive name, no Mac match; fld 0x00B54398 (the cycle table); called by cSC4GlyphTextureManager::GetGlyphTexture
+0088ff4e	cRZTimer::Calibrate	manual:timers.tsv	high	timers.md §1.5; descriptive name, no Mac match; reached by the jmp at 0x00A78F84 in the static initialisers; real-time priority, MeasureFrequencies, the factor tables 0x00B54360/0x00B54390 and their reciprocals, the minimum of 8 QPC and 8 rdtsc pair differences (0x00B54358, 0x00B54388)
+00890181	cRZTimer::SetUnits	manual:timers.tsv	high	timers.md §1.3; unit := argument, start and accumulated := 0
 00890198	cRZTimer::GetElapsedTime	manual:symbols_windows.tsv	high	timer at this+0x48 / +0x5C
-00890279	cRZTimer::GetElapsedTime	auto:B4	medium	mac 00555e00 score 0.922 support 1.0
-00890377	cRZTimer::GetElapsedTime	auto:B0	medium	mac 00555eac score 0.965 support 2.0
-0089045a	cRZTimer::SetElapsedTime	auto:B2	medium	mac 0055604e score 0.99 support 2.0
-00890501	cRZTimer::SetElapsedTime	auto:D	medium	mac 00555fbc score 0.5 support 1
+00890279	cRZTimer::GetElapsedTime	manual:timers.tsv	high	timers.md §1.3; the uint64& overload: units 0-1 raw 64 bits, 2-6 _ftol2(t * factor), else 0
+00890377	cRZTimer::GetElapsedTime	manual:timers.tsv	high	timers.md §1.3; the float& overload
+0089045a	cRZTimer::SetElapsedTime	manual:timers.tsv	high	timers.md §1.3; the uint64 overload: units 2-6 multiply by the reciprocal table 0x00B54374, unknown units keep accumulated; then start := now
+00890501	cRZTimer::SetElapsedTime	manual:timers.tsv	high	timers.md §1.3; the float overload: units 0-1 _ftol2(v), 2-6 _ftol2(v * reciprocal)
 0089058f	cRZTimer::Restart	manual:symbols_windows.tsv	high	
-008905c4	cRZTimer::Start	auto:B0	medium	mac 00556118 score 0.866 support 15.0
-008905f0	cRZTimer::Stop	auto:B0	medium	mac 0055612e score 0.941 support 6.0
-0089064d	cRZTimer::Delay	auto:D	medium	mac 005561f4 score 0.5 support 1
+008905c4	cRZTimer::Start	manual:timers.tsv	high	timers.md §1.3; rdtsc for unit 0, else QueryPerformanceCounter; no running test
+008905f0	cRZTimer::Stop	manual:timers.tsv	high	timers.md §1.3; always reads QueryPerformanceCounter, also for unit 0
+0089064d	cRZTimer::Delay	manual:timers.tsv	high	timers.md §1.3; local timer of the same unit, Sleep(0) until GetElapsedTime reaches the argument
 0089068a	cGZFileSystem::QueryInterface	auto:A	high	mac 003027b2 score 1.0 support 0
 008906b4	cGZFileSystem::AppDrive	auto:C	high	mac 003028ca score 1.0 support 1
 008906ce	cGZFileSystem::AppDirectory	auto:C	high	mac 003028f2 score 1.0 support 1
@@ -11426,7 +11511,7 @@ va	name	source	confidence	note
 009109fa	__gnu_cxx::hashtable<std::pair<unsigned_short_const,signed_char>,unsigned_short,__gnu_cxx::hash<unsigned_short>,std::_Select1st<std::pair<unsigned_short_const,signed_char>>,std::equal_to<unsigned_short>,std::allocator<signed_char>>::insert_unique_noresize	auto:D	medium	mac 005f150e score 0.5 support 1
 00910a6d	__gnu_cxx::hashtable<std::pair<unsigned_short_const,signed_char>,unsigned_short,__gnu_cxx::hash<unsigned_short>,std::_Select1st<std::pair<unsigned_short_const,signed_char>>,std::equal_to<unsigned_short>,std::allocator<signed_char>>::resize	auto:D	medium	mac 005f19ec score 0.5 support 1
 00910b18	__gnu_cxx::hashtable<std::pair<unsigned_short_const,signed_char>,unsigned_short,__gnu_cxx::hash<unsigned_short>,std::_Select1st<std::pair<unsigned_short_const,signed_char>>,std::equal_to<unsigned_short>,std::allocator<signed_char>>::insert_unique	auto:D	medium	mac 005f1b36 score 0.5 support 1
-00910bd3	RZParseDelimitedText	auto:B1	medium	mac 0001502c score 0.884 support 3.0
+00910bd3	RZParseDelimitedText	manual:command-system.tsv	high	command-system.md §2; cdecl, 20 bytes of arguments, AL; blanks are space and tab; even-quote rule; outer quotes stripped; the right trim tests the first non-blank byte (0x00910C0F)
 00910e18	ConvertStringEncoding	auto:B1	medium	mac 00015922 score 0.952 support 1.5
 00911358	ConvertStringEncoding	auto:B1	medium	mac 00016408 score 0.901 support 4.0
 009113ef	ConvertStringEncoding	auto:B2	medium	mac 0001635e score 0.929 support 3.0
@@ -11443,29 +11528,88 @@ va	name	source	confidence	note
 00912467	RZGetCurrentAppPath	auto:D	medium	mac 00016500 score 0.5 support 1
 00912588	GetComposedCharLength	auto:B5	medium	mac 00017386 score 0.947 support 4.0
 00912632	GetPreviousComposedCharLength	auto:B8	medium	mac 00017464 score 0.945 support 3.0
-009126f3	cIGZDate::cIGZDate	auto:D	medium	mac 005f76b2 score 0.5 support 1
-0091270e	cRZDate::cRZDate	auto:D	medium	mac 000275ec score 0.5 support 1
+009126e0	cRZDate::IsValidMonth	manual:dates.tsv	high	dates.md §1.1; descriptive name; 1 <= m <= 12
+009126f3	cRZDate::cRZDate (cIGZDate const&)	manual:dates.tsv	high	dates.md §3.1; was cIGZDate::cIGZDate; vtable 0x00A827D8, day number from the source date's cIGZDate slot 26 (+0x68)
+0091270e	cRZDate::cRZDate (cGZDate const&)	manual:dates.tsv	high	dates.md §3.1; day number from the source object's cIGZDate view at +8, slot 26
 0091272c	std::list<cSC4HistoryNode,std::allocator<cSC4HistoryNode>>::push_back	auto:D	medium	mac 00633308 score 0.5 support 1
-00912789	cRZDate::Mdy	auto:B6	medium	mac 0002761e score 0.948 support 3.0
-0091286f	cRZDate::Month	auto:B4	medium	mac 00027720 score 0.917 support 6.0
-009128a3	cRZDate::Year	auto:B5	medium	mac 000276f4 score 0.917 support 5.0
-009128bf	cGZDate::~cGZDate	auto:B0	medium	mac 00027786 score 0.923 support 7.0
-0091297e	cGZDate::DayNumber	auto:B1	low	mac 00027866 score 0.825 support 3.0
-00912b08	cRZDate::DayWithinMonth	auto:B3	medium	mac 00028408 score 0.891 support 1.0
-00912b5f	cRZDate::Jday	auto:B2	medium	mac 00028496 score 0.929 support 1.0
-00912bcc	cRZDate::DayOfYear	auto:B0	medium	mac 0002854e score 0.809 support 2.0
-00912beb	cRZDate::DayOfMonth	auto:B5	medium	mac 0002774c score 0.917 support 5.0
-00912c79	cRZDate::DateString	auto:A	high	mac 00027e80 score 1.0 support 0
-00912dfa	cGZDate::cGZDate	auto:B1	medium	mac 00027a62 score 0.908 support 3.0
-00912e7b	cGZDate::cGZDate	auto:B1	medium	mac 0002794a score 0.903 support 5.0
-00912f0b	cGZDate::DayOfYear	auto:D	low	mac 000285a0 score 0.5 support 1
-00913041	cGZDate::DayWithinMonth	auto:B4	medium	mac 0002847a score 0.969 support 1.0
-0091307c	cRZDate::cRZDate	auto:B2	medium	mac 00028678 score 0.95 support 2.0
-009130be	cRZDate::cRZDate	auto:B1	medium	mac 00028644 score 0.946 support 2.0
-00913113	cRZDate::Set	auto:B4	medium	mac 0002861a score 0.949 support 2.0
-00913177	cGZDate::cGZDate	auto:B1	medium	mac 00028724 score 0.917 support 5.0
-0091319b	cGZDate::cGZDate	auto:B2	medium	mac 00028786 score 0.905 support 2.0
-00913245	cGZDate::DateString	auto:B0	medium	mac 000282f0 score 0.995 support 1.0
+00912741	cRZDate::LeapYear	manual:dates.tsv	high	dates.md §1.1; y % 4 == 0 and y % 100 != 0, or y % 400 == 0
+0091276f	cRZDate::CompareTo	manual:dates.tsv	high	dates.md §1.4; -1 / 0 / 1 on unsigned day numbers
+00912789	cRZDate::Mdy	manual:dates.tsv	high	dates.md §1.3; inverse of Jday, constants 1721119, 146097, 1461, 153
+0091282d	cRZDate::Max	manual:dates.tsv	high	dates.md §1.4; the later of two dates, this one on a tie
+0091284e	cRZDate::Min	manual:dates.tsv	high	dates.md §1.4; the earlier of two dates, this one on a tie
+0091286f	cRZDate::Month	manual:dates.tsv	high	dates.md §1.3
+0091288b	cRZDate::WeekDay	manual:dates.tsv	high	dates.md §1.4; ((n + 1) mod 7 + 6) mod 7 + 1, 1 = Monday
+009128a3	cRZDate::Year	manual:dates.tsv	high	dates.md §1.3
+009128bf	cGZDate::~cGZDate	manual:dates.tsv	high	dates.md §3.1; resets vtables 0x00ACEAF0 / 0x00ACEA38
+009128cd	cGZDate::Copy	manual:dates.tsv	high	dates.md §4; cIGZDate slot 8; slot 4 with the source date's DayNumber
+009128e7	cGZDate::QueryInterface	manual:dates.tsv	high	dates.md §3.1; cIGZDate slot 0; IIDs 1 and 0x43378255
+00912912	cGZDate::Release	manual:dates.tsv	high	dates.md §3.1; cIGZDate slot 2; count at +0x0C, frees when below 2
+0091292e	cGZDate::Set (day number)	manual:dates.tsv	high	dates.md §4; cIGZDate slot 4; returns the day number in EAX
+00912938	cGZDate::CompareTo	manual:dates.tsv	high	dates.md §4; cIGZDate slot 11
+0091295c	cGZDate::WeekDay	manual:dates.tsv	high	dates.md §4; cIGZDate slot 12
+00912964	cGZDate::Year	manual:dates.tsv	high	dates.md §4; cIGZDate slot 13
+0091296c	cGZDate::IsValid	manual:dates.tsv	high	dates.md §4; cIGZDate slot 19; day number != 0
+00912976	cGZDate::Month	manual:dates.tsv	high	dates.md §4; cIGZDate slot 23
+0091297e	cGZDate::DayNumber	manual:dates.tsv	high	dates.md §4; cIGZDate slots 18 (Hash) and 26
+00912982	cGZDate::operator<	manual:dates.tsv	high	dates.md §4; cIGZDate slot 27
+009129a4	cGZDate::operator<=	manual:dates.tsv	high	dates.md §4; cIGZDate slot 28
+009129c5	cGZDate::operator>	manual:dates.tsv	high	dates.md §4; cIGZDate slot 29
+009129e7	cGZDate::operator>=	manual:dates.tsv	high	dates.md §4; cIGZDate slot 30
+00912a08	cGZDate::operator==	manual:dates.tsv	high	dates.md §4; cIGZDate slot 31
+00912a2b	cGZDate::operator!=	manual:dates.tsv	high	dates.md §4; cIGZDate slot 32
+00912a4e	cGZDate::operator- (cIGZDate const&)	manual:dates.tsv	high	dates.md §4; cIGZDate slot 34; returns a day number
+00912a65	cGZDate::operator+ (cIGZDate const&)	manual:dates.tsv	high	dates.md §4; cIGZDate slot 36; returns a day number
+00912a78	cGZDate::operator- (int32)	manual:dates.tsv	high	dates.md §4; cIGZDate slot 33; returns a day number
+00912a82	cGZDate::operator+ (int32)	manual:dates.tsv	high	dates.md §4; cIGZDate slot 35; returns a day number
+00912a8c	cGZDate::operator++	manual:dates.tsv	high	dates.md §4; cIGZDate slot 37
+00912a99	cGZDate::operator--	manual:dates.tsv	high	dates.md §4; cIGZDate slot 38
+00912aa6	cGZDate::operator+=	manual:dates.tsv	high	dates.md §4; cIGZDate slot 39
+00912ab9	cGZDate::operator-=	manual:dates.tsv	high	dates.md §4; cIGZDate slot 40
+00912acc	cGZDate::LeapYear	manual:dates.tsv	high	dates.md §4; cIGZDate slot 45
+00912ad9	cRZDate::Between	manual:dates.tsv	high	dates.md §1.4; inclusive, either order
+00912b08	cRZDate::DayWithinMonth	manual:dates.tsv	high	dates.md §1.1; month table 0x00ACE9F8
+00912b49	cRZDate::DaysInYear	manual:dates.tsv	high	dates.md §1.4; 365 + LeapYear
+00912b5f	cRZDate::Jday	manual:dates.tsv	high	dates.md §1.2; 0 for an invalid date
+00912bcc	cRZDate::DayOfYear	manual:dates.tsv	high	dates.md §1.4; n - Jday(12, 31, Year() - 1)
+00912beb	cRZDate::DayOfMonth	manual:dates.tsv	high	dates.md §1.3
+00912c07	cRZDate::FirstDayOfMonth	manual:dates.tsv	high	dates.md §1.4; table 0x00ACEA00, +1 after February in a leap year
+00912c42	cRZDate::Previous	manual:dates.tsv	high	dates.md §1.4; descriptive name; latest date on or before this one with the given weekday
+00912c79	cRZDate::DateString	manual:dates.tsv	high	dates.md §1.6; vtable 0x00A827D8 slot 2; format table of patterns
+00912dd6	cGZDate::~cGZDate (deleting destructor)	manual:dates.tsv	high	dates.md §3.1; vtable 0x00ACEAF0 slot 3; GlobalHeapFree with flag bit 0
+00912dfa	cGZDate::cGZDate (cIGZDate const&)	manual:dates.tsv	high	dates.md §3.1
+00912e24	cGZDate::cGZDate (cGZDate const&)	manual:dates.tsv	high	dates.md §3.1; copy
+00912e4e	cGZDate::cGZDate (cRZDate const&)	manual:dates.tsv	high	dates.md §3.1
+00912e7b	cGZDate::cGZDate (day number)	manual:dates.tsv	high	dates.md §3.1
+00912e9f	cGZDate::Clone	manual:dates.tsv	high	dates.md §4; cIGZDate slot 9; GlobalHeapAlloc(0x10)
+00912ed7	cGZDate::Between	manual:dates.tsv	high	dates.md §4; cIGZDate slot 10
+00912f0b	cGZDate::DayOfYear	manual:dates.tsv	high	dates.md §4; cIGZDate slot 14
+00912f13	cGZDate::DayOfMonth	manual:dates.tsv	high	dates.md §4; cIGZDate slot 15
+00912f1b	cGZDate::FirstDayOfMonth (month)	manual:dates.tsv	high	dates.md §4; cIGZDate slot 16
+00912f23	cGZDate::Leap	manual:dates.tsv	high	dates.md §4; cIGZDate slot 20
+00912f33	cGZDate::MaxDate	manual:dates.tsv	high	dates.md §4; cIGZDate slot 21
+00912f71	cGZDate::MinDate	manual:dates.tsv	high	dates.md §4; cIGZDate slot 22
+00912faf	cGZDate::Previous	manual:dates.tsv	high	dates.md §4; cIGZDate slot 24
+00912fdd	cGZDate::YearLastTwoDigits	manual:dates.tsv	high	dates.md §4; cIGZDate slot 25
+00912fef	cGZDate::operator-- (postfix)	manual:dates.tsv	high	dates.md §3.1; vtable 0x00ACEAF0 slot 5; returns the old value
+00913018	cGZDate::operator++ (postfix)	manual:dates.tsv	high	dates.md §3.1; vtable 0x00ACEAF0 slot 4; returns the old value
+00913041	cGZDate::DayWithinMonth	manual:dates.tsv	high	dates.md §4; cIGZDate slot 42
+00913058	cGZDate::DaysInYear	manual:dates.tsv	high	dates.md §4; cIGZDate slot 43
+00913065	cGZDate::Jday	manual:dates.tsv	high	dates.md §4; cIGZDate slot 44
+0091307c	cRZDate::cRZDate	manual:dates.tsv	high	dates.md §1.5; today, from localtime(time())
+009130be	cRZDate::cRZDate (month, day, year)	manual:dates.tsv	high	dates.md §1.5; Jday(m, d, y)
+009130e4	cRZDate::Set (day of year, year)	manual:dates.tsv	high	dates.md §1.5; year 0 counts from 1901-01-01 (0x24DB1A + day)
+00913113	cRZDate::Set (month, day, year)	manual:dates.tsv	high	dates.md §1.5; returns the day number in EAX
+00913131	cRZDate::Set (month name, day, year)	manual:dates.tsv	high	dates.md §1.5; 3-character strnicmp against Jan..Dec (0x00B168FC), no match = January
+00913177	cGZDate::cGZDate	manual:dates.tsv	high	dates.md §3.1; today
+0091319b	cGZDate::cGZDate (month, day, year)	manual:dates.tsv	high	dates.md §3.1
+009131cd	cGZDate::Set (day of year, year)	manual:dates.tsv	high	dates.md §4; cIGZDate slot 7; thunk to 0x009130E4
+009131d5	cGZDate::Set (month, day, year)	manual:dates.tsv	high	dates.md §4; cIGZDate slot 6; thunk to 0x00913113
+009131dd	cGZDate::Set (month name, day, year)	manual:dates.tsv	high	dates.md §4; cIGZDate slot 3; thunk to 0x00913131
+009131e5	cGZDate::FirstDayOfMonth	manual:dates.tsv	high	dates.md §4; cIGZDate slot 17; for Month()
+009131fa	cRZDate::cRZDate (day of year, year)	manual:dates.tsv	high	dates.md §1.5; static 1901-01-01 date 0x00B62898 built with (0, 0) at 0x00A7922F
+00913216	cRZDate::Set (cRZTime const&)	manual:dates.tsv	high	dates.md §1.5; LocalSecs / 86400 + 2415386, 0 for time 0
+0091323d	cGZDate::Set (cRZTime const&)	manual:dates.tsv	high	dates.md §4; cIGZDate slot 5; thunk to 0x00913216
+00913245	cGZDate::DateString	manual:dates.tsv	high	dates.md §4; cIGZDate slot 41
 0091328c	GZCOM_cRZMessage2StandardCLSID	auto:A	low	mac 0002a300 score 1.0 support 0
 00913292	cRZMessage2Standard::QueryInterface	auto:B0	medium	mac 0002a388 score 0.946 support 2.0
 009133da	operator new	manual:symbols_windows.tsv	high	
@@ -11506,22 +11650,25 @@ va	name	source	confidence	note
 00913d7a	RZ::LM	auto:B0	medium	mac 000da9ae score 0.96 support 13.0
 00913da6	RZ::ADir	auto:B2	medium	mac 000daa40 score 0.951 support 3.0
 00913dde	RZ::DDir	auto:B2	medium	mac 000da9e6 score 0.951 support 4.0
-00913e16	cRZCmdLine::QueryInterface	auto:A	high	mac 000110fc score 1.0 support 0
-00913e62	cRZCmdLine::argv	auto:B2	medium	mac 000118ea score 0.927 support 2.0
-00913e8a	cRZCmdLine::argc	auto:B0	medium	mac 000112e2 score 1.0 support 10.0
-00913ec2	cRZCmdLine::GetIndexOfSwitch	auto:C	high	mac 000114aa score 1.0 support 1
-00913f1a	cRZCmdLine::GetIndexOfSwitch	auto:C	high	mac 000112f0 score 1.0 support 1
-00914001	cRZCmdLine::IsSwitchPresent	auto:C	high	mac 0001118e score 1.0 support 1
-00914174	cRZCmdLine::ConvertStringArrayToString	auto:D	medium	mac 00011924 score 0.5 support 1
-009143cb	cRZCmdLine::IsSwitchPresent	auto:B0	medium	mac 0001160c score 0.931 support 3.0
-009145a5	cRZCmdLine::Find	auto:C	high	mac 000120ee score 1.0 support 1
-00914691	cRZCmdLine::FindSubString	auto:C	high	mac 00011fb0 score 1.0 support 1
-00914a30	cRZCmdLine::cRZCmdLine	auto:B1	medium	mac 00011eac score 0.952 support 4.0
+00913e16	cRZCmdLine::QueryInterface	manual:command-line.tsv	high	command-line.md §3; slot 0 of vtable 0x00A82A20; IIDs 1 and 0xA31E539C (cIGZCmdLine)
+00913e3b	cRZCmdLine::GetArgument	manual:command-line.tsv	high	command-line.md §3; descriptive name, no Mac match; slot 16; returns &args[i] for i < argc (signed compare), else &this->+0x28; no direct caller
+00913e62	cRZCmdLine::argv	manual:command-line.tsv	high	command-line.md §3; slot 4; returns the character buffer (+4) of args[i] for i < argc (signed compare), else that of +0x28
+00913e8a	cRZCmdLine::argc	manual:command-line.tsv	high	command-line.md §3; slot 3; (end - begin) / 0x14 of the vector at +8
+00913ec2	cRZCmdLine::IsSwitchPresent	manual:command-line.tsv	high	command-line.md §3; was cRZCmdLine::GetIndexOfSwitch; slot 9, the one-argument (cIGZString const&) overload, ret 4, bool: slot 11 (name, 0) >= 0, else slot 8 (name, scratch, true); the Mac pairing swaps MSVC's overload order
+00913f1a	cRZCmdLine::GetIndexOfSwitch	manual:command-line.tsv	high	command-line.md §4.3; slot 12, the (char, int start) overload, ret 8: an argument of exactly 2 characters, prefix in '/-\', second character the letter in either case
+00914001	cRZCmdLine::GetIndexOfSwitch	manual:command-line.tsv	high	command-line.md §4.3; was cRZCmdLine::IsSwitchPresent; slot 11, the (cIGZString const&, int start) overload, ret 8, returns an index or -1: length Strlen(name) + 1, lower-cased text after the prefix equals the lower-cased name
+00914174	cRZCmdLine::ConvertStringArrayToString	manual:command-line.tsv	high	command-line.md §2.2; joins the arguments with spaces, quoting one that holds a space, tab or newline; ignores this, ret 8; callers InsertArgument 0x00914C18 and EraseArgument 0x00914C64
+00914240	cRZCmdLine::IsSwitchPresent	manual:command-line.tsv	high	command-line.md §4.2; descriptive name, no Mac match; slot 10, the (char, cIGZString& value, bool unquote) overload, ret 0xC; a bare -c leaves value unwritten (0x00914302)
+009143cb	cRZCmdLine::IsSwitchPresent	manual:command-line.tsv	high	command-line.md §4.1; slot 8, the (cIGZString const&, cIGZString& value, bool unquote) overload, ret 0xC; -name:value with ':' at len(name)+1, strips one leading and one trailing quote of either kind
+009145a5	cRZCmdLine::Find	manual:command-line.tsv	high	command-line.md §3; slot 6, (cIGZString const&, bool caseSensitive), ret 8; whole-argument equality, MakeLower on both when not case-sensitive; -1 when absent
+00914691	cRZCmdLine::FindSubString	manual:command-line.tsv	high	command-line.md §3; slot 7, (cIGZString const&, bool caseSensitive), ret 8; first argument containing the text (basic_string::find 0x004427F0); -1 when absent
+00914a30	cRZCmdLine::cRZCmdLine	manual:command-line.tsv	high	command-line.md §1.2; the (cIGZCmdLine const&) constructor: source slot 5 into +0x14, then source argv(i) for i < argc appended; callers cSC4App::Init, PostFrameWorkInit, DoPreferencesChanged, cSC4ConfigRuleManager, cSC4View3DWin
 00914ac9	std::vector<cRZString,std::allocator<cRZString>>::insert	auto:D	medium	mac 005efb08 score 0.5 support 1
-00914bae	cRZCmdLine::InsertArgument	auto:C	high	mac 00011a76 score 1.0 support 1
-00914c25	cRZCmdLine::EraseArgument	auto:B1	medium	mac 00011a18 score 0.955 support 3.0
-00914c70	cRZCmdLine::ConvertStringArrayToString	auto:B2	medium	mac 00011b0e score 0.889 support 3.0
-00914e14	cRZCmdLine::cRZCmdLine	auto:B1	medium	mac 00011e10 score 0.901 support 14.0
+00914b75	std::vector<cRZString,std::allocator<cRZString>>::erase	manual:command-line.tsv	high	command-line.md §3 slot 14; descriptive name; the one-iterator erase: copy the tail down (0x00485280), destroy the last element (virtual +0x70 with 0), ret 4; sole caller EraseArgument 0x00914C58
+00914bae	cRZCmdLine::InsertArgument	manual:command-line.tsv	high	command-line.md §3; slot 13, (cIGZString const&, int index), ret 8; index clamped to 0..argc, then the join 0x00914174; true
+00914c25	cRZCmdLine::EraseArgument	manual:command-line.tsv	high	command-line.md §3; slot 14, (int index), ret 4; index >= argc becomes argc - 1 (no lower bound), erase 0x00914B75, join 0x00914174; true
+00914c70	cRZCmdLine::ConvertStringToStringArray	manual:command-line.tsv	high	command-line.md §2.1; was cRZCmdLine::ConvertStringArrayToString; splits text into arguments (space, tab, newline; even-quote rule; outer quotes stripped); ignores this, ret 8; sole caller the char const* constructor 0x00914E49
+00914e14	cRZCmdLine::cRZCmdLine	manual:command-line.tsv	high	command-line.md §1.2; the (char const*) constructor: +0x14 := text (0x00408480), then ConvertStringToStringArray; callers _main (GetCommandLineA) and about 20 cheat handlers
 00914e56	cSCProperty::QueryInterface	auto:B1	medium	mac 00031682 score 0.837 support 1.0
 00914e78	cSCProperty::AddRef	auto:C	low	mac 00031640 score 1.0 support 1
 00914e81	cSCProperty::Release	auto:C	high	mac 00031656 score 1.0 support 1
@@ -11621,9 +11768,11 @@ va	name	source	confidence	note
 00917a33	cRZVariant::GetValVoidPtr	auto:C	high	mac 00037eb4 score 1.0 support 2
 00917a8c	cRZVariant::CreateValString	auto:C	high	mac 0003865c score 1.0 support 2
 00917adb	cRZVariant::GetValString	auto:C	low	mac 0003863e score 1.0 support 2
-00917bcb	Splitpath	auto:B1	medium	mac 00021318 score 0.998 support 3.0
-00917d1a	SplitDirectory	auto:B3	medium	mac 00021680 score 0.985 support 1.0
-00917e7c	Fullpath	auto:B4	medium	mac 00021800 score 0.975 support 2.0
+00917ae0	IsASCIILetter	manual:paths.tsv	high	paths.md §1; descriptive name; true for 'A'-'Z' and 'a'-'z' (signed compares); used by the current-directory Fullpath 0x00918625
+00917bcb	Splitpath	manual:paths.tsv	high	paths.md §1.5; drive if the second char is ':', dir to the last separator, the last dot after it starts ext, 255-char parts
+00917d1a	SplitDirectory	manual:paths.tsv	high	paths.md §1.6; parts from the end, 260 bytes each, trailing '\' added; a single part without trailing separator loses its last char
+00917e7c	Fullpath	manual:paths.tsv	high	paths.md §1.2; the normaliser against a base: 521-byte work buffer, '.' and '..' components, ':' guard, trailing separator restored; malloc result for a null out
+00918080	IsFullPath	manual:paths.tsv	high	paths.md §1.1; descriptive name; isalpha + ':' + '\', or '\\', and no strstr '\.' (0x00ACEFC0) or '/.' (0x00ACEFBC)
 00918103	MatchPattern	auto:B1	medium	mac 000204ba score 0.914 support 1.0
 009182ff	cRZFile::QueryInterface	auto:A	high	mac 000205ee score 1.0 support 0
 00918374	cRZFile::SeekToPosition	auto:B4	medium	mac 000207ac score 0.831 support 3.0
@@ -11631,7 +11780,8 @@ va	name	source	confidence	note
 009183ad	cRZFile::Write	auto:B3	medium	mac 0002080a score 0.935 support 4.0
 00918417	cRZFile::GetPathExtension	auto:B0	medium	mac 000215b4 score 0.965 support 3.0
 00918577	cRZFile::Open	auto:A	high	mac 00021c7e score 0.5 support 0
-009185c4	Fullpath	auto:B6	medium	mac 000219c8 score 0.803 support 1.0
+009185c4	Fullpath	manual:paths.tsv	high	paths.md §1.3; UNC prefix, drive letter, _getdrive / _getdcwd, then 0x00917E7C
+009186e7	IsFullPath (cRZString)	manual:paths.tsv	high	paths.md §1.1; descriptive name; 0x00918080 on the string's buffer; caller ResolvePath 0x00919740
 009187b1	cRZFile::FlushWriteBuffer	auto:B3	medium	mac 00021a5e score 0.915 support 1.0
 0091880e	cGZWinTextEdit::GetTextLength	auto:C	high	mac 006b2218 score 1.0 support 1
 009188a5	cRZFile::Close	auto:B2	medium	mac 00021dfe score 0.891 support 9.0
@@ -11645,11 +11795,11 @@ va	name	source	confidence	note
 0091917d	MakeFileNameValid	auto:B2	medium	mac 000233aa score 0.978 support 3.0
 009192a9	cRZFile::ReadWithCount	auto:B4	medium	mac 000224c4 score 0.933 support 3.0
 00919474	cRZFile::SetPath	auto:B7	medium	mac 00020852 score 0.901 support 3.0
-009194a0	Splitpath	auto:B2	medium	mac 00023266 score 0.955 support 2.0
+009194a0	Splitpath	manual:paths.tsv	high	paths.md §1.5; the cRZString form; the drive is written into its own 4-byte argument slot
 0091958b	SplitDirectory	auto:B4	medium	mac 00023154 score 0.982 support 3.0
-00919672	Fullpath	auto:B7	medium	mac 000230d4 score 0.96 support 3.0
-009196cc	Fullpath	auto:B5	medium	mac 0002303e score 0.962 support 2.0
-00919738	ResolvePath	auto:B3	medium	mac 000237b2 score 0.916 support 3.0
+00919672	Fullpath	manual:paths.tsv	high	paths.md §1.4; the cRZString form of 0x009185C4 with max 0x208; out unchanged on failure
+009196cc	Fullpath	manual:paths.tsv	high	paths.md §1.4; the cRZString form of 0x00917E7C with a base (null base text = empty)
+00919738	ResolvePath	manual:paths.tsv	high	paths.md §1.4; IsFullPath copies as is, else Fullpath with or without base
 0091977c	IsFileNameValid	auto:B0	medium	mac 0002295e score 0.991 support 2.0
 00919a60	cRZFile::cRZFile	auto:B2	medium	mac 00022eec score 0.895 support 1.5
 00919dc2	cRZFile::FileCreate	auto:B2	medium	mac 000208e4 score 0.906 support 2.0
@@ -11665,45 +11815,59 @@ va	name	source	confidence	note
 0091a847	cRZFile::GetPathDirectory	auto:B1	medium	mac 00022b0c score 0.973 support 5.0
 0091a93d	cRZFile::GetPathName	auto:B0	medium	mac 00021466 score 0.966 support 3.0
 0091ac34	cRZFile::IsFileWritable	auto:B2	medium	mac 000221c6 score 0.941 support 2.0
-0091ad83	cRZDirectory::GetNthEntry	auto:B4	medium	mac 0001efce score 0.97 support 2.0
+0091ad3e	cRZDirectory::HasEntryNamed	manual:paths.tsv	high	paths.md §3.3; descriptive name, no Mac match; scans the entry list for a name equal to the argument (STL operator==); used before adding '.' and '..'
+0091ad83	cRZDirectory::GetNthEntry	manual:paths.tsv	high	paths.md §3.2; node + 8 of the n-th node, null when n >= the count +4
+0091ada7	std::list<cRZDirectoryEntry,std::allocator<cRZDirectoryEntry>>::list	manual:paths.tsv	high	paths.md §3.1; descriptive name; allocates the 0x24-byte head node linked to itself
+0091adc2	cRZDirectoryEntry::cRZDirectoryEntry	manual:paths.tsv	high	paths.md §3.1; descriptive name; owner +0 := 0, name +4, kind +0x18 := 0
 0091adec	RZFileFindData::~RZFileFindData	auto:B3	medium	mac 005f543c score 0.866 support 1.0
-0091ae1e	cRZDirectory::AlphabetizeEntryList	auto:B4	medium	mac 0001f204 score 0.861 support 2.0
-0091ae31	cRZDirectory::MakeSurePathEndsWithSeparator	auto:B3	medium	mac 0001eff8 score 0.96 support 2.0
-0091ae66	RZFileFindFinish	auto:B2	medium	mac 0001ef84 score 0.879 support 1.0
+0091adff	cRZDirectoryEntry::~cRZDirectoryEntry (deleting destructor)	manual:paths.tsv	high	paths.md §3.1; descriptive name; destroys the name, GlobalHeapFree on flag bit 0
+0091ae1e	cRZDirectory::AlphabetizeEntryList	manual:paths.tsv	high	paths.md §3.2; list sort with the caller's comparison
+0091ae31	cRZDirectory::MakeSurePathEndsWithSeparator	manual:paths.tsv	high	paths.md §3.2; appends '\' when +8 is empty or does not end with a separator
+0091ae66	RZFileFindFinish	manual:paths.tsv	high	paths.md §4; FindClose on +0x2C unless INVALID_HANDLE_VALUE, then frees the search object
+0091ae8e	std::list<cRZDirectoryEntry,std::allocator<cRZDirectoryEntry>>::erase	manual:paths.tsv	high	paths.md §3.3; descriptive name; unlinks one node, destroys its entry, frees it
 0091aeba	std::_List_base<cRZDirectoryEntry,std::allocator<cRZDirectoryEntry>>::_M_clear	auto:B6	medium	mac 005f585c score 0.992 support 1.0
+0091aeed	cRZDirectoryEntry::cRZDirectoryEntry	manual:paths.tsv	high	paths.md §3.1; descriptive name; the copy constructor (owner, name, kind)
+0091af16	std::list<cRZDirectoryEntry,std::allocator<cRZDirectoryEntry>>::erase	manual:paths.tsv	high	paths.md §3.3; descriptive name; the range overload, used to clear the entries
 0091af4a	std::_List_base<cRZDirectoryEntry,std::allocator<cRZDirectoryEntry>>::~_List_base	auto:B5	medium	mac 005f589a score 0.983 support 1.0
 0091af61	cRZFile::Length	auto:D	medium	mac 0002068e score 0.5 support 1
-0091b017	cRZDirectory::SplitDirectoryPath	auto:B4	medium	mac 0001fba2 score 0.963 support 2.0
-0091b0a1	RZFileFindFirst	auto:B3	medium	mac 0001f262 score 0.923 support 2.0
-0091b2f7	cRZDirectory::~cRZDirectory	auto:B3	medium	mac 0001f20e score 0.884 support 15.0
-0091b312	cRZDirectory::DoesAnyEntryExistThatMatchesPattern	auto:B1	medium	mac 0001f522 score 0.944 support 4.0
+0091b017	cRZDirectory::SplitDirectoryPath	manual:paths.tsv	high	paths.md §3.9; SplitDirectory with two 260-byte parts; copies both even when one was written
+0091b0a1	RZFileFindFirst	manual:paths.tsv	high	paths.md §4; ConvertStringEncoding, FindFirstFileA, a 0x30-byte search object (name, directory bit 0x10, pattern, handle +0x2C)
+0091b21d	RZFileFindNext	manual:paths.tsv	high	paths.md §4; descriptive name, no Mac match; FindNextFileA, name and directory bit refreshed; AL false at the end
+0091b2d6	std::list<cRZDirectoryEntry,std::allocator<cRZDirectoryEntry>>::_M_create_node	manual:paths.tsv	high	paths.md §3.3; descriptive name; a 0x24-byte node with a copied entry at +8
+0091b2f7	cRZDirectory::~cRZDirectory	manual:paths.tsv	high	paths.md §3.2; destroys +0x1C, +8 and the entry list
+0091b312	cRZDirectory::DoesAnyEntryExistThatMatchesPattern	manual:paths.tsv	high	paths.md §3.6; RZFileFindFirst then RZFileFindFinish
 0091b32d	std::list<cRZString,std::allocator<cRZString>>::push_front	auto:B0	medium	mac 005f58c2 score 0.974 support 2.0
-0091b36e	cRZDirectory::ReadDirectorySpecificEntriesIntoStringList	auto:B2	medium	mac 0001f862 score 0.95 support 1.0
+0091b349	std::list<cRZDirectoryEntry,std::allocator<cRZDirectoryEntry>>::insert	manual:paths.tsv	high	paths.md §3.3; descriptive name; links a new node before the given position
+0091b36e	cRZDirectory::ReadDirectorySpecificEntriesIntoStringList	manual:paths.tsv	high	paths.md §3.4; flags 1 '.', 2 '..', 4 directories, 8 files; '.' / '..' put at the front for the filter '*' (0x00B169A0)
 0091b585	cGZWinTestService::GetAllTestNames	auto:B6	medium	mac 00376280 score 0.827 support 2.0
-0091b6ca	cRZDirectory::DoesDirectoryExist	auto:B0	medium	mac 0001f546 score 0.945 support 6.0
-0091b738	cRZDirectory::CreateDirectoryA	auto:B0	medium	mac 0001f5ea score 0.97 support 4.0
-0091b9c7	cRZDirectory::ReadDirectoryFileEntriesIntoStringList	auto:B3	medium	mac 0001fb7c score 0.814 support 10.0
-0091b9d5	cRZDirectory::ReadDirectoryDirectoryEntriesIntoStringList	auto:D	medium	mac 0001fb52 score 0.5 support 2
-0091ba22	cRZDirectory::ReadDirectoryEntries	auto:B3	medium	mac 0001fc5a score 0.94 support 3.0
-0091bcad	cRZDirectory::ChangeDirectory	auto:B2	medium	mac 000200aa score 0.905 support 6.0
-0091bcd7	cRZDirectory::SetNewDirectoryEntryFilter	auto:B4	medium	mac 00020020 score 0.948 support 11.0
-0091bd31	cRZDirectory::cRZDirectory	auto:B2	medium	mac 000200ee score 0.887 support 13.0
-0091bd88	cRZDirectory::ReadDirectoryFileEntriesIntoStringListRecursive	auto:B1	medium	mac 000201b6 score 0.957 support 3.0
-0091c264	cRZPath::GetFileName	auto:B1	low	mac 00474d04 score 0.825 support 3.0
-0091c298	cRZPath::FileName	auto:B3	medium	mac 00474d86 score 0.875 support 2.0
-0091c2c5	cRZPath::cRZPath	auto:D	medium	mac 00474fb2 score 0.5 support 7
-0091c2fe	cRZPath::FixExtensionString	auto:B1	medium	mac 00474d12 score 0.822 support 2.0
-0091c31f	cRZPath::GetExtension	auto:B0	medium	mac 00474d64 score 0.836 support 2.0
-0091c32d	cRZPath::FixDirectoryString	auto:D	medium	mac 00474dde score 0.5 support 1
-0091c37e	cRZPath::GetDirectory	auto:D	medium	mac 00474e56 score 0.5 support 1
-0091c38c	cRZPath::FixDriveString	auto:B0	medium	mac 00475062 score 0.934 support 1.0
-0091c3cf	cRZPath::GetDrive	auto:D	medium	mac 00475092 score 0.5 support 2
-0091c3dc	cRZPath::SetFileName	auto:B0	medium	mac 00474e7a score 0.869 support 2.0
-0091c41b	cRZPath::SetExtension	auto:D	medium	mac 004750b0 score 0.5 support 1
-0091c46e	cRZPath::SetBuffer	auto:B0	medium	mac 0047514a score 0.972 support 2.0
-0091c507	cRZPath::GetPath	auto:D	medium	mac 0047528a score 0.5 support 1
-0091c52a	cRZPath::GetDriveAndDirectory	auto:B0	medium	mac 00475242 score 0.859 support 2.0
-0091c54d	cRZPath::GetFileNameAndExtension	auto:D	medium	mac 004751fa score 0.5 support 1
+0091b6ca	cRZDirectory::DoesDirectoryExist	manual:paths.tsv	high	paths.md §3.6; path + separator + '*'
+0091b738	cRZDirectory::CreateDirectoryA	manual:paths.tsv	high	paths.md §3.7; static; the \\server\ prefix skipped, _mkdir per missing component, rollback with _rmdir in creation order
+0091b9c7	cRZDirectory::ReadDirectoryFileEntriesIntoStringList	manual:paths.tsv	high	paths.md §3.4; flags 8
+0091b9d5	cRZDirectory::ReadDirectoryDirectoryEntriesIntoStringList	manual:paths.tsv	high	paths.md §3.4; flags (dots & 3) | 4
+0091b9ec	std::list<cRZDirectoryEntry,std::allocator<cRZDirectoryEntry>>::push_front	manual:paths.tsv	high	paths.md §3.3; descriptive name; insert before the first node
+0091ba08	std::list<cRZDirectoryEntry,std::allocator<cRZDirectoryEntry>>::push_back	manual:paths.tsv	high	paths.md §3.3; descriptive name; insert before the head node
+0091ba22	cRZDirectory::ReadDirectoryEntries	manual:paths.tsv	high	paths.md §3.3; clears the list, searches path + filter, kinds 4 / 8, '.' and '..' by +0x31 / +0x30
+0091bcad	cRZDirectory::ChangeDirectory	manual:paths.tsv	high	paths.md §3.2; assigns +8, separator, optional read
+0091bcd7	cRZDirectory::SetNewDirectoryEntryFilter	manual:paths.tsv	high	paths.md §3.2; empty filter becomes '*'
+0091bd31	cRZDirectory::cRZDirectory	manual:paths.tsv	high	paths.md §3.2; (path, read, includeParent +0x30, includeSelf +0x31), filter '*'
+0091bd88	cRZDirectory::ReadDirectoryFileEntriesIntoStringListRecursive	manual:paths.tsv	high	paths.md §3.5; depth counter 0x00B62914, ChangeDirectory on the object, files then subdirectories
+0091bf93	cRZDirectory::RemoveDirectoryA	manual:paths.tsv	high	paths.md §3.8; descriptive name (the A suffix as in CreateDirectoryA); static (path, recursive); RemoveDirectoryA, GetLastError 2 / 3 / 0x13 stop, subdirectories then files, then again; callers cSC4Nation::DeleteRegion, cSC4Region::Delete, cSC4WinSnapshotAlbum::DeleteAlbum
+0091c264	cRZPath::GetFileName	manual:paths.tsv	high	paths.md §2.2; returns +0x28 unchanged
+0091c268	cRZPath::SetPath	manual:paths.tsv	high	paths.md §2.2; descriptive name, no Mac match; ResolvePath(+0x50, p, 0) then Splitpath into +0, +0x14, +0x28, +0x3C; sole caller the constructor
+0091c298	cRZPath::FileName	manual:paths.tsv	high	paths.md §2.2; re-splits the name from the buffer when the name is empty
+0091c2c5	cRZPath::cRZPath	manual:paths.tsv	high	paths.md §2.2; five empty strings, then SetPath
+0091c2fe	cRZPath::FixExtensionString	manual:paths.tsv	high	paths.md §2.2; inserts '.' at 0 when not empty and not starting with one
+0091c31f	cRZPath::GetExtension	manual:paths.tsv	high	paths.md §2.2; fix then return +0x3C
+0091c32d	cRZPath::FixDirectoryString	manual:paths.tsv	high	paths.md §2.2; '\' (0x00A85AD8) inserted at 0 and appended when not already a separator
+0091c37e	cRZPath::GetDirectory	manual:paths.tsv	high	paths.md §2.2; fix then return +0x14
+0091c38c	cRZPath::FixDriveString	manual:paths.tsv	high	paths.md §2.2; resize to 2, a non-isalpha first char becomes 'C', the second ':'
+0091c3cf	cRZPath::GetDrive	manual:paths.tsv	high	paths.md §2.2; fix then return +0
+0091c3dc	cRZPath::SetFileName	manual:paths.tsv	high	paths.md §2.2; when the string differs (0x00454BB0): assign, or Splitpath's name part
+0091c41b	cRZPath::SetExtension	manual:paths.tsv	high	paths.md §2.2; when it differs from the fixed extension: assign and fix, or Splitpath's extension part
+0091c46e	cRZPath::SetBuffer	manual:paths.tsv	high	paths.md §2.2; clears +0x50, then appends drive (bit 0), directory (bit 1), name (bit 2), extension (bit 3)
+0091c507	cRZPath::GetPath	manual:paths.tsv	high	paths.md §2.2; SetBuffer(15)
+0091c52a	cRZPath::GetDriveAndDirectory	manual:paths.tsv	high	paths.md §2.2; SetBuffer(3)
+0091c54d	cRZPath::GetFileNameAndExtension	manual:paths.tsv	high	paths.md §2.2; SetBuffer(12)
 0091c570	cRZIniFile::GetPath	auto:C	low	mac 0001cea8 score 1.0 support 1
 0091c574	cRZIniFile::SetFile	auto:C	high	mac 0001cec0 score 1.0 support 1
 0091c5db	cRZIniFile::Open	auto:C	high	mac 0001cf52 score 1.0 support 1
@@ -11898,63 +12062,70 @@ va	name	source	confidence	note
 0092901a	cRZLanguageUtility::MakeMoneyString	auto:B3	medium	mac 0004add2 score 0.954 support 2.0
 00929379	cRZLanguageUtility::MakeNumberString	auto:B2	medium	mac 0004aa40 score 0.97 support 3.0
 00929609	cRZLanguageManager::~cRZLanguageManager	auto:C	high	mac 0004a752 score 1.0 support 1
-00929676	cGZCommandParameterSet::QueryInterface	auto:A	high	mac 002ee044 score 1.0 support 0
-009296a5	cGZCommandParameterSet::SetStatusParameterValue	auto:C	high	mac 002ee0ba score 1.0 support 1
-009296d5	cGZCommandParameterSet::ValidateParameter	auto:C	high	mac 002ee112 score 1.0 support 1
-009296f5	cGZStringCommandGenerator::QueryInterface	auto:A	high	mac 002ee17e score 1.0 support 0
-00929724	cGZStringCommandGenerator::Release	auto:C	high	mac 002ee1ce score 1.0 support 1
+00929676	cGZCommandParameterSet::QueryInterface	manual:command-system.tsv	high	command-system.md §1.3; slot 0, pop 8; IIDs 0x4B8C39E4, 0x4B8C39E5 and 1
+009296a5	cGZCommandParameterSet::SetStatusParameterValue	manual:command-system.tsv	high	command-system.md §1.5; slot 10, pop 4; Sint32 under 0x2B999D2B
+009296d5	cGZCommandParameterSet::ValidateParameter	manual:command-system.tsv	high	command-system.md §1.3; slot 12, pop 8; true only when the parameter exists and the second argument is 0xFF
+009296f5	cGZStringCommandGenerator::QueryInterface	manual:command-system.tsv	high	command-system.md §3.3; slot 0, pop 8; IIDs 0x0B90251F, 0x0B90251E and 1
+00929724	cGZStringCommandGenerator::Release	manual:command-system.tsv	high	command-system.md §3.2; slot 2; deletes through slot 7 at a count of 1 or less
 0092973b	icf::cGZStringCommandGenerator::CommandRegistered	folded	folded	4 names: cGZStringCommandGenerator::CommandRegistered | cGZStringCommandGenerator::CommandUnregistered | cGZUIScriptService::ApplyProperty | cGZWinBtn::GZOnMouseMove
-00929740	cGZStringCommandGenerator::ConvertStringToArgumentString	auto:D	medium	mac 002ee208 score 0.5 support 2
+00929740	cGZStringCommandGenerator::ConvertStringToArgumentString	manual:command-system.tsv	high	command-system.md §3.5; pop 8, ignores this; quotes a string that holds a space or tab; callers 0x0092A76D, 0x0092A7AB, 0x0092A85F
 009297a0	cRZSystemService::AddRef	auto:D	low	mac 00026af8 score 0.5 support 4
-009297b0	cGZMessage2CommandDispatcherMessage::QueryInterface	auto:A	high	mac 002ee4d6 score 1.0 support 0
-009297de	cGZMessage2CommandDispatcher::QueryInterface	auto:A	high	mac 002ee526 score 1.0 support 0
+009297a8	cGZMessage2CommandDispatcherMessage::Release	manual:command-system.tsv	high	command-system.md §4.5; descriptive name; slot 2 of 0x00AD1638; this + 4, then the standard message's Release 0x009132C1
+009297b0	cGZMessage2CommandDispatcherMessage::QueryInterface	manual:command-system.tsv	high	command-system.md §4.5; slot 0 of 0x00AD1638; IIDs 0x4B99446A and 0x0B903CC5, else the standard message's QI on +4
+009297de	cGZMessage2CommandDispatcher::QueryInterface	manual:command-system.tsv	high	command-system.md §4.2; slot 0, pop 8; IIDs 0x0B903CC3, 0x0B903CC4 and 1
 0092980d	cGZCommandServer::QueryInterface	auto:A	high	mac 002ee59e score 0.549 support 0
 00929844	cGZCommandServer::RegisterCommands	auto:C	high	mac 002ee62c score 1.0 support 1
 00929881	cGZCommandServer::UnregisterCommands	auto:C	high	mac 002ee684 score 1.0 support 1
 009298ae	cGZCommandServer::ExecuteCommandFormatted	auto:C	high	mac 002ee7b6 score 1.0 support 1
 009298f4	std::pair<unsigned_long_const,cRZVariant>::pair	auto:B0	medium	mac 006fde22 score 0.987 support 2.0
 00929911	std::_Rb_tree<unsigned_long,std::pair<unsigned_long_const,cRZVariant>,std::_Select1st<std::pair<unsigned_long_const,cRZVariant>>,std::less<unsigned_long>,std::allocator<std::pair<unsigned_long_const,cRZVariant>>>::destroy_node	auto:B0	medium	mac 006fe39c score 0.971 support 1.0
-0092994d	cGZStringCommandGenerator::Init	auto:C	high	mac 002ee97a score 1.0 support 1
-00929979	cGZStringCommandGenerator::Shutdown	auto:C	high	mac 002ee142 score 1.0 support 1
-00929994	cGZStringCommandGenerator::ExecuteCommand	auto:C	high	mac 002ef928 score 1.0 support 1
-00929a29	__ZThn4_N35cGZMessage2CommandDispatcherMessage14QueryInterfaceEmPPv	auto:B0	low	mac 006fdbac score 0.96 support 1.0
-00929a90	cGZMessage2CommandDispatcher::Shutdown	auto:C	high	mac 002ee850 score 1.0 support 1
-00929ad5	cGZMessage2CommandDispatcher::ExecuteCommand	auto:C	high	mac 002eeb2a score 1.0 support 1
+0092994d	cGZStringCommandGenerator::Init	manual:command-system.tsv	high	command-system.md §3.2; slot 3; framework service 0xEB903A32 with IID 0xCB90253A (the command server)
+00929979	cGZStringCommandGenerator::Shutdown	manual:command-system.tsv	high	command-system.md §3.2; slot 4; releases the server and the unused +0x18 set
+00929994	cGZStringCommandGenerator::ExecuteCommand	manual:command-system.tsv	high	command-system.md §3.7; slot 8, pop 0xC; 2 without a server or when slot 9 fails, else server slot 20
+009299f5	cGZMessage2CommandDispatcherMessage::~cGZMessage2CommandDispatcherMessage	manual:command-system.tsv	high	command-system.md §4.5; descriptive name; releases +0x34 and +0x30, then the standard part; sole caller 0x00929C58
+00929a29	cGZMessage2CommandDispatcherMessage::QueryInterface (thunk)	manual:command-system.tsv	high	command-system.md §4.5; was __ZThn4_N35cGZMessage2CommandDispatcherMessage14QueryInterfaceEmPPv; this - 4; slot 0 of the +4 vtable 0x00AD15A0
+00929a39	cGZMessage2CommandDispatcherMessage::Release (thunk)	manual:command-system.tsv	high	command-system.md §4.5; descriptive name; this - 4 to 0x009297A8; slot 2 of 0x00AD15A0
+00929a41	cGZMessage2CommandDispatcherMessage::~cGZMessage2CommandDispatcherMessage (thunk)	manual:command-system.tsv	high	command-system.md §4.5; descriptive name; this - 4 to 0x00929C58; slot 37 of 0x00AD15A0
+00929a49	cGZMessage2CommandDispatcher::~cGZMessage2CommandDispatcher	manual:command-system.tsv	high	command-system.md §4.1; descriptive name; releases +0x18, +0x14, +0x10, +0xC, +8; sole caller the deleting destructor
+00929a90	cGZMessage2CommandDispatcher::Shutdown	manual:command-system.tsv	high	command-system.md §4.3; slot 4
+00929ad5	cGZMessage2CommandDispatcher::ExecuteCommand	manual:command-system.tsv	high	command-system.md §4.4; slot 5, pop 0xC; 2 without a message server; default sets cleared through slot 4; MessageSend; status 0x2B999D2B through the variant's slot 27, else SetStatusParameterValue(0) and 0
 00929b92	cGZCommandServer::SetCommandDispatcher	auto:C	high	mac 002eeb00 score 1.0 support 1
 00929ba8	cGZCommandServer::ExecuteCommand	auto:C	high	mac 002ee78e score 1.0 support 1
 00929bba	cGZCommandServer::ExecuteCommand	auto:C	high	mac 002ee8d8 score 1.0 support 1
 00929bcc	cGZCommandServer::ConvertStringToCommand	auto:C	high	mac 002ee900 score 1.0 support 1
 00929bdd	cGZCommandServer::ConvertCommandToString	auto:C	high	mac 002ee940 score 1.0 support 1
 00929bee	cGZCommandServer::ConvertCommandOutputToString	auto:C	high	mac 002ee81e score 1.0 support 1
-00929c2b	cGZMessage2CommandDispatcherMessage::cGZMessage2CommandDispatcherMessage	auto:D	medium	mac 002ef9c4 score 0.5 support 1
-00929c74	cGZMessage2CommandDispatcher::cGZMessage2CommandDispatcher	auto:D	medium	mac 002efdb6 score 0.5 support 1
-00929c91	cGZMessage2CommandDispatcher::~cGZMessage2CommandDispatcher	auto:C	high	mac 002eff76 score 1.0 support 1
+00929c2b	cGZMessage2CommandDispatcherMessage::cGZMessage2CommandDispatcherMessage	manual:command-system.tsv	high	command-system.md §4.5; the standard message's constructor on +4, both set references null; only from the dispatcher's Init
+00929c58	cGZMessage2CommandDispatcherMessage::~cGZMessage2CommandDispatcherMessage (deleting destructor)	manual:command-system.tsv	high	command-system.md §4.5; descriptive name; 0x009299F5 then the framework operator delete 0x00913409 on flag bit 0
+00929c74	cGZMessage2CommandDispatcher::cGZMessage2CommandDispatcher	manual:command-system.tsv	high	command-system.md §4.1; zeroes every member
+00929c91	cGZMessage2CommandDispatcher::~cGZMessage2CommandDispatcher (deleting destructor)	manual:command-system.tsv	high	command-system.md §4.1; was cGZMessage2CommandDispatcher::~cGZMessage2CommandDispatcher; slot 6
 00929cad	std::_Rb_tree<unsigned_long,std::pair<unsigned_long_const,cRZVariant>,std::_Select1st<std::pair<unsigned_long_const,cRZVariant>>,std::less<unsigned_long>,std::allocator<std::pair<unsigned_long_const,cRZVariant>>>::erase	auto:D	medium	mac 006fe3c8 score 0.5 support 2
 00929d27	std::_Rb_tree<cRZString_const,std::pair<cRZString_const,long>,std::_Select1st<std::pair<cRZString_const,long>>,nGZLog::cLessRZString,std::allocator<std::pair<cRZString_const,long>>>::_Rb_tree_impl<nGZLog::cLessRZString,false>::_Rb_tree_impl	auto:B4	medium	mac 007e994e score 0.894 support 1.0
 00929d3d	std::_Rb_tree<unsigned_long,std::pair<unsigned_long_const,cGZCommandServer::CommandInfo>,std::_Select1st<std::pair<unsigned_long_const,cGZCommandServer::CommandInfo>>,std::less<unsigned_long>,std::allocator<std::pair<unsigned_long_const,cGZCommandServer::CommandInfo>>>::_Rb_tree_impl<std::less<unsigned_long>,false>::_Rb_tree_impl	auto:B1	medium	mac 006fe30c score 0.894 support 1.0
 00929d53	std::_Rb_tree<cRZAutoRefCount<cIGZCommandGenerator>,cRZAutoRefCount<cIGZCommandGenerator>,std::_Identity<cRZAutoRefCount<cIGZCommandGenerator>>,std::less<cRZAutoRefCount<cIGZCommandGenerator>>,std::allocator<cRZAutoRefCount<cIGZCommandGenerator>>>::_Rb_tree_impl<std::less<cRZAutoRefCount<cIGZCommandGenerator>>,false>::_Rb_tree_impl	auto:B1	medium	mac 006fe354 score 0.894 support 1.0
-00929e19	cGZCommandParameterSet::AppendParameter	auto:C	high	mac 002eee20 score 1.0 support 1
-00929e40	cGZCommandParameterSet::GetFirstParameterID	auto:C	high	mac 002eec44 score 1.0 support 1
+00929e19	cGZCommandParameterSet::AppendParameter	manual:command-system.tsv	high	command-system.md §1.3, §1.4; slot 8, pop 4; slot 7 with 0 for an empty set, else the highest ID (0x0040D500) + 1
+00929e40	cGZCommandParameterSet::GetFirstParameterID	manual:command-system.tsv	high	command-system.md §1.3; slot 13; the lowest key or 0xFFFFFFFF
 00929e54	cGZCommandServer::NotifyCommandRegistration	auto:D	medium	mac 002eef0a score 0.5 support 1
 00929ee0	cGZCommandServer::GetCommandID	auto:C	high	mac 002ef064 score 1.0 support 1
-0092a112	cGZCommandParameterSet::SetParameterCount	auto:C	high	mac 002eee60 score 1.0 support 1
-0092a162	cGZCommandParameterSet::operator[]	auto:C	high	mac 002ef0b4 score 1.0 support 1
-0092a186	cGZCommandParameterSet::GetParameter	auto:C	high	mac 002ef0e8 score 1.0 support 1
-0092a1a5	cGZCommandParameterSet::RemoveParameter	auto:C	high	mac 002eed16 score 1.0 support 1
-0092a1c9	cGZCommandParameterSet::GetNextParameterID	auto:C	high	mac 002eecd6 score 1.0 support 1
+0092a112	cGZCommandParameterSet::SetParameterCount	manual:command-system.tsv	high	command-system.md §1.3, §1.4; slot 4, pop 4; appends Empty (slot 8) while the count is below n, then erases the highest ID while above
+0092a162	cGZCommandParameterSet::operator[]	manual:command-system.tsv	high	command-system.md §1.3, §1.4; slot 5, pop 4; the node's value, or the fallback variant at +0x14 for a missing ID
+0092a186	cGZCommandParameterSet::GetParameter	manual:command-system.tsv	high	command-system.md §1.3; slot 6, pop 4; the node's value or null
+0092a1a5	cGZCommandParameterSet::RemoveParameter	manual:command-system.tsv	high	command-system.md §1.3; slot 9, pop 4
+0092a1c9	cGZCommandParameterSet::GetNextParameterID	manual:command-system.tsv	high	command-system.md §1.3, §1.4; slot 14, pop 4; find(prev) then the tree successor; a missing prev gives 0xFFFFFFFF
 0092a1f6	cGZCommandServer::GetCommandInfo	auto:C	high	mac 002eec64 score 1.0 support 1
 0092a236	cGZCommandServer::UnregisterCommandGenerator	auto:C	high	mac 002ef2fc score 1.0 support 1
 0092a2a6	std::vector<unsigned_long,cGZAllocatorServiceSTLAllocator<unsigned_long>>::_M_insert_aux	auto:B0	medium	mac 006fe60a score 0.839 support 1.0
-0092a4fa	std::_Rb_tree<unsigned_long,std::pair<unsigned_long_const,cRZVariant>,std::_Select1st<std::pair<unsigned_long_const,cRZVariant>>,std::less<unsigned_long>,std::allocator<std::pair<unsigned_long_const,cRZVariant>>>::~_Rb_tree	auto:B0	medium	mac 006fe438 score 0.986 support 1.0
+0092a4fa	cGZCommandParameterSet::~cGZCommandParameterSet	manual:command-system.tsv	high	command-system.md §1.2; was std::_Rb_tree<unsigned_long,...cRZVariant...>::~_Rb_tree; installs vtable 0x00AD16C8, destroys the fallback variant +0x14, then the tree +8 (0x0092A278); sole caller the deleting destructor
+0092a514	cGZStringCommandGenerator::~cGZStringCommandGenerator	manual:command-system.tsv	high	command-system.md §3.2; descriptive name; installs vtable 0x00AD1708, releases +0x18, destroys the word vector +0xC, releases the server; sole caller the deleting destructor
 0092a562	std::vector<unsigned_long,cGZAllocatorServiceSTLAllocator<unsigned_long>>::push_back	auto:D	medium	mac 006fe750 score 0.5 support 1
-0092a5b0	cGZCommandParameterSet::cGZCommandParameterSet	auto:B5	medium	mac 002ef1bc score 0.873 support 2.0
-0092a5d1	cGZCommandParameterSet::~cGZCommandParameterSet	auto:C	high	mac 002eed4e score 1.0 support 1
-0092a5ed	cGZCommandParameterSet::CompareParameterString	auto:B3	medium	mac 002ee9d2 score 0.956 support 1.0
-0092a6c4	cGZStringCommandGenerator::cGZStringCommandGenerator	auto:B0	medium	mac 002efaf2 score 0.888 support 3.0
-0092a704	cGZStringCommandGenerator::~cGZStringCommandGenerator	auto:C	high	mac 002efd42 score 1.0 support 1
-0092a720	cGZStringCommandGenerator::ConvertCommandToString	auto:C	high	mac 002ee2b0 score 1.0 support 1
-0092a810	cGZStringCommandGenerator::ConvertCommandOutputToString	auto:C	high	mac 002ee3e8 score 1.0 support 1
-0092a8b0	cGZMessage2CommandDispatcher::Init	auto:C	high	mac 002efb92 score 1.0 support 1
+0092a5b0	cGZCommandParameterSet::cGZCommandParameterSet	manual:command-system.tsv	high	command-system.md §1.2; count 0, empty map, fallback Empty
+0092a5d1	cGZCommandParameterSet::~cGZCommandParameterSet (deleting destructor)	manual:command-system.tsv	high	command-system.md §1.2; was cGZCommandParameterSet::~cGZCommandParameterSet; slot 15; 0x0092A4FA then GlobalHeapFree on flag bit 0
+0092a5ed	cGZCommandParameterSet::CompareParameterString	manual:command-system.tsv	high	command-system.md §1.4; slot 11, pop 0xC; id -2 tries every parameter; else GetValString, cRZString::Find and an equal-length test
+0092a6c4	cGZStringCommandGenerator::cGZStringCommandGenerator	manual:command-system.tsv	high	command-system.md §3.2; empty words, +0x18 := a new parameter set
+0092a704	cGZStringCommandGenerator::~cGZStringCommandGenerator (deleting destructor)	manual:command-system.tsv	high	command-system.md §3.2; was cGZStringCommandGenerator::~cGZStringCommandGenerator; slot 7; 0x0092A514 then the global heap
+0092a720	cGZStringCommandGenerator::ConvertCommandToString	manual:command-system.tsv	high	command-system.md §3.6; slot 10, pop 0xC; clears out first, server GetCommandInfo, quoted name and values
+0092a810	cGZStringCommandGenerator::ConvertCommandOutputToString	manual:command-system.tsv	high	command-system.md §3.6; slot 11, pop 8; every parameter in ID order, the status included
+0092a8b0	cGZMessage2CommandDispatcher::Init	manual:command-system.tsv	high	command-system.md §4.3; slot 3; message server 2 (0x04FA845B / 0x652294C7), the command message, two default sets, a string generator
 0092a982	cGZCommandServer::Init	auto:C	high	mac 002efdfe score 1.0 support 1
 0092a9f8	cGZCommandServer::CreateCommandParameterSet	auto:C	high	mac 002ef20e score 1.0 support 1
 0092aa36	cGZCommandServer::CommandInfo::~CommandInfo	auto:B1	medium	mac 006fdd16 score 0.861 support 2.0
@@ -11963,7 +12134,7 @@ va	name	source	confidence	note
 0092ab0b	cGZCommandServer::RegisterCommandGenerator	auto:C	high	mac 002ef256 score 1.0 support 1
 0092ab69	std::map<unsigned_long,cRZVariant,std::less<unsigned_long>,std::allocator<std::pair<unsigned_long_const,cRZVariant>>>::operator[]	auto:D	medium	mac 006fed82 score 0.5 support 1
 0092abcc	std::_Rb_tree<unsigned_long,std::pair<unsigned_long_const,cGZCommandServer::CommandInfo>,std::_Select1st<std::pair<unsigned_long_const,cGZCommandServer::CommandInfo>>,std::less<unsigned_long>,std::allocator<std::pair<unsigned_long_const,cGZCommandServer::CommandInfo>>>::destroy_node	auto:B0	medium	mac 006fe45c score 0.971 support 1.0
-0092abeb	cGZCommandParameterSet::SetParameter	auto:C	high	mac 002eeede score 1.0 support 1
+0092abeb	cGZCommandParameterSet::SetParameter	manual:command-system.tsv	high	command-system.md §1.3; slot 7, pop 8; find or insert, then copy the cIGZVariant
 0092ac39	std::_Rb_tree<unsigned_long,std::pair<unsigned_long_const,cGZCommandServer::CommandInfo>,std::_Select1st<std::pair<unsigned_long_const,cGZCommandServer::CommandInfo>>,std::less<unsigned_long>,std::allocator<std::pair<unsigned_long_const,cGZCommandServer::CommandInfo>>>::erase	auto:D	medium	mac 006fe488 score 0.5 support 1
 0092ac76	std::_Rb_tree<unsigned_long,std::pair<unsigned_long_const,cGZCommandServer::CommandInfo>,std::_Select1st<std::pair<unsigned_long_const,cGZCommandServer::CommandInfo>>,std::less<unsigned_long>,std::allocator<std::pair<unsigned_long_const,cGZCommandServer::CommandInfo>>>::_M_erase	auto:B1	medium	mac 006fe4ba score 0.98 support 1.0
 0092ace7	std::_Rb_tree<unsigned_long,std::pair<unsigned_long_const,cGZCommandServer::CommandInfo>,std::_Select1st<std::pair<unsigned_long_const,cGZCommandServer::CommandInfo>>,std::less<unsigned_long>,std::allocator<std::pair<unsigned_long_const,cGZCommandServer::CommandInfo>>>::clear	auto:B2	medium	mac 006fe4f8 score 0.946 support 2.0
@@ -11975,63 +12146,80 @@ va	name	source	confidence	note
 0092af7c	cGZCommandServer::cGZCommandServer	auto:B1	medium	mac 002ef7d2 score 0.933 support 3.0
 0092afd5	cGZCommandServer::~cGZCommandServer	auto:C	high	mac 002ef416 score 1.0 support 1
 0092b075	cGZCommandServer::RegisterCommand	auto:C	high	mac 002ef4f6 score 1.0 support 1
-0092b139	cGZStringCommandGenerator::ConvertStringToCommand	auto:B2	medium	mac 002ef632 score 0.945 support 2.0
+0092b139	cGZStringCommandGenerator::ConvertStringToCommand	manual:command-system.tsv	high	command-system.md §3.4; slot 9, pop 0x10; RZParseDelimitedText with capacities 1, 2, 4, ... 256, server slot 12 on word 0, a new 0x28-byte parameter set of string parameters
 0092b25b	cRZOStream::Init	auto:C	low	mac 00018a84 score 1.0 support 1
 0092b267	icf::cRZOStream::SetSint8	folded	folded	2 names: cRZOStream::SetSint8 | cRZOStream::SetUint8
-0092b276	cRZOStream::SetFloat32	auto:C	high	mac 000195dc score 1.0 support 1
-0092b285	cRZOStream::SetFloat64	auto:C	high	mac 00018afa score 1.0 support 1
-0092b294	cRZOStream::SetGZSerializable	auto:C	high	mac 00018b44 score 1.0 support 1
-0092b2a3	cRZOStream::QueryInterface	auto:A	high	mac 00018b62 score 1.0 support 0
+0092b276	cRZOStream::SetFloat32	manual:output-streams.tsv	high	output-streams.md §1.4; slot 12, pop 4; the 4 bytes as stored, never reversed
+0092b285	cRZOStream::SetFloat64	manual:output-streams.tsv	high	output-streams.md §1.4; slot 13, pop 8; never reversed
+0092b294	cRZOStream::SetGZSerializable	manual:output-streams.tsv	high	output-streams.md §1.3; slot 16, pop 4; the object's Write (slot 3) with this stream
+0092b2a3	cRZOStream::QueryInterface	manual:output-streams.tsv	high	output-streams.md §1.6; slot 0, pop 8; IIDs 1 and 0xC51B11CB (cIGZOStream)
 0092b2c8	cRZOStream::Release	auto:C	high	mac 00018bac score 1.0 support 3
-0092b2df	icf::cRZOStream::SetSint8	folded	folded	2 names: cRZOStream::SetSint8 | cRZOStream::SetUint8
+0092b2df	cRZIStream::GetUint8 (also GetSint8)	manual:output-streams.tsv	high	output-streams.md §5; was icf::cRZOStream::SetSint8 (the Mac fold pairs it with the writer); slots 4 and 5 of 0x00AD1878; GetVoid(out, 1) with the caller's pointer
+0092b2ed	cRZIStream::GetFloat32	manual:output-streams.tsv	high	output-streams.md §5; descriptive name; slot 12; GetVoid(out, 4), never reversed
+0092b2fb	cRZIStream::GetFloat64	manual:output-streams.tsv	high	output-streams.md §5; descriptive name; slot 13; GetVoid(out, 8)
+0092b309	cRZIStream::GetGZSerializable	manual:output-streams.tsv	high	output-streams.md §5; descriptive name; slot 16; the object's Read (slot 4)
+0092b318	cRZIStream::QueryInterface	manual:output-streams.tsv	high	output-streams.md §5; descriptive name; slot 0, pop 8; IIDs 1 and 0x051B11BD (cIGZIStream)
 0092b33a	icf::cGZUIScriptService::ScriptLiteral	folded	folded	6 names: cGZUIScriptService::ScriptLiteral | cGZWinDlg::GZOnKeyUp | cGZWinMsgBox::GZOnKeyUp | cPropertySetUint32XmlReader::HandleInternalEntityReference | cPropertySetUint32XmlReader::HandleStartNamespaceDecl | cRZNullOStream::SetVoid
-0092b355	cRZTextOStream::SetGZStr	auto:C	high	mac 00019348 score 1.0 support 1
-0092b36f	cRZTextOStream::SetVoid	auto:A	high	mac 00019376 score 0.738 support 0
-0092b62d	cRZOStream::~cRZOStream	auto:D	medium	mac 00019ed8 score 0.5 support 1
+0092b33f	cRZNullIStream::Skip	manual:output-streams.tsv	high	output-streams.md §5; descriptive name; slot 3, pop 4; error := 1, AL 0
+0092b348	cRZNullIStream::GetVoid	manual:output-streams.tsv	high	output-streams.md §5; descriptive name; slot 17, pop 8; error := 1, AL 0
+0092b351	cRZNullIStream::GetError	manual:output-streams.tsv	high	output-streams.md §5; descriptive name; slot 18; the error byte +0x10
+0092b355	cRZTextOStream::SetGZStr	manual:output-streams.tsv	high	output-streams.md §2.3; slot 15, pop 4; SetRZCharStr(s.ToChar()), so the text stops at the first NUL
+0092b36f	cRZTextOStream::SetVoid	manual:output-streams.tsv	high	output-streams.md §2.4; slot 17, pop 8; '\nHEXDUMP:\n', then '%02x ' of each sign-extended byte (0x00AD1804), a newline after every 25th, a final newline
+0092b62d	cRZOStream::~cRZOStream	manual:output-streams.tsv	high	output-streams.md §1.2; resets the vtable to 0x00AD1818, releases the user data +0xC
 0092b640	icf::cRZOStream::SetSint16	folded	folded	2 names: cRZOStream::SetSint16 | cRZOStream::SetUint16
 0092b676	icf::cRZOStream::SetSint32	folded	folded	2 names: cRZOStream::SetSint32 | cRZOStream::SetUint32
 0092b6a3	icf::cRZOStream::SetSint64	folded	folded	2 names: cRZOStream::SetSint64 | cRZOStream::SetUint64
-0092b6e2	cRZOStream::EncodeStringLength	auto:D	medium	mac 00019ce2 score 0.5 support 2
-0092b734	cRZOStream::SetRZCharStr	auto:C	high	mac 00019d96 score 1.0 support 2
-0092b765	cRZOStream::SetGZStr	auto:C	high	mac 00019d3a score 1.0 support 2
-0092b79f	cRZIStream::~cRZIStream	auto:D	medium	mac 0001a328 score 0.5 support 1
-0092b7b2	icf::cRZOStream::SetSint16	folded	folded	2 names: cRZOStream::SetSint16 | cRZOStream::SetUint16
-0092b7f1	icf::cRZOStream::SetSint32	folded	folded	2 names: cRZOStream::SetSint32 | cRZOStream::SetUint32
-0092b82b	icf::cRZOStream::SetSint64	folded	folded	2 names: cRZOStream::SetSint64 | cRZOStream::SetUint64
-0092b9c3	cRZOFStream::~cRZOFStream	auto:D	medium	mac 00019f94 score 0.5 support 1
-0092b9ee	cRZOFStream::GetError	auto:C	high	mac 000198e0 score 1.0 support 1
-0092bbf8	cRZNullOStream::~cRZNullOStream	auto:C	high	mac 0001a23e score 1.0 support 1
-0092bc4a	cRZNullOStream::cRZNullOStream	auto:B0	medium	mac 0001a27c score 0.876 support 2.0
-0092bcdb	cRZOFStream::~cRZOFStream	auto:C	high	mac 00019f4a score 1.0 support 1
-0092bcf7	cRZOFStream::Flush	auto:C	low	mac 00019480 score 1.0 support 1
+0092b6e2	cRZOStream::EncodeStringLength	manual:output-streams.tsv	high	output-streams.md §1.5; pop 4; unsigned LEB128 through SetUint8 (slot 5)
+0092b734	cRZOStream::SetRZCharStr	manual:output-streams.tsv	high	output-streams.md §1.5; slot 14, pop 4; strlen (0x009F17E0), the LEB128 length, then SetVoid when not empty, else AL 1
+0092b765	cRZOStream::SetGZStr	manual:output-streams.tsv	high	output-streams.md §1.5; slot 15, pop 4; length from the string's slot 7, bytes from its slot 5
+0092b79f	cRZIStream::~cRZIStream	manual:output-streams.tsv	high	output-streams.md §5; the reader's destructor
+0092b7b2	cRZIStream::GetUint16 (also GetSint16)	manual:output-streams.tsv	high	output-streams.md §5; was icf::cRZOStream::SetSint16; slots 6 and 7; GetVoid(out, 2), reversed in place when the flag +8 is false
+0092b7f1	cRZIStream::GetUint32 (also GetSint32)	manual:output-streams.tsv	high	output-streams.md §5; was icf::cRZOStream::SetSint32; slots 8 and 9; 4 bytes, reversed in place when the flag is false
+0092b82b	cRZIStream::GetUint64 (also GetSint64)	manual:output-streams.tsv	high	output-streams.md §5; was icf::cRZOStream::SetSint64; slots 10 and 11; 8 bytes
+0092b85f	cRZIStream::DecodeStringLength	manual:output-streams.tsv	high	output-streams.md §5; descriptive name; GetUint8 while bit 7 is set, into an 8-byte buffer
+0092b8bc	cRZIStream::GetRZCharStr	manual:output-streams.tsv	high	output-streams.md §5; descriptive name; slot 14; LEB128 length, min(length, max) bytes, buf[k] := 0 (one past max when truncated), Skip of the rest
+0092b92d	cRZIStream::GetGZStr	manual:output-streams.tsv	high	output-streams.md §5; descriptive name; slot 15; FromChar(""), then chunks of at most 255 bytes
+0092b9c3	cRZOFStream::~cRZOFStream	manual:output-streams.tsv	high	output-streams.md §4.1; deletes the ofstream +0x10, then the base destructors
+0092b9ee	cRZOFStream::GetError	manual:output-streams.tsv	high	output-streams.md §4.2; slot 18; any of bad, fail or eof
+0092bbde	cRZOStream::cRZOStream	manual:output-streams.tsv	high	output-streams.md §1.2; descriptive name; pop 4; vtable 0x00AD1818, count 0, +8 := the byte-order flag, user data null
+0092bbf8	cRZOStream::~cRZOStream (deleting destructor)	manual:output-streams.tsv	high	output-streams.md §1.2; was cRZNullOStream::~cRZNullOStream; slot 21 of the base vtable 0x00AD1818; 0x0092B62D then GlobalHeapFree on flag bit 0 (the null stream's is 0x0092BC5E)
+0092bc14	cRZIStream::cRZIStream	manual:output-streams.tsv	high	output-streams.md §5; descriptive name; pop 4; vtable 0x00AD1878, count 0, +8 := the byte-order flag, user data null
+0092bc2e	cRZIStream::~cRZIStream (deleting destructor)	manual:output-streams.tsv	high	output-streams.md §5; descriptive name; 0x0092B79F then GlobalHeapFree on flag bit 0
+0092bc4a	cRZNullOStream::cRZNullOStream	manual:output-streams.tsv	high	output-streams.md §3; count and user data 0, byte-order flag false, vtable 0x00AD18D8
+0092bc5e	cRZNullOStream::~cRZNullOStream (deleting destructor)	manual:output-streams.tsv	high	output-streams.md §3; descriptive name; slot 21 of 0x00AD18D8; vtable reset, cRZOStream destructor, free on flag bit 0
+0092bc80	cRZNullIStream::cRZNullIStream	manual:output-streams.tsv	high	output-streams.md §5; descriptive name; vtable 0x00AD1938, count, user data, flag and the error byte +0x10 zeroed
+0092bc97	cRZNullIStream::~cRZNullIStream (deleting destructor)	manual:output-streams.tsv	high	output-streams.md §5; descriptive name; vtable reset, cRZIStream destructor, free on flag bit 0
+0092bcb9	cRZTextOStream::~cRZTextOStream (deleting destructor)	manual:output-streams.tsv	high	output-streams.md §2.1; descriptive name; slot 21 of 0x00AD1998; vtable reset, cRZOStream destructor, GlobalHeapFree on flag bit 0
+0092bcdb	cRZOFStream::~cRZOFStream (deleting destructor)	manual:output-streams.tsv	high	output-streams.md §4.1; was cRZOFStream::~cRZOFStream; slot 21 of 0x00AD19F8
+0092bcf7	cRZOFStream::Flush	manual:output-streams.tsv	high	output-streams.md §4.2; slot 3; ofstream flush
 0092bdb5	lib::basic_ios<char,class__STL::char_traits<char>_>	library	medium	Function ID
-0092c1ee	cRZOFStream::SetVoid	auto:C	high	mac 000198a2 score 1.0 support 1
+0092c1ee	cRZOFStream::SetVoid	manual:output-streams.tsv	high	output-streams.md §4.2; slot 17; ofstream write; AL = stream good
 0092c30c	lib::_M_output_error	library	medium	Function ID
 0092c686	lib::_M_exit_putback_mode	library	medium	Function ID
-0092c757	cRZOFStream::SetRZCharStr	auto:C	high	mac 00019830 score 1.0 support 1
-0092c7ad	cRZTextOStream::SetSint8	auto:B0	medium	mac 00018eb0 score 0.991 support 1.0
-0092c808	cRZTextOStream::SetUint8	auto:B0	medium	mac 00018f22 score 0.985 support 1.0
-0092c863	cRZTextOStream::SetSint16	auto:D	medium	mac 00018f96 score 0.5 support 1
-0092c8be	cRZTextOStream::SetUint16	auto:D	medium	mac 00019008 score 0.5 support 1
-0092c919	cRZTextOStream::SetSint32	auto:D	medium	mac 0001907a score 0.5 support 1
-0092c972	cRZTextOStream::SetUint32	auto:D	medium	mac 000190ea score 0.5 support 1
-0092c9cb	cRZTextOStream::SetSint64	auto:D	medium	mac 0001915a score 0.5 support 1
-0092ca27	cRZTextOStream::SetUint64	auto:D	medium	mac 000191d4 score 0.5 support 1
-0092ca83	cRZTextOStream::SetFloat32	auto:B1	medium	mac 0001924e score 0.984 support 1.0
-0092cae1	cRZTextOStream::SetFloat64	auto:B1	medium	mac 000192c6 score 0.965 support 1.0
-0092cb3f	cRZOFStream::SetSint8	auto:C	high	mac 00019de8 score 1.0 support 1
-0092cb4f	cRZOFStream::SetUint8	auto:C	high	mac 00019e2c score 1.0 support 1
-0092cb5f	cRZOFStream::SetSint16	auto:C	high	mac 00019aba score 1.0 support 1
-0092cb6f	cRZOFStream::SetUint16	auto:C	high	mac 00019722 score 1.0 support 1
-0092cb7f	cRZOFStream::SetSint32	auto:C	high	mac 00019a08 score 1.0 support 1
-0092cb8f	cRZOFStream::SetUint32	auto:C	high	mac 000195aa score 1.0 support 1
-0092cb9f	cRZOFStream::SetSint64	auto:C	high	mac 00019944 score 1.0 support 1
-0092cbbc	cRZOFStream::SetUint64	auto:C	high	mac 000197f4 score 1.0 support 1
-0092cbd9	cRZOFStream::SetFloat32	auto:B0	medium	mac 00019672 score 0.898 support 1.0
-0092cbf6	cRZOFStream::SetFloat64	auto:B0	medium	mac 00019448 score 0.882 support 1.0
+0092c757	cRZOFStream::SetRZCharStr	manual:output-streams.tsv	high	output-streams.md §4.2; slot 14; binary: SetVoid(s, strlen(s)) with no length or terminator; text: ofstream << s; AL = stream good; auto-flush +0x15
+0092c7ad	cRZTextOStream::SetSint8	manual:output-streams.tsv	high	output-streams.md §2.2; pop 4; cRZString::Sprintf with the format pointer at 0x00B169B0..0x00B169C0 (%d, sign-extended), then SetRZCharStr (slot 14)
+0092c808	cRZTextOStream::SetUint8	manual:output-streams.tsv	high	output-streams.md §2.2; pop 4; cRZString::Sprintf with the format pointer at 0x00B169B0..0x00B169C0 (%u, zero-extended), then SetRZCharStr (slot 14)
+0092c863	cRZTextOStream::SetSint16	manual:output-streams.tsv	high	output-streams.md §2.2; pop 4; cRZString::Sprintf with the format pointer at 0x00B169B0..0x00B169C0 (%d, sign-extended), then SetRZCharStr (slot 14)
+0092c8be	cRZTextOStream::SetUint16	manual:output-streams.tsv	high	output-streams.md §2.2; pop 4; cRZString::Sprintf with the format pointer at 0x00B169B0..0x00B169C0 (%u, zero-extended), then SetRZCharStr (slot 14)
+0092c919	cRZTextOStream::SetSint32	manual:output-streams.tsv	high	output-streams.md §2.2; pop 4; cRZString::Sprintf with the format pointer at 0x00B169B0..0x00B169C0 (%d), then SetRZCharStr (slot 14)
+0092c972	cRZTextOStream::SetUint32	manual:output-streams.tsv	high	output-streams.md §2.2; pop 4; cRZString::Sprintf with the format pointer at 0x00B169B0..0x00B169C0 (%u), then SetRZCharStr (slot 14)
+0092c9cb	cRZTextOStream::SetSint64	manual:output-streams.tsv	high	output-streams.md §2.2; pop 8; cRZString::Sprintf with the format pointer at 0x00B169B0..0x00B169C0 (%lld), then SetRZCharStr (slot 14)
+0092ca27	cRZTextOStream::SetUint64	manual:output-streams.tsv	high	output-streams.md §2.2; pop 8; cRZString::Sprintf with the format pointer at 0x00B169B0..0x00B169C0 (%llu), then SetRZCharStr (slot 14)
+0092ca83	cRZTextOStream::SetFloat32	manual:output-streams.tsv	high	output-streams.md §2.2; pop 4; cRZString::Sprintf with the format pointer at 0x00B169B0..0x00B169C0 (%g of the value widened to double), then SetRZCharStr (slot 14)
+0092cae1	cRZTextOStream::SetFloat64	manual:output-streams.tsv	high	output-streams.md §2.2; pop 8; cRZString::Sprintf with the format pointer at 0x00B169B0..0x00B169C0 (%g), then SetRZCharStr (slot 14)
+0092cb3f	cRZOFStream::SetSint8	manual:output-streams.tsv	high	output-streams.md §4.2; slot 4; binary flag +0x14: the cRZOStream write, else the cRZTextOStream one
+0092cb4f	cRZOFStream::SetUint8	manual:output-streams.tsv	high	output-streams.md §4.2; slot 5; binary flag +0x14: the cRZOStream write, else the cRZTextOStream one
+0092cb5f	cRZOFStream::SetSint16	manual:output-streams.tsv	high	output-streams.md §4.2; slot 6; binary flag +0x14: the cRZOStream write, else the cRZTextOStream one
+0092cb6f	cRZOFStream::SetUint16	manual:output-streams.tsv	high	output-streams.md §4.2; slot 7; binary flag +0x14: the cRZOStream write, else the cRZTextOStream one
+0092cb7f	cRZOFStream::SetSint32	manual:output-streams.tsv	high	output-streams.md §4.2; slot 8; binary flag +0x14: the cRZOStream write, else the cRZTextOStream one
+0092cb8f	cRZOFStream::SetUint32	manual:output-streams.tsv	high	output-streams.md §4.2; slot 9; binary flag +0x14: the cRZOStream write, else the cRZTextOStream one
+0092cb9f	cRZOFStream::SetSint64	manual:output-streams.tsv	high	output-streams.md §4.2; slot 10; binary flag +0x14: the cRZOStream write, else the cRZTextOStream one
+0092cbbc	cRZOFStream::SetUint64	manual:output-streams.tsv	high	output-streams.md §4.2; slot 11; binary flag +0x14: the cRZOStream write, else the cRZTextOStream one
+0092cbd9	cRZOFStream::SetFloat32	manual:output-streams.tsv	high	output-streams.md §4.2; slot 12; binary flag +0x14: the cRZOStream write, else the cRZTextOStream one
+0092cbf6	cRZOFStream::SetFloat64	manual:output-streams.tsv	high	output-streams.md §4.2; slot 13; binary flag +0x14: the cRZOStream write, else the cRZTextOStream one
 0092cd8c	GetTrueName	auto:B1	medium	mac 00019496 score 0.936 support 1.0
-0092ce7b	cRZOFStream::cRZOFStream	auto:B2	medium	mac 0001a11a score 0.876 support 2.0
-0092cef6	cRZOFStream::cRZOFStream	auto:D	medium	mac 00019ff6 score 0.5 support 1
+0092ce7b	cRZOFStream::cRZOFStream	manual:output-streams.tsv	high	output-streams.md §4.1; pop 0x14; the (cIGZString const& path, binary, littleEndian, autoFlush, append) overload; caller SC4CreateGZLog 0x005C6EFF
+0092cef6	cRZOFStream::cRZOFStream	manual:output-streams.tsv	high	output-streams.md §4.1; pop 0x14; the (char const* path, ...) overload; caller cSC4ViewInputControlQuery::WriteDetailedDebugInfo 0x004D12BD ('Query.txt', binary, big-endian)
 0092cf85	cGZMessageQueue2::QueryInterface	auto:A	high	mac 00038b86 score 1.0 support 0
 0092cfaa	cGZMessageQueue2::Release	auto:C	high	mac 00038bd0 score 1.0 support 1
 0092cfc1	cGZMessageQueue2::GetFrontMessageBlock	auto:C	high	mac 00038bf6 score 1.0 support 1
@@ -12113,12 +12301,20 @@ va	name	source	confidence	note
 00932670	FillEllipse	auto:B2	medium	mac 001fd1ce score 0.971 support 1.0
 00932700	cRZSpanList::SetPolygonSimple	auto:B3	medium	mac 001fceb2 score 0.91 support 2.0
 009328e0	DrawTriangle	auto:B2	medium	mac 001fd27c score 0.956 support 2.0
+0093294a	cRZCallbackTimer::SetDelay	manual:timers.tsv	high	timers.md §2.2; slot 1 of vtable 0x00AD1F14; +0x10; a running timer is restarted through slot 5
 009329a0	cGZWinScrollbar2::GetVisibleRange	auto:C	high	mac 00472396 score 1.0 support 1
+009329ae	cRZCallbackTimer::SetPeriod	manual:timers.tsv	high	timers.md §2.2; slot 3; +0x14; a running timer is restarted through slot 5
 00932a04	cGZWinScrollbar2::GetPageOverlapRange	auto:C	high	mac 004723ae score 1.0 support 1
-00932a12	cRZCallbackTimer::Stop	auto:B5	medium	mac 00446c26 score 0.921 support 2.0
-00932afe	cRZCallbackTimer::~cRZCallbackTimer	auto:B1	medium	mac 00446cbc score 0.861 support 2.0
+00932a12	cRZCallbackTimer::Stop	manual:timers.tsv	high	timers.md §2.2; slot 7; service slot 4 (RemoveTimer) with the ID at +0x1C
+00932a4a	cRZCallbackTimer::SetCallback	manual:timers.tsv	high	timers.md §2.2; slots 9 and 10; +8 := fn, +0xC := argument; also called directly by cSC4ViewInputControlQuery::DoQueryDialog 0x004D3D01 and cRZNetStreamSocket::Connect 0x00821475
+00932a5d	cRZCallbackTimer::UseTimerService	manual:timers.tsv	high	timers.md §2.2; descriptive name; slot 11; framework service 0xA76C78E7 / IID 0x276C784B, else the default object 0x00B62AB0
+00932afe	cRZCallbackTimer::~cRZCallbackTimer	manual:timers.tsv	high	timers.md §2.2; leaves the live set 0x00B62A9C under 0x00B62AA8, Stop if running, releases +0x24 and the service
 00932b83	cRZSystemService::IsServiceRunning	auto:C	low	mac 00026b3a score 1.0 support 12
-00932c23	cRZCallbackTimer::cRZCallbackTimer	auto:B0	medium	mac 004468f2 score 0.865 support 2.0
+00932b87	cRZCallbackTimer::TimerCallback	manual:timers.tsv	high	timers.md §2.4; descriptive name, no Mac match; the handler pushed by Start (0x00932CF5) and StartOnce (0x00932D66); checks the live set, clears a one-shot timer, then fn(argument)
+00932c23	cRZCallbackTimer::cRZCallbackTimer	manual:timers.tsv	high	timers.md §2.3; delay 100, period 1000, joins the live set, then UseTimerService(true)
+00932c9c	cRZCallbackTimer::~cRZCallbackTimer (deleting destructor)	manual:timers.tsv	high	timers.md §2.2; slot 0; 0x00932AFE then free on flag bit 0
+00932cb8	cRZCallbackTimer::Start	manual:timers.tsv	high	timers.md §2.2; descriptive name, no Mac match; slot 5; refused when running or without a callback; service slot 3 (handler, this, period, 0, 0)
+00932d21	cRZCallbackTimer::StartOnce	manual:timers.tsv	high	timers.md §2.2; descriptive name, no Mac match; slot 6; sets the one-shot flag +0x19; service slot 3 (handler, this, delay or period, 1, 0)
 00932e47	SignalPlatformData::SignalPlatformData	auto:B0	medium	mac 00697b70 score 0.904 support 1.0
 00932e65	cRZThreadSignal::cRZThreadSignal	auto:D	medium	mac 001705ba score 0.5 support 1
 00932f76	nRZHash::CRC24	auto:B2	medium	mac 00290d3c score 0.819 support 2.0
@@ -14241,7 +14437,7 @@ va	name	source	confidence	note
 009b2a0a	cGZBarGraph::CompleteRedraw	auto:C	high	mac 0029f910 score 1.0 support 1
 009b2a38	cGZScatterGraph::QueryInterface	auto:A	high	mac 0029f976 score 1.0 support 0
 009b2bef	cGZPieGraph::QueryInterface	auto:A	high	mac 0029fcd2 score 1.0 support 0
-009b2c1c	cRZDate::Set	auto:B3	low	mac 00027610 score 0.938 support 1.0
+009b2c1c	cRZDate::Set (day number)	manual:dates.tsv	high	dates.md §1.5; unchecked
 009b2c26	cGZPieGraph::SetPercentageTextDecimalPlaces	auto:C	high	mac 0029fd26 score 1.0 support 1
 009b2c38	cGZPieGraph::SetMinPercentageToDisplay	auto:C	high	mac 0029feaa score 1.0 support 1
 009b2c77	cGZPieGraph::Set3DViewMaskBuffers	auto:C	high	mac 002a060e score 1.0 support 1
@@ -15216,7 +15412,7 @@ va	name	source	confidence	note
 009ee9b0	lib::underflow	library	medium	Function ID
 009eeb70	lib::_memmove	library	medium	Function ID
 009eeee5	lib::__fpmath	library	medium	Function ID
-009eef04	_lua_gettop	auto:B14	medium	mac 005b76f4 score 0.807 support 11.0
+009eef04	_ftol2	manual:timers.tsv	high	timers.md §1.3; was _lua_gettop; the CRT float-to-int64 truncation (fistp, then a toward-zero fix-up), 1,480 call sites; aura.md and budget.md call it _ftol (the classic _ftol is lib::__ftol 0x009F17B4)
 009eef79	lib::__onexit_lk	library	medium	Function ID
 009eeff9	lib::___onexitinit	library	medium	Function ID
 009ef021	lib::__onexit	library	medium	Function ID
@@ -15312,7 +15508,7 @@ va	name	source	confidence	note
 009f15b8	lib::fast_error_exit	library	medium	Function ID
 009f15dc	__start	auto:B2	medium	mac 00002cca score 0.872 support 1.0
 009f17b4	lib::__ftol	library	medium	Function ID
-009f17e0	cRZAutoRefCount<cIGZOStream>::operator=	auto:D	medium	mac 005eec16 score 0.5 support 1
+009f17e0	strlen	manual:output-streams.tsv	high	output-streams.md §1.5; was cRZAutoRefCount<cIGZOStream>::operator=; the CRT strlen (byte loop to 4-byte alignment, then word scan); 87 call sites
 009f1870	lib::_memset	library	medium	Function ID
 009f18f0	lib::_memcmp	library	medium	Function ID
 009f19b0	lib::_memcpy	library	medium	Function ID
@@ -16160,12 +16356,18 @@ va	name	source	confidence	note
 00a6fe90	lib::Unwind@00a6fe90	library	medium	Function ID
 00a6feb0	lib::Unwind@00a6feb0	library	medium	Function ID
 00a6fed0	lib::Unwind@00a6fed0	library	medium	Function ID
+00a71c70	cSC4FeatureManager::sEnabledFeatures static constructor	manual:feature-manager.tsv	high	feature-manager.md §2; allocates the 0x14-byte header node (0x0090CF54) and registers 0x00A7AE50 with ___cxa_atexit
 00a72b10	__static_initialization_and_destruction_0	auto:A	high	mac 00aa00f0 score 0.717 support 0
 00a730b0	__static_initialization_and_destruction_0	auto:A	high	mac 00a9fc2e score 0.717 support 0
 00a79312	cSC4BudgetSimulator::BudgetGroup::BudgetGroup	auto:B1	medium	mac 0069f55a score 0.916 support 1.0
 00a7947a	__static_initialization_and_destruction_0	auto:A	high	mac 00a8f768 score 0.5 support 0
+00a7ae50	cSC4FeatureManager::sEnabledFeatures static destructor	manual:feature-manager.tsv	high	feature-manager.md §2; empties the set, frees the header node (0x0090CF63)
 00a7c140	___tcf_1	auto:B1	medium	mac 00122ff2 score 0.974 support 1.0
 00a7f220	___tcf_3	auto:B2	medium	mac 0045b2e6 score 0.9 support 1.0
+00aa9648	cSC4PipeOccupant::vftable_vbase	manual:underground-occupants.tsv	high	underground-occupants.md §5; the virtual base's (drawable) vtable, 19 slots, installed at +0x27C
+00aa97b8	cSC4PipeOccupant::vftable	manual:underground-occupants.tsv	high	underground-occupants.md §1; 106 slots; installed by 0x006488F0 and 0x006489F0
+00aaa258	cSC4SubwayOccupant::vftable_vbase	manual:underground-occupants.tsv	high	underground-occupants.md §5; the virtual base's vtable, installed at +0x2D4
+00aaa3c8	cSC4SubwayOccupant::vftable	manual:underground-occupants.tsv	high	underground-occupants.md §1; 107 slots; installed by 0x006530B0 and 0x006535A0
 00ab0840	kTaxTypeByPurposeAndWealth	manual:clock-budget-neighbors.tsv	high	s16[9][4] data table indexed purpose*4+wealth; read by ComputeTax
 00ab3480	cSC4TrafficSimulator::WorkOnSimCycle::kNextState (data, uint32[20])	manual:traffic.tsv	high	indexed by state in WorkOnSimCycle (mov edi,[edx*4+0xAB3480])
 00ac17ac	nGZDrawSoftRender::cISpanRender::vftable	manual:gzdraw-softrender.tsv	high	installed by the deleting destructor 0082FF00
@@ -16175,3 +16377,47 @@ va	name	source	confidence	note
 00ac185c	nGZDrawSoftRender::cSpanRender4444::vftable	manual:gzdraw-softrender.tsv	high	6 slots (slot 0 = 0082FF00); created by cGZDrawContextRenderToBuffer::Init 00830710 for color type 7 A4R4G4B4; Mac __ZTVN17nGZDrawSoftRender15cSpanRender4444E
 00ac1874	nGZDrawSoftRender::cSpanRender8888::vftable	manual:gzdraw-softrender.tsv	high	6 slots (slot 0 = 0082FF00); created by cGZDrawContextRenderToBuffer::Init 00830710 for color types 8 R8G8B8 and 9 A8R8G8B8; Mac __ZTVN17nGZDrawSoftRender15cSpanRender8888E
 00ac188c	nGZDrawSoftRender::cSpanRender8::vftable	manual:gzdraw-softrender.tsv	high	6 slots (slot 0 = 0082FF00); created by cGZDrawContextRenderToBuffer::Init 00830710 for color type 2 RGB8; Mac __ZTVN17nGZDrawSoftRender12cSpanRender8E
+00acecc8	cRZCmdLine::sSwitchPrefixes (data, char[4]: slash, hyphen, backslash, NUL)	manual:command-line.tsv	high	command-line.md §4; the three switch prefix characters '/', '-', '\'; read by the five switch methods
+00ad15a0	cGZMessage2CommandDispatcherMessage::vftable_1	manual:command-system.tsv	high	command-system.md §4.5; the +4 standard-message vtable, 38 slots
+00ad1638	cGZMessage2CommandDispatcherMessage::vftable	manual:command-system.tsv	high	command-system.md §4.5; 3 slots: 0x009297B0, 0x009297A0 (shared), 0x009297A8
+00ad1878	cRZIStream::vftable	manual:output-streams.tsv	high	output-streams.md §5; installed by 0x0092BC14
+00ad1938	cRZNullIStream::vftable	manual:output-streams.tsv	high	output-streams.md §5; installed by 0x0092BC80
+00ad1998	cRZTextOStream::vftable	manual:output-streams.tsv	high	output-streams.md §2.1; 24 slots
+00ad1f14	cRZCallbackTimer::vftable	manual:timers.tsv	high	timers.md §2.2; 13 slots, installed by the constructor 0x00932C23
+00b0b6d0	cSC4PipeConnectionOccupant::sModelDescriptor (data)	manual:underground-occupants.tsv	high	underground-occupants.md §4; passed to the base Init by 0x00648050
+00b0ba68	cSC4PipeOccupant::sCornerPoints (data, 24-byte points)	manual:underground-occupants.tsv	high	underground-occupants.md §2.5; read by StaticInit
+00b0be88	cSC4PipeOccupant::sTints (data, float[2][3])	manual:underground-occupants.tsv	high	underground-occupants.md §2.2; dry (0.8, 0.23, 0.23), watered (1, 1, 1); read by GetTint 0x006488A0
+00b0bec0	cSC4PipeOccupant::sPool (data, pool object)	manual:underground-occupants.tsv	high	underground-occupants.md §1; vtable 0x00AA9960; used by operator new, the factory and the deleting destructor
+00b0bed0	cSC4PipeOccupant::sModelDescriptor (data)	manual:underground-occupants.tsv	high	underground-occupants.md §1; returned by main slot 101, passed to the base Init; points at the geometry and ratio tables
+00b0c388	cSC4SubwayConnectionOccupant::sModelDescriptor (data)	manual:underground-occupants.tsv	high	underground-occupants.md §4; passed to the base Init by 0x00652A80
+00b0c960	cSC4SubwayOccupant::sCornerPoints (data, 24-byte points)	manual:underground-occupants.tsv	high	underground-occupants.md §3.6; read by StaticInit
+00b0cdb8	cSC4SubwayOccupant::sPool (data, pool object)	manual:underground-occupants.tsv	high	underground-occupants.md §1; vtable 0x00AAA578
+00b0cdc8	cSC4SubwayOccupant::sModelDescriptor (data)	manual:underground-occupants.tsv	high	underground-occupants.md §1; returned by main slot 101
+00b13420	cRZTimer::sCounterFrequency (data, uint64)	manual:timers.tsv	high	timers.md §1.5; QueryPerformanceFrequency, written by MeasureFrequencies 0x0088FED4
+00b13428	cRZTimer::sCycleFrequency (data, uint64)	manual:timers.tsv	high	timers.md §1.5; the CPU cycle rate C, written by MeasureFrequencies 0x0088FECC
+00b16998	cRZDirectory::sSelfName (data, char const*)	manual:paths.tsv	high	paths.md §3.3; points at '.' (0x00AA1B74)
+00b1699c	cRZDirectory::sParentName (data, char const*)	manual:paths.tsv	high	paths.md §3.3; points at '..' (0x00ABF638)
+00b169a0	cRZDirectory::sAllFilter (data, char const*)	manual:paths.tsv	high	paths.md §3.2; points at '*' (0x00A870D4), the default filter
+00b169b0	cRZTextOStream::sFormats (data, char const*[5])	manual:output-streams.tsv	high	output-streams.md §2.2; %d, %u, %lld, %llu, %g (0x00A8281C, 0x00AA657C, 0x00ACEED0, 0x00ACEED8, 0x00AAEC04)
+00b21624	cSC4FeatureManager::sStaticInitDone (data, bool)	manual:feature-manager.tsv	high	feature-manager.md §2; set by StaticInit 0x0046FC0A, cleared by StaticShutdown 0x0046FA32
+00b21628	cSC4FeatureManager::sInstalledPacks (data, uint32 bit mask)	manual:feature-manager.tsv	high	feature-manager.md §2; bit k = pack k+1; OR-ed at 0x0046FCB9, read by IsExpansionPackInstalled 0x0046F78C
+00b2162c	cSC4FeatureManager::sEnabledFeatures (data, std::set<uint32_t> header pointer; count at 0x00B21630)	manual:feature-manager.tsv	high	feature-manager.md §2; filled by FeaturesIniEntryCallback, searched by IsFeatureEnabled
+00b46708	cSC4PipeOccupant::sDiagonalRatios (data, float[6])	manual:underground-occupants.tsv	high	underground-occupants.md §2.5; L4/(L1+L4), L3/(L2+L3), L2/(L2+L3), L1/(L1+L4), 1, 1
+00b46720	cSC4PipeOccupant::sDiagonalRatios2 (data, float[4])	manual:underground-occupants.tsv	high	underground-occupants.md §2.5; L1/(L1+L4), L2/(L2+L3), L3/(L2+L3), L4/(L1+L4)
+00b46730	cSC4PipeOccupant::sStaticInitDone (data, bool)	manual:underground-occupants.tsv	high	underground-occupants.md §2.5; set by StaticInit 0x00648B6F
+00b467f8	cSC4SubwayOccupant::sDiagonalRatios (data, float[6])	manual:underground-occupants.tsv	high	underground-occupants.md §3.6
+00b46810	cSC4SubwayOccupant::sDiagonalRatios2 (data, float[4])	manual:underground-occupants.tsv	high	underground-occupants.md §3.6
+00b46820	cSC4SubwayOccupant::sStaticInitDone (data, bool)	manual:underground-occupants.tsv	high	underground-occupants.md §3.6
+00b54358	cRZTimer::sCounterOverhead (data, uint64)	manual:timers.tsv	high	timers.md §1.3; the minimum of 8 back-to-back QueryPerformanceCounter differences; subtracted per interval (all units)
+00b54360	cRZTimer::sCounterFactors (data, float[5])	manual:timers.tsv	high	timers.md §1.2; ns, us, ms, s, min per counter tick (1e9, 1e6, 1e3, 1, 0.016666668 over F)
+00b54374	cRZTimer::sCounterReciprocals (data, float[5])	manual:timers.tsv	high	timers.md §1.3; 1 / sCounterFactors, read by SetElapsedTime
+00b54388	cRZTimer::sCycleOverhead (data, uint64)	manual:timers.tsv	high	timers.md §1.5; the minimum of 8 cpuid+rdtsc pair differences; no cRZTimer method reads it
+00b54390	cRZTimer::sCycleFactors (data, float[5])	manual:timers.tsv	high	timers.md §1.4; ns, us, ms, s, min per CPU cycle; GetMillisecondsPerCycle reads 0x00B54398
+00b543a4	cRZTimer::sCycleReciprocals (data, float[5])	manual:timers.tsv	high	timers.md §1.5; 1 / sCycleFactors
+00b62914	cRZDirectory::sRecursionDepth (data, int)	manual:paths.tsv	high	paths.md §3.5; incremented and decremented by 0x0091BD88
+00b6291c	RZFileFindFirstHook (data, function pointer)	manual:paths.tsv	high	paths.md §4; read by RZFileFindFirst, never written
+00b62920	RZFileFindNextHook (data, function pointer)	manual:paths.tsv	high	paths.md §4; read by RZFileFindNext, never written
+00b62924	RZCreateDirectoryHook (data, function pointer)	manual:paths.tsv	high	paths.md §4; read by CreateDirectoryA, never written
+00b62928	RZRemoveDirectoryHook (data, function pointer)	manual:paths.tsv	high	paths.md §4; read by CreateDirectoryA and RemoveDirectoryA, never written
+00b62a9c	cRZCallbackTimer::sLiveTimers (data, set of live timers)	manual:timers.tsv	high	timers.md §2.1; joined by the constructor, left by the destructor, searched by TimerCallback
+00b62aa8	cRZCallbackTimer::sLiveTimersLock (data, critical section)	manual:timers.tsv	high	timers.md §2.1; guards sLiveTimers and the handler's state change

@@ -52,6 +52,32 @@ void HostRelease(void* /*user*/, uint64_t token) {
     cIGZUnknown* o = reinterpret_cast<cIGZUnknown*>(token);
     if (o != nullptr) FC4_RELEASE(o);
 }
+// The controller manager's release (user = the cFC4AutomataControllerManager).
+// While its destructor runs, a game object's release is the one the manager
+// owns at the end of its life: automata.md 3.4 (the manager keeps the
+// reference its Read returned) and 7.1 (the manager shuts down and releases
+// the controllers it drops), with foundations.md 2.7 SV1 (the load's object
+// table holds +1 only until the loaded segment closes, which a save does;
+// building-development.md "loaded, then saved": the holder's release is the
+// last). Run sg4-c1 (2026-10-21, saved city): 238 such last releases, all
+// generator / attractor controllers read by this manager. The audit still
+// requires that our sites acquired the reference (ReadRef's FC4_ACQUIRED,
+// HostAddRef). Every other release (Read replacing the record, set_clock,
+// RemoveControllers) stays a plain audited FC4_RELEASE.
+// [spec question AT21] the spec does not say where the original drops these
+// references at city close (Shutdown, RemoveOccupant 0x99EF1143, or the
+// destructor); ours keeps them to the destructor, the most literal reading of
+// "the manager holds them".
+void CmHostRelease(void* user, uint64_t token) {
+    cIGZUnknown* o = reinterpret_cast<cIGZUnknown*>(token);
+    if (o == nullptr) return;
+    const auto* cm = static_cast<const cFC4AutomataControllerManager*>(user);
+    if (cm != nullptr && cm->destroying_ && !fc4::IsOurObject(o)) {
+        FC4_RELEASE_AT_DESTRUCTION(o);
+        return;
+    }
+    FC4_RELEASE(o);
+}
 uint32_t HostControllerFlags(void* /*user*/, uint64_t /*controller*/) { return 0; }
 void HostLog(void* /*user*/, const char* text) { fc4::Log("automata: %s", text); }
 
@@ -62,12 +88,13 @@ fc4_automata_ref_host RefHost() {
     h.release = &HostRelease;
     return h;
 }
-fc4_automata_cm_host CmHost() {
+fc4_automata_cm_host CmHost(cFC4AutomataControllerManager* owner) {
     fc4_automata_cm_host h{};
     h.struct_size = sizeof(h);
+    h.user = owner;
     h.log = &HostLog;
     h.add_ref = &HostAddRef;
-    h.release = &HostRelease;
+    h.release = &CmHostRelease;
     h.controller_flags = &HostControllerFlags;
     return h;
 }
@@ -179,15 +206,32 @@ bool cFC4AutomataScriptSystem::Read(cIGZIStream& in) {
 // ---- component 41: the controller manager -------------------------------
 
 cFC4AutomataControllerManager::cFC4AutomataControllerManager() {
-    const fc4_automata_cm_host h = CmHost();
+    const fc4_automata_cm_host h = CmHost(this);
     core_ = fc4_automata_cm_create(&h);
     fc4::Log("cFC4AutomataControllerManager(%p) created, core %p", static_cast<void*>(this),
         static_cast<void*>(core_));
 }
 
 cFC4AutomataControllerManager::~cFC4AutomataControllerManager() {
+    destroying_ = true;  // CmHostRelease: the record's references end here
     fc4_automata_cm_destroy(core_);
     core_ = nullptr;
+    destroying_ = false;
+}
+
+intptr_t AutomataCmTeardownTest(cIGZUnknown* held, cIGZUnknown* replaced) {
+    const long before = fc4::RefWarningCount();
+    auto* cm = new cFC4AutomataControllerManager();
+    cm->AddRef();
+    fc4_automata_cm* core = cm->CoreForTest();
+    if (replaced != nullptr) {
+        const fc4_ref r = RefOf(replaced);
+        fc4_automata_cm_set_clock(core, &r);
+    }
+    const fc4_ref h = RefOf(held);
+    fc4_automata_cm_set_clock(core, &h);  // releases `replaced`: not at destruction
+    cm->Release();                         // the destructor releases `held`
+    return fc4::RefWarningCount() - before;
 }
 
 bool cFC4AutomataControllerManager::QueryInterface(uint32_t riid, void** ppvObj) {

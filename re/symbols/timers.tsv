@@ -1,0 +1,44 @@
+va	name	evidence	mac_x86
+0088fdc0	cRZTimer::MeasureFrequencies	timers.md §1.5; descriptive name, no Mac match; sole caller Calibrate (0x0088FFA4); writes F to 0x00B13420 (QueryPerformanceFrequency) and C to 0x00B13428 (= F when the raw rdtsc / QPC ratio is within 0.98..1.02, else cycles over SleepEx(100) loops of at least 0.33 s)	
+0088fedf	cRZTimer::cRZTimer	timers.md §1.1; was cIGZSerializable::cIGZSerializable (no vtable store); stores the unit argument at +0, zeroes +8..+0x17; 98 call sites (clock24.md §4.3: the clock's 0x0044596F)	
+0088fefb	cRZTimer::IsTimerRunning	timers.md §1.3; start tick +8/+0xC non-zero	
+0088ff0a	cRZTimer::Reset	timers.md §1.3; zeroes start and accumulated, keeps the unit	
+0088ff19	cRZTimer::GetTimerCycle	timers.md §1.3; QueryPerformanceCounter into the argument	
+0088ff24	cRZTimer::GetNanosecondsPerTick	timers.md §1.4; descriptive name, no Mac match; fld 0x00B54360; called by cGZMiscCommandSystemSupport::DoMessage	
+0088ff2b	cRZTimer::GetMicrosecondsPerTick	timers.md §1.4; descriptive name, no Mac match; fld 0x00B54364	
+0088ff32	cRZTimer::GetMillisecondsPerTick	timers.md §1.4; descriptive name, no Mac match; fld 0x00B54368	
+0088ff39	cRZTimer::GetSecondsPerTick	timers.md §1.4; descriptive name, no Mac match; fld 0x00B5436C; also called by cSC4GlyphTextureManager	
+0088ff40	cRZTimer::GetMinutesPerTick	timers.md §1.4; descriptive name, no Mac match; fld 0x00B54370	
+0088ff47	cRZTimer::GetMillisecondsPerCycle	timers.md §1.4; descriptive name, no Mac match; fld 0x00B54398 (the cycle table); called by cSC4GlyphTextureManager::GetGlyphTexture	
+0088ff4e	cRZTimer::Calibrate	timers.md §1.5; descriptive name, no Mac match; reached by the jmp at 0x00A78F84 in the static initialisers; real-time priority, MeasureFrequencies, the factor tables 0x00B54360/0x00B54390 and their reciprocals, the minimum of 8 QPC and 8 rdtsc pair differences (0x00B54358, 0x00B54388)	
+00890181	cRZTimer::SetUnits	timers.md §1.3; unit := argument, start and accumulated := 0	
+00890279	cRZTimer::GetElapsedTime	timers.md §1.3; the uint64& overload: units 0-1 raw 64 bits, 2-6 _ftol2(t * factor), else 0	
+00890377	cRZTimer::GetElapsedTime	timers.md §1.3; the float& overload	
+0089045a	cRZTimer::SetElapsedTime	timers.md §1.3; the uint64 overload: units 2-6 multiply by the reciprocal table 0x00B54374, unknown units keep accumulated; then start := now	
+00890501	cRZTimer::SetElapsedTime	timers.md §1.3; the float overload: units 0-1 _ftol2(v), 2-6 _ftol2(v * reciprocal)	
+008905c4	cRZTimer::Start	timers.md §1.3; rdtsc for unit 0, else QueryPerformanceCounter; no running test	
+008905f0	cRZTimer::Stop	timers.md §1.3; always reads QueryPerformanceCounter, also for unit 0	
+0089064d	cRZTimer::Delay	timers.md §1.3; local timer of the same unit, Sleep(0) until GetElapsedTime reaches the argument	
+0093294a	cRZCallbackTimer::SetDelay	timers.md §2.2; slot 1 of vtable 0x00AD1F14; +0x10; a running timer is restarted through slot 5	
+009329ae	cRZCallbackTimer::SetPeriod	timers.md §2.2; slot 3; +0x14; a running timer is restarted through slot 5	
+00932a12	cRZCallbackTimer::Stop	timers.md §2.2; slot 7; service slot 4 (RemoveTimer) with the ID at +0x1C	
+00932a4a	cRZCallbackTimer::SetCallback	timers.md §2.2; slots 9 and 10; +8 := fn, +0xC := argument; also called directly by cSC4ViewInputControlQuery::DoQueryDialog 0x004D3D01 and cRZNetStreamSocket::Connect 0x00821475	
+00932a5d	cRZCallbackTimer::UseTimerService	timers.md §2.2; descriptive name; slot 11; framework service 0xA76C78E7 / IID 0x276C784B, else the default object 0x00B62AB0	
+00932afe	cRZCallbackTimer::~cRZCallbackTimer	timers.md §2.2; leaves the live set 0x00B62A9C under 0x00B62AA8, Stop if running, releases +0x24 and the service	
+00932b87	cRZCallbackTimer::TimerCallback	timers.md §2.4; descriptive name, no Mac match; the handler pushed by Start (0x00932CF5) and StartOnce (0x00932D66); checks the live set, clears a one-shot timer, then fn(argument)	
+00932c23	cRZCallbackTimer::cRZCallbackTimer	timers.md §2.3; delay 100, period 1000, joins the live set, then UseTimerService(true)	
+00932c9c	cRZCallbackTimer::~cRZCallbackTimer (deleting destructor)	timers.md §2.2; slot 0; 0x00932AFE then free on flag bit 0	
+00932cb8	cRZCallbackTimer::Start	timers.md §2.2; descriptive name, no Mac match; slot 5; refused when running or without a callback; service slot 3 (handler, this, period, 0, 0)	
+00932d21	cRZCallbackTimer::StartOnce	timers.md §2.2; descriptive name, no Mac match; slot 6; sets the one-shot flag +0x19; service slot 3 (handler, this, delay or period, 1, 0)	
+009eef04	_ftol2	timers.md §1.3; was _lua_gettop; the CRT float-to-int64 truncation (fistp, then a toward-zero fix-up), 1,480 call sites; aura.md and budget.md call it _ftol (the classic _ftol is lib::__ftol 0x009F17B4)	
+00ad1f14	cRZCallbackTimer::vftable	timers.md §2.2; 13 slots, installed by the constructor 0x00932C23	
+00b13420	cRZTimer::sCounterFrequency (data, uint64)	timers.md §1.5; QueryPerformanceFrequency, written by MeasureFrequencies 0x0088FED4	
+00b13428	cRZTimer::sCycleFrequency (data, uint64)	timers.md §1.5; the CPU cycle rate C, written by MeasureFrequencies 0x0088FECC	
+00b54358	cRZTimer::sCounterOverhead (data, uint64)	timers.md §1.3; the minimum of 8 back-to-back QueryPerformanceCounter differences; subtracted per interval (all units)	
+00b54360	cRZTimer::sCounterFactors (data, float[5])	timers.md §1.2; ns, us, ms, s, min per counter tick (1e9, 1e6, 1e3, 1, 0.016666668 over F)	
+00b54374	cRZTimer::sCounterReciprocals (data, float[5])	timers.md §1.3; 1 / sCounterFactors, read by SetElapsedTime	
+00b54388	cRZTimer::sCycleOverhead (data, uint64)	timers.md §1.5; the minimum of 8 cpuid+rdtsc pair differences; no cRZTimer method reads it	
+00b54390	cRZTimer::sCycleFactors (data, float[5])	timers.md §1.4; ns, us, ms, s, min per CPU cycle; GetMillisecondsPerCycle reads 0x00B54398	
+00b543a4	cRZTimer::sCycleReciprocals (data, float[5])	timers.md §1.5; 1 / sCycleFactors	
+00b62a9c	cRZCallbackTimer::sLiveTimers (data, set of live timers)	timers.md §2.1; joined by the constructor, left by the destructor, searched by TimerCallback	
+00b62aa8	cRZCallbackTimer::sLiveTimersLock (data, critical section)	timers.md §2.1; guards sLiveTimers and the handler's state change	

@@ -214,26 +214,26 @@ the base ctor wrote `0x74758925`.
 | Offset | Type | Meaning |
 |---|---|---|
 | `+0x48` | u32 | lifecycle flags; `Init` sets `0x1A`; the prebuilt `Init` also clears `0x10` and sets `0x40` (§2.5) |
-| `+0x5C` | `S3DTransform` (0x38) | the transform; written by the record (`operator<<` `0x005DA8C0`, legacy load `S3DTransformLegacyLoad` `0x005DA930` below v5) |
-| `+0x64`, `+0x65` | u8 | variation/orientation byte and rotation byte (§2.4) |
-| `+0x68` | object | the model instance (§2.1) |
-| `+0x6C`…`+0x94` | 12 dwords | the model matrix, seeded from `0x00B4525C` then identity 0/1 |
-| `+0x94`…`+0x100` | 4 × 0x18 | the four road **quads** (stride 0x18): dwords +0/+4/+0xC/+0x10, RGBA bytes +8/+9/+A/+B (alpha forced `0xFF` by `SetQuadDraw`) |
+| `+0x38` | object | the `cS3DModelInstanceBasic` virtual base (ctor `0x00801CF0` runs with `this = object+0x38` at `0x0061BE07`; vbtable pointer at `+0x3C`) |
+| `+0x64`…`+0x9B` | `S3DTransform` (0x38) | the transform (NO15): `+0x64` u8 change counter, `+0x65` u8 part mask (`4` rotation, `1` translation, `2` scale), `+0x68`…`+0x8B` 9 f32 rotation rows, `+0x8C`/`+0x90`/`+0x94` f32 translation, `+0x98` f32 scale; the ctor zeroes `+0x64`/`+0x65` (`0x0061BE52`) and seeds the matrix from `0x00B4525C` |
+| `+0x9C`…`+0xFB` | 4 × 0x18 | the road **quad**: four vertices of 0x18 bytes each — f32 x `+0`, y `+4`, z `+8`, colour dword `+0xC` (bytes B,G,R,A at `+0xC`…`+0xF`), f32 u `+0x10`, v `+0x14` (NO16) |
+| `+0xFC` | u32 | saved u32 written after the quad (record field 5) |
 | `+0x100` | u32 | variation (§2.4) |
 | `+0x104` | u8 | orientation/variation byte: low 7 bits `& 0x7F`, bit 7 is the **flip** (§2.4) |
 | `+0x105` | u8 | rotation byte |
-| `+0x108` | ptr | world-cache / cell-info pointer; slot 44 (`0x00604E00`) is `ADD ECX,0x108; JMP 0x006199D0` (free + reload) |
-| `+0x110`…`+0x114` | ptr pair | the triangle list begin/end, stride **0x4C** per vertex (u32 +0; 3 floats +4/+8/+0xC; 4 colour bytes +0x10…+0x13; byte +0x13 forced `0xFF` on read; vertex stride 0x18) |
-| `+0x120`…`+0x134` | 6 floats | the bounding box (min +0x120/+0x124/+0x128, max +0x12C/+0x130/+0x134) |
-| `+0x134` | u32 | saved flags (read `& 0xFFFF1FFF`; values below v5 converted by `ConvertV5FlagsToCurrentFlags` `0x006191A0`) |
-| `+0x138` | ref | an owned reference written through `SC4WriteGZSerializable` with IID `0x6999A8FB` (the segment-o-stream QI; foundations §3) and read back with `SC4ReadGZPersistRef` IID `0xA9667793` |
-| `+0x13C` | u32 | the **network flags** (ctor `0x6000000`); the flag table is network-manager.md §5 |
-| `+0x140` | ptr | cached path info (§2.6) |
+| `+0x108`…`+0x117` | sub-record | the cell-info block (record field 6, helper `this = object+0x108`): u8 entry count `+0x108`, u8 `+0x10C`, u32 `+0x110`, heap array pointer `+0x114` of `count` 8-byte entries {u8 `+0`, u32 `+4`}; slot 44 (`0x00604E00`) is `ADD ECX,0x108; JMP 0x006199D0` (free + reload) |
+| `+0x118`/`+0x11C`/`+0x120` | vector | the triangle list begin/end/capacity, element stride **0x4C**: u32 `+0`, then three vertices of 0x18 in the quad-vertex format above (`+4`, `+0x1C`, `+0x34`) |
+| `+0x124`…`+0x13B` | 6 floats | the bounding box: min x/y/z `+0x124/+0x128/+0x12C`, max x/y/z `+0x130/+0x134/+0x138` (`GetBoundingBox` `0x00619360` on the `+4` view reads view `+0x120`…`+0x134`) |
+| `+0x13C` | u32 | the **network flags** (ctor `0x6000000`); the flag table is network-manager.md §5; saved by the record (field 10: `Read` masks `& 0xFFFF1FFF`, converting below v6 with `ConvertV5FlagsToCurrentFlags` `0x006191A0`) |
+| `+0x140` | ref | an owned reference written through `SC4WriteGZSerializable` with IID `0x6999A8FB` (the segment-o-stream QI; foundations §3) and read back with `SC4ReadGZPersistRef` IID `0xA9667793` (record field 12); §2.6 reads the same word as the cached path info |
 | `+0x144`…`+0x164` | 4 × 8 bytes | the connection byte matrix: `[exit][type]` (§2.6) |
-| `+0x164` | u32 | path-id override (slot 16, `0x006197D0`) |
-| `+0x168`, `+0x16C` | int64 | demolition cost / saved int64 pair (§2.3, slot 63) |
-| `+0x170`, `+0x174` | u32 pair | one-way data backing (§2.4, property `0x4835C6AA`) |
-| `+0x15C` | u32 | saved u32 (slot 64's backing; the record writes it before the `+0x138` ref) |
+| `+0x164` | u32 | path-id override (slot 16, `0x006197D0`); saved by the record (field 11) and the trigger of the v < 8 read tail |
+| `+0x168`, `+0x16C` | int64 | demolition cost / saved int64 pair (slot 63); the ctor zeroes both |
+| `+0x170`, `+0x174` | int64 | the int64 the record saves (field 13: low dword `+0x170`, high `+0x174`); §2.4 also reads this pair as the one-way data backing (property `0x4835C6AA`) |
+
+**Offsets in the record.** `Write` and `Read` sit in the `+8` vtable (`0x00AA7FDC`) with no thunk, so they run with
+`this = object+8`; every offset the record code uses is 8 less than the object offset in this table (NO16 c,
+NO17 b). The rows above give object offsets.
 
 ### 2.3 The base save record *[compat]*
 
@@ -245,24 +245,69 @@ version ≥ 4 (below that it fails at once) and has conversions for 4/5/6/7. In 
 |---|---|---|---|
 | 1 | version | u16 = **8** | `Read` rejects < 4 with nothing more read |
 | 2 | the base occupant record | — | `cSC4Occupant::Write` / `Read` (lot-records.md §2.3) |
-| 3 | transform | `S3DTransform` | `operator<<` (`0x005DA8C0`) on write; on read, v < 5 uses `S3DTransformLegacyLoad` (`0x005DA930`), otherwise the current form |
-| 4 | the four road quads | 4 × { 5 × u32, 4 × u8 } | written in quad order (`+0x94` … `+0xF8`, stride 0x18): five u32s (`+0`, `+4`, `+8`'s dword at `+0x8`…), then bytes `+0xA`, `+0x9`, `+0x8`, `+0xB` as u8 each — i.e. the RGBA bytes in the order A?, B?, G?, R?; *[inferred: the byte order is the quad's own packing, reproduced by writing the same four bytes]* |
-| 5 | u32 at `+0xF4` then u8 at `+0xFD`, u32 at `+0xF8` then u8 at `+0xFC` | u32, u8, u32, u8 | the last quad's tail written directly (the loop covers `+0x94`…`+0xE8`; these two finish the block) |
-| 6 | the `+0x100` sub-record | u16 version = 2, u8, u8, u32 | helper `0x00619C10` (write) / `0x00619C90` (read, rejects ≠ 2) |
-| 7 | triangle count | u32 | `(end − begin)` with stride 0x4C (magic-division `IMUL 0x6BCA1AF3`, sar 5) |
-| 8 | per triangle | u32 + 3 floats + 3 floats + u32 + u32 + 4 × u8 | the vertex record in stream order: u32 (+0), x/y/z (+4/+8/+0xC), u32 (+0x10 from +0x14's dword), u32 (+0x18), bytes +0x12, +0x11, +0x10, +0x13 |
-| 9 | the bounding box | 3 × { u32, u32 } | min x/z pairs `+0x11C`/`+0x120` and max `+0x128`/`+0x12C` written as three u32 pairs at `+0x11C…+0x130` |
-| 10 | u32 `+0x134` | u32 | the saved flags; `Read` below v6 converts them with `ConvertV5FlagsToCurrentFlags` (`0x006191A0`), then always masks `& 0xFFFF1FFF` |
-| 11 | u32 `+0x15C` | u32 | |
-| 12 | the `+0x138` reference | segment-stream ref | written through QI `0x6999A8FB` (helper `0x005D9940`); read with `SC4ReadGZPersistRef` (`0x005D9820`) IID `0xA9667793` into `+0x138` |
-| 13 | the int64 `+0x168`/`+0x16C` | i64 | `SetInt64`/`GetInt64` (stream +0x28) |
+| 3 | transform | `S3DTransform` stream form | object `+0x64` (view `+0x5C`). Write `operator<<` `0x005DA8C0`: u8 mask = the transform's own mask byte `+0x65`, copied, never recomputed; then if `mask & 4` the 9 rotation f32 (`+0x68`…`+0x88`, row by row), if `mask & 1` the 3 translation f32 (`+0x8C`, `+0x90`, `+0x94`), if `mask & 2` the scale f32 (`+0x98`). Read: v ≥ 5 `operator>>` `0x005DA710`, v 4 `S3DTransformLegacyLoad` `0x005DA930`; both rules below the table (NO15) |
+| 4 | the road quad | 4 × { 5 × f32, 4 × u8 } = 96 bytes | object `+0x9C`…`+0xFB`, one vertex per iteration (stride 0x18, 4 iterations, `0x0061A1C0`…`0x0061A23E`): f32 x `+0`, y `+4`, z `+8`, u `+0x10`, v `+0x14`, then the colour bytes `+0xE`, `+0xD`, `+0xC`, `+0xF` — i.e. **R, G, B, A** of the little-endian ARGB dword `+0xC`. Stream slot `+0x30` is `SetFloat32`/`GetFloat32`, so the five values are floats, not u32 (NO16 a) |
+| 5 | four scalars | u32, u8, u32, u8 | u32 object `+0xFC`, u8 `+0x105` (rotation), u32 `+0x100` (variation), u8 `+0x104` (orientation + flip bit), in that order. These are separate fields after the quad, not part of it |
+| 6 | the cell-info sub-record | u16 = 2, u8 count, u8, u32, count × { u8, u32 } | helper `0x00619C10` with `this = object+0x108`: count `+0x108`, u8 `+0x10C`, u32 `+0x110`, then each 8-byte array entry's u8 `+0` and u32 `+4`. Read `0x00619C90`: a version other than 2 returns 0 after consuming only the u16, and **the caller ignores that result** (the stream is then misaligned); otherwise it frees the old array, reads the three header fields and allocates `count × 8` bytes before reading the entries (count 0: no array) |
+| 7 | triangle count | u32 | `(end − begin) / 0x4C` over the vector `+0x118`/`+0x11C` (magic division `0x6BCA1AF3`, `SAR 5`). Read resizes the vector to the count with zero-filled elements (`0x0061CAF0`) |
+| 8 | per triangle | u32 + 3 × { 5 × f32, 4 × u8 } = 76 bytes | u32 `+0`, then the three vertices at element `+4`, `+0x1C`, `+0x34` in the field-4 vertex form (x, y, z, u, v, R, G, B, A). Read forces each vertex alpha byte to `0xFF` after reading it (`0x0061CE04`). The element is 0x4C bytes in memory and 76 in the stream (NO16 b) |
+| 9 | the bounding box | 6 × f32 | interleaved min/max per axis: min x `+0x124`, max x `+0x130`, min y `+0x128`, max y `+0x134`, min z `+0x12C`, max z `+0x138` (loop of 3 at `0x0061A3B8`, slot `+0x30`) (NO16 c) |
+| 10 | the network flags | u32 | object `+0x13C`. Read: below v6 converted by `ConvertV5FlagsToCurrentFlags` (rule below), then always `& 0xFFFF1FFF` |
+| 11 | the path-id word | u32 | object `+0x164` |
+| 12 | the owned reference | segment-stream ref | object `+0x140`; written through QI `0x6999A8FB` (helper `0x005D9940`); read with `SC4ReadGZPersistRef` (`0x005D9820`) IID `0xA9667793`. Read in **every** accepted version (no v8 gate) |
+| 13 | the int64 | i64 (`SetSint64`, slot `+0x28`) | low dword object `+0x170`, high `+0x174`. Read in every accepted version |
 
-`Read`'s tail (both versions): if the `+0x15C` u32 is non-zero and the version is < 7, it recomputes the occupied
-cell from the stored position (the x87 cell formula of §2.4, guard `+ 0xB4C00000` and round) and calls the
-`+0x34`-field object's slot 0x48 with a value; otherwise (v ≥ 7) it calls the same object's slot 0x120 with the
-two floats it just read (the **slot 56 `GetAltitude`** pair, traffic-network.md §7.2) — *[inferred: a saved
-altitude is applied to the piece through its position-fixing helper]*. Then the version-8 branch reads the
-`+0x138` reference and the int64 pair.
+`Write` returns early (to the error-flag return) when the occupant base record fails; otherwise it writes all 13
+fields and returns 1 iff the stream's error flag is clear. Byte count of a version-8 record: 2 (version) + the base occupant
+record + transform (1 + 36·[mask&4] + 12·[mask&1] + 4·[mask&2]) + 96 + 10 + (8 + 5·count) + 4 + 76·triangles
++ 24 + 4 + 4 + ref + 8.
+
+**Transform read rules (NO15).** `operator>>` `0x005DA710` reads the u8 mask; if the live mask byte `+0x65` is
+non-zero it first resets the transform to identity (rotation = identity, translation 0, scale 1.0), sets the mask
+to 0 and increments the counter `+0x64`; then for each mask bit present it reads that part, ORs the bit into `+0x65`
+and increments the counter. A part the stream omits keeps its value from before the call (identity after the
+reset; untouched when the live mask was already 0). The scale is stored as read, but bit 2 is set only when the
+scale differs from 1.0 (constant `0x00A81228`; a NaN counts as different) and cleared when it equals 1.0. So a
+written mask of 7 with scale 1.0 reads back as mask 5. Worked example: a transform with mask `0x01` and translation (8, 2.5, 8) writes the 13
+bytes `01 | 00 00 00 41 | 00 00 20 40 | 00 00 00 41`; mask `0x07`, identity rotation, translation 0 and scale
+2.0 writes 1 + 36 + 12 + 4 = 53 bytes ending `00 00 00 40`.
+`S3DTransformLegacyLoad` (v 4) is fixed-size, 56 bytes: 9 f32 rotation (rows, → `+0x68`…`+0x88`, mask `|= 4`),
+3 f32 translation (→ `+0x8C`…`+0x94`, mask `|= 1`), 1 f32 scale (→ `+0x98`, bit 2 by the 1.0 test as above), then
+a u32 whose **low byte replaces the counter `+0x64`** (the three increments are overwritten). It never resets the
+mask first: bits already set stay set.
+
+**`ConvertV5FlagsToCurrentFlags` `0x006191A0` (NO16 d)** maps each old bit to a new bit, starting from 0:
+
+| old | new | old | new | old | new |
+|---|---|---|---|---|---|
+| `0x1` | `0x1` | `0x400` | `0x1000000` | `0x100000` | `0x80` |
+| `0x2` | `0x2` | `0x800` | `0x2000000` | `0x200000` | `0x100` |
+| `0x4` | `0x4` | `0x1000` | `0x4000000` | `0x400000` | `0x10000` |
+| `0x8` | `0x8` | `0x2000` | `0x40` | `0x800000` | `0x20000` |
+| `0x10` | `0x10` | `0x4000` | `0x20` | `0x1000000` | `0x100000` |
+| `0x20` | `0x40000` | `0x8000` | `0x400000` | `0x4000000` | `0x80000000` |
+| `0x40` | `0x80000` | `0x10000` | `0x10000000` | `0x20000000` | `0x200000` |
+| `0x200` | `0x800000` | `0x40000` | `0x20000000` | | |
+| | | `0x80000` | `0x40000000` | | |
+
+Old bits `0x80`, `0x100`, `0x20000`, `0x2000000`, `0x8000000`, `0x10000000`, `0x40000000`, `0x80000000` produce
+nothing directly. Last step: if old bit `0x80` is **clear**, the result loses `0x6000000` and gains `0x8000000`.
+Worked example: old `0x0000_0283` → `0x1 | 0x2 | 0x800000` = `0x00800003` (bit `0x80` set, so no last step); then
+the read mask gives `0x00800003`. Old `0x0000_1001` → `0x1 | 0x4000000`, then bit `0x80` clear → `0x08000001`.
+
+**The read tail (NO16 e).** After field 11, only when the path-id word `+0x164` is non-zero:
+- v < 7: the record holds **two more f32** here (offsets `dx`, `dz`; current writers never emit them). Read computes
+  a cell `x = floor(((v0.x + v2.x) · 0.5 + dx) · 0.0625)` and `z = floor(((v0.z + v2.z) · 0.5 + dz) · 0.0625)` from
+  quad vertices 0 and 2 (object `+0x9C`/`+0xCC` for x, `+0xA4`/`+0xD4` for z), in x87 then rounded through
+  f32 (`+ 12582912.0` trick and a fix-up that makes exact integers floor to themselves, `0x0061CEBD`…`0x0061CF5B`),
+  and calls primary slot 72 (`0x0061BA90`) with `(x, z)`, which sets property `0x4835C6AB` to `(z << 16) + x`.
+- v < 8 (so also after the v < 7 step): primary slot 7 (`0x0061A120`) with 1, which adds the empty property
+  `0x4835C6AC` (with 0 it would remove it).
+Then fields 12 and 13 are read in every version. Finally Read fetches a render-state block from the model-instance
+base (its slot `+0x3C`); if vertex 0's alpha `+0xAB` is not `0xFF` or that block's bit 2 is set, it forces all four
+quad vertex alphas to `0xFF`, clears bit 2 and stores `255 · (1/255)` = 1.0 as the block's alpha before handing it
+back (slot `+0x40`). The return is 1 iff the stream's error flag is clear; version < 4 returns 0 having read only
+the u16.
 
 The subclass records add fields after the base block; §3.4, §5.4, §6.4, §7.4, §8.5 give each.
 
@@ -395,9 +440,13 @@ The constructor `0x0065C0C0` (the GZCOM creator `0x0065C330` also serves as pipe
 | `+0x98`… | position inputs (§3.3) |
 | `+0x1FC`…`+0x238` | 3 × 4 float matrix (zeroed) |
 | `+0x23C`/`+0x240` | cell x/z (from city slot 0x17C `PositionToCell`) |
-| `+0x248`…`+0x258` | the four stored terrain heights (`GetTerrainHeights` slot 94 `0x00659DD0` reads `+0x24C…+0x258`; `SetTerrainHeights` slot 95 `0x0065B6B0` writes `+0x248…+0x258` and rebuilds) |
-| `+0x259`/`+0x25A` | bytes set to 1/0 by `Read` |
-| `+0x268` | pipe-only u32 (§3.5) |
+| `+0x248`…`+0x24A` | three saved bytes (§3.4 field 9) |
+| `+0x24C`…`+0x258` | the **four terrain heights**, f32 at `+0x24C`, `+0x250`, `+0x254`, `+0x258` (NO17 d): `GetTerrainHeights` slot 94 `0x00659DD0` copies these four out; `SetTerrainHeights` slot 95 `0x0065B6B0` stores exactly these four, then calls primary slot 80 (`+0x140`) with `(&box min +0x124, &box max +0x130)` and `ComputeModelYPosition` `0x0065AB50`; `GetPosition` (on the `+4` view) reads the same four as its view `+0x248`…`+0x254` |
+| `+0x25C` | saved f32 (§3.4 field 11) |
+| `+0x260` | byte set to 1 by the pipe and subway `Read` (code `+0x258`) |
+| `+0x261`/`+0x262` | bytes set to 1/0 by the underground `Read` (code `+0x259`/`+0x25A`) |
+| `+0x264` | the class ID (saved, §3.4 field 12) |
+| `+0x268` | saved u32 (§3.4 field 13), set by the one-parameter `Init` from primary slot 0x65; the pipe's own extra u32 is `+0x270` (§3.3) |
 | `+0x26C` | the per-class **class info** pointer (below) |
 
 The extended interface's underground slots (SDK indices continue past the shared 81):
@@ -445,11 +494,20 @@ through primary slot 0x194 (`GetClassInfo`) into `+0x26C` (per-class static info
   `+0xFC == 0x4B00`): finds the underground connection occupant at its cell (`FindUndergroundConnectionOccupant`
   `0x006585E0`), else the neighbours (`FindUndergroundOccupant` `0x006584D0`, offset tables
   `0x00B0CFE8`/`0x00B0CFEC`); the result is 0/1/2 plus an out byte.
-- **`IsImaginaryConnection`** `0x0065A640`: `FindUndergroundOccupant` at a neighbour; found → `!(bit 31 of its
-  flags)` (a draft neighbour means *not* imaginary).
-- **`GetPosition`** `0x0065A720`: `x = [+0x98]`, `z = [+0xA0]`, y = the **minimum** of the four stored terrain
-  heights `+0x248/+0x24C/+0x250/+0x254` (guarded against `FLT_MAX`, `0x00AAABB0`); then
-  `x += [+0xB0]+[+0xC8]+[+0xE0]+[+0xF8]`, `z += [+0xB8]+[+0xD0]+[+0xE8]+[+0x100]`.
+- **`IsImaginaryConnection(dir)`** `0x0065A640` (NO17 e): if the piece's own flags (primary slot 12, `+0x30`) have
+  bit 31 **clear** it returns false at once. Otherwise it looks for an underground occupant of its own class ID
+  (`+0x264`) at cell (`+0x23C` + dx[dir], `+0x240` + dz[dir]) with `FindUndergroundOccupant` `0x006584D0`; the
+  offset table `0x00B0CFE8` holds (dx, dz) pairs: dir 0 (−1, 0), 1 (0, −1), 2 (+1, 0), 3 (0, +1). **Not found →
+  false.** Found → true iff the neighbour's flags have bit 31 clear (the neighbour reference is released).
+  So: imaginary = "my bit 31 is set and the same-class neighbour in that direction has it clear".
+- **`GetPosition`** `0x0065A720` (on the `+4` view `0x00AAACB8` slot 8, so `this = object+4`; offsets below are
+  object offsets): the out vector starts as (0, `FLT_MAX`, 0). x and z are the **average of the four quad
+  vertices** (NO17 f): x = `((v0.x + v1.x) + v2.x) + v3.x` then `× 0.25` (constant `0x00A8821C`), z the same
+  with the z fields; vertex k is at object `+0x9C + 0x18·k` (x) and `+0xA4 + 0x18·k` (z), each partial sum stored
+  as f32. y = the minimum of the four terrain heights `+0x24C`, `+0x250`, `+0x254`, `+0x258`, compared in that
+  order with a strict `<` against the running value (seeded `FLT_MAX`, `0x00AAABB0`), so a NaN height never wins
+  and all-`FLT_MAX` heights give `FLT_MAX`. Example: vertex x 0/16/16/0, z 0/0/16/16, heights 3, 2.5, 4, 2.5 →
+  (8, 2.5, 8).
 - **Draw** `0x0065B290`: the underground view — walls and floor from the wall quads.
 - **No occupant type override**: the base ctor leaves the `cSC4Occupant` type (`0x74758925`) *[inferred — the
   demolition dispatcher never names an underground type, and consumers reach the piece through
@@ -465,8 +523,8 @@ Layout: `+0` primary `0x00AA97B8` (110 slots), `+4` `0x00AA9730`, `+8` serializa
 `0x00B46708…0x00B4672C`, ratio `d[i]/(d[i]+d[j])` pattern); `cSC4UndergroundOccupant::Init` (`0x0065C6B0`) with
 `(p, classID 0x49C05B9F, param4 0x00B0BED0)`; `+0x270 = 0`.
 
-Record: the base underground `Write` (§3.4) plus `SetUint32(+0x268)`; `Read` symmetric then `+0x258 = 1`. The
-meaning of `+0x268` is not established (NO6, §12).
+Record: u16 **3**, the underground record (§3.4, with its own u16 3), then u32 object `+0x270` (code `+0x268`); `Read` accepts exactly 3, reads the same and then sets the byte object `+0x260 = 1` (code `+0x258`). The
+meaning of `+0x270` is not established (NO6, §12).
 
 `Shutdown` is **shared with the subway**: both classes' slot 4 is `0x00652CF0` (5 bytes, tail to the underground
 `Shutdown`) *[quirk: one folded body for two classes]*.
@@ -477,17 +535,48 @@ it directly (plumbing.md §6.4).
 
 ### 3.4 The underground save record *[compat]*
 
-`Write` `0x0065B140` (v3) / `Read` `0x0065E510` (v3): the base network record (§2.3) with version **3**, then:
+`Write` `0x0065B140` / `Read` `0x0065E510`, in the `+8` vtable with `this = object+8` like the base record (§2.2
+"Offsets in the record"); the offsets below are **object** offsets (code offset + 8). The record is its **own
+u16 version 3 followed by the complete base network record** (§2.3, with its own u16 8), then the underground tail
+(NO17 a):
 
-u8 `+0x48`; u8 `+0x49`; u32 `+0x58`; u32 `+0x174`; six wall-quad writes (helper `FUN_0065B070` at `+0x68`, `+0x74`,
-`+0x80`, `+0x8C`, `+0x9C`, `+0xA8`); vec3 `+0x1F4`; u32 `+0x234`; u32 `+0x238`; 3 bytes `+0x240…+0x242`; 4 dwords
-`+0x244…+0x250`; u32 `+0x254`; u32 `+0x25C`; u32 `+0x260`. `Read` is symmetric and then sets `+0x259 = 1`,
-`+0x25A = 0`.
+| # | Field | Type | Object offset |
+|---|---|---|---|
+| 1 | version | u16 = **3** | `Read` accepts exactly 3; anything else returns 0 having read only the u16 |
+| 2 | the base network record | §2.3 | `cSC4NetworkOccupant::Write`/`Read`; on failure the tail is skipped |
+| 3 | two bytes | u8, u8 | `+0x50`, `+0x51` |
+| 4 | one float | f32 | `+0x60` |
+| 5 | one word | u32 | `+0x17C` |
+| 6 | six wall vertex lists | 6 × list | vectors (begin/end/capacity) at `+0x180`, `+0x18C`, `+0x198`, `+0x1A4`, `+0x1B4`, `+0x1C0` |
+| 7 | a 4 × 4 matrix | 16 × f32 | `+0x1FC`…`+0x23B`, row by row (`operator<<` `0x005DA6E0` / `operator>>` `0x005DA6B0`) |
+| 8 | the cell | s32, s32 | x `+0x23C`, z `+0x240` (`SetSint32`, slot `+0x20`) |
+| 9 | three bytes | u8 × 3 | `+0x248`, `+0x249`, `+0x24A` (`operator<<(u8)` `0x005D9FD0`) |
+| 10 | the four terrain heights | 4 × f32 | `+0x24C`, `+0x250`, `+0x254`, `+0x258` |
+| 11 | one float | f32 | `+0x25C` |
+| 12 | the class ID | u32 | `+0x264` (the field `GetZipperPieceType` and `IsImaginaryConnection` read) |
+| 13 | one word | u32 | `+0x268` |
+
+A **wall vertex list** (helper `0x0065B070` write / `0x006574A0` read, NO17 c) is a u32 count = `(end − begin) /
+0x18` (magic division `0x2AAAAAAB`, `SAR 2`) followed by `count` vertices in the quad-vertex form of §2.3 field 4:
+f32 x, y, z, u, v (element `+0`, `+4`, `+8`, `+0x10`, `+0x14`), then the colour bytes `+0xE`, `+0xD`, `+0xC`,
+`+0xF` (R, G, B, A); 24 bytes per vertex in the stream and in memory. The reader resizes the vector to `count`
+first (`0x005E1B30`) and does **not** force the alpha byte.
+
+After the tail `Read` sets the bytes `+0x261 = 1` and `+0x262 = 0` (code `+0x259`/`+0x25A`) and returns 1 iff the
+stream's error flag is clear. The tail after the base record is 2 + 4 + 4 + 6 × (4 + 24·n) + 64 + 8 + 3 + 16 + 4 + 4
++ 4 = 137 + 24·(total wall vertices) bytes.
+
+Worked example (the stream after the base record, little-endian): bytes `+0x50 = 1`, `+0x51 = 0`, `+0x60 = 2.0`,
+`+0x17C = 7`, six empty wall lists, an identity matrix, cell (12, 34), bytes 0/0/0, heights 1.0/1.5/1.0/1.5,
+`+0x25C = 0`, class `0x49C05B9F`, `+0x268 = 0` give
+`01 00 | 00 00 00 40 | 07 00 00 00 | 00 00 00 00` ×6 `| 00 00 80 3F, 00 00 00 00 ×3, ... (16 floats) | 0C 00 00 00
+22 00 00 00 | 00 00 00 | 00 00 80 3F 00 00 C0 3F 00 00 80 3F 00 00 C0 3F | 00 00 00 00 | 9F 5B C0 49 | 00 00 00 00`
+= 137 bytes.
 
 ### 3.5 `cSC4SubwayOccupant` *(0xCA16374F)*
 
 Layout: `+0` primary `0x00AAA3C8` (112 slots), `+4` `0x00AAA340`, `+8` `0x00AAA324` (Write `0x00653010` v2 / Read
-`0x00653040` v2 = the base underground `Read` then `+0x258 = 1`, **no** extra field), `+0xC` `0x00AAA2C0`.
+`0x00653040` v2: u16 **2**, the underground record (§3.4), **no** extra field; `Read` accepts exactly 2, then sets the byte object `+0x260 = 1`, code `+0x258`), `+0xC` `0x00AAA2C0`.
 
 `Init` `0x006537A0`: `StaticInit` `0x00653640` (ratios from `0x00B0C960`/`0x00B0CB58`/`0x00B0CB80` into
 `0x00B467F8…0x00B4681C`); `cSC4UndergroundOccupant::Init` with `(classID 0xCA16374F, param4 0x00B0CDC8)`.
@@ -926,7 +1015,7 @@ exemplar model to the corners; the quads and triangle soup of §2.2 are the fall
   model refs? shear inputs?
 - **NO5.** The `0x4835C6A7…AC` property-ID family (edge types `0xA7`, passage ceiling `0xA8`, one-way `0xAA`,
   anchor `0xAB`, retrofit `0xAC`) stored in the occupant's own property holder — SDK names unknown.
-- **NO6.** Pipe `Read`'s extra u32 → `+0x268` and `+0x258 = 1` (§3.3): meaning (funding state? watered?)
+- **NO6.** Pipe `Read`'s extra u32 → object `+0x270` and the byte `+0x260 = 1` (§3.3; code offsets `+0x268`/`+0x258`): meaning (funding state? watered?)
   unverified.
 - **NO7.** `GetSortValue`'s stored-field address (§3.2): the negative displacement (`−0x178`/`−0x274`) in the
   decomp is ambiguous; which field holds the sort value when flag `0x6000000` is set.
@@ -970,8 +1059,10 @@ Each test names its section. A "city" is a fresh 64 × 64 city unless stated oth
     high bits reads them cleared).
 12. **v4/v5/v6/v7 record reads** (§2.3). A hand-built v5 record with the legacy transform loads; a v6 record's
     flags go through `ConvertV5FlagsToCurrentFlags`; a v7 record skips the position recompute branch.
-13. **Underground record** (§3.4). A pipe occupant saves and reloads with `+0x268` and the wall quads identical;
-    after read `+0x259 = 1`, `+0x25A = 0`.
+13. **Underground record** (§3.4). A pipe occupant saves and reloads with object `+0x268`, `+0x270`, the four heights
+    `+0x24C`…`+0x258` and the six wall vertex lists identical; after read the bytes `+0x260 = 1`, `+0x261 = 1`,
+    `+0x262 = 0`. The stream is u16 3 (pipe), u16 3 (underground), u16 8 (base) in that order; the underground
+    tail with empty wall lists is 137 bytes.
 14. **Tunnel pairing** (§2.8). Two portals built across a hill save and reload with the `+0x1D0` references
     resolved to each other (traffic-network.md §4.8).
 15. **Connection occupants** (§3.6). A pipe connection saves as class `0xEA0A5ACF` with the seven wall writes and

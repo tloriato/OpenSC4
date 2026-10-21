@@ -62,3 +62,16 @@
   reached only when the cell flags carry `0x80000`, through `0x8A4BD52B` slot 59 on the occupant's `+0x1D0`.
   Use a marks side-channel for the former and resolve the latter on demand. Written into
   [network-rules.md](../../network-rules.md) §14.
+
+## From the glue-netrules4 lane (2026-10-21)
+
+<!-- from: glue-netrules4 (2026-10-21) -->
+- **NR13:** interoperability boundary for the rule solver. `cSC4TileEvaluator`, `cSC4TileRule`, `cSC4TileInfo` and
+  `nSC4Networks` (§6, §9, §10) have no rows in docs/abi (no CLSID, IID, vtable or factory), and the spec names
+  them only as internals of `cSC4NetworkTool::SolveNetwork`. Is there any game-reachable, supported boundary (a GZCOM
+  class/interface the game creates through the COM director, a resource-loader/exemplar hook, or a message) through
+  which the original game would call a replacement of these owners? If not, should the landed Rust
+  `network_rules` (capi `fc4_network_rules_*`) be wired only as a component of our own network tool
+  (engine/plugin/FC4NetToolHost.cpp `InsertOccupantsForSolvedCells`, today piece id 0, active under
+  `enable = netmgr`), with no separate `enable = netrules` key? [blocks: glue for nr owners; no interception invented]
+  **ANSWERED 2026-10-21 (re-netrules-boundary4):** MATCHES — no boundary of its own: the evaluator is a 0x10-byte plain object (one-slot vtable 0x00AA8338, deleting destructor only, no RTTI) made only by LoadEvaluator; the rule is a stack struct, cSC4TileInfo free functions, cIntRule an image-global map; every caller is a direct call in the network tool or the puzzle-piece input control, and no image pointer refers to them. Hosts: the rule resources (data) or the whole network tool (reachable only via a replacement network manager 0xC990BD46). Wire network_rules as a component of our own network tool, no separate enable key. Written into [network-rules.md](../../network-rules.md) §2.4, §12, §14.

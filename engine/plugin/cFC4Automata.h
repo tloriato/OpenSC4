@@ -128,6 +128,14 @@ public:
 private:
     uint32_t refCount_ = 0;
     fc4_automata_cm* core_ = nullptr;
+
+public:
+    // True while the destructor releases the record's references
+    // (fc4_automata_cm_destroy): the cm host's release reads it (user = this).
+    bool destroying_ = false;
+    fc4_automata_cm* CoreForTest() const { return core_; }
+
+private:
     uint64_t time_ = 0;  // tControllerTime (hour + day), filled from the core
     uint64_t empty_ = 0;
 };
@@ -202,3 +210,9 @@ cIGZUnknown* CreateFC4AutomataVehicleManager();
 cIGZUnknown* CreateFC4AutomataPedestrianManager();
 cIGZUnknown* CreateFC4AutomataAircraftManager();
 cIGZUnknown* CreateFC4AutomataWatercraftManager();
+
+// Test seam kFC4SeamAutomataCmTeardown (FC4TestSeam.h): a controller manager
+// holds `held` (and first `replaced`, if non-null, then swaps it for `held`)
+// through its record's clock reference and is destroyed; returns the
+// reference warnings caused.
+intptr_t AutomataCmTeardownTest(cIGZUnknown* held, cIGZUnknown* replaced);

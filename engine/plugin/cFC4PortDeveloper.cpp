@@ -1142,3 +1142,79 @@ cIGZUnknown* CreateFC4AirportDeveloper() {
 cIGZUnknown* CreateFC4SeaportDeveloper() {
     return static_cast<cIGZUnknown*>(static_cast<cFC4ISC4SeaportDeveloper*>(new cFC4SeaportDeveloper()));
 }
+
+// ---- tooling: the harness script's `port` action (cFC4PortDeveloper.h) ----------------------------
+std::string PortScriptBuild(uint32_t kind, uint32_t type, int32_t x, int32_t z, uint32_t facing) {
+    char b[256];
+    if (kind > 1) return "skipped: kind is not 0 (airport) or 1 (seaport)";
+    // §2: the tuning exemplar instance of each developer.
+    const uint32_t tuning = kind == 0 ? 0xCA270E9Du : 0xEA29AD92u;
+    std::vector<uint32_t> types;
+    std::vector<uint32_t> configs;
+    {
+        fc4::props::Exemplar ex;
+        if (!ex.Load(kTuningType, kTuningGroup, tuning) || !fc4::props::GetU32s(ex.Holder(), 0x8A270FC3, types)) {
+            return "skipped: no port type list in the tuning exemplar";
+        }
+    }
+    if (type >= types.size()) {
+        std::snprintf(b, sizeof(b), "skipped: type %u of %u", type, static_cast<unsigned>(types.size()));
+        return b;
+    }
+    {
+        fc4::props::Exemplar ex;
+        if (!ex.Load(kTuningType, kTuningGroup, types[type]) ||
+            !fc4::props::GetU32s(ex.Holder(), 0xCA271781, configs) || configs.empty()) {
+            std::snprintf(b, sizeof(b), "skipped: type exemplar 0x%08X has no lot configuration list", types[type]);
+            return b;
+        }
+    }
+    const uint32_t cfgId = configs[0];
+    cISC4City* c = AppCity();
+    cISC4LotConfigurationManager* m = c ? c->GetLotConfigurationManager() : nullptr;  // borrowed
+    cISC4LotConfiguration* cfg = m ? fc4::AsGame(m)->GetLotConfiguration(cfgId) : nullptr;  // no reference
+    cFC4ISC4LotManager* lm = LotManager();
+    cFC4ISC4LotDeveloper* ld = LotDeveloper();
+    if (cfg == nullptr || lm == nullptr || ld == nullptr) {
+        std::snprintf(b, sizeof(b), "skipped: cfg 0x%08X %s, lot manager %s, lot developer %s", cfgId,
+                      cfg ? "ok" : "missing", lm ? "ok" : "missing", ld ? "ok" : "missing");
+        return b;
+    }
+    uint32_t w = 0;
+    uint32_t d = 0;
+    cfg->GetSize(w, d);  // lot configuration slot 7
+    // [choice] tooling: a script lists several candidate sites; one port of
+    // each kind per session, and a site with any lot on it is skipped
+    // (lot manager slot 6, borrowed).
+    static bool s_built[2] = {false, false};
+    if (s_built[kind]) return "skipped: a port of this kind was built already";
+    for (uint32_t i = 0; i < w; ++i) {
+        for (uint32_t j = 0; j < d; ++j) {
+            if (lm->GetLot(x + static_cast<int32_t>(i), z + static_cast<int32_t>(j), false) != nullptr) {
+                std::snprintf(b, sizeof(b), "skipped: cell (%u, %u) of the %ux%u site at (%d, %d) has a lot",
+                              x + i, z + j, w, d, x, z);
+                return b;
+            }
+        }
+    }
+    cISC4Lot* lot = nullptr;
+    if (!lm->CreateLot(x, z, static_cast<int32_t>(w), static_cast<int32_t>(d), static_cast<int32_t>(facing), lot) ||
+        lot == nullptr) {
+        std::snprintf(b, sizeof(b), "failed: CreateLot(%d, %d, %u, %u, %u) for cfg 0x%08X (type 0x%08X)", x, z, w,
+                      d, facing, cfgId, types[type]);
+        return b;
+    }
+    cFC4ISC4Lot* l = fc4::AsGame(lot);
+    l->SetLotConfiguration(cfg);  // slot 10
+    l->UpdateZoneType();          // slot 32
+    const bool built = ld->ConstructDefaultLot(lot, cfg, 0, true);  // slot 7
+    s_built[kind] = built;
+    std::snprintf(b, sizeof(b), "ok=%d: cfg 0x%08X (type 0x%08X) lot %ux%u at (%d, %d) facing %u", built ? 1 : 0,
+                  cfgId, types[type], w, d, x, z, facing);
+    // CreateLot's reference is the caller's (zones.md §8.5): acquired by us
+    // (as the swap's CreateLot host above), dropped here; the lot manager
+    // keeps its own.
+    if (!fc4::IsOurObject(lot)) FC4_ACQUIRED(reinterpret_cast<cIGZUnknown*>(lot), "CreateLot");
+    FC4_RELEASE(reinterpret_cast<cIGZUnknown*>(lot));
+    return b;
+}

@@ -352,3 +352,32 @@ connection type). The current answer is in brackets.
 - ~~**EX40:** EX34 (data-formats, `format_float`): when the 63 kept characters hold no significant digit (the first one
   falls at the 64th or 65th character), does the trailing-zero strip also remove the `.`? [only `0` characters are
   stripped, so it leaves `0.` or `-0.`; marked [literal reading]]~~ **ANSWERED 2026-10-15 (re-answers11):** MATCHES (data-formats.md §5.1, the 63-character cut). The strip clears only `0` characters, walking back from the 63rd character and never testing the first (`0x00910686`–`0x00910697`), so it stops at the point and leaves `0.` or `-0.`. Examples: 1.5e-62 prints `0.`, −1.5e-61 prints `-0.`. The case needs more digits after the first significant one; a lone digit at the 64th character is cut without a strip.
+<!-- from: glue-formats4 (2026-10-21) -->
+- ~~**EX41 - section 8, factory registration:** §8 says the exemplar and cohort factories are "registered with the
+  resource manager by type ID" but does not give the registration call. What are the arguments of the resource
+  manager's RegisterObjectFactory (which of its two u32 arguments is the resource type and what the other one is),
+  and when a second factory is registered for a type that already has one (`0x6534284A`, `0x05342861`), does the
+  new one replace the old, is it refused, or is the first kept? Is there an unregister call a plug-in must make at
+  shutdown? [not implemented: the plug-in registers no factory; the shadow only reads]~~ **ANSWERED 2026-10-21 (re-exstore-contracts4):** DIFFERS — slot 19 RegisterObjectFactory(class ID, type ID, factory or null); both tables are multimaps, so a second registration is added, neither replaces nor refused, and precedence is undefined after rehash; slot 20 unregisters by class ID only (type entries stay); no unregister needed, the game never calls it; replace by unregistering the game class ID and re-registering under the same class ID (§8.1).
+<!-- from: glue-formats4 (2026-10-21) -->
+- ~~**EX42 - section 8, CreateInstance contract:** the factory slot `CreateInstance` (`0x0067D820` /
+  `0x0067D8D0`) is named by address only. What are its arguments (record or key, requested IID, out pointer and the
+  two trailing u32 values), what does it return on an unknown IID, and who owns the reference of the returned object
+  (is it returned with one reference the resource manager takes over, or does the manager AddRef it)? [not
+  implemented]~~ **ANSWERED 2026-10-21 (re-exstore-contracts4):** DIFFERS — slot 9 CreateInstance(type, IID, out) takes no record/key; the record path is base slot 3 (record, IID, out, u32, u32), trailing values ignored by these factories; unknown type or IID stores null and returns false (object destroyed); each level releases its own reference, the GetResource caller owns one (§8.1).
+<!-- from: glue-formats4 (2026-10-21) -->
+- ~~**EX43 - section 8, SerialRead record position:** when the resource manager calls a factory's `SerialRead`
+  (`0x0067F1E0` / `0x0067F7D0`) with a cIGZPersistDBRecord, is the record positioned at byte 0 of the resource, and
+  are its bytes already QFS-decompressed (§2.6) when the index entry is compressed, or must the factory detect and
+  decompress the `0x10FB` stream itself? [not implemented; the shadow decompresses itself via engine/formats qfs]~~ **ANSWERED 2026-10-21 (re-exstore-contracts4):** MATCHES — the record is freshly opened at position 0 with bytes already QFS-decompressed by the packed-file segment; the factory must not decompress (§8.1).
+<!-- from: glue-formats4 (2026-10-21) -->
+- ~~**EX44 - section 8, record close and object identity:** after `SerialRead` returns, who closes the record (the
+  factory or the resource manager), and does the factory's result have to be the cSCResExemplar class for the rest
+  of the game (callers QueryInterface it for `cISCResExemplar` slots 3-5, 8-15 and for the 25-slot
+  `cISCPropertyHolder`); are those slots' contracts (§8 table) the full set a non-game implementation must provide?
+  [not implemented: no replacement factory]~~ **ANSWERED 2026-10-21 (re-exstore-contracts4):** MATCHES — the resource manager closes the record (CloseRecord on success, AbortRecord on failure), never the factory; it checks only IID 0x456B8F1D and set-key, not the class; readers use cISCResExemplar/cISCPropertyHolder via QueryInterface, full reader audit stays [inferred] (§8.1).
+<!-- from: glue-formats4 (2026-10-21) -->
+- ~~**EX45 - section 3.1 step 3, Sku_Data file set:** the multi-package segment of `<install>\Sku_Data\` (recursive)
+  is not said to hold only `.dat` files, as step 4b says for Plugins. Which files does it take: every file that
+  opens as a DBPF package, only `*.dat`, or every file? And is a file without the DBPF magic in any multi segment
+  skipped silently? [*.dat only; files without the magic skipped]~~ **ANSWERED 2026-10-21 (re-exstore-contracts4):** MATCHES — Sku_Data uses the multi-package segment whose own filter is *.dat (OS wildcard search, case-insensitive); files that fail to open as DBPF are skipped silently (§3.1).

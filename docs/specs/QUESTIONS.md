@@ -35,6 +35,7 @@ generated index: the questions live one file per spec, so read only the file for
 | CB | civic-buildings |
 | CD | city-detail |
 | CK | clock24 |
+| CL | command-line |
 | CM | commercial-industrial |
 | CQ | crime |
 | CR | power |
@@ -45,22 +46,27 @@ generated index: the questions live one file per spec, so read only the file for
 | DP | dispatch |
 | DQ | demand, demolition |
 | DS | disasters |
+| DT | dates |
 | EF | effects |
 | EH | residential-education-health |
 | EX | data-formats |
 | FL | flammability |
+| FM | feature-manager |
 | FN | drawing-fonts |
 | FQ | flora |
 | FS | graphics-formats |
+| GC | command-system |
 | GF | graphics-formats |
 | GLUE | lot-configuration, prop-developer |
 | GZ | framework-gz-services |
 | HG | foundations |
 | HW | history |
 | IN | commercial-industrial |
+| LC | legacy-control |
 | LD | lot-developer |
 | LF | landfill |
 | LG | landfill |
+| LU | language-utility |
 | LV | landvalue |
 | MS | mysims |
 | NB | neighbors, network-bridges |
@@ -69,8 +75,11 @@ generated index: the questions live one file per spec, so read only the file for
 | NO | network-occupants |
 | NR | network-rules |
 | NT | network-tools |
+| OG | occupant-groups |
 | OM | occupant-manager |
 | OP | occupants-props |
+| OS | output-streams |
+| PA | paths |
 | PD | port-developers |
 | PF | pathfinder |
 | PG | pollution |
@@ -86,14 +95,19 @@ generated index: the questions live one file per spec, so read only the file for
 | RG | residential-education-health |
 | RN | foundations |
 | RS | residential |
+| RZ | framework-rz-files |
+| SL | strings-language |
 | SP | span-render-4444 |
-| SR | span-render-1555, span-render-565 |
+| SR | span-render-1555, span-render-565, span-render-8, span-render-8888 |
 | SV | foundations, ordinance |
 | TG | traffic-simulator |
+| TM | timers |
 | TN | traffic-network |
 | TR | terrain |
 | TS | traffic-simulator |
 | TU | tutorial |
+| UG | underground-occupants |
+| VW | view3d-window |
 | WT | widget-toolkit |
 | ZG | zones |
 | ZQ | zones |
@@ -102,56 +116,66 @@ generated index: the questions live one file per spec, so read only the file for
 
 | Spec | Open | Answered | Next free ID | File |
 |---|---:|---:|---|---|
-| advisors | 0 | 3 | AD4 | questions/advisors.md |
+| advisors | 0 | 6 | AD7 | questions/advisors.md |
 | application | 3 | 2 | AP6 | questions/application.md |
-| audio-ambience | 4 | 0 | AA5 | questions/audio-ambience.md |
+| audio-ambience | 9 | 0 | AA10 | questions/audio-ambience.md |
 | aura | 1 | 15 | AU17 | questions/aura.md |
-| automata | 1 | 37 | A5, AM13, AT21 | questions/automata.md |
+| automata | 2 | 37 | A5, AM13, AT22 | questions/automata.md |
 | budget | 0 | 8 | BQ9 | - |
-| budget-window | 5 | 0 | BW6 | questions/budget-window.md |
+| budget-window | 9 | 0 | BW10 | questions/budget-window.md |
 | building-development | 0 | 39 | DG40 | - |
-| city-detail | 0 | 5 | CD6 | - |
+| city-detail | 2 | 5 | CD8 | questions/city-detail.md |
 | city-situation | 2 | 11 | CS14 | questions/city-situation.md |
 | city-tools-input | 5 | 0 | CT6 | questions/city-tools-input.md |
 | civic-buildings | 0 | 19 | CB20 | - |
 | clock24 | 0 | 22 | CK23 | - |
+| command-line | 1 | 0 | CL2 | questions/command-line.md |
+| command-system | 7 | 0 | GC8 | questions/command-system.md |
 | commercial-industrial | 0 | 12 | CM11, IN3 | - |
 | crime | 0 | 24 | CQ25 | - |
-| data-formats | 5 | 40 | EX46 | questions/data-formats.md |
+| data-formats | 0 | 45 | EX46 | questions/data-formats.md |
+| dates | 3 | 0 | DT4 | questions/dates.md |
 | demand | 0 | 13 | DQ14 | - |
 | demolition | 0 | 16 | DM15, DQ5 | - |
 | disasters | 2 | 40 | DS42 | questions/disasters.md |
 | dispatch | 0 | 9 | DP10 | - |
 | drawing-fonts | 6 | 0 | FN7 | questions/drawing-fonts.md |
 | effects | 3 | 10 | EF14 | questions/effects.md |
+| feature-manager | 2 | 0 | FM3 | questions/feature-manager.md |
 | flammability | 0 | 13 | FL14 | - |
 | flora | 0 | 24 | AQ14, FQ16 | - |
 | foundations | 2 | 8 | AO4, HG4, RN4, SV2 | questions/foundations.md |
 | framework-gz-services | 7 | 0 | GZ8 | questions/framework-gz-services.md |
+| framework-rz-files | 8 | 0 | RZ9 | questions/framework-rz-files.md |
 | graphics-formats | 0 | 35 | FS18, GF19 | - |
 | history | 0 | 17 | HW18 | - |
 | landfill | 0 | 36 | LF7, LG31 | - |
 | landvalue | 0 | 5 | LV6 | - |
+| language-utility | 3 | 0 | LU4 | questions/language-utility.md |
+| legacy-control | 3 | 4 | LC9 | questions/legacy-control.md |
 | lot-configuration | 0 | 1 | GLUE22 | - |
 | lot-developer | 2 | 32 | LD35 | questions/lot-developer.md |
 | mysims | 3 | 7 | MS11 | questions/mysims.md |
 | neighbors | 0 | 64 | NB20, NG46 | - |
 | network-bridges | 1 | 2 | NB4 | questions/network-bridges.md |
 | network-geometry | 0 | 7 | NG8 | - |
-| network-manager | 0 | 11 | NM12 | questions/network-manager.md |
-| network-occupants | 17 | 0 | NO18 | questions/network-occupants.md |
-| network-rules | 3 | 7 | NR14 | questions/network-rules.md |
+| network-manager | 0 | 13 | NM14 | questions/network-manager.md |
+| network-occupants | 14 | 3 | NO18 | questions/network-occupants.md |
+| network-rules | 2 | 8 | NR14 | questions/network-rules.md |
 | network-tools | 11 | 0 | NT18 | questions/network-tools.md |
+| occupant-groups | 2 | 0 | OG3 | questions/occupant-groups.md |
 | occupant-manager | 0 | 5 | OM9 | - |
 | occupants-props | 12 | 0 | OP13 | questions/occupants-props.md |
 | ordinance | 0 | 1 | SV3 | - |
+| output-streams | 2 | 0 | OS3 | questions/output-streams.md |
 | parks | 0 | 11 | PK12 | - |
 | particles | 3 | 4 | PT8 | questions/particles.md |
 | pathfinder | 0 | 15 | PF16 | - |
+| paths | 3 | 0 | PA4 | questions/paths.md |
 | persistence | 3 | 0 | PR4 | questions/persistence.md |
 | plumbing | 1 | 8 | PS10 | questions/plumbing.md |
 | pollution | 0 | 16 | PG17 | - |
-| port-developers | 0 | 11 | PD12 | - |
+| port-developers | 1 | 11 | PD13 | questions/port-developers.md |
 | power | 0 | 12 | CR2, PW12 | - |
 | prop-developer | 0 | 14 | GLUE22, PV14 | - |
 | prop-lotconfig | 6 | 8 | PL22 | questions/prop-lotconfig.md |
@@ -160,15 +184,21 @@ generated index: the questions live one file per spec, so read only the file for
 | renderer-driver | 4 | 1 | RD6 | questions/renderer-driver.md |
 | residential | 0 | 17 | RS18 | - |
 | residential-education-health | 0 | 46 | AQ12, EH15, RG29 | - |
-| span-render-1555 | 1 | 3 | SR1556 | questions/span-render-1555.md |
-| span-render-4444 | 2 | 0 | SP3 | questions/span-render-4444.md |
-| span-render-565 | 1 | 0 | SR566 | questions/span-render-565.md |
+| span-render-1555 | 2 | 3 | SR1556 | questions/span-render-1555.md |
+| span-render-4444 | 3 | 1 | SP5 | questions/span-render-4444.md |
+| span-render-565 | 4 | 0 | SR566 | questions/span-render-565.md |
+| span-render-8 | 3 | 0 | SR9 | questions/span-render-8.md |
+| span-render-8888 | 5 | 0 | SR8889 | questions/span-render-8888.md |
+| strings-language | 1 | 0 | SL2 | questions/strings-language.md |
 | terrain | 7 | 36 | TR44 | questions/terrain.md |
+| timers | 1 | 0 | TM2 | questions/timers.md |
 | traffic-network | 0 | 29 | TN30 | - |
 | traffic-simulator | 0 | 93 | TG27, TS68 | questions/traffic-simulator.md |
-| tutorial | 0 | 2 | TU6 | - |
+| tutorial | 4 | 2 | TU10 | questions/tutorial.md |
+| underground-occupants | 4 | 0 | UG5 | questions/underground-occupants.md |
 | unsorted | 0 | 0 | - | questions/unsorted.md |
+| view3d-window | 5 | 1 | VW7 | questions/view3d-window.md |
 | web-network | 0 | 0 | - | questions/web-network.md |
 | widget-toolkit | 5 | 1 | WT7 | questions/widget-toolkit.md |
 | zones | 2 | 56 | ZG43, ZQ17 | questions/zones.md |
-| **total** | **130** | **1008** | | |
+| **total** | **196** | **1028** | | |

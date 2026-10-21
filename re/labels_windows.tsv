@@ -379,9 +379,11 @@ va	name	slots	note
 00aa94f8	cSC4PipeConnectionOccupant::vftable_2	25	paired with Mac __ZTV26cSC4PipeConnectionOccupant#2, 20 agreeing slots
 00aa955c	cSC4PipeConnectionOccupant::vftable_1	6	paired with Mac __ZTV26cSC4PipeConnectionOccupant#1, 5 agreeing slots
 00aa9578	cSC4PipeConnectionOccupant::vftable	45	paired with Mac __ZTV26cSC4PipeConnectionOccupant#0, 32 agreeing slots
+00aa9648	cSC4PipeOccupant::vftable_vbase	0	underground-occupants.md §5; the virtual base's (drawable) vtable, 19 slots, installed at +0x27C
 00aa96b0	cSC4PipeOccupant::vftable_3	25	paired with Mac __ZTV16cSC4PipeOccupant#3, 19 agreeing slots
 00aa9714	cSC4PipeOccupant::vftable_2	6	paired with Mac __ZTV16cSC4PipeOccupant#2, 3 agreeing slots
 00aa9730	cSC4PipeOccupant::vftable_1	34	paired with Mac __ZTV16cSC4PipeOccupant#1, 24 agreeing slots
+00aa97b8	cSC4PipeOccupant::vftable	0	underground-occupants.md §1; 106 slots; installed by 0x006488F0 and 0x006489F0
 00aa9b78	cSC4PowerLineOccupant::vftable_3	25	paired with Mac __ZTV21cSC4PowerLineOccupant#3, 19 agreeing slots
 00aa9bdc	cSC4PowerLineOccupant::vftable_2	6	paired with Mac __ZTV21cSC4PowerLineOccupant#2, 4 agreeing slots
 00aa9bf8	cSC4PowerLineOccupant::vftable_1	34	paired with Mac __ZTV21cSC4PowerLineOccupant#1, 26 agreeing slots
@@ -393,9 +395,11 @@ va	name	slots	note
 00aaa108	cSC4SubwayConnectionOccupant::vftable_2	25	paired with Mac __ZTV28cSC4SubwayConnectionOccupant#2, 20 agreeing slots
 00aaa16c	cSC4SubwayConnectionOccupant::vftable_1	6	paired with Mac __ZTV28cSC4SubwayConnectionOccupant#1, 5 agreeing slots
 00aaa188	cSC4SubwayConnectionOccupant::vftable	45	paired with Mac __ZTV28cSC4SubwayConnectionOccupant#0, 31 agreeing slots
+00aaa258	cSC4SubwayOccupant::vftable_vbase	0	underground-occupants.md §5; the virtual base's vtable, installed at +0x2D4
 00aaa2c0	cSC4SubwayOccupant::vftable_3	25	paired with Mac __ZTV18cSC4SubwayOccupant#3, 19 agreeing slots
 00aaa324	cSC4SubwayOccupant::vftable_2	6	paired with Mac __ZTV18cSC4SubwayOccupant#2, 3 agreeing slots
 00aaa340	cSC4SubwayOccupant::vftable_1	34	paired with Mac __ZTV18cSC4SubwayOccupant#1, 24 agreeing slots
+00aaa3c8	cSC4SubwayOccupant::vftable	0	underground-occupants.md §1; 107 slots; installed by 0x006530B0 and 0x006535A0
 00aaa7c0	cSC4UndergroundConnectionOccupant::vftable_2	25	paired with Mac __ZTV33cSC4UndergroundConnectionOccupant#2, 20 agreeing slots
 00aaa824	cSC4UndergroundConnectionOccupant::vftable_1	6	paired with Mac __ZTV33cSC4UndergroundConnectionOccupant#1, 5 agreeing slots
 00aaac38	cSC4UndergroundOccupant::vftable_3	25	paired with Mac __ZTV23cSC4UndergroundOccupant#3, 19 agreeing slots
@@ -682,6 +686,7 @@ va	name	slots	note
 00ace4fc	cGZGimexFactory::vftable_1	12	paired with Mac __ZTV15cGZGimexFactory#1, 6 agreeing slots
 00ace57c	cGZGimexReader::vftable	13	paired with Mac __ZTV14cGZGimexReader#0, 12 agreeing slots
 00ace5b0	cGZGimexWriter::vftable	11	paired with Mac __ZTV14cGZGimexWriter#0, 9 agreeing slots
+00acecc8	cRZCmdLine::sSwitchPrefixes	0	command-line.md §4; the three switch prefix characters '/', '-', '\'; read by the five switch methods
 00acecd0	cSCProperty::vftable_1	128	paired with Mac __ZTV11cSCProperty#1, 77 agreeing slots
 00acf150	cRZIniFile::vftable	20	paired with Mac __ZTV10cRZIniFile#0, 19 agreeing slots
 00acf1b4	cRZSystemService::vftable_1	6	paired with Mac __ZTV16cRZSystemService#1, 5 agreeing slots
@@ -693,6 +698,8 @@ va	name	slots	note
 00acfee0	cGZClipboardManager::vftable	21	paired with Mac __ZTV19cGZClipboardManager#0, 21 agreeing slots
 00ad1250	cRZLanguageUtility::vftable	33	paired with Mac __ZTV18cRZLanguageUtility#0, 30 agreeing slots
 00ad14a0	cRZLanguageManager::vftable	48	paired with Mac __ZTV18cRZLanguageManager#0, 40 agreeing slots
+00ad15a0	cGZMessage2CommandDispatcherMessage::vftable_1	0	command-system.md §4.5; the +4 standard-message vtable, 38 slots
+00ad1638	cGZMessage2CommandDispatcherMessage::vftable	0	command-system.md §4.5; 3 slots: 0x009297B0, 0x009297A0 (shared), 0x009297A8
 00ad1644	cGZMessage2CommandDispatcher::vftable	7	paired with Mac __ZTV28cGZMessage2CommandDispatcher#0, 6 agreeing slots
 00ad16c8	cGZCommandParameterSet::vftable	16	paired with Mac __ZTV22cGZCommandParameterSet#0, 13 agreeing slots
 00ad1708	cGZStringCommandGenerator::vftable	12	paired with Mac __ZTV25cGZStringCommandGenerator#0, 9 agreeing slots
@@ -700,11 +707,15 @@ va	name	slots	note
 00ad176c	cGZCommandServer::vftable_1	13	paired with Mac __ZTV16cGZCommandServer#1, 5 agreeing slots
 00ad17a0	cGZCommandServer::vftable	25	paired with Mac __ZTV16cGZCommandServer#0, 22 agreeing slots
 00ad1818	cRZNullOStream::vftable	24	paired with Mac __ZTV14cRZNullOStream#0, 9 agreeing slots
+00ad1878	cRZIStream::vftable	0	output-streams.md §5; installed by 0x0092BC14
 00ad18d8	cRZNullOStream::vftable	24	paired with Mac __ZTV14cRZNullOStream#0, 8 agreeing slots
+00ad1938	cRZNullIStream::vftable	0	output-streams.md §5; installed by 0x0092BC80
+00ad1998	cRZTextOStream::vftable	0	output-streams.md §2.1; 24 slots
 00ad19f8	cRZOFStream::vftable	24	paired with Mac __ZTV11cRZOFStream#0, 20 agreeing slots
 00ad1ad0	cGZMessageQueue2::vftable	25	paired with Mac __ZTV16cGZMessageQueue2#0, 25 agreeing slots
 00ad1dc0	cGZDefaultAllocator::vftable	7	paired with Mac __ZTV19cGZDefaultAllocator#0, 5 agreeing slots
 00ad1ef4	cRZCriticalSection::vftable	8	paired with Mac __ZTV18cRZCriticalSection#0, 7 agreeing slots
+00ad1f14	cRZCallbackTimer::vftable	0	timers.md §2.2; 13 slots, installed by the constructor 0x00932C23
 00ad20d0	nGZLog::cService::vftable_2	18	paired with Mac __ZTVN6nGZLog8cServiceE#2, 14 agreeing slots
 00ad2118	nGZLog::cService::vftable_1	6	paired with Mac __ZTVN6nGZLog8cServiceE#1, 3 agreeing slots
 00ad2130	nGZLog::cService::vftable	13	paired with Mac __ZTVN6nGZLog8cServiceE#0, 6 agreeing slots
@@ -870,3 +881,40 @@ va	name	slots	note
 00ae46b4	cGZWinMgrW32::vftable_1	13	paired with Mac __ZTV12cGZWinMgrW32#1, 8 agreeing slots
 00ae48d8	cGZWinMgrBase::vftable_1	13	paired with Mac __ZTV13cGZWinMgrBase#1, 8 agreeing slots
 00b00a5c	cRZFastCompression3::vftable	10	paired with Mac __ZTV19cRZFastCompression3#0, 9 agreeing slots
+00b0b6d0	cSC4PipeConnectionOccupant::sModelDescriptor	0	underground-occupants.md §4; passed to the base Init by 0x00648050
+00b0ba68	cSC4PipeOccupant::sCornerPoints	0	underground-occupants.md §2.5; read by StaticInit
+00b0be88	cSC4PipeOccupant::sTints	0	underground-occupants.md §2.2; dry (0.8, 0.23, 0.23), watered (1, 1, 1); read by GetTint 0x006488A0
+00b0bec0	cSC4PipeOccupant::sPool	0	underground-occupants.md §1; vtable 0x00AA9960; used by operator new, the factory and the deleting destructor
+00b0bed0	cSC4PipeOccupant::sModelDescriptor	0	underground-occupants.md §1; returned by main slot 101, passed to the base Init; points at the geometry and ratio tables
+00b0c388	cSC4SubwayConnectionOccupant::sModelDescriptor	0	underground-occupants.md §4; passed to the base Init by 0x00652A80
+00b0c960	cSC4SubwayOccupant::sCornerPoints	0	underground-occupants.md §3.6; read by StaticInit
+00b0cdb8	cSC4SubwayOccupant::sPool	0	underground-occupants.md §1; vtable 0x00AAA578
+00b0cdc8	cSC4SubwayOccupant::sModelDescriptor	0	underground-occupants.md §1; returned by main slot 101
+00b13420	cRZTimer::sCounterFrequency	0	timers.md §1.5; QueryPerformanceFrequency, written by MeasureFrequencies 0x0088FED4
+00b13428	cRZTimer::sCycleFrequency	0	timers.md §1.5; the CPU cycle rate C, written by MeasureFrequencies 0x0088FECC
+00b16998	cRZDirectory::sSelfName	0	paths.md §3.3; points at '.' (0x00AA1B74)
+00b1699c	cRZDirectory::sParentName	0	paths.md §3.3; points at '..' (0x00ABF638)
+00b169a0	cRZDirectory::sAllFilter	0	paths.md §3.2; points at '*' (0x00A870D4), the default filter
+00b169b0	cRZTextOStream::sFormats	0	output-streams.md §2.2; %d, %u, %lld, %llu, %g (0x00A8281C, 0x00AA657C, 0x00ACEED0, 0x00ACEED8, 0x00AAEC04)
+00b21624	cSC4FeatureManager::sStaticInitDone	0	feature-manager.md §2; set by StaticInit 0x0046FC0A, cleared by StaticShutdown 0x0046FA32
+00b21628	cSC4FeatureManager::sInstalledPacks	0	feature-manager.md §2; bit k = pack k+1; OR-ed at 0x0046FCB9, read by IsExpansionPackInstalled 0x0046F78C
+00b2162c	cSC4FeatureManager::sEnabledFeatures	0	feature-manager.md §2; filled by FeaturesIniEntryCallback, searched by IsFeatureEnabled
+00b46708	cSC4PipeOccupant::sDiagonalRatios	0	underground-occupants.md §2.5; L4/(L1+L4), L3/(L2+L3), L2/(L2+L3), L1/(L1+L4), 1, 1
+00b46720	cSC4PipeOccupant::sDiagonalRatios2	0	underground-occupants.md §2.5; L1/(L1+L4), L2/(L2+L3), L3/(L2+L3), L4/(L1+L4)
+00b46730	cSC4PipeOccupant::sStaticInitDone	0	underground-occupants.md §2.5; set by StaticInit 0x00648B6F
+00b467f8	cSC4SubwayOccupant::sDiagonalRatios	0	underground-occupants.md §3.6
+00b46810	cSC4SubwayOccupant::sDiagonalRatios2	0	underground-occupants.md §3.6
+00b46820	cSC4SubwayOccupant::sStaticInitDone	0	underground-occupants.md §3.6
+00b54358	cRZTimer::sCounterOverhead	0	timers.md §1.3; the minimum of 8 back-to-back QueryPerformanceCounter differences; subtracted per interval (all units)
+00b54360	cRZTimer::sCounterFactors	0	timers.md §1.2; ns, us, ms, s, min per counter tick (1e9, 1e6, 1e3, 1, 0.016666668 over F)
+00b54374	cRZTimer::sCounterReciprocals	0	timers.md §1.3; 1 / sCounterFactors, read by SetElapsedTime
+00b54388	cRZTimer::sCycleOverhead	0	timers.md §1.5; the minimum of 8 cpuid+rdtsc pair differences; no cRZTimer method reads it
+00b54390	cRZTimer::sCycleFactors	0	timers.md §1.4; ns, us, ms, s, min per CPU cycle; GetMillisecondsPerCycle reads 0x00B54398
+00b543a4	cRZTimer::sCycleReciprocals	0	timers.md §1.5; 1 / sCycleFactors
+00b62914	cRZDirectory::sRecursionDepth	0	paths.md §3.5; incremented and decremented by 0x0091BD88
+00b6291c	RZFileFindFirstHook	0	paths.md §4; read by RZFileFindFirst, never written
+00b62920	RZFileFindNextHook	0	paths.md §4; read by RZFileFindNext, never written
+00b62924	RZCreateDirectoryHook	0	paths.md §4; read by CreateDirectoryA, never written
+00b62928	RZRemoveDirectoryHook	0	paths.md §4; read by CreateDirectoryA and RemoveDirectoryA, never written
+00b62a9c	cRZCallbackTimer::sLiveTimers	0	timers.md §2.1; joined by the constructor, left by the destructor, searched by TimerCallback
+00b62aa8	cRZCallbackTimer::sLiveTimersLock	0	timers.md §2.1; guards sLiveTimers and the handler's state change

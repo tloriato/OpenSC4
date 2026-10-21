@@ -1,0 +1,16 @@
+va	name	evidence	mac_x86
+00505330	cSC4OccupantGroupTemplate::GetSourceBuildingGroup	occupant-groups.md §4.4; descriptive name; first non-zero +0x6C (source_building) up the +0x0C parent chain; callers InitExemplarData 0x0050FC46, CreateAutomatonForPlayerDrive 0x00529367	
+0051c380	cSC4OccupantGroupTemplate::IsOccupantGroup	occupant-groups.md §4.2; compares the id with +0x10 of this group and each +0x0C ancestor	
+0051c3b0	cSC4OccupantGroupTemplate::GetClassID	occupant-groups.md §4.3; descriptive name; first non-zero +0x14 (class_id) up the parent chain; sole caller CreateAutomatonInternal 0x0051079F	
+0051c3d0	cSC4OccupantGroupTemplate::IsOccupantIncluded	occupant-groups.md §4.1; vtable 0x00A96C0C slot 3; property 0xAA1DD396 against +0x10, then the +0x2C percentage draw	
+0051c4a0	cSC4OccupantGroupTemplate::GetGroupHierarchyDepth	occupant-groups.md §4.5; counts the +0x0C chain, 0 for a null this	
+0051cd90	cSC4OccupantGroupTemplate::GetGroupIDVariant	occupant-groups.md §4.6; caches the chain's non-zero IDs in the +0x18 variant	
+0051d040	tKeyEffect::tKeyEffect	occupant-groups.md §3.3; three empty cRZStrings (+0x00 fx, +0x14 bone, +0x28 controller) and flags +0x3C = 0	
+0051d0d0	tKeyEffect::~tKeyEffect	occupant-groups.md §3.3; frees the three strings	
+0051fb90	tKeyEffect::tKeyEffect (copy)	occupant-groups.md §3.3; copies the three strings and the flag word; used by the key-effect map insert 0x00520520	
+0051fc80	cSC4OccupantGroupTemplate::ClearKeyEffects	occupant-groups.md §4.8; descriptive name; empties the +0x70 hash map of tKeyEffect nodes; sole caller the destructor 0x00520454	
+0051fd30	tKeyEffect::operator=	occupant-groups.md §4.7; assigns the three strings and the flag word; sole caller GetKeyEffect 0x00520510	
+00520410	cSC4OccupantGroupTemplate::~cSC4OccupantGroupTemplate	occupant-groups.md §4.8; frees +0x60/+0x64, clears +0x70, +0x54, +0x50, +0x48, +0x34, +0x30, +0x18, then the base destructor 0x005E95C0	
+005204d0	cSC4OccupantGroupTemplate::GetKeyEffect	occupant-groups.md §4.7; looks up the low byte of the command in the +0x70 map	
+005206b0	cSC4OccupantGroupTemplate::cSC4OccupantGroupTemplate	occupant-groups.md §2; base 0x005EA080, vtables 0x00A96C0C / 0x00A96BF4, +0x2C = 1.0, +0x4C = +0x4E = -2; sole caller CreateOccupantGroup 0x00520BF2 (0x84 bytes)	
+00520780	cSC4OccupantGroupTemplate::~cSC4OccupantGroupTemplate (deleting destructor)	occupant-groups.md §4.8; vtable 0x00A96C0C slot 6; destructor 0x00520410, then GlobalHeapFree when flag bit 0 is set	

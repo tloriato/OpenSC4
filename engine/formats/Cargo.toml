@@ -15,6 +15,7 @@ name = "fc4_formats"
 name = "fc4-dat"
 path = "src/bin/fc4-dat.rs"
 
-[dev-dependencies]
+[dependencies]
+# command_values: the converting getters for the command system's parameter values. Also used by
 # tests/save_records.rs: the history and clock records of the saves, read and written by the cores.
 fc4-core = { path = "../core" }

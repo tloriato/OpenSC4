@@ -140,6 +140,11 @@ function Differs([string]$line) {
     if ($m.Count -gt 0) { return [int]$m[$m.Count - 1].Groups[1].Value -ne 0 }
     return $line -match $differs
 }
+function Resynced([string]$line) {
+    # A reset can make subsequent comparisons match without proving the model.
+    return ($line -match '\bresynced:\s*(?!none\b|0\b)\S') -or
+           ($line -match '\bresyncs?\s*[=:]\s*[1-9]\d*\b')
+}
 $sg = $shadows | Group-Object { $_.Matches[0].Groups[1].Value }
 if ($sg) {
     Write-Output ""
@@ -147,6 +152,8 @@ if ($sg) {
     foreach ($g in $sg) {
         $clean = @($g.Group | Where-Object { -not (Differs $_.Line) }).Count
         Write-Output ("  {0,-12} {1,5} lines, {2} with every mismatch count 0" -f $g.Name, $g.Count, $clean)
+        $resynced = @($g.Group | Where-Object { Resynced $_.Line }).Count
+        Write-Output ("  {0} resynced lines: {1}" -f $g.Name, $resynced)
         $bad = $g.Group | Where-Object { Differs $_.Line } | Select-Object -First 2
         foreach ($b in $bad) { Write-Output ("    differs: " + (Body $b.Line)) }
     }

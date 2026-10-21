@@ -1,0 +1,28 @@
+va	name	evidence	mac_x86
+00419490	cRZCmdLine::~cRZCmdLine	command-line.md §1.2; destroys +0x28, +0x14 and each argument (cRZString virtual +0x70 with 0), frees the vector at +8	
+00419500	cRZCmdLine::~cRZCmdLine (deleting destructor)	command-line.md §1.2; slot 15 of vtable 0x00A82A20 (Release 0x008D29B9 calls +0x3C with 1); 0x00419490 then GlobalHeapFree on flag bit 0	
+00442e90	std::basic_string<char>::resize	command-line.md §4.2; descriptive name; STLport resize(n, c): truncates when n <= size, else appends n - size copies of c (0x00442A80); 35 call sites	
+004425c0	std::basic_string<char>::erase	command-line.md §4.1; was cSLTokenSerialRecordIO_Text::GetToken; STLport erase(pos, n): out_of_range ('basic_string', 0x009DD0A0) when pos > size, else memmove of the tail; 238 call sites	
+004427f0	std::basic_string<char>::find	command-line.md §4.3; was std::vector<CookieData>::size; STLport find(char const* s, pos, n): npos when pos + n > size, else search 0x004426C0 from begin + pos; 21 call sites	
+0044aa00	std::basic_string<char>::find	command-line.md §4; descriptive name; STLport find(char c, pos): npos when pos >= size, else find_if (lib::__find_if 0x0044A4B0); 35 call sites, e.g. the switch-prefix test against '/-\' 0x00ACECC8	
+0044ed40	std::basic_string<char>::assign	command-line.md §4.2; descriptive name; STLport assign(string const& s, pos, n): out_of_range when pos > s.size, else assign(begin + pos, begin + pos + min(n, size - pos)) through 0x00408A70; 21 call sites	
+00485280	std::copy (cRZString range)	command-line.md §3 slot 14; descriptive name; cdecl wrapper passing (first, last, dest) to the cRZString copy loop 0x0051FF00; sole caller the vector erase 0x00914B90	
+00913e16	cRZCmdLine::QueryInterface	command-line.md §3; slot 0 of vtable 0x00A82A20; IIDs 1 and 0xA31E539C (cIGZCmdLine)	
+00913e3b	cRZCmdLine::GetArgument	command-line.md §3; descriptive name, no Mac match; slot 16; returns &args[i] for i < argc (signed compare), else &this->+0x28; no direct caller	
+00913e62	cRZCmdLine::argv	command-line.md §3; slot 4; returns the character buffer (+4) of args[i] for i < argc (signed compare), else that of +0x28	
+00913e8a	cRZCmdLine::argc	command-line.md §3; slot 3; (end - begin) / 0x14 of the vector at +8	
+00913ec2	cRZCmdLine::IsSwitchPresent	command-line.md §3; was cRZCmdLine::GetIndexOfSwitch; slot 9, the one-argument (cIGZString const&) overload, ret 4, bool: slot 11 (name, 0) >= 0, else slot 8 (name, scratch, true); the Mac pairing swaps MSVC's overload order	
+00913f1a	cRZCmdLine::GetIndexOfSwitch	command-line.md §4.3; slot 12, the (char, int start) overload, ret 8: an argument of exactly 2 characters, prefix in '/-\', second character the letter in either case	
+00914001	cRZCmdLine::GetIndexOfSwitch	command-line.md §4.3; was cRZCmdLine::IsSwitchPresent; slot 11, the (cIGZString const&, int start) overload, ret 8, returns an index or -1: length Strlen(name) + 1, lower-cased text after the prefix equals the lower-cased name	
+00914174	cRZCmdLine::ConvertStringArrayToString	command-line.md §2.2; joins the arguments with spaces, quoting one that holds a space, tab or newline; ignores this, ret 8; callers InsertArgument 0x00914C18 and EraseArgument 0x00914C64	
+00914240	cRZCmdLine::IsSwitchPresent	command-line.md §4.2; descriptive name, no Mac match; slot 10, the (char, cIGZString& value, bool unquote) overload, ret 0xC; a bare -c leaves value unwritten (0x00914302)	
+009143cb	cRZCmdLine::IsSwitchPresent	command-line.md §4.1; slot 8, the (cIGZString const&, cIGZString& value, bool unquote) overload, ret 0xC; -name:value with ':' at len(name)+1, strips one leading and one trailing quote of either kind	
+009145a5	cRZCmdLine::Find	command-line.md §3; slot 6, (cIGZString const&, bool caseSensitive), ret 8; whole-argument equality, MakeLower on both when not case-sensitive; -1 when absent	
+00914691	cRZCmdLine::FindSubString	command-line.md §3; slot 7, (cIGZString const&, bool caseSensitive), ret 8; first argument containing the text (basic_string::find 0x004427F0); -1 when absent	
+00914a30	cRZCmdLine::cRZCmdLine	command-line.md §1.2; the (cIGZCmdLine const&) constructor: source slot 5 into +0x14, then source argv(i) for i < argc appended; callers cSC4App::Init, PostFrameWorkInit, DoPreferencesChanged, cSC4ConfigRuleManager, cSC4View3DWin	
+00914b75	std::vector<cRZString,std::allocator<cRZString>>::erase	command-line.md §3 slot 14; descriptive name; the one-iterator erase: copy the tail down (0x00485280), destroy the last element (virtual +0x70 with 0), ret 4; sole caller EraseArgument 0x00914C58	
+00914bae	cRZCmdLine::InsertArgument	command-line.md §3; slot 13, (cIGZString const&, int index), ret 8; index clamped to 0..argc, then the join 0x00914174; true	
+00914c25	cRZCmdLine::EraseArgument	command-line.md §3; slot 14, (int index), ret 4; index >= argc becomes argc - 1 (no lower bound), erase 0x00914B75, join 0x00914174; true	
+00914c70	cRZCmdLine::ConvertStringToStringArray	command-line.md §2.1; was cRZCmdLine::ConvertStringArrayToString; splits text into arguments (space, tab, newline; even-quote rule; outer quotes stripped); ignores this, ret 8; sole caller the char const* constructor 0x00914E49	
+00914e14	cRZCmdLine::cRZCmdLine	command-line.md §1.2; the (char const*) constructor: +0x14 := text (0x00408480), then ConvertStringToStringArray; callers _main (GetCommandLineA) and about 20 cheat handlers	
+00acecc8	cRZCmdLine::sSwitchPrefixes (data, char[4]: slash, hyphen, backslash, NUL)	command-line.md §4; the three switch prefix characters '/', '-', '\'; read by the five switch methods	

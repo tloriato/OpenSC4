@@ -1,0 +1,92 @@
+va	name	evidence	mac_x86
+00417600	cRZTime::BeginDST	dates.md §2.2; descriptive name; 1974 Jan 6, 1975 Feb 23, else Sunday on or before Apr 8 (0x009130BE(4, 8, y) then 0x00912C42(7)), 02:00 + _timezone	
+004176e0	cRZTime::EndDST	dates.md §2.2; descriptive name; Sunday on or before Oct 31, 01:00 + _timezone	
+00417730	cRZTime::IsDST	dates.md §2.2; was cRZTime::LocalSecs; false when _daylight (0x00B18BAC) is 0, else BeginDST(Y) <= t < EndDST(Y)	
+00417840	cRZTime::LocalSecs	dates.md §2.3; was cRZDate::Set; t - _timezone (0x00B18BA8), plus 3600 under IsDST; called by cRZDate::Set(cRZTime) 0x00913223	
+00417870	cRZTime::Hour	dates.md §2.3; (LocalSecs mod 86400) / 3600	
+004178b0	cRZTime::Minute	dates.md §2.3; (LocalSecs mod 3600) / 60	
+00470010	cRZTime::cRZTime (date, hour, minute, second)	dates.md §2.1; ((day - 2415386) * 24 + h - 1) * 3600 + m * 60 + s, + _timezone, DST adjustment, gap hour gives 0	
+00470b50	cRZTime::cRZTime	dates.md §2, crime.md §9; now, from localtime(time())	
+009126e0	cRZDate::IsValidMonth	dates.md §1.1; descriptive name; 1 <= m <= 12	
+009126f3	cRZDate::cRZDate (cIGZDate const&)	dates.md §3.1; was cIGZDate::cIGZDate; vtable 0x00A827D8, day number from the source date's cIGZDate slot 26 (+0x68)	
+0091270e	cRZDate::cRZDate (cGZDate const&)	dates.md §3.1; day number from the source object's cIGZDate view at +8, slot 26	
+00912741	cRZDate::LeapYear	dates.md §1.1; y % 4 == 0 and y % 100 != 0, or y % 400 == 0	
+0091276f	cRZDate::CompareTo	dates.md §1.4; -1 / 0 / 1 on unsigned day numbers	
+00912789	cRZDate::Mdy	dates.md §1.3; inverse of Jday, constants 1721119, 146097, 1461, 153	
+0091282d	cRZDate::Max	dates.md §1.4; the later of two dates, this one on a tie	
+0091284e	cRZDate::Min	dates.md §1.4; the earlier of two dates, this one on a tie	
+0091286f	cRZDate::Month	dates.md §1.3	
+0091288b	cRZDate::WeekDay	dates.md §1.4; ((n + 1) mod 7 + 6) mod 7 + 1, 1 = Monday	
+009128a3	cRZDate::Year	dates.md §1.3	
+00912ad9	cRZDate::Between	dates.md §1.4; inclusive, either order	
+00912b08	cRZDate::DayWithinMonth	dates.md §1.1; month table 0x00ACE9F8	
+00912b49	cRZDate::DaysInYear	dates.md §1.4; 365 + LeapYear	
+00912b5f	cRZDate::Jday	dates.md §1.2; 0 for an invalid date	
+00912bcc	cRZDate::DayOfYear	dates.md §1.4; n - Jday(12, 31, Year() - 1)	
+00912beb	cRZDate::DayOfMonth	dates.md §1.3	
+00912c07	cRZDate::FirstDayOfMonth	dates.md §1.4; table 0x00ACEA00, +1 after February in a leap year	
+00912c42	cRZDate::Previous	dates.md §1.4; descriptive name; latest date on or before this one with the given weekday	
+00912c79	cRZDate::DateString	dates.md §1.6; vtable 0x00A827D8 slot 2; format table of patterns	
+0091307c	cRZDate::cRZDate	dates.md §1.5; today, from localtime(time())	
+009130be	cRZDate::cRZDate (month, day, year)	dates.md §1.5; Jday(m, d, y)	
+009130e4	cRZDate::Set (day of year, year)	dates.md §1.5; year 0 counts from 1901-01-01 (0x24DB1A + day)	
+00913113	cRZDate::Set (month, day, year)	dates.md §1.5; returns the day number in EAX	
+00913131	cRZDate::Set (month name, day, year)	dates.md §1.5; 3-character strnicmp against Jan..Dec (0x00B168FC), no match = January	
+009131fa	cRZDate::cRZDate (day of year, year)	dates.md §1.5; static 1901-01-01 date 0x00B62898 built with (0, 0) at 0x00A7922F	
+00913216	cRZDate::Set (cRZTime const&)	dates.md §1.5; LocalSecs / 86400 + 2415386, 0 for time 0	
+009b2c1c	cRZDate::Set (day number)	dates.md §1.5; unchecked	
+009128bf	cGZDate::~cGZDate	dates.md §3.1; resets vtables 0x00ACEAF0 / 0x00ACEA38	
+009128cd	cGZDate::Copy	dates.md §4; cIGZDate slot 8; slot 4 with the source date's DayNumber	
+009128e7	cGZDate::QueryInterface	dates.md §3.1; cIGZDate slot 0; IIDs 1 and 0x43378255	
+00912912	cGZDate::Release	dates.md §3.1; cIGZDate slot 2; count at +0x0C, frees when below 2	
+0091292e	cGZDate::Set (day number)	dates.md §4; cIGZDate slot 4; returns the day number in EAX	
+00912938	cGZDate::CompareTo	dates.md §4; cIGZDate slot 11	
+0091295c	cGZDate::WeekDay	dates.md §4; cIGZDate slot 12	
+00912964	cGZDate::Year	dates.md §4; cIGZDate slot 13	
+0091296c	cGZDate::IsValid	dates.md §4; cIGZDate slot 19; day number != 0	
+00912976	cGZDate::Month	dates.md §4; cIGZDate slot 23	
+0091297e	cGZDate::DayNumber	dates.md §4; cIGZDate slots 18 (Hash) and 26	
+00912982	cGZDate::operator<	dates.md §4; cIGZDate slot 27	
+009129a4	cGZDate::operator<=	dates.md §4; cIGZDate slot 28	
+009129c5	cGZDate::operator>	dates.md §4; cIGZDate slot 29	
+009129e7	cGZDate::operator>=	dates.md §4; cIGZDate slot 30	
+00912a08	cGZDate::operator==	dates.md §4; cIGZDate slot 31	
+00912a2b	cGZDate::operator!=	dates.md §4; cIGZDate slot 32	
+00912a4e	cGZDate::operator- (cIGZDate const&)	dates.md §4; cIGZDate slot 34; returns a day number	
+00912a65	cGZDate::operator+ (cIGZDate const&)	dates.md §4; cIGZDate slot 36; returns a day number	
+00912a78	cGZDate::operator- (int32)	dates.md §4; cIGZDate slot 33; returns a day number	
+00912a82	cGZDate::operator+ (int32)	dates.md §4; cIGZDate slot 35; returns a day number	
+00912a8c	cGZDate::operator++	dates.md §4; cIGZDate slot 37	
+00912a99	cGZDate::operator--	dates.md §4; cIGZDate slot 38	
+00912aa6	cGZDate::operator+=	dates.md §4; cIGZDate slot 39	
+00912ab9	cGZDate::operator-=	dates.md §4; cIGZDate slot 40	
+00912acc	cGZDate::LeapYear	dates.md §4; cIGZDate slot 45	
+00912dd6	cGZDate::~cGZDate (deleting destructor)	dates.md §3.1; vtable 0x00ACEAF0 slot 3; GlobalHeapFree with flag bit 0	
+00912dfa	cGZDate::cGZDate (cIGZDate const&)	dates.md §3.1	
+00912e24	cGZDate::cGZDate (cGZDate const&)	dates.md §3.1; copy	
+00912e4e	cGZDate::cGZDate (cRZDate const&)	dates.md §3.1	
+00912e7b	cGZDate::cGZDate (day number)	dates.md §3.1	
+00912e9f	cGZDate::Clone	dates.md §4; cIGZDate slot 9; GlobalHeapAlloc(0x10)	
+00912ed7	cGZDate::Between	dates.md §4; cIGZDate slot 10	
+00912f0b	cGZDate::DayOfYear	dates.md §4; cIGZDate slot 14	
+00912f13	cGZDate::DayOfMonth	dates.md §4; cIGZDate slot 15	
+00912f1b	cGZDate::FirstDayOfMonth (month)	dates.md §4; cIGZDate slot 16	
+00912f23	cGZDate::Leap	dates.md §4; cIGZDate slot 20	
+00912f33	cGZDate::MaxDate	dates.md §4; cIGZDate slot 21	
+00912f71	cGZDate::MinDate	dates.md §4; cIGZDate slot 22	
+00912faf	cGZDate::Previous	dates.md §4; cIGZDate slot 24	
+00912fdd	cGZDate::YearLastTwoDigits	dates.md §4; cIGZDate slot 25	
+00912fef	cGZDate::operator-- (postfix)	dates.md §3.1; vtable 0x00ACEAF0 slot 5; returns the old value	
+00913018	cGZDate::operator++ (postfix)	dates.md §3.1; vtable 0x00ACEAF0 slot 4; returns the old value	
+00913041	cGZDate::DayWithinMonth	dates.md §4; cIGZDate slot 42	
+00913058	cGZDate::DaysInYear	dates.md §4; cIGZDate slot 43	
+00913065	cGZDate::Jday	dates.md §4; cIGZDate slot 44	
+00913177	cGZDate::cGZDate	dates.md §3.1; today	
+0091319b	cGZDate::cGZDate (month, day, year)	dates.md §3.1	
+009131cd	cGZDate::Set (day of year, year)	dates.md §4; cIGZDate slot 7; thunk to 0x009130E4	
+009131d5	cGZDate::Set (month, day, year)	dates.md §4; cIGZDate slot 6; thunk to 0x00913113	
+009131dd	cGZDate::Set (month name, day, year)	dates.md §4; cIGZDate slot 3; thunk to 0x00913131	
+009131e5	cGZDate::FirstDayOfMonth	dates.md §4; cIGZDate slot 17; for Month()	
+0091323d	cGZDate::Set (cRZTime const&)	dates.md §4; cIGZDate slot 5; thunk to 0x00913216	
+00913245	cGZDate::DateString	dates.md §4; cIGZDate slot 41	
+00417a70	std::basic_string<char>::push_back	dates.md lane; was cGZDate::Year; appends one char and the terminating NUL, growing through 0x0040F1B0; callers gConvertURLFromEndodedForm, cSC4MySim::GetPersonalName, std::operator+, cSC4App::PreFrameWorkInit	

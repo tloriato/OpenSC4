@@ -304,6 +304,11 @@ enum : uint32_t {
     kFC4SeamTerrainGlue = 67,  // the glue18 lane (cFC4Terrain.h FC4TerrainGlueTestInput; 59 taken by kFC4SeamCitySitShadow)
     kFC4SeamNeighborsConfirm = 66,  // the apply12 lane (NG35, cFC4Neighbors.h NeighborsTestSetConfirm)
     kFC4SeamMySimsShadow = 68,  // the mysims1 lane (FC4MySimsShadow.h MySimsShadowTest)
+    // the verify-automatarefs4 lane (cFC4Automata.h AutomataCmTeardownTest):
+    // a = cIGZUnknown* game object the controller manager holds to its
+    // destruction, b = cIGZUnknown* one it releases before (or null); returns
+    // the reference warnings caused.
+    kFC4SeamAutomataCmTeardown = 69,
 };
 
 using FC4PostSinkFn = void (*)(void* context, cIGZMessage2Standard* msg);

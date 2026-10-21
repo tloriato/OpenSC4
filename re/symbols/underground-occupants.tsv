@@ -1,0 +1,109 @@
+va	name	evidence	mac_x86
+00648040	cSC4PipeConnectionOccupant::GetGZCLSID	underground-occupants.md §1; main slot 37 of 0x00AA9578 and +4 slot 5; returns 0xEA0A5ACF	
+00648050	cSC4PipeConnectionOccupant::Init	underground-occupants.md §4; main slot 3; +0x24 := 0x2A183167, then the base Init 0x00654710(0xEA0A5ACF, 0x00B0B6D0)	
+00648080	cSC4PipeConnectionOccupant::QueryInterface	underground-occupants.md §1; main slot 0; IID 0xEA0A5ACF, else cSC4UndergroundConnectionOccupant::QueryInterface 0x00654030	
+006480b0	cSC4PipeConnectionOccupant::GetSortValue	underground-occupants.md §4; descriptive name; virtual-base vtable 0x00AA9480 slot 17 through 0x006482D0; out := 0xEA0A5ACF, pop 4	
+006480c0	cSC4PipeConnectionOccupant::QueryInterface (thunk)	underground-occupants.md §5; descriptive name; this - 4; +4 vtable 0x00AA955C slot 0, used by no other class	
+006480f0	cSC4PipeConnectionOccupant::QueryInterface (thunk)	underground-occupants.md §5; descriptive name; this - 8; +8 vtable 0x00AA94F8 slot 0, used by no other class	
+00648120	cSC4PipeConnectionOccupant::~cSC4PipeConnectionOccupant (thunk)	underground-occupants.md §5; descriptive name; this - 8; 0x00AA94F8 slot 22, used by no other class	
+00648150	cSC4PipeConnectionOccupant::QueryInterface (thunk)	underground-occupants.md §5; descriptive name; this - 0x1C; +0x1C vtable 0x00AA94E0 slot 0, used by no other class	
+00648180	cSC4PipeConnectionOccupant::QueryInterface (thunk)	underground-occupants.md §5; descriptive name; this - 0x34; +0x34 vtable 0x00AA94D0 slot 0, used by no other class	
+006481b0	cSC4PipeConnectionOccupant::~cSC4PipeConnectionOccupant (thunk)	underground-occupants.md §5; descriptive name; this - 0x38; +0x38 vtable 0x00AA94CC slot 0, used by no other class	
+006481c0	cSC4PipeConnectionOccupant::QueryInterface (thunk)	underground-occupants.md §5; descriptive name; vtordisp, this - [this - 4] - 0x24C; virtual-base vtable 0x00AA9480 slot 0, used by no other class	
+006482d0	cSC4PipeConnectionOccupant::GetSortValue (thunk)	underground-occupants.md §5; descriptive name; vtordisp, this - [this - 4], to 0x006480B0; 0x00AA9480 slot 17, used by no other class	
+006482f0	cSC4PipeConnectionOccupant::~cSC4PipeConnectionOccupant (deleting destructor)	underground-occupants.md §4; was cSC4PipeConnectionOccupant::~cSC4PipeConnectionOccupant; base destructor 0x00654DB0, GlobalHeapFree on flag bit 0	
+00648360	cSC4PipeConnectionOccupant::QueryOccupantInterface	underground-occupants.md §4; was cSC4UndergroundConnectionOccupant::GetTransform; main slot 44 (the subway connection's Mac-named counterpart is 0x00652BD0); occ QueryInterface 0x49C05B9F, then 0x4A10AFC2 into out; pop 8, AL	
+006483c0	cSC4PipeConnectionOccupant::cSC4PipeConnectionOccupant	underground-occupants.md §1; flag 1 sets +0x3C (0x00AA962C) and +0x24C; cSC4UndergroundConnectionOccupant constructor 0x00654F00; vtables 0x00AA9578, 0x00AA955C, 0x00AA94F8, 0x00AA94E0, 0x00AA94D0, 0x00AA94CC, 0x00AA9480; also called by cSC4ViewInputControlPlaceLot::PlaceLot 0x004C1C9E	
+00648440	GZCOM_CreatecSC4PipeConnectionOccupant	underground-occupants.md §1; registered with class 0xEA0A5ACF by cSC4COMDirector 0x004606C5; GlobalHeapAlloc(0x250), constructor 0x006483C0(1)	
+006484b0	cSC4PipeOccupant::GetModelDescriptor	underground-occupants.md §1; descriptive name, no Mac match; main slot 101 (pure in the underground base); returns 0x00B0BED0, which Init also passes to the base Init	
+006484c0	cSC4PipeOccupant::GetModelInstanceOffset	underground-occupants.md §1; main slot 105; returns 0x06000000	
+006484d0	cSC4PipeOccupant::QueryInterface	underground-occupants.md §1; main slot 0 of 0x00AA97B8; IIDs 0x49C05B9F and 0xA9764C8C, else cSC4UndergroundOccupant::QueryInterface 0x0065A080	
+00648500	cSC4PipeOccupant::GetSortValue	underground-occupants.md §2.2; descriptive name (the subway counterpart's Mac name); slot 17 of the virtual-base vtable 0x00AA9648 through 0x006487B0; piece id +0xFC when flags +0x13C & 0x06000000, else 0x49C05B9F	
+00648540	cSC4PipeOccupant::SetWateredState	underground-occupants.md §2.2; non-virtual, pop 4; plumbing.md §6.4 calls it; watered +0x270, tail call of main slot 100 with 0 on a change	
+00648580	cSC4PipeOccupant::PoolNewPage	underground-occupants.md §1; descriptive name; slot 2 of the pipe pool vtables 0x00AA9960 / 0x00AA9978: a 64 KiB page of 102 free 0x280-byte blocks	
+006485c0	cSC4PipeOccupant::QueryInterface (thunk)	underground-occupants.md §5; descriptive name; this - 4; +4 vtable 0x00AA9730 slot 0, used by no other class	
+006485f0	cSC4PipeOccupant::QueryInterface (thunk)	underground-occupants.md §5; descriptive name; this - 8; +8 vtable 0x00AA9714 slot 0, used by no other class	
+00648620	cSC4PipeOccupant::QueryInterface (thunk)	underground-occupants.md §5; descriptive name; this - 0xC; +0xC vtable 0x00AA96B0 slot 0, used by no other class	
+00648650	cSC4PipeOccupant::~cSC4PipeOccupant (thunk)	underground-occupants.md §5; descriptive name; this - 0xC; 0x00AA96B0 slot 22, used by no other class	
+00648660	cSC4PipeOccupant::QueryInterface (thunk)	underground-occupants.md §5; descriptive name; this - 0x20; +0x20 vtable 0x00AA9698 slot 0, used by no other class	
+00648690	cSC4PipeOccupant::~cSC4PipeOccupant (thunk)	underground-occupants.md §5; descriptive name; this - 0x38; +0x38 vtable 0x00AA9694 slot 0, used by no other class	
+006486a0	cSC4PipeOccupant::QueryInterface (thunk)	underground-occupants.md §5; descriptive name; vtordisp, this - [this - 4] - 0x27C; virtual-base vtable 0x00AA9648 slot 0, used by no other class	
+00648760	cSC4PipeOccupant::Draw (thunk)	underground-occupants.md §5; descriptive name; vtordisp, this - [this - 4] - 8, to cSC4UndergroundOccupant::Draw 0x0065B290; 0x00AA9648 slot 12, used by no other class	
+006487b0	cSC4PipeOccupant::GetSortValue (thunk)	underground-occupants.md §5; descriptive name; vtordisp, this - [this - 4], to 0x00648500; 0x00AA9648 slot 17, used by no other class	
+006487d0	cSC4PipeOccupant::operator new	underground-occupants.md §1; descriptive name; pops a block from the pool 0x00B0BEC0 (new page through 0x0090CF9A); caller 0x00648D9B	
+00648800	cSC4PipeOccupant::Write	underground-occupants.md §2.3; slot 3 of 0x00AA9714 (this = +8): u16 3, cSC4UndergroundOccupant::Write, u32 watered	
+00648840	cSC4PipeOccupant::Read	underground-occupants.md §2.3; slot 4 of 0x00AA9714: version must be 3, base Read 0x0065E510, u32 into watered, +0x260 := 1	
+006488a0	cSC4PipeOccupant::GetTint	underground-occupants.md §2.2; descriptive name; main slot 103; the RGB triple at 0x00B0BE88 + 12 * watered (+0x270)	
+006488d0	cSC4PipeOccupant::Write (thunk)	underground-occupants.md §5; descriptive name; this - 4; 0x00AA96B0 slot 23, used by no other class	
+006488e0	cSC4PipeOccupant::Read (thunk)	underground-occupants.md §5; descriptive name; this - 4; 0x00AA96B0 slot 24, used by no other class	
+006488f0	cSC4PipeOccupant::cSC4PipeOccupant	underground-occupants.md §1; flag 1 sets the virtual-base table +0x3C (0x00AA9970) and +0x27C; installs vtables 0x00AA97B8, 0x00AA9730, 0x00AA9714, 0x00AA96B0; watered := 0	
+00648970	cSC4PipeOccupant::PoolFree	underground-occupants.md §1; descriptive name; slot 1 of the pipe pool vtables: returns a block to its 64 KiB page, releases or relinks the page	
+006489b0	GZCOM_CreatecSC4PipeOccupant	underground-occupants.md §1; registered with class 0x49C05B9F by cSC4COMDirector 0x004606A1; pool block, constructor 0x006488F0(1), returns the +4 sub-object	
+006489f0	cSC4PipeOccupant::~cSC4PipeOccupant (deleting destructor)	underground-occupants.md §1; was cSC4PipeOccupant::~cSC4PipeOccupant; reinstalls the vtables, cSC4UndergroundOccupant destructor 0x0065C0C0, then returns the block to the pool on flag bit 0	
+00648a90	cSC4PipeOccupant::StaticInit	underground-occupants.md §2.5; five xz lengths from 0x00B0BA68 with index lists 0x00B0BC60 / 0x00B0BC88, ratios to 0x00B46708 and 0x00B46720, flag 0x00B46730	
+00648bc0	cSC4PipeOccupant::Init	underground-occupants.md §2.2; slot 3 of the occupant interface 0x00AA9730: StaticInit once, then unless IsInitialized the base Init 0x0065C070 and 0x0065AE80	
+00648bf0	cSC4PipeOccupant::Init	underground-occupants.md §2.2; main slot 3, pop 4: StaticInit once, unless IsInitialized the base Init 0x0065C6B0(arg, 0x49C05B9F, 0x00B0BED0), watered := 0	
+00652a70	cSC4SubwayConnectionOccupant::GetGZCLSID	underground-occupants.md §1; main slot 37 of 0x00AAA188 and +4 slot 5; returns 0xCA15ED6B	
+00652a80	cSC4SubwayConnectionOccupant::Init	underground-occupants.md §4; main slot 3; +0x24 := 0x8A13918A, then the base Init 0x00654710(0xCA15ED6B, 0x00B0C388)	
+00652aa0	cSC4SubwayConnectionOccupant::QueryInterface	underground-occupants.md §1; main slot 0; IID 0xCA15ED6B, else the underground connection's QueryInterface	
+00652ad0	cSC4SubwayConnectionOccupant::GetSortValue	underground-occupants.md §4; descriptive name; virtual-base vtable 0x00AAA090 slot 17 through 0x00652B50; out := 0xCA15ED6B	
+00652ae0	cSC4SubwayConnectionOccupant::QueryInterface (thunk)	underground-occupants.md §5; descriptive name; this - 4; +4 vtable 0x00AAA16C slot 0, used by no other class	
+00652af0	cSC4SubwayConnectionOccupant::QueryInterface (thunk)	underground-occupants.md §5; descriptive name; this - 8; +8 vtable 0x00AAA108 slot 0, used by no other class	
+00652b00	cSC4SubwayConnectionOccupant::~cSC4SubwayConnectionOccupant (thunk)	underground-occupants.md §5; descriptive name; this - 8; 0x00AAA108 slot 22, used by no other class	
+00652b10	cSC4SubwayConnectionOccupant::QueryInterface (thunk)	underground-occupants.md §5; descriptive name; this - 0x1C; +0x1C vtable slot 0, used by no other class	
+00652b20	cSC4SubwayConnectionOccupant::QueryInterface (thunk)	underground-occupants.md §5; descriptive name; this - 0x34; +0x34 vtable slot 0, used by no other class	
+00652b30	cSC4SubwayConnectionOccupant::~cSC4SubwayConnectionOccupant (thunk)	underground-occupants.md §5; descriptive name; this - 0x38; +0x38 vtable slot 0, used by no other class	
+00652b40	cSC4SubwayConnectionOccupant::QueryInterface (thunk)	underground-occupants.md §5; descriptive name; vtordisp, this - [this - 4] - 0x24C; virtual-base vtable 0x00AAA090 slot 0, used by no other class	
+00652b50	cSC4SubwayConnectionOccupant::GetSortValue (thunk)	underground-occupants.md §5; descriptive name; vtordisp, this - [this - 4], to 0x00652AD0; 0x00AAA090 slot 17, used by no other class	
+00652b60	cSC4SubwayConnectionOccupant::~cSC4SubwayConnectionOccupant (deleting destructor)	underground-occupants.md §4; was cSC4SubwayConnectionOccupant::~cSC4SubwayConnectionOccupant; base destructor, GlobalHeapFree on flag bit 0	
+00652bd0	cSC4SubwayConnectionOccupant::QueryOccupantInterface	underground-occupants.md §4; main slot 44; occ QueryInterface 0xCA16374F, then 0x4A10AFC2 into out; pop 8, AL	
+00652c30	cSC4SubwayConnectionOccupant::cSC4SubwayConnectionOccupant	underground-occupants.md §1; the pipe connection's constructor with the subway connection's vtables; also called by cSC4ViewInputControlPlaceLot::PlaceLot 0x004C1D82	
+00652cb0	GZCOM_CreatecSC4SubwayConnectionOccupant	underground-occupants.md §1; GlobalHeapAlloc(0x250), constructor 0x00652C30(1)	
+00652cd0	cSC4SubwayOccupant::GetModelDescriptor	underground-occupants.md §1; descriptive name, no Mac match; main slot 101; returns 0x00B0CDC8	
+00652ce0	cSC4SubwayOccupant::GetModelInstanceOffset	underground-occupants.md §1; main slot 105; returns 0x07000000	
+00652d00	cSC4SubwayOccupant::QueryInterface	underground-occupants.md §1; main slot 0 of 0x00AAA3C8; IID 0xCA16374F, else cSC4UndergroundOccupant::QueryInterface	
+00652d30	cSC4SubwayOccupant::GetSortValue	underground-occupants.md §3.2; virtual-base vtable 0x00AAA258 slot 17 through 0x00652FC0; piece id +0xFC when flags +0x13C & 0x06000000, else 0xCA16374F	
+00652d70	cSC4SubwayOccupant::GetAltitude	underground-occupants.md §3.3; descriptive name (network-manager.md: occupant slot 56); main slot 56, pop 8: the floor quad +0x270 interpolated over the u = w diagonal, times 0.0625 (0x00AAA250), minus 0.5 (0x00AAA574)	
+00652e00	cSC4SubwayOccupant::PoolNewPage	underground-occupants.md §1; descriptive name; subway pool vtable 0x00AAA578 slot 2: a page of 90 free 0x2D8-byte blocks	
+00652e40	cSC4SubwayOccupant::QueryInterface (thunk)	underground-occupants.md §5; descriptive name; this - 4; +4 vtable 0x00AAA340 slot 0, used by no other class	
+00652e60	cSC4SubwayOccupant::QueryInterface (thunk)	underground-occupants.md §5; descriptive name; this - 8; +8 vtable 0x00AAA324 slot 0, used by no other class	
+00652e70	cSC4SubwayOccupant::QueryInterface (thunk)	underground-occupants.md §5; descriptive name; this - 0xC; +0xC vtable 0x00AAA2C0 slot 0, used by no other class	
+00652e80	cSC4SubwayOccupant::~cSC4SubwayOccupant (thunk)	underground-occupants.md §5; descriptive name; this - 0xC; 0x00AAA2C0 slot 22, used by no other class	
+00652e90	cSC4SubwayOccupant::QueryInterface (thunk)	underground-occupants.md §5; descriptive name; this - 0x20; +0x20 vtable 0x00AAA2A8 slot 0, used by no other class	
+00652ea0	cSC4SubwayOccupant::~cSC4SubwayOccupant (thunk)	underground-occupants.md §5; descriptive name; this - 0x38; +0x38 vtable 0x00AAA2A4 slot 0, used by no other class	
+00652eb0	cSC4SubwayOccupant::QueryInterface (thunk)	underground-occupants.md §5; descriptive name; vtordisp, this - [this - 4] - 0x2D4; virtual-base vtable 0x00AAA258 slot 0, used by no other class	
+00652f70	cSC4SubwayOccupant::Draw (thunk)	underground-occupants.md §5; descriptive name; vtordisp, this - [this - 4] - 0x60, to cSC4UndergroundOccupant::Draw 0x0065B290; 0x00AAA258 slot 12, used by no other class	
+00652fc0	cSC4SubwayOccupant::GetSortValue (thunk)	underground-occupants.md §5; was __ZThn56_NK18cSC4SubwayOccupant12GetSortValueERm (the Mac mangled thunk name, which the coverage tool cannot read); vtordisp, this - [this - 4], to 0x00652D30; 0x00AAA258 slot 17	
+00652fe0	cSC4SubwayOccupant::operator new	underground-occupants.md §1; descriptive name; pops a block from the pool 0x00B0CDB8	
+00653010	cSC4SubwayOccupant::Write	underground-occupants.md §3.5; slot 3 of 0x00AAA324: u16 2 then cSC4UndergroundOccupant::Write	
+00653040	cSC4SubwayOccupant::Read	underground-occupants.md §3.5; slot 4 of 0x00AAA324: version must be 2, base Read, +0x260 := 1	
+00653090	cSC4SubwayOccupant::Write (thunk)	underground-occupants.md §5; descriptive name; this - 4; 0x00AAA2C0 slot 23, used by no other class	
+006530a0	cSC4SubwayOccupant::Read (thunk)	underground-occupants.md §5; descriptive name; this - 4; 0x00AAA2C0 slot 24, used by no other class	
+006530b0	cSC4SubwayOccupant::cSC4SubwayOccupant	underground-occupants.md §1; flag 1 sets +0x3C (0x00AAA588) and +0x2D4; vtables 0x00AAA3C8, 0x00AAA340, 0x00AAA324, 0x00AAA2C0	
+00653130	cSC4SubwayOccupant::UpdateFloor	underground-occupants.md §3.3; descriptive name; new main slot 106; four corner vertices into +0x270 from the vertex list +0x1B4, or for piece ids 0x300 / 0x4B00 from +0x1E4 (vertices 4, 5, 7, 6, rotated)	
+00653520	cSC4SubwayOccupant::PoolFree	underground-occupants.md §1; descriptive name; subway pool vtable slot 1	
+00653560	GZCOM_CreatecSC4SubwayOccupant	underground-occupants.md §1; registered with class 0xCA16374F by cSC4COMDirector 0x004606B3; pool block, constructor 0x006530B0(1), returns the +4 sub-object	
+006535a0	cSC4SubwayOccupant::~cSC4SubwayOccupant (deleting destructor)	underground-occupants.md §1; was cSC4SubwayOccupant::~cSC4SubwayOccupant; base destructor, then the block back to the pool 0x00B0CDB8 on flag bit 0	
+00653640	cSC4SubwayOccupant::StaticInit	underground-occupants.md §3.6; the pipe's algorithm on 0x00B0C960 / 0x00B0CB58 / 0x00B0CB80, ratios to 0x00B467F8 and 0x00B46810, flag 0x00B46820	
+00653770	cSC4SubwayOccupant::Init	underground-occupants.md §3.2; slot 3 of the occupant interface 0x00AAA340	
+006537a0	cSC4SubwayOccupant::Init	underground-occupants.md §3.2; main slot 3, pop 4: base Init 0x0065C6B0(arg, 0xCA16374F, 0x00B0CDC8)	
+006537e0	cSC4SubwayOccupant::GetPathInfo	underground-occupants.md §3.4; main slot 49; resource {0x296678F7, 0xA966883F, piece id | 0x06000000} through 0x00B45254, every point y := GetAltitude(x, z), 3D path lengths	
+00aa9648	cSC4PipeOccupant::vftable_vbase	underground-occupants.md §5; the virtual base's (drawable) vtable, 19 slots, installed at +0x27C	
+00aa97b8	cSC4PipeOccupant::vftable	underground-occupants.md §1; 106 slots; installed by 0x006488F0 and 0x006489F0	
+00aaa258	cSC4SubwayOccupant::vftable_vbase	underground-occupants.md §5; the virtual base's vtable, installed at +0x2D4	
+00aaa3c8	cSC4SubwayOccupant::vftable	underground-occupants.md §1; 107 slots; installed by 0x006530B0 and 0x006535A0	
+00b0b6d0	cSC4PipeConnectionOccupant::sModelDescriptor (data)	underground-occupants.md §4; passed to the base Init by 0x00648050	
+00b0ba68	cSC4PipeOccupant::sCornerPoints (data, 24-byte points)	underground-occupants.md §2.5; read by StaticInit	
+00b0be88	cSC4PipeOccupant::sTints (data, float[2][3])	underground-occupants.md §2.2; dry (0.8, 0.23, 0.23), watered (1, 1, 1); read by GetTint 0x006488A0	
+00b0bec0	cSC4PipeOccupant::sPool (data, pool object)	underground-occupants.md §1; vtable 0x00AA9960; used by operator new, the factory and the deleting destructor	
+00b0bed0	cSC4PipeOccupant::sModelDescriptor (data)	underground-occupants.md §1; returned by main slot 101, passed to the base Init; points at the geometry and ratio tables	
+00b0c388	cSC4SubwayConnectionOccupant::sModelDescriptor (data)	underground-occupants.md §4; passed to the base Init by 0x00652A80	
+00b0c960	cSC4SubwayOccupant::sCornerPoints (data, 24-byte points)	underground-occupants.md §3.6; read by StaticInit	
+00b0cdb8	cSC4SubwayOccupant::sPool (data, pool object)	underground-occupants.md §1; vtable 0x00AAA578	
+00b0cdc8	cSC4SubwayOccupant::sModelDescriptor (data)	underground-occupants.md §1; returned by main slot 101	
+00b46708	cSC4PipeOccupant::sDiagonalRatios (data, float[6])	underground-occupants.md §2.5; L4/(L1+L4), L3/(L2+L3), L2/(L2+L3), L1/(L1+L4), 1, 1	
+00b46720	cSC4PipeOccupant::sDiagonalRatios2 (data, float[4])	underground-occupants.md §2.5; L1/(L1+L4), L2/(L2+L3), L3/(L2+L3), L4/(L1+L4)	
+00b46730	cSC4PipeOccupant::sStaticInitDone (data, bool)	underground-occupants.md §2.5; set by StaticInit 0x00648B6F	
+00b467f8	cSC4SubwayOccupant::sDiagonalRatios (data, float[6])	underground-occupants.md §3.6	
+00b46810	cSC4SubwayOccupant::sDiagonalRatios2 (data, float[4])	underground-occupants.md §3.6	
+00b46820	cSC4SubwayOccupant::sStaticInitDone (data, bool)	underground-occupants.md §3.6	

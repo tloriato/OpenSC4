@@ -276,6 +276,15 @@ Resulting priority, highest first: user Plugins `.dat` files, user Plugins non-`
 - Listing order: a directory's **files first, then its subdirectories**, recursively (pre-order), each directory
   in the order the OS returns entries *[compat-limit]*: on NTFS this is case-insensitive name order, so
   `Plugins\z.dat` beats `Plugins\a.dat`, and `Plugins\sub\x.dat` beats `Plugins\y.dat`.
+- Steps 3, 4b and 5b use the same multi-package segment (class `0x090F8619`, `cGZPersistDBSegmentMultiPackedFiles`).
+  The application only sets its folder (`SetupResources` `0x004578E6`–`0x00457946` for Sku_Data); the segment's
+  own file filter, set in its constructor (`0x0097EB52`), is `*.dat`. So Sku_Data takes **only `*.dat` files**,
+  recursively, exactly like 4b. The filter goes to the OS directory search (`FindFirstFileA` through
+  `RZFileFindFirst`), so it matches case-insensitively and with the OS wildcard rules *[compat-limit]* (on a
+  volume with 8.3 short names, `*.dat` also matches e.g. `x.data`).
+- In any multi-package segment a listed file that fails to open as a package (no `DBPF` magic and no embedded
+  header, §2.1–2.2) is released and **skipped silently** (no message); the loop goes on with the next file
+  (`0x0097EA75`–`0x0097EACE`).
 - In the same Plugins tree a `.dat` file beats any non-`.dat` package (e.g. `.SC4Lot`, `.SC4Desc`), whatever their
   names *[compat]*.
 - The city being played is added at the **back** (lowest priority): a resource stored in the save (for example a
@@ -1561,13 +1570,102 @@ Call sites in the catalogued reader functions (007025B0, 00692210, 006A8790, ...
 | resource factory | `cSCResExemplarCohortFactory` | `0x00AAEF2C` | 13 | `CreateInstance` `0x0067D8D0` (type `0x05342861`), `SerialRead` `0x0067F7D0`, `SerialWrite` `0x006804D0` |
 | `cIGZLanguageManager` | `cRZLanguageManager` | `0x00AD14A0` | not counted | slot 7 `GetCurrentLanguage` `0x009DB663` |
 
-Replaceability: the exemplar and cohort factories are registered with the resource manager by type ID; a
-replacement factory for `0x6534284A` / `0x05342861` takes over all exemplar loading. A replacement must keep the
+Replaceability: the exemplar and cohort factories are registered with the resource manager by class ID and type
+ID (§8.1); a replacement factory for `0x6534284A` / `0x05342861`, installed as §8.1 says, takes over all exemplar
+loading. A replacement must keep the
 effective-list semantics of §4.4, the parent failure rule of §4.2, first-four-byte signatures, and the converting
 and raw accessor behaviour of §5 (callers outside the class use `AsX`/`RefX` on the variants it returns). Nothing
 outside the factories reads exemplar memory directly *[inferred]*. The DBPF segment and QFS decoder are framework
 classes; FreeCity4 in standalone mode replaces them wholesale (engine/formats), in plug-in mode it uses the
 originals.
+
+### 8.1 Resource-manager factory contract *[compat]*
+
+The resource manager is system service `0x056B906E`, interface IID `0x656B8EFC` (`cGZPersistResourceManager`,
+vtable `0x00AD89D0`). Slot numbers below are slots of that vtable. Factories are reached through IID
+`0xA56B8F17`; resources through IID `0x456B8F1D` (`cIGZPersistResource`).
+
+**Registration (slot 19, `0x00974407`).** Three arguments, in order: **factory class ID**, **resource type ID**,
+**factory pointer (may be null)**. Returns true when registered.
+
+- If the pointer is not null the manager AddRefs it and keeps that reference. If it is null, the manager asks GZCOM
+  to create the class ID with IID `0xA56B8F17`; if that fails it returns false and registers nothing.
+- It then adds two entries under its lock: class ID → factory, and type → class ID. Both tables are hash
+  **multimaps**: a second registration never replaces or refuses an earlier one; it adds another entry next to the
+  existing one with the same key (insert at `0x00973AC4` / `0x00973B37`).
+- The game itself registers exactly two factories, in its resource library director's framework-hooks slot 4
+  (PreAppInit, `0x00664540`): (`0x453429B3`, `0x6534284A`, null) for exemplars and (`0x053429C8`, `0x05342861`,
+  null) for cohorts. The objects are created from those class IDs by GZCOM.
+
+**Lookup (slot 21, `0x00974042`, arguments type and out pointer).** Find type → class ID, then class ID → factory;
+on success store the factory in the out pointer with **one added reference** (the caller releases it) and return
+true. Each step takes the **first** entry its table's `find` reaches. There is no fall-through: if the class ID
+found for the type has no factory entry, the lookup fails even when a later registration for the same type exists.
+Slot 22 (`0x00972D4E`) is the same lookup taking a resource key (it uses the key's type).
+
+- Precedence between two registrations for one key is **not defined**: an equal key is inserted right after the
+  first matching entry, so the earliest registration is found, but growing the table rehashes it by pushing each
+  entry onto the front of its new bucket (`0x009978AF`), which reverses entries with the same key. Which one is
+  found then depends on how many registrations happened in between.
+- **Unregister (slot 20, `0x00973FD6`, one argument: class ID).** Removes **every** class-ID → factory entry for
+  that class ID, releasing each factory; returns true if at least one was removed. It does **not** remove any
+  type → class-ID entries.
+- Nothing in the game calls slot 20 (no direct callers; the director's later hook slots are the no-op at
+  `0x00648F00`). The game never unregisters its own factories; the manager's own shutdown releases what it holds.
+- Consequence for a replacement (*[compat]* rule for plug-ins): to take over type `0x6534284A` or `0x05342861`,
+  call slot 20 with the game's class ID (`0x453429B3` / `0x053429C8`), then register the replacement **under the
+  same class ID** with a non-null pointer. A replacement registered under a new class ID is not reliably found: the
+  type entry that lookup reaches may still name the old class ID, and after slot 20 that class has no factory, so
+  loading that type fails. A plug-in that wants to restore the original at shutdown repeats the procedure with the
+  original factory; it is not required to unregister anything.
+
+**Loading a resource (slots 3, 46, 47).** `GetResource` (slot 3, `0x009732EB`, five arguments: key, requested IID,
+out pointer, two u32 values passed through unchanged) first asks each registered resource cache for the key; on a
+miss it calls slot 46 (`0x00972EAE`), which looks up the factory (slot 22), finds the segment holding the key
+(slot 32), and calls slot 47 (`0x00972F1D`), then stores the new resource in the cache (slot 44) and finally
+QueryInterfaces it for the requested IID into the caller's out pointer. Slot 47:
+
+1. Asks the segment to open the record for **reading** (segment slot 21 `OpenRecord(key, &record, 1)`).
+2. Calls the factory's slot 3 with (record, `0x456B8F1D`, &resource, u32, u32). The exemplar and cohort factories
+   do not override slot 3; the shared implementation (`0x0097554F`) does:
+   - under the factory's lock, get the record's key; if **both** trailing u32 values are 0, call slot 9
+     `CreateInstance(type, IID, &out)` (three arguments); otherwise call slot 4 with the type, IID, out pointer and
+     the two u32 values. The base slot 4 (`0x0097553B`, also not overridden by the two factories) **ignores** the
+     two values and forwards to slot 9. For the exemplar and cohort factories the trailing values therefore have no
+     effect.
+   - give the new object its key (resource slot 4), then call slot 5 `Read(resource, record)` (`0x00975495`),
+     which QueryInterfaces the record for the serial-record IID `0xC56B8F08` and calls slot 10
+     `SerialRead(resource, serial record)` (`0x0067F1E0` / `0x0067F7D0`).
+   - if the read succeeds, QueryInterface the object for the IID asked for and return that result; in every case
+     release the factory's own reference to the object.
+3. If step 2 succeeded, closes the record (segment slot 24 `CloseRecord`, `0x00975845`) and releases it; if the
+   open or step 2 failed, aborts the record (segment slot 25 `AbortRecord`, `0x00975811`). **The factory never
+   closes the record.**
+
+**`CreateInstance` (slot 9, `0x0067D820` / `0x0067D8D0`).** Arguments: resource **type ID**, requested **IID**,
+**out pointer**; it takes no record and no key. If the type is not the factory's own (`0x6534284A` /
+`0x05342861`) it stores null and returns false. Otherwise it creates an empty object (`cSCResExemplar`, 64 bytes /
+the cohort) and QueryInterfaces it for the IID; on success the out pointer holds the reference from that
+QueryInterface and it returns true. On an **unknown IID** it destroys the new object, stores null and returns
+false.
+
+**Reference ownership.** Each level owns the reference it receives and releases its own: the factory releases the
+object after its QueryInterface for the caller, slot 47 releases after its QueryInterface, and `GetResource`
+releases its local reference after storing the object in the cache (the cache keeps its own) and QueryInterfacing
+it for the caller. The caller of `GetResource` ends up with exactly **one** reference, which it must release.
+
+**The record given to `SerialRead`.** It is a fresh record opened for this read, at read position **0** of the
+resource, and its bytes are **already decompressed**: when the key is listed in the DIR (§2.5) the packed-file
+segment decompresses the entry while opening the record (`0x009701FD`, through `DecompressRecord`) and the record
+reads from that buffer (constructor `0x0096DA30`, position field set to 0). Unlisted entries are read as stored,
+either buffered in full or, above a size threshold of the segment, straight from the file. A factory must not look
+for or decode a QFS stream itself.
+
+**Object identity.** The manager depends only on the object answering `0x456B8F1D` through QueryInterface and on
+resource slot 4 (set key); it never checks the class. Readers of exemplars reach them through QueryInterface for
+`cISCResExemplar` and `cISCPropertyHolder` (table above). A replacement object must therefore answer those IIDs with
+the contracts of §4, §5 and the table above; that no reader goes past these interfaces stays *[inferred]* (the
+callers were not audited one by one).
 
 ---
 

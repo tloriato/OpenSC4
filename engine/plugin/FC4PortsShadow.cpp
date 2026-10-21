@@ -81,6 +81,7 @@ struct Recorded {
     std::vector<Cond> conditions;
     std::vector<int32_t> histories;
     uint32_t effects = 0, events = 0, lastEvent = 0, capacities = 0, otherWrites = 0;
+    uint32_t props = 0;  // §4.4 step 3 prop switches (a month write, not growth or removal; glue-portdev4)
     void Clear() { *this = Recorded{}; }
 };
 
@@ -128,7 +129,7 @@ uint64_t RecCreateLot(void* u, int32_t, int32_t, int32_t, int32_t, uint32_t) {
 }
 void RecDezone(void* u, const fc4_cell_rect*) { ++Of(u).rec.otherWrites; }
 uint32_t RecProps(void* u, uint64_t, uint32_t, uint32_t) {
-    ++Of(u).rec.otherWrites;
+    ++Of(u).rec.props;
     return 0;
 }
 
@@ -519,11 +520,11 @@ void MonthAfter(void* ctx) {
     char num[400];
     snprintf(num, sizeof(num),
              "ports=%u avg %.9g/%.9g trips %u/%u history %u/%u values sea=%s map=%s; ours: ran=%u skipped=%u "
-             "event=0x%08X events=%u effects=%u conditions=%u capacities=%u",
+             "event=0x%08X events=%u effects=%u conditions=%u capacities=%u props=%u",
              mo.portsOrig, static_cast<double>(mo.avgOrig), static_cast<double>(mo.avgOurs), mo.tripsOrig, mo.tripsOurs,
              static_cast<unsigned>(f.origHistories.size()), static_cast<unsigned>(f.rec.histories.size()),
              mo.sea.c_str(), mo.map.c_str(), mo.ours.month_ran, mo.ours.month_skipped, mo.ours.month_event,
-             f.rec.events, f.rec.effects, static_cast<unsigned>(f.rec.conditions.size()), f.rec.capacities);
+             f.rec.events, f.rec.effects, static_cast<unsigned>(f.rec.conditions.size()), f.rec.capacities, f.rec.props);
     const std::string line = std::string("ports shadow ") + PortKindName(f.kind) + " month " + DateText(mo.julian) +
                              ": followed=" + mo.followed + " " + num +
                              "; messages followed=" + std::to_string(f.followed) +

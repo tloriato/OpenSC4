@@ -1662,6 +1662,19 @@ bool __fastcall TempQi(void*, void*, uint32_t, void** out) {
 }
 uint32_t __fastcall TempRelease(void*, void*) { return 0; }
 
+// ---- the controller manager's teardown releases (test seam op 69) ----------------------------------
+// A game object with a real count: the controller of a loaded city after a
+// save, whose only holder is the manager (foundations 2.7 SV1).
+struct CountedFake {
+    void** vtbl;
+    uint32_t refs;
+};
+uint32_t __fastcall CountedAddRef(void* self, void*) { return ++static_cast<CountedFake*>(self)->refs; }
+uint32_t __fastcall CountedRelease(void* self, void*) {
+    CountedFake* o = static_cast<CountedFake*>(self);
+    return o->refs == 0 ? 0 : --o->refs;
+}
+
 // ---- close_dialogs: a fake window manager, legacy message server and dialogs (test seam op 47) ----
 // The closer (FC4Dialogs.h) calls them through their vtables: manager slots
 // 14, 24, 36, 43, 54, window slots 11, 63, 67, server slots 5, 6; every other
@@ -9468,7 +9481,7 @@ int ScriptIniTest(const std::string& dll, const std::string& ini, const std::str
     // the 13, the late script's one, the save script's 5 and its "waits" line
     CHECK(CountOf(text, "script: line ") == 20);
     CHECK(text.find("script: ERROR line 2: unknown action 'zonee' (zone, pricezone, dezone, network, speed, pause, "
-                    "resume, turbo, digest, mark, save, terrain, disaster)") != std::string::npos);
+                    "resume, turbo, digest, mark, save, terrain, disaster, port, tutorial)") != std::string::npos);
     CHECK(text.find("script: ERROR line 3: zone type '16' is not 0..15") != std::string::npos);
     CHECK(text.find("script: REFUSED '" + winDir + "fc4_script_bad.txt' (test seam): 2 parse error(s); no action of "
                     "it runs") != std::string::npos);
@@ -13050,6 +13063,27 @@ int main(int argc, char** argv) {
             // dropped is the destructor's to free, as the original's is.
             static FakeObject special{tempVt.slots.data()};
             CHECK(seam(kFC4SeamRefAuditRelease, &special, reinterpret_cast<void*>(intptr_t{5})) == 0);
+
+            // The controller manager's destruction (run sg4-c1, 238
+            // warnings): the last reference of a controller the manager
+            // acquired is the manager's to free at its end (automata 3.4,
+            // 7.1, foundations 2.7 SV1); a release outside the destruction
+            // that reaches 0 (the replaced clock reference) still warns.
+            static FakeVtable countedVt;
+            countedVt.slots[0] = reinterpret_cast<void*>(&TempQi);
+            countedVt.slots[1] = reinterpret_cast<void*>(&CountedAddRef);
+            countedVt.slots[2] = reinterpret_cast<void*>(&CountedRelease);
+            static CountedFake held{countedVt.slots.data(), 0};
+            static CountedFake held2{countedVt.slots.data(), 0};
+            static CountedFake replaced{countedVt.slots.data(), 0};
+            CHECK(seam(kFC4SeamAutomataCmTeardown, &held, nullptr) == 0);
+            CHECK(held.refs == 0);  // released, not leaked
+            CHECK(seam(kFC4SeamAutomataCmTeardown, &held2, &replaced) == 1);
+            CHECK(held2.refs == 0 && replaced.refs == 0);
+            // Still held by the load's table (a city not saved since): no warning either way.
+            held.refs = 1;
+            CHECK(seam(kFC4SeamAutomataCmTeardown, &held, nullptr) == 0);
+            CHECK(held.refs == 1);
         }
 
         // The monthly digest (observer), read through the city's public

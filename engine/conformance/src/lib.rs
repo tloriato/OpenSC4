@@ -68,5 +68,6 @@ pub(crate) mod ui_windows;
 pub mod variants;
 pub(crate) mod weather;
 pub(crate) mod zones;
+pub(crate) mod dates;
 
 pub use runner::{run_vector_file, run_vector_text};

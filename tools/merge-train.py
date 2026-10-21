@@ -440,7 +440,9 @@ def union_hunks(wt, rel):
             merged = close_comment(merged)
         else:
             merged = merged + terms
-        out.append(NL.join(merged))
+        # Markers occupy complete lines. Keep the boundary before the common tail;
+        # otherwise a later merge treats a glued declaration as a changed anchor.
+        out.append(NL.join(merged) + NL)
         j = text.find(NL, e)
         i = n if j < 0 else j + 1
     text = "".join(out)

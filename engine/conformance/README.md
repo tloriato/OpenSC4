@@ -4225,3 +4225,29 @@ replacement-side behaviour that makes the observation true — the popup's flag 
 never looked at, which is why Esc and Enter do nothing), the hidden pause as a nesting count that a camera move raises
 with no dialog open, and the window-side consequence of effects.md EF2 (a view that is never painted never reaches the
 effects draw pass).
+
+## Dates and times ops
+
+`docs/specs/dates.md`. Day numbers and instants are plain integers (`"0x..."` strings allowed). `"tz"` is
+`{"timezone": seconds west of UTC, "daylight": 0|1}` (the CRT's `_timezone` / `_daylight`), default UTC with no
+daylight time.
+
+| Op | Keys | Effect |
+|---|---|---|
+| `dt_fn` | `fn`, `args`, `tz?`, `expect` | one pure function: `jday` (m, d, y), `mdy` (n, returns `[m, d, y]`), `weekday`, `day_of_year`, `first_day_of_month` (n, m), `previous` (n, w), `leap_year`, `days_in_year`, `day_within_month`, `month_from_name` (string), `date_string` (n, format), `set_day_of_year` (doy, y), `begin_dst` / `end_dst` (y, the instant), `begin_dst_day` / `end_dst_day` (y, `[m, d, y]` of the UTC day), `is_dst` (t), `time_from_local` (day number, h, m, s), `time_local_secs`, `time_hour`, `time_minute`, `time_date` (t) |
+| `dt_new` | `obj`, `day?` or `mdy?` | a labelled `cGZDate`, count 0 |
+| `dt_call` | `obj`, `method`, `args`, `out?`, `tz?`, `expect` | one `cIGZDate` slot (names as in `fc4_core::dates::GzDate`; `eq` / `ne` / `add_assign` / `sub_assign` / `copy` / `clone`, `post_inc` / `post_dec` for the own vtable). Date arguments are labels or day numbers. Slots 37-40 return `"this"`. `out` names the out date of `max_date` / `min_date` / `previous` and the new date of `clone`. A `release` that frees removes the label |
+| `dt_expect` | `obj`, `state` | fields `exists`, `day`, `refs` |
+
+## Coverage (dates §8)
+
+| §8 item | Vector |
+|---|---|
+| 1-5 day numbers, invalid dates, round trip and fields, leap years, FirstDayOfMonth | `dt8_01_day_numbers` |
+| 6-9 Previous, Set(dayOfYear, y), month names, text | `dt8_02_setters_text` |
+| 10 the COM object, and every slot of §4 | `dt8_03_com_object` |
+| 11 the daylight rule, and §2.1 / §2.3 (crime.md §9's worked example) | `dt8_04_daylight_time` |
+
+Not covered by a vector, and why: `cRZDate()` / `cRZTime()` "now" read the host clock *[compat-limit]*; the
+`fc4-core` unit tests drive them through a fixed `WallClock`. Names shorter than three characters (DT2) and the
+`Clone` / `DateString` results (DT3) are pinned as *[choice]*.

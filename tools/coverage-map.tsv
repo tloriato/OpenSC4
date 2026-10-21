@@ -82,6 +82,8 @@ cSC4ToxicOccupant	disasters	simulation	disasters.md	core/src/disasters	-	-
 cSC4AutomataManager	automata (managers, records)	simulation	automata.md	core/src/automata	-	-
 cSC4AutomataControllerManager	automata (managers, records)	simulation	automata.md	core/src/automata	-	automata
 cSC4AutomataScriptSystem	automata (managers, records)	simulation	automata.md	core/src/automata	-	automata
+cSC4OccupantGroupTemplate	automata groups	simulation	occupant-groups.md	-	-	-
+tKeyEffect	automata groups	simulation	occupant-groups.md	-	-	-
 cSC4AutomataController	automata (managers, records)	simulation	automata.md	core/src/automata	-	-
 cSC4Automaton	automata (managers, records)	simulation	automata.md	core/src/automata	-	-
 cSC4VehicleManager	automata (managers, records)	simulation	automata.md	core/src/automata	-	automata
@@ -106,7 +108,7 @@ cSC4PortDeveloper	port developers	simulation	port-developers.md	core/src/port_de
 cSC4AirportDeveloper	port developers	simulation	port-developers.md	core/src/port_developer	-	-
 cSC4SeaportDeveloper	port developers	simulation	port-developers.md	core/src/port_developer	-	-
 cPortTypeConfig	port developers	simulation	port-developers.md	core/src/port_developer	-	-
-cSC4PropDeveloper	prop developer	simulation	prop-developer.md	core/src/prop_developer	-	-
+cSC4PropDeveloper	prop developer	simulation	prop-developer.md	core/src/prop_developer	-	propdev
 cSC4WealthRequester	prop developer	simulation	prop-developer.md	core/src/prop_developer	-	-
 cSC4NetworkTool	network tools	simulation	network-tools.md,network-geometry.md,network-bridges.md	core/src/network_tools,core/src/network_geometry,core/src/network_bridge	-	nettool
 cSC4PowerLineTool	network tools	simulation	network-tools.md,network-geometry.md	-	-	-
@@ -202,6 +204,12 @@ cSC4PowerPoleOccupant	network occupants	simulation	network-occupants.md	-	-	-
 cSC4PowerLineOccupant	network occupants	simulation	network-occupants.md	-	-	-
 cSC4PipeOccupant	network occupants	simulation	network-occupants.md	-	-	-
 cSC4SubwayOccupant	network occupants	simulation	network-occupants.md	-	-	-
+cSC4PipeConnectionOccupant	network occupants	simulation	underground-occupants.md	-	-	-
+cSC4SubwayConnectionOccupant	network occupants	simulation	underground-occupants.md	-	-	-
+fn:GZCOM_CreatecSC4PipeOccupant	network occupants	simulation	underground-occupants.md	-	-	-
+fn:GZCOM_CreatecSC4SubwayOccupant	network occupants	simulation	underground-occupants.md	-	-	-
+fn:GZCOM_CreatecSC4PipeConnectionOccupant	network occupants	simulation	underground-occupants.md	-	-	-
+fn:GZCOM_CreatecSC4SubwayConnectionOccupant	network occupants	simulation	underground-occupants.md	-	-	-
 cSC4PylonOccupant	network occupants	simulation	network-occupants.md	-	-	-
 cSC4NetworkTypeInfo	network occupants	simulation	network-occupants.md	-	-	-
 cSC4NetworkRoutines	network occupants	simulation	network-occupants.md	-	-	-
@@ -343,11 +351,11 @@ cGZDraw*	2D drawing and fonts	renderer	-	-	-	-
 # the software span renderers of cGZDrawContextRenderToBuffer, one class per buffer color type (Init 00830710).
 # The five rows come before the nGZDrawSoftRender* catch-all so that the 793 template instantiations of
 # tools/coverage-ranges.tsv land on the class whose colour format they convert. No spec has them as its subject.
-nGZDrawSoftRender::cSpanRender1555	2D drawing (span render 1555)	renderer	span-render-1555.md	-	-	-
-nGZDrawSoftRender::cSpanRender565	2D drawing (span render 565)	renderer	span-render-565.md	-	-	-
+nGZDrawSoftRender::cSpanRender1555	2D drawing (span render 1555)	renderer	span-render-1555.md	core/src/span_render1555	-	-
+nGZDrawSoftRender::cSpanRender565	2D drawing (span render 565)	renderer	span-render-565.md	core/src/span_render565	-	-
 nGZDrawSoftRender::cSpanRender4444	2D drawing (span render 4444)	renderer	span-render-4444.md	core/src/span_render4444	-	-
-nGZDrawSoftRender::cSpanRender8888	2D drawing (span render 8888)	renderer	-	-	-	-
-nGZDrawSoftRender::cSpanRender8	2D drawing (span render 8)	renderer	-	-	-	-
+nGZDrawSoftRender::cSpanRender8888	2D drawing (span render 8888)	renderer	span-render-8888.md	core/src/span_render8888	-	-
+nGZDrawSoftRender::cSpanRender8	2D drawing (span render 8)	renderer	span-render-8.md	core/src/span_render8	-	-
 nGZDrawSoftRender*	2D drawing and fonts	renderer	-	-	-	-
 cGZAlphaBlt	2D drawing and fonts	renderer	-	-	-	-
 cGZCanvas*	2D drawing and fonts	renderer	-	-	-	-
@@ -420,6 +428,15 @@ cGZPersistDBSerialRecord	persistence and resources	framework	persistence.md	-	-	
 cGZPersistResource	persistence and resources	framework	persistence.md	-	-	-
 cGZPersistResourceFactory	persistence and resources	framework	persistence.md	-	-	-
 cGZPersistResourceKeyList	persistence and resources	framework	persistence.md	-	-	-
+cRZDirectoryEntry	paths and directories	framework	paths.md	-	-	-
+fn:IsPathSeparator	paths and directories	framework	paths.md	-	-	-
+fn:IsASCIILetter	paths and directories	framework	paths.md	-	-	-
+fn:IsFullPath	paths and directories	framework	paths.md	-	-	-
+fn:Fullpath	paths and directories	framework	paths.md	-	-	-
+fn:ResolvePath	paths and directories	framework	paths.md	-	-	-
+fn:Splitpath	paths and directories	framework	paths.md	-	-	-
+fn:SplitDirectory	paths and directories	framework	paths.md	-	-	-
+fn:RZFileFind*	paths and directories	framework	paths.md	-	-	-
 cGZPersist*	persistence and resources	framework	-	-	-	-
 cGZBufferResource	persistence and resources	framework	persistence.md	-	-	-
 cGZBufferResourceFactory	persistence and resources	framework	persistence.md	-	-	-
@@ -431,8 +448,8 @@ SL	persistence and resources	framework	-	-	-	-
 nSCRes*	persistence and resources	framework	-	-	-	-
 cSCStringDetokenizer*	strings and language	framework	-	-	-	-
 fn:gAdviceDetokenizerFunction	strings and language	framework	-	-	-	-
-cRZLanguageUtility	strings and language	framework	language-utility.md	-	-	-
-cRZLanguageManager	strings and language	framework	strings-language.md	-	-	-
+cRZLanguageUtility	strings and language	framework	language-utility.md	core/src/language	-	-
+cRZLanguageManager	strings and language	framework	strings-language.md	core/src/language	-	-
 cRZLanguage*	strings and language	framework	-	-	-	-
 cRZString	strings and language	framework	-	-	-	-
 fn:ConvertStringEncoding	strings and language	framework	-	-	-	-
@@ -450,9 +467,27 @@ cGZMessageServer2	framework services (GZ)	framework	framework-gz-services.md	-	-
 cGZMessageQueue2	framework services (GZ)	framework	framework-gz-services.md	-	-	-
 cGZMessageQueueManager2	framework services (GZ)	framework	framework-gz-services.md	core/src/gz_messages/manager.rs	-	-
 cGZ*	framework services (GZ)	framework	-	-	-	-
-cRZFile	framework services (RZ)	framework	framework-rz-files.md	-	-	-
-cRZIniFile	framework services (RZ)	framework	framework-rz-files.md	-	-	-
+cRZFile	framework services (RZ)	framework	framework-rz-files.md	core/src/rz_files	-	-
+cRZIniFile	framework services (RZ)	framework	framework-rz-files.md	core/src/rz_files	-	-
+cRZIStream	streams	framework	output-streams.md	-	-	-
+cRZNullIStream	streams	framework	output-streams.md	-	-	-
+cRZPath	paths and directories	framework	paths.md	-	-	-
 cRZDirectory	framework services (RZ)	framework	framework-rz-files.md	-	-	-
+cSC4FeatureManager	feature manager	framework	feature-manager.md	-	-	-
+cRZDate	dates and times	framework	dates.md	core/src/dates	-	-
+cGZDate	dates and times	framework	dates.md	core/src/dates	-	-
+cRZTime	dates and times	framework	dates.md	core/src/dates	-	-
+cRZTimer	timers	framework	timers.md	-	-	-
+cRZCallbackTimer	timers	framework	timers.md	-	-	-
+cRZCmdLine	command line	framework	command-line.md	-	-	-
+cGZCommandParameterSet	command system	framework	command-system.md	core/src/commands	-	-
+cGZStringCommandGenerator	command system	framework	command-system.md	core/src/commands	-	-
+cGZMessage2CommandDispatcher	command system	framework	command-system.md	core/src/commands	-	-
+cGZMessage2CommandDispatcherMessage	command system	framework	command-system.md	core/src/commands	-	-
+fn:RZParseDelimitedText	command system	framework	command-system.md	core/src/commands	-	-
+cRZOStream	streams	framework	output-streams.md	-	-	-
+cRZTextOStream	streams	framework	output-streams.md	-	-	-
+cRZNullOStream	streams	framework	output-streams.md	-	-	-
 cRZOFStream	framework services (RZ)	framework	framework-rz-files.md	-	-	-
 cRZ*	framework services (RZ)	framework	-	-	-	-
 nGZ*	framework services (GZ)	framework	-	-	-	-
