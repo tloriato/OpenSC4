@@ -1,17 +1,33 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| glue-terrain3 (enable = terrain glue over the TR21 3D view contract, terrain.md §15.5) | `glue-terrain3` / (engine lane) | in progress (run4 round 3) | diagnose the stall, step 7 part 2, TR37, Save |
+| glue-terrain3 (enable = terrain glue over the TR21 3D view contract, terrain.md §15.5) | `glue-terrain3` / (engine lane) | wip (run4 round 3): stall cause found (no TerrainReconciliation -> popups never disabled -> modal dialog); fix not yet coded | implement §12.1 DoAnimationTick + 0x2A612643 + slot 89 (foundations §11.6), step 7 part 2, TR37, Save |
 
 ## Handoff (round 3)
 - Goal: enable = terrain clean to 2032 (turbo), ref_warnings=0; then normal speed; full gate.
-- Done: 1e78a7ca/7d909d68 bounded terrain trace (ring of locked-slot enter/leave, DoMessage, HostPost words,
-  RedisplayTerrainRect caller) and a stall monitor (no SimNewDay 2.5 s: ring + every thread's stack, twice).
-- gt3-r3-d1 (1e78a7ca): stalled 2026-05-11. Terrain lock free (owner tid 0), no thread inside terrain code.
-  Main waits in game code inside the message-server pump (PacingFlush -> ms OnTick -> 0x52E016 -> 0x6E46E8 ->
-  0x5A6014 -> 0x36361F -> ... 0x5DA900 -> ntdll wait). Last terrain events before the stall: RedisplayTerrainRect
-  -> HostPost 0x870BC918 (texture redisplay, renderer only). Other threads idle (harness threads; game workers).
-- Next: read gt3-r3-d2 (labels unique; wait without --fresh): which caller/flags, which module the 2nd
-  thread waits in; then step 7 part 2 / TR37 / Save.
+- Done (all diagnostic, no behaviour change): 1e78a7ca..333b30c7 bounded terrain trace in cFC4Terrain.cpp
+  (namespace trace: ring of locked-slot enter/leave, DoMessage, HostPost words, RedisplayTerrainRect caller) and a
+  stall monitor thread (no SimNewDay for 2.5 s: ring + every thread's stack, kernel-object probe, twice).
+- ROOT CAUSE (runs gt3-r3-d1..d8): not a lock. Terrain lock free, no thread in terrain code. Main thread sleeps
+  (NtDelayExecution) in a game modal-dialog loop (frames 0x99E3DE/0x99E425 = inside cGZWin::ChildToFront,
+  0x9DA900 next to cGZWinMgrW32::GZWinMsgPost, docs/abi). gt3-r3-d8 (close_dialogs = 1, diagnostic only):
+  clean to 2032, dialogs_closed=9 (all 0x4A9DB60C, first 2027-02-01), ref_warnings=1 (not yet looked at).
+  Why: the harness disables popups only at ConnectionsReady 0x6AC284F3; control gt3-r2-ctl-1 logs "popup dialogs:
+  disabled ... at ConnectionsReady"; gt3-r3-d7 logs "WARNING no ConnectionsReady within 30 game day(s)".
+  ConnectionsReady follows TerrainReconciliation 0xCA63D517, which only the terrain posts (foundations.md
+  §11.6, lines 1384-1458; terrain.md §12.1 lines 1303-1323). Our DoMessage has `case kMsgAnimationTick: break;`
+  and `case kMsgReconcile: break;` and slot 89 ReconcileEdgesWithNeighboringCities is `{}` (line ~961).
+- Next (exact): in cFC4Terrain.cpp DoMessage: kMsgAnimationTick -> if f_.view && f_.reconcileTick < 2 and
+  ++f_.reconcileTick == 2: preference (cISC4App::GetPreferences() +0x4EC, default 1; width unspecified -> file
+  TR question) == 0 ? post 0xCA63D517 (all 0, MessagePost queued) : GeneralMessagePostToTarget(0x2A612643,
+  Target()). kMsgReconcile -> winmgr = GetSystemService(0xA417445E, IID 0x5A4) (FC4WinInterfaces.h
+  cFC4IGZWinMgr, slot 42 IsModal); none -> stop; modal -> re-post 0x2A612643; else slot 89 (0,1,1).
+  Slot 89: return if !cISC4App GetPopupDialogsEnabled (slot 23; see how FC4Popups.cpp calls it); edge compare
+  ComputeEdgeVerticesToReconcile is unspecified -> file a numbered TR question, literal reading "no mismatch";
+  then post 0xCA63D517 data1=a, data2=0, data3=0, data4=0. Then run a new unique label (gt3-r3-f1, no
+  close_dialogs), then normal speed, then qbuild all; then step 7 part 2 / TR37 / Save if budget allows.
+- Facts: labels used gt3-r3-d1..d8 (d2 ran the d1 DLL). Symbolize our frames with VS llvm-symbolizer
+  (VC/Tools/MSVC/14.37.32822/bin/Hostx64/x64) --obj build-x86/FreeCity4.dll, address 0x10000000+off-1.
+  Remove or keep the trace monitor before ready (it is diagnostic; keep it cheap). Gate not re-run this round.
 
 ## Round 2 report (run4 round 2, 2026-10-21)
 
