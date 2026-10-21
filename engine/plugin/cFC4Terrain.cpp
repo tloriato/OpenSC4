@@ -249,7 +249,7 @@ void SampleThreads() {
         // 0x100 stack words whose first or second dword holds a thread id of this process (a lock owner?),
         // and the delay it sleeps for. Runtime evidence only.
         bool inGameWait = false;
-        for (unsigned i = 0; i < 16 && i < got / 4; ++i) inGameWait |= (stack[i] == exeB + 0x5DA900);
+        for (unsigned i = 0; i < 64 && i < got / 4; ++i) inGameWait |= (stack[i] == exeB + 0x5DA900);
         if (inGameWait) {
             LONGLONG delay = 0;
             SIZE_T dg = 0;
