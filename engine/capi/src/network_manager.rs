@@ -1340,3 +1340,47 @@ pub unsafe extern "C" fn fc4_netlot_read(p: *mut fc4_netlot, inp: *const fc4_ist
         })
     })
 }
+
+/// §17.3 replay rule 1: loads the captured raw generator state `(words[624],
+/// k)`, `k = 624 - left` (0..=624). False on a null pointer or `k > 624`.
+#[no_mangle]
+pub unsafe extern "C" fn fc4_netlot_load_random_raw(p: *mut fc4_netlot, words: *const u32, k: u32) -> bool {
+    if words.is_null() || k > 624 {
+        return false;
+    }
+    let w: &[u32; 624] = &*(words as *const [u32; 624]);
+    with_l(p, false, |h| {
+        h.sim.load_random_raw(w, k);
+        true
+    })
+}
+
+/// The generator's raw state for the §17.3 rule 3 post-state check: fills
+/// `words[624]` and `*k`; false when the generator has no raw state.
+#[no_mangle]
+pub unsafe extern "C" fn fc4_netlot_random_raw(p: *const fc4_netlot, words: *mut u32, k: *mut u32) -> bool {
+    if words.is_null() || k.is_null() {
+        return false;
+    }
+    with_l(p, false, |h| match h.sim.random_raw() {
+        Some(r) => {
+            std::ptr::copy_nonoverlapping(r.words.as_ptr(), words, 624);
+            *k = r.k;
+            true
+        }
+        None => false,
+    })
+}
+
+/// `pending`'s bucket count `B` (§8.5 replay contract).
+#[no_mangle]
+pub unsafe extern "C" fn fc4_netlot_pending_bucket_count(p: *const fc4_netlot) -> u32 {
+    with_l(p, 0, |h| h.sim.pending_bucket_count())
+}
+
+/// §8.5 replay rule 6: the next pass starts from an empty set with `b`
+/// buckets. False while keys are pending (or on a null pointer).
+#[no_mangle]
+pub unsafe extern "C" fn fc4_netlot_set_pending_bucket_count(p: *mut fc4_netlot, b: u32) -> bool {
+    with_l(p, false, |h| h.sim.set_pending_bucket_count(b))
+}

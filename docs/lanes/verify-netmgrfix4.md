@@ -1,4 +1,19 @@
-| verify-netmgrfix4 | engine | NM10/NM11 lot-state boundary walk per network-manager.md 6.2/6.3 (tests 23/24) in core + netmgr shadow; NM10 exclusion removed | blocked on NM12 (gate PASS at 14a7c938; vnmf4-turbo2032-a 73/73 mismatches=0 but 4 resyncs, vnmf4-normal-a 7/7 but 2 resyncs: not zero-resync exact) |
+| verify-netmgrfix4 | engine | NM10/NM11 lot-state boundary walk per network-manager.md 6.2/6.3 (tests 23/24) in core + netmgr shadow; NM10 exclusion removed | round 3 in progress (NM12/NM13 answered); was blocked on NM12 (gate PASS at 14a7c938; vnmf4-turbo2032-a 73/73 mismatches=0 but 4 resyncs, vnmf4-normal-a 7/7 but 2 resyncs: not zero-resync exact) |
+
+## Handoff (round 3, 2026-10-21)
+
+Goal: exact draw replay per network-manager.md §17.3 + §8.5 replay contract (rules 1-6), zero resyncs, game
+runs turbo + normal to 2032 clean/ref0, then full gate and merge-queue file.
+Done: merged main (4df3e324, questions file = main's); core PendingSet (SGI hash_set, B=193, resize count+1,
+head pushes) + RzRandomSuper::from_raw/raw + lot manager load_random_raw/random_raw/pending_bucket_count/
+set_pending_bucket_count, tests t25-t28 (da495dfd); capi exports fc4_netlot_load_random_raw, _random_raw,
+_pending_bucket_count, _set_pending_bucket_count (additive, abi=true); shadow: PreCapture in the first listener
+before the original for 0x07699455/0xE8BDA2E7/0x89D3E9F3/0xA9B6C2D6 (624 words, left->k, next audit, vtable
+0x00AA7958, B, count=0), load before our step, PostCheck after (rng + B equality), pre-diff vs our previous
+post-state (unobserved draws, e.g. RedevelopLot), resync disabled, config diffs always mismatches;
+vector nm16_23 now in hash order.
+Next: qbuild all, then game runs vnmf4r3-turbo2032-a (turbo) and vnmf4r3-normal-a (normal).
+Facts: round-1/2 report below.
 
 ## Round 2 (2026-10-21): blocked on NM12
 

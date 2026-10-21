@@ -129,6 +129,175 @@ struct Counters {
 };
 Counters g_n;
 uint32_t g_lines = 0, g_exactLines = 0, g_draws = 0, g_resyncs = 0;
+
+// Exact draw replay (network-manager.md §17.3, §8.5 "Replay contract for
+// pending", NM12/NM13). Before the original handles a draw-performing message
+// (the first listener runs before it), the shadow reads, in process, the
+// generator 0x00B44870 (§17.2: state[624], next at +0x9C0, left at +0x9C4)
+// and pending's bucket count B on the original lot manager object (§8.5 rule
+// 5: (dword[+0x7C] - dword[+0x78]) / 4, dword[+0x84] must be 0). The lot core
+// then runs the step from that raw state and B (rule 1, rule 6); afterwards
+// its (state, k) and B are checked against the original's, read the same way
+// (rule 3: a check, never a copy). A capture that differs from the core's
+// previous post-state is a draw the shadow did not observe (rule 4): reported.
+void AppendF(std::string& s, const char* fmt, ...);
+cISC4City* CurrentCity();
+constexpr uintptr_t kRngBase = 0x00B44870;  // §17.2, Windows build, no ASLR
+constexpr uint32_t kRngWords = 624;
+constexpr uintptr_t kRngNext = kRngBase + 0x9C0;
+constexpr uintptr_t kRngLeft = kRngBase + 0x9C4;
+constexpr uint32_t kLotMgrVtable = 0x00AA7958;  // §8.5 rule 5
+struct RawCapture {
+    bool valid = false;
+    uint32_t words[kRngWords] = {};
+    uint32_t k = 0, buckets = 0, count = 0;
+    std::string bad;  // audit failures of this capture ("" = sane)
+};
+RawCapture g_cap;       // the pre-state of the step in flight
+RawCapture g_capAfter;  // the original's post-state, read after our step
+uint32_t g_capFor = 0;  // the message type g_cap was taken for (0: none)
+struct OurRaw {
+    bool valid = false;
+    uint32_t words[kRngWords] = {};
+    uint32_t k = 0, buckets = 0;
+};
+OurRaw g_ourPost;  // the core's post-state of the previous replayed step
+struct ReplayCounters {
+    uint32_t captures = 0, captureBad = 0, preDiffs = 0, replayed = 0, loadRefused = 0, postChecked = 0,
+             postRngDiffs = 0, postBucketDiffs = 0, draws = 0, notReplayed = 0;
+    uint32_t bMax = 0;
+};
+ReplayCounters g_rp;
+ReplayCounters g_rpTotal;
+std::string g_rpDiffs;  // listed on the next line, count as mismatches
+uint32_t g_rpMismatches = 0;
+uint32_t g_rpListed = 0;
+
+bool IsDrawMessage(uint32_t t) {
+    // §17.1: the three handlers that reach UpdateLot, and 0xA9B6C2D6
+    // (CreateLotObjects; never posted, observed should anything post it).
+    return t == 0x07699455 || t == 0xE8BDA2E7 || t == 0x89D3E9F3 || t == 0xA9B6C2D6;
+}
+
+void RpDiff(const char* fmt, ...) {
+    ++g_rpMismatches;
+    if (g_rpListed >= 6) return;
+    ++g_rpListed;
+    char buf[256];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof buf, fmt, ap);
+    va_end(ap);
+    if (!g_rpDiffs.empty()) g_rpDiffs += ", ";
+    g_rpDiffs += buf;
+}
+
+struct CaptureArgs {
+    cISC4NetworkLotManager* nlm;
+    RawCapture* out;
+};
+
+// The in-process read of §17.2 / §8.5 rule 5 (run under SehGuard).
+void ReadRaw(void* p) {
+    CaptureArgs& a = *static_cast<CaptureArgs*>(p);
+    RawCapture& c = *a.out;
+    c = RawCapture{};
+    const uint32_t* w = reinterpret_cast<const uint32_t*>(kRngBase);
+    for (uint32_t i = 0; i < kRngWords; ++i) c.words[i] = w[i];
+    const int32_t left = *reinterpret_cast<const int32_t*>(kRngLeft);
+    const uintptr_t next = *reinterpret_cast<const uintptr_t*>(kRngNext);
+    if (left < 0 || left > static_cast<int32_t>(kRngWords)) {
+        AppendF(c.bad, "left=%d", left);
+    } else {
+        c.k = kRngWords - static_cast<uint32_t>(left);
+        if (next != kRngBase + 4u * c.k) AppendF(c.bad, "%snext=0x%08X k=%u", c.bad.empty() ? "" : " ", next, c.k);
+    }
+    const uint8_t* o = reinterpret_cast<const uint8_t*>(a.nlm);
+    const uint32_t vt = *reinterpret_cast<const uint32_t*>(o);
+    if (vt != kLotMgrVtable) AppendF(c.bad, "%svtable=0x%08X", c.bad.empty() ? "" : " ", vt);
+    const uint32_t b0 = *reinterpret_cast<const uint32_t*>(o + 0x78);
+    const uint32_t b1 = *reinterpret_cast<const uint32_t*>(o + 0x7C);
+    c.count = *reinterpret_cast<const uint32_t*>(o + 0x84);
+    c.buckets = b1 >= b0 ? (b1 - b0) / 4 : 0;
+    if (c.buckets == 0) AppendF(c.bad, "%sB=0", c.bad.empty() ? "" : " ");
+    c.valid = c.bad.empty();
+}
+
+bool CaptureRaw(RawCapture* out) {
+    cISC4City* city = CurrentCity();
+    cISC4NetworkLotManager* nlm = city ? city->GetNetworkLotManager() : nullptr;  // borrowed
+    if (nlm == nullptr) {
+        *out = RawCapture{};
+        out->bad = "no lot manager";
+        return false;
+    }
+    CaptureArgs a{nlm, out};
+    if (!SehGuard("netmgr shadow (raw capture)", &ReadRaw, &a)) {
+        *out = RawCapture{};
+        out->bad = "exception";
+    }
+    return out->valid;
+}
+
+bool ReadOurRaw(OurRaw* o) {
+    o->valid = fc4_netlot_random_raw(g_lot, o->words, &o->k);
+    o->buckets = fc4_netlot_pending_bucket_count(g_lot);
+    return o->valid;
+}
+
+// Before the original handles a draw-performing message.
+void PreCapture(uint32_t type) {
+    CaptureRaw(&g_cap);
+    ++g_rp.captures;
+    if (!g_cap.valid) {
+        ++g_rp.captureBad;
+        RpDiff("0x%08X capture: %s", type, g_cap.bad.c_str());
+        return;
+    }
+    if (g_cap.count != 0) {
+        ++g_rp.captureBad;
+        RpDiff("0x%08X capture: pending count %u (rule 5: must be 0)", type, g_cap.count);
+    }
+    if (g_cap.buckets > g_rp.bMax) g_rp.bMax = g_cap.buckets;
+    if (g_ourPost.valid) {
+        const bool same = g_ourPost.k == g_cap.k && g_ourPost.buckets == g_cap.buckets &&
+                          std::memcmp(g_ourPost.words, g_cap.words, sizeof g_cap.words) == 0;
+        if (!same) {
+            ++g_rp.preDiffs;
+            RpDiff("0x%08X capture differs from our last post-state (k %u/%u B %u/%u): a draw not observed",
+                   type, g_cap.k, g_ourPost.k, g_cap.buckets, g_ourPost.buckets);
+        }
+    }
+}
+
+// After the original (order late) and our step: rule 3 and rule 6's check.
+void PostCheck(uint32_t type, uint32_t kBefore) {
+    OurRaw ours;
+    ReadOurRaw(&ours);
+    g_ourPost = ours;
+    if (ours.valid) {
+        const bool reloaded = std::memcmp(ours.words, g_cap.words, sizeof g_cap.words) != 0;
+        g_rp.draws += reloaded ? (kRngWords - kBefore) + ours.k : ours.k - kBefore;
+    }
+    if (!g_late) return;  // order early: the original has not run yet
+    CaptureRaw(&g_capAfter);
+    if (!g_capAfter.valid) {
+        RpDiff("0x%08X post capture: %s", type, g_capAfter.bad.c_str());
+        return;
+    }
+    ++g_rp.postChecked;
+    if (!ours.valid || ours.k != g_capAfter.k ||
+        std::memcmp(ours.words, g_capAfter.words, sizeof ours.words) != 0) {
+        ++g_rp.postRngDiffs;
+        RpDiff("0x%08X generator after the step: k orig %u ours %u%s", type, g_capAfter.k, ours.k,
+               ours.valid ? "" : " (no raw state)");
+    }
+    if (ours.buckets != g_capAfter.buckets || g_capAfter.count != 0) {
+        ++g_rp.postBucketDiffs;
+        RpDiff("0x%08X pending after the step: B orig %u ours %u, orig count %u", type, g_capAfter.buckets,
+               ours.buckets, g_capAfter.count);
+    }
+}
 // NM10/NM11 are answered (network-manager.md §6.3): the lot core walks the
 // original's boundary walk from (0, 0); every cell is compared as is.
 std::string g_pendingDiffs;  // tick-time differences, reported on the next line
@@ -617,6 +786,8 @@ bool StartLot(cISC4NetworkLotManager* orig) {
         fc4_netlot_destroy(g_lot);
         g_lot = nullptr;
     }
+    g_ourPost = OurRaw{};  // a fresh core: no previous post-state to check a capture against
+    g_capFor = 0;
     g_lot = fc4_netlot_create(&g_lhost, TokenOf(orig), SessionSeed());
     if (g_lot == nullptr) return false;
     for (fc4_props* p : g_configs) fc4_netlot_add_configuration_props(g_lot, 0, p, nullptr, 0);
@@ -889,13 +1060,12 @@ void RunStep(void* p) {
             const bool co = fc4_netlot_is_lot_compatible(g_lot, o->second.second, x, z, zu, wu, rot, flip);
             const bool cu = fc4_netlot_is_lot_compatible(g_lot, u->second.second, x, z, zu, wu, rot, flip);
             NetMgrReleaseHeld(&g_ctx);
-            if (co && cu) {
-                ++draws;  // two compatible configurations: the clock-seeded draw
-            } else {
-                ++cfgBad;
-                dl.Add("lot at %d,%d: config 0x%08X/0x%08X compatible now %d/%d", x, z, o->second.second,
-                       u->second.second, co ? 1 : 0, cu ? 1 : 0);
-            }
+            // §17.3: with the replayed draw a differing configuration is a
+            // mismatch, compatible or not (no draw exemption).
+            if (co && cu) ++draws;
+            ++cfgBad;
+            dl.Add("lot at %d,%d: config 0x%08X/0x%08X compatible now %d/%d", x, z, o->second.second,
+                   u->second.second, co ? 1 : 0, cu ? 1 : 0);
         }
         std::set<uint16_t> pk;
         for (const auto& e : ol.potholes) pk.insert(e.first);
@@ -921,18 +1091,22 @@ void RunStep(void* p) {
         d.listed += g_pendingDiffs;
     }
 
-    // A core whose record differs restarts from the original's (a draw too:
-    // later choices depend on the configuration kept).
+    // The replay's own findings since the last line (§17.3 rules 3, 4).
+    if (g_rpMismatches != 0) {
+        d.mismatches += g_rpMismatches;
+        if (!d.listed.empty()) d.listed += ", ";
+        d.listed += g_rpDiffs;
+    }
+
+    // No resync (§17.3: a restart after a difference is not specified
+    // behaviour): a core whose record differs keeps its own state, and the
+    // difference stays visible on every later line.
     const bool lotDiffers = !(ol.lots.size() == ul.lots.size() && cfgSame == ol.lots.size() &&
                               ol.potholes.size() == ul.potholes.size()) ||
                             zoneDiffs != 0 || wealthDiffs != 0;
     std::string resync;
-    if (!mgrSame && !r.start) {
-        resync += StartMgr(nm) ? " mgr" : " mgr(refused)";
-    }
-    if (lotDiffers && !r.start) {
-        resync += StartLot(nlm) ? " lot" : " lot(refused)";
-    }
+    (void)nm;
+    (void)nlm;
     if (!resync.empty()) ++g_resyncs;
     g_draws += draws;
 
@@ -951,9 +1125,28 @@ void RunStep(void* p) {
             static_cast<unsigned>(ul.lots.size()), static_cast<unsigned>(ol.potholes.size()),
             static_cast<unsigned>(ul.potholes.size()),
             lotBytes ? "equal" : (lotDiffers ? "DIFFERS" : "same entries (order differs)"));
-    AppendF(s, "; lot cells=%u zone diffs=%u wealth diffs=%u configs same=%u draws=%u (not compared: clock-seeded) "
-               "incompatible=%u; configs loaded=%u",
-            cells, zoneDiffs, wealthDiffs, cfgSame, draws, cfgBad, ls.configs);
+    AppendF(s, "; lot cells=%u zone diffs=%u wealth diffs=%u configs same=%u config diffs=%u (both compatible %u); "
+               "configs loaded=%u",
+            cells, zoneDiffs, wealthDiffs, cfgSame, cfgBad, draws, ls.configs);
+    AppendF(s, "; replay: captures=%u bad=%u pre-diffs=%u replayed=%u not-replayed=%u load-refused=%u "
+               "post checked=%u rng diffs=%u B diffs=%u draws=%u B max=%u",
+            g_rp.captures, g_rp.captureBad, g_rp.preDiffs, g_rp.replayed, g_rp.notReplayed, g_rp.loadRefused,
+            g_rp.postChecked, g_rp.postRngDiffs, g_rp.postBucketDiffs, g_rp.draws, g_rp.bMax);
+    g_rpTotal.captures += g_rp.captures;
+    g_rpTotal.captureBad += g_rp.captureBad;
+    g_rpTotal.preDiffs += g_rp.preDiffs;
+    g_rpTotal.replayed += g_rp.replayed;
+    g_rpTotal.notReplayed += g_rp.notReplayed;
+    g_rpTotal.loadRefused += g_rp.loadRefused;
+    g_rpTotal.postChecked += g_rp.postChecked;
+    g_rpTotal.postRngDiffs += g_rp.postRngDiffs;
+    g_rpTotal.postBucketDiffs += g_rp.postBucketDiffs;
+    g_rpTotal.draws += g_rp.draws;
+    if (g_rp.bMax > g_rpTotal.bMax) g_rpTotal.bMax = g_rp.bMax;
+    g_rp = ReplayCounters{};
+    g_rpDiffs.clear();
+    g_rpMismatches = 0;
+    g_rpListed = 0;
     AppendF(s, "; messages=%u (mgr %u, lot %u); terrain msgs=%u tool calls=%u destroyed=%u confirmed=%u kept-by-orig=%u "
                "orig-only=%u rebuilt=%u candidates=%u refits=%u",
             g_n.messages, g_n.mgrMessages, g_n.lotMessages, g_n.terrainMessages, g_n.toolCalls, g_n.decided,
@@ -1276,8 +1469,29 @@ void CallMessage(void* p) {
             for (const auto& c : g_snap) afterOrig[c.first] = NetOf(c.first)->GetVariation() & 0xFFu;
         }
         g_msgWrites.clear();
+        // §17.3 rule 1 and §8.5 rule 6: the step runs from the captured
+        // pre-state (input, not output: nothing the original chose is used).
+        const bool replay = IsDrawMessage(m.type);
+        uint32_t kBefore = 0;
+        if (replay) {
+            if (g_capFor == m.type && g_cap.valid) {
+                const bool loaded = fc4_netlot_load_random_raw(g_lot, g_cap.words, g_cap.k);
+                const bool sized = fc4_netlot_set_pending_bucket_count(g_lot, g_cap.buckets);
+                if (!loaded || !sized) {
+                    ++g_rp.loadRefused;
+                    RpDiff("0x%08X replay load refused (raw %d, B %d)", m.type, loaded ? 1 : 0, sized ? 1 : 0);
+                }
+                kBefore = g_cap.k;
+                ++g_rp.replayed;
+            } else {
+                ++g_rp.notReplayed;
+                RpDiff("0x%08X ran without a capture", m.type);
+            }
+        }
+        g_capFor = 0;
         fc4_netlot_do_message(g_lot, m.type, m.d[0], m.d[1], m.d[2], m.void1, m.unknown, m.hasRect ? &m.rect : nullptr);
         NetMgrReleaseHeld(&g_ctx);
+        if (replay) PostCheck(m.type, kBefore);
         if (compare) CompareMessageStyle(m, afterOrig);
         g_snapValid = false;
         g_snap.clear();
@@ -1313,6 +1527,14 @@ void OnMessage(cIGZMessage2* msg, bool late) {
             m.rect = fc4_cell_rect{r[0], r[1], r[2], r[3]};
             m.hasRect = true;
         }
+    }
+    // The draw input, before the original handles the message (§8.5 rule 5,
+    // §17.3): the first listener runs before the original lot manager.
+    if (!late && g_lot != nullptr && IsLotMessage(m.type) && IsDrawMessage(m.type)) {
+        g_inMessage = true;
+        PreCapture(m.type);
+        g_capFor = m.type;
+        g_inMessage = false;
     }
     // Order late: the early target sees the lot messages first (subscribed
     // for them only to take the snapshot).
@@ -1489,9 +1711,15 @@ void NetMgrShadowCityShutdown() {
     LateSubscribe(false);
     Settle();
     if (g_city != nullptr || g_mgr != nullptr || g_lot != nullptr) {
-        Log("netmgr shadow: city shutdown: %u lines, %u with mismatches=0 (exact %u/%u); %u configuration draws not "
-            "compared; %u resyncs",
+        Log("netmgr shadow: city shutdown: %u lines, %u with mismatches=0 (exact %u/%u); %u configuration "
+            "differences between two compatible candidates; %u resyncs",
             g_lines, g_exactLines, g_exactLines, g_lines, g_draws, g_resyncs);
+        const ReplayCounters& t = g_rpTotal;
+        Log("netmgr shadow: replay (since load, through the last line; %u captures after it): captures=%u bad=%u "
+            "pre-diffs=%u replayed=%u not-replayed=%u load-refused=%u post checked=%u rng diffs=%u B diffs=%u "
+            "draws=%u B max=%u",
+            g_rp.captures, t.captures, t.captureBad, t.preDiffs, t.replayed, t.notReplayed, t.loadRefused,
+            t.postChecked, t.postRngDiffs, t.postBucketDiffs, t.draws, t.bMax);
         if (g_late) {
             std::string t;
             for (int i = 0; i < kPlaces; ++i) {
@@ -1515,6 +1743,11 @@ void NetMgrShadowCityShutdown() {
     g_ctx.city = nullptr;
     g_lines = g_exactLines = g_draws = g_resyncs = 0;
     g_n = Counters{};
+    g_rp = g_rpTotal = ReplayCounters{};
+    g_rpDiffs.clear();
+    g_rpMismatches = g_rpListed = 0;
+    g_ourPost = OurRaw{};
+    g_capFor = 0;
     g_pendingDiffs.clear();
     g_pendingMismatches = 0;
     g_pendingListed = 0;

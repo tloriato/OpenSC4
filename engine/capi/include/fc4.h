@@ -9281,6 +9281,12 @@ bool fc4_netlot_get_state(const fc4_netlot* l, fc4_netlot_state* out);
  * effect props (IID 0x09820792) come back through resolve_ref. */
 bool fc4_netlot_write(const fc4_netlot* l, const fc4_ostream* out);
 bool fc4_netlot_read(fc4_netlot* l, const fc4_istream* in);
+/* Raw replay (network-manager.md §17.3, §8.5 replay contract). The generator's raw state:
+ * words[624] and k = 624 - left (0..=624); pending's bucket count B (set: false while keys are pending). */
+bool fc4_netlot_load_random_raw(fc4_netlot* l, const uint32_t* words, uint32_t k);
+bool fc4_netlot_random_raw(const fc4_netlot* l, uint32_t* words, uint32_t* k);
+uint32_t fc4_netlot_pending_bucket_count(const fc4_netlot* l);
+bool fc4_netlot_set_pending_bucket_count(fc4_netlot* l, uint32_t b);
 
 /* ---- network rules (docs/specs/network-rules.md; engine/capi/src/network_rules.rs) ----
  * The rule database (the tile rule files with #Transmogrify, RUL0 intersection
