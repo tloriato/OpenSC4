@@ -63,6 +63,7 @@
 #endif
 #include <windows.h>
 #include <tlhelp32.h>
+#include <intrin.h>
 #include <cstdio>
 
 // Game calls (docs/abi/interfaces.tsv; a bool is only reliable in AL, a float
@@ -211,11 +212,19 @@ void SampleThreads() {
         CloseHandle(th);
         if (!have) continue;
         char line[1024];
-        int len = snprintf(line, sizeof(line), "terrain trace: thread %lu eip=%s+0x%lX:",
-                           static_cast<unsigned long>(te.th32ThreadID),
-                           (ctx.Eip >= exeB && ctx.Eip < exeE) ? "exe" : ((ctx.Eip >= ourB && ctx.Eip < ourE) ? "dll" : "other"),
-                           static_cast<unsigned long>((ctx.Eip >= exeB && ctx.Eip < exeE) ? ctx.Eip - exeB
-                                                      : (ctx.Eip >= ourB && ctx.Eip < ourE) ? ctx.Eip - ourB : ctx.Eip));
+        char mod[MAX_PATH] = "?";
+        HMODULE em = nullptr;
+        uintptr_t emBase = 0;
+        if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                               reinterpret_cast<LPCSTR>(static_cast<uintptr_t>(ctx.Eip)), &em) &&
+            em != nullptr) {
+            emBase = reinterpret_cast<uintptr_t>(em);
+            GetModuleFileNameA(em, mod, sizeof(mod));
+        }
+        const char* base = strrchr(mod, '\');
+        int len = snprintf(line, sizeof(line), "terrain trace: thread %lu eip=%s+0x%lX esp=0x%08lX:",
+                           static_cast<unsigned long>(te.th32ThreadID), base ? base + 1 : mod,
+                           static_cast<unsigned long>(ctx.Eip - emBase), static_cast<unsigned long>(ctx.Esp));
         unsigned found = 0;
         for (unsigned i = 0; i < got / 4 && found < 28 && len > 0 && len < static_cast<int>(sizeof(line)) - 24; ++i) {
             const uintptr_t v = stack[i];
@@ -243,8 +252,12 @@ DWORD WINAPI Monitor(void*) {
         if (idle < kStallMs) continue;
         reported = true;
         char why[96];
+        LogWait(1000, "terrain trace: stall sample 1 (%lu ms without SimNewDay)", static_cast<unsigned long>(idle));
+        SampleThreads();
+        Sleep(1000);
         snprintf(why, sizeof(why), "no SimNewDay reached the terrain for %lu ms", static_cast<unsigned long>(idle));
-        DumpRing(why, 96);
+        DumpRing(why, 128);
+        LogWait(1000, "terrain trace: stall sample 2");
         SampleThreads();
     }
     return 0;
@@ -401,6 +414,10 @@ void HostPost(void* u, const fc4_terrain_post* p) {
     if (c == nullptr || p == nullptr) return;
     c->posts.fetch_add(1, std::memory_order_relaxed);
     trace::Note("HostPost", 0, p->msg_type);
+    trace::Note("HostPost.d1", 0, static_cast<uint32_t>(p->data1));
+    trace::Note("HostPost.d2", 0, static_cast<uint32_t>(p->data2));
+    trace::Note("HostPost.d3", 0, static_cast<uint32_t>(p->data3));
+    trace::Note("HostPost.d4", 0, static_cast<uint32_t>(p->data4));
     g_mirrorDirty.store(true, std::memory_order_release);  // §15.5.8: refresh the raw arrays first
     if (c->testMode) return;
     // §15.5.11 item 19 / §15.5.12.1 (TR38): the view clamps nothing, so a heights / water rectangle
@@ -1772,6 +1789,14 @@ void cFC4STETerrain::ChangeTerrainLevel(bool up, float amount) {
 
 void cFC4STETerrain::SetAltitudeRect(SC4Rect<int32_t> const& r, float h, bool redisplay, uint32_t data4) {
     Enter();
+    // diagnostic: who asks, with what (the gt3-r2 June stall follows one of these)
+    trace::Note("Redisplay.caller", 0,
+                static_cast<uint32_t>(reinterpret_cast<uintptr_t>(_ReturnAddress()) -
+                                      reinterpret_cast<uintptr_t>(GetModuleHandleA(nullptr))));
+    trace::Note("Redisplay.flags", 0, (terrain ? 1u : 0u) | (water ? 2u : 0u) | (data4 << 8));
+    trace::Note("Redisplay.x0z0", 0, (static_cast<uint32_t>(r.topLeftX) << 16) | (static_cast<uint32_t>(r.topLeftY) & 0xFFFFu));
+    trace::Note("Redisplay.x1z1", 0,
+                (static_cast<uint32_t>(r.bottomRightX) << 16) | (static_cast<uint32_t>(r.bottomRightY) & 0xFFFFu));
     if (core_ != nullptr) {
         fc4_terrain_rect rect{r.topLeftX, r.topLeftY, r.bottomRightX, r.bottomRightY};
         fc4_terrain_set_altitude_rect(core_, rect, h, redisplay, data4);  // §6
