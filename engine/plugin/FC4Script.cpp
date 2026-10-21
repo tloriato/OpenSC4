@@ -34,6 +34,7 @@
 #include "cISC4City.h"
 #include "cISC4NetworkManager.h"
 #include "cISC4NetworkTool.h"
+#include "cISC4TutorialSystem.h"  // the glue-tutorial4 lane: the tutorial action
 #include "cISTETerrain.h"
 
 #include <cctype>
@@ -307,6 +308,50 @@ std::string RunTerrain(const harness::ScriptAction& a, int32_t julian, cISC4City
     return b;
 }
 
+// The tutorial action (glue-tutorial4): one call on the city's tutorial system
+// (cISC4City slot 82, borrowed; tutorial.md 6), then its state through slots
+// 8-12. Works with the original's class and with ours (enable = tutorial).
+struct TutorialCall {
+    const harness::ScriptAction* a;
+    cFC4ISC4TutorialSystem* t;
+    int32_t ret;
+    uint32_t is, edge;
+    int32_t task, guid;
+    bool task_null;
+};
+
+void TutorialStep(void* p) {
+    auto& c = *static_cast<TutorialCall*>(p);
+    const harness::ScriptAction& a = *c.a;
+    c.ret = -1;  // no return value (query, task, next)
+    switch (a.kind) {
+        case harness::kTutorialTask: c.t->SetTutorialTaskNumber(static_cast<uint32_t>(a.x0)); break;  // slot 19
+        case harness::kTutorialNext: c.t->IncrementTutorialTaskNumber(); break;                       // slot 20
+        case harness::kTutorialEnd: c.ret = c.t->endTutorial(a.x0 != 0) ? 1 : 0; break;               // slot 6
+        case harness::kTutorialEvent: c.ret = c.t->OnTutorialEvent(static_cast<uint32_t>(a.x0)) ? 1 : 0; break;
+        case harness::kTutorialReset: c.ret = c.t->ResetTutorialNumAndIndex(a.x0, a.z0) ? 1 : 0; break;  // 17
+        default: break;
+    }
+    c.is = c.t->IsTutorial() ? 1u : 0u;                // slot 8
+    c.edge = c.t->IsEdgeScrollingAllowed() ? 1u : 0u;  // slot 9
+    c.task_null = c.t->GetCurrentTask() == nullptr;    // slot 10 (borrowed)
+    c.task = c.t->GetTutorialTaskNumber();             // slot 11
+    c.guid = c.t->GetTutorialGUID();                   // slot 12
+}
+
+std::string RunTutorial(const harness::ScriptAction& a, cISC4City* city) {
+    if (city == nullptr) return "skipped: no city";
+    cISC4TutorialSystem* t = city->GetTutorialSystem();  // slot 82, borrowed
+    if (t == nullptr) return "skipped: the city has no tutorial system";
+    TutorialCall c{&a, fc4::AsGame(t), -1, 0, 0, 0, 0, true};
+    const bool clean = SehGuard("script tutorial", &TutorialStep, &c);
+    char b[200];
+    std::snprintf(b, sizeof(b), "ret=%d isTutorial=%u edgeScroll=%u currentTask=%s task=%d guid=0x%08X%s", c.ret, c.is,
+                  c.edge, c.task_null ? "null" : "set", c.task, static_cast<uint32_t>(c.guid),
+                  clean ? "" : " [structured exception]");
+    return b;
+}
+
 void RunAction(const harness::ScriptAction& a, int32_t julian, cISC4City* city) {
     using harness::ScriptOp;
     std::string result;
@@ -342,6 +387,7 @@ void RunAction(const harness::ScriptAction& a, int32_t julian, cISC4City* city) 
             result = PortScriptBuild(static_cast<uint32_t>(a.kind), static_cast<uint32_t>(a.type), a.x0, a.z0,
                                      static_cast<uint32_t>(a.facing));
             break;
+        case ScriptOp::Tutorial: result = RunTutorial(a, city); break;
     }
     std::string late;
     if (julian != a.julian) late = " (run on " + harness::FormatDate(harness::CivilFromJulian(julian)) + ")";

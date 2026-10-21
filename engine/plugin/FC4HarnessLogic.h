@@ -205,11 +205,21 @@ enum class ScriptOp {
     Terrain,
     Disaster,
     Network,
-    Port
+    Port,
+    Tutorial
 };
 
 constexpr int32_t kScriptMaxCell = 4095;  // [choice] cities are at most 256 cells a side
 constexpr int32_t kScriptMaxNetworkType = 12;  // network-manager.md §3.1: types 0..12
+
+// The `tutorial` action's operations (glue-tutorial4; `kind`).
+constexpr int32_t kTutorialQuery = 0;  // tutorial query
+constexpr int32_t kTutorialTask = 1;   // tutorial task n: slot 19 SetTutorialTaskNumber(n)
+constexpr int32_t kTutorialNext = 2;   // tutorial next: slot 20 IncrementTutorialTaskNumber
+constexpr int32_t kTutorialEnd = 3;    // tutorial end 0|1: slot 6 endTutorial(bool)
+constexpr int32_t kTutorialEvent = 4;  // tutorial event e: slot 18 OnTutorialEvent(e)
+constexpr int32_t kTutorialReset = 5;  // tutorial reset a b: slot 17 ResetTutorialNumAndIndex(a, b)
+constexpr int32_t kScriptMaxTutorialArg = 999999;
 
 // The `disaster` action's kinds.
 constexpr int32_t kDisasterFire = 0;
@@ -232,6 +242,7 @@ inline const char* ScriptOpName(ScriptOp op) {
         case ScriptOp::Terrain: return "terrain";
         case ScriptOp::Disaster: return "disaster";
         case ScriptOp::Port: return "port";
+        case ScriptOp::Tutorial: return "tutorial";
     }
     return "?";
 }
@@ -530,6 +541,41 @@ inline bool ParseScriptLine(const std::string& raw, int32_t lineNo, ScriptAction
             *error = "port type '" + tok[6] + "' is not 0..15";
             return false;
         }
+    } else if (name == "tutorial") {
+        // Tooling (glue-tutorial4): the city's tutorial system (cISC4City slot
+        // 82) through its interface. No `start`: the original's startTutorial
+        // opens its tutorial window (tutorial.md 4.2).
+        a.op = ScriptOp::Tutorial;
+        const std::string what = nargs > 0 ? detail::Lower(tok[2]) : std::string();
+        size_t want = 0;
+        if (what == "query") {
+            a.kind = kTutorialQuery;
+        } else if (what == "task") {
+            a.kind = kTutorialTask, want = 1;
+        } else if (what == "next") {
+            a.kind = kTutorialNext;
+        } else if (what == "end") {
+            a.kind = kTutorialEnd, want = 1;
+        } else if (what == "event") {
+            a.kind = kTutorialEvent, want = 1;
+        } else if (what == "reset") {
+            a.kind = kTutorialReset, want = 2;
+        } else {
+            *error = "tutorial '" + what + "' is not query, task, next, end, event or reset";
+            return false;
+        }
+        if (nargs != want + 1) {
+            *error = "tutorial " + what + " takes " + std::to_string(want) + " argument(s)";
+            return false;
+        }
+        int32_t* const dst[2] = {&a.x0, &a.z0};
+        for (size_t i = 0; i < want; ++i) {
+            if (!detail::ParseCount(tok[3 + i], what == "end" ? 1 : kScriptMaxTutorialArg, dst[i])) {
+                *error = "tutorial " + what + " argument '" + tok[3 + i] + "' is not " +
+                         (what == "end" ? "0 or 1" : "0..999999");
+                return false;
+            }
+        }
     } else if (name == "save_as") {
         // [question] Not implemented: what cISC4App::SaveCity(path, fast)
         // (slot 15) leaves as the city's save path, and what the region does
@@ -541,7 +587,7 @@ inline bool ParseScriptLine(const std::string& raw, int32_t lineNo, ScriptAction
     } else {
         *error = "unknown action '" + tok[1] +
                  "' (zone, pricezone, dezone, network, speed, pause, resume, turbo, digest, mark, save, terrain, "
-                 "disaster, port)";
+                 "disaster, port, tutorial)";
         return false;
     }
     *out = a;
