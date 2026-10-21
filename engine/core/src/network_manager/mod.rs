@@ -91,6 +91,7 @@ mod flags;
 mod lots;
 mod manager;
 mod ordered;
+mod pending;
 mod riot;
 
 #[cfg(test)]
@@ -110,6 +111,7 @@ pub use lots::{
 };
 pub use manager::{NetworkManager, NetworkManagerState, DESTROY_GROUPS};
 pub use ordered::OrderedMap;
+pub use pending::{next_prime, PendingSet, PRIMES as PENDING_PRIMES};
 pub use riot::{RiotHost, RiotLock, PLAYER_REMOVAL};
 
 use crate::grid::CellRect;
@@ -315,11 +317,31 @@ impl NetworkLotMessage {
 /// `0x00B44870` (§17).
 pub trait NetworkLotRandom {
     fn uniform_u32(&mut self, n: u32) -> u32;
+    /// The raw `(state[0..623], k)` of §17.2, for the §17.3 post-state check
+    /// (`None`: a generator without a raw state, e.g. a test script).
+    fn raw_state(&self) -> Option<RawRandomState> {
+        None
+    }
+}
+
+/// The complete state of the generator `0x00B44870` (§17.2): the 624 MT19937
+/// words and the position `k = 624 - left` of the next word to temper.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RawRandomState {
+    pub words: Box<[u32; 624]>,
+    pub k: u32,
 }
 
 impl NetworkLotRandom for crate::rng::RzRandomSuper {
     fn uniform_u32(&mut self, n: u32) -> u32 {
         crate::rng::RzRandomSuper::uniform_u32(self, n)
+    }
+    fn raw_state(&self) -> Option<RawRandomState> {
+        let (w, k) = self.raw();
+        Some(RawRandomState {
+            words: Box::new(*w),
+            k: k as u32,
+        })
     }
 }
 

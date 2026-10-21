@@ -22,9 +22,10 @@ use super::config::{
 };
 use super::flags::{flag, has_all, has_any};
 use super::ordered::OrderedMap;
+use super::pending::PendingSet;
 use super::{
-    key_cell, lot_key, msg, NetworkLotHost, NetworkLotMessage, NetworkLotRandom, Position, CLSID_NETWORK_LOT_MANAGER,
-    IID_EFFECT_PROP, IID_NETWORK_OCCUPANT, LOT_RECORD_VERSION,
+    key_cell, lot_key, msg, NetworkLotHost, NetworkLotMessage, NetworkLotRandom, Position, RawRandomState,
+    CLSID_NETWORK_LOT_MANAGER, IID_EFFECT_PROP, IID_NETWORK_OCCUPANT, LOT_RECORD_VERSION,
 };
 
 /// The edge-type kind avenue style asks for (§8.7 `GetEdgeTypesFlag(6)`).
@@ -66,8 +67,9 @@ pub struct NetworkLotState {
     /// Cell key → pothole effect prop, held (`None`: a reference that did not
     /// resolve on load).
     pub potholes: OrderedMap<u16, Option<u64>>,
-    /// Cells whose network lot must be re-examined (§8.5).
-    pub pending: BTreeSet<u16>,
+    /// Cells whose network lot must be re-examined (§8.5): the original's
+    /// hash set, whose bucket count persists across messages (NM13).
+    pub pending: PendingSet,
 }
 
 /// The network lot manager.
@@ -103,6 +105,33 @@ impl NetworkLotManager {
     /// Replaces the generator (tests, replays).
     pub fn set_random(&self, rng: Box<dyn NetworkLotRandom>) {
         *self.rng.borrow_mut() = rng;
+    }
+
+    /// §17.3 replay rule 1: loads a captured `(state, k)` as raw state.
+    pub fn load_random_raw(&self, words: &[u32; 624], k: u32) {
+        *self.rng.borrow_mut() = Box::new(RzRandomSuper::from_raw(words, k as usize));
+    }
+
+    /// The generator's raw state, for the §17.3 rule 3 post-state check.
+    pub fn random_raw(&self) -> Option<RawRandomState> {
+        self.rng.borrow().raw_state()
+    }
+
+    /// `pending`'s bucket count `B` (§8.5 replay contract).
+    pub fn pending_bucket_count(&self) -> u32 {
+        self.s.borrow().pending.bucket_count()
+    }
+
+    /// §8.5 replay rule 6: starts the next pass from an empty set with the
+    /// captured `B`. `pending` is empty between messages (rule 2), so only
+    /// `B` is set; a non-empty set is left alone and reported as `false`.
+    pub fn set_pending_bucket_count(&self, b: u32) -> bool {
+        let mut s = self.s.borrow_mut();
+        if !s.pending.is_empty() {
+            return false;
+        }
+        s.pending = PendingSet::with_bucket_count(b);
+        true
     }
 
     pub fn snapshot(&self) -> NetworkLotState {
@@ -522,11 +551,12 @@ impl NetworkLotManager {
         }
     }
 
-    /// `ProcessUpdateList()` (`0x0060FA10`): keys in ascending order
-    /// (the spec's *[choice]*).
+    /// `ProcessUpdateList()` (`0x0060FA10`): keys in the hash set's order
+    /// (§8.5 replay contract, NM13), each taken by `begin()` and erased by
+    /// key value after its update.
     pub fn process_update_list(&self) {
         loop {
-            let Some(&k) = self.s.borrow().pending.iter().next() else {
+            let Some(k) = self.s.borrow().pending.first() else {
                 break;
             };
             let (x, z) = key_cell(k);

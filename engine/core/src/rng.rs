@@ -363,6 +363,21 @@ impl RzRandomSuper {
         self.index = 0;
     }
 
+    /// A generator loaded from a raw state (network-manager.md §17.3 replay
+    /// rule 1): the 624 words and the position `k` (0..=624) of the next word
+    /// to temper; `k = 624` reloads before the next draw.
+    pub fn from_raw(words: &[u32; MT_N], k: usize) -> Self {
+        RzRandomSuper {
+            state: *words,
+            index: k.min(MT_N),
+        }
+    }
+
+    /// The raw state `(words, k)` (§17.2 of network-manager.md).
+    pub fn raw(&self) -> (&[u32; MT_N], usize) {
+        (&self.state, self.index)
+    }
+
     /// The raw (untempered) state word `i` (tests).
     pub fn state_word(&self, i: usize) -> u32 {
         self.state[i]

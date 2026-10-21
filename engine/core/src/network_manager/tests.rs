@@ -1550,3 +1550,142 @@ fn ordered_map_keeps_insertion_order() {
     assert_eq!(o.len(), 12);
     assert_eq!(o.keys()[..3], [5, 2, 190]);
 }
+
+// ---- §16 tests 25-28: raw generator replay and the pending hash order ----
+
+fn seeded_0x9e3d9501() -> crate::rng::RzRandomSuper {
+    let seeds = crate::rng::FixedSeeds {
+        wall_clock: 1,
+        process_clock: 1,
+    };
+    crate::rng::RzRandomSuper::new(0x9E3D_9501, &seeds)
+}
+
+#[test]
+fn t25_raw_state_replay() {
+    let mut g = seeded_0x9e3d9501();
+    assert_eq!(
+        (g.state_word(0), g.state_word(623), g.raw().1),
+        (0x3508_F7E2, 0x06CD_7FA3, 0)
+    );
+    assert_eq!([g.uniform_u32(3), g.uniform_u32(4), g.uniform_u32(2)], [2, 2, 1]);
+    // Raw load at k = 622 (the seed's words after 622 draws).
+    let mut s = seeded_0x9e3d9501();
+    for _ in 0..622 {
+        s.next_u32();
+    }
+    let (w, k) = s.raw();
+    assert_eq!(k, 622);
+    let words = *w;
+    let (f, m, _) = lot_manager(vec![]);
+    let _ = f;
+    m.load_random_raw(&words, 622);
+    let mut r = crate::rng::RzRandomSuper::from_raw(&words, 622);
+    assert_eq!(r.next_u32(), 0x902A_FD71);
+    assert_eq!(r.next_u32(), 0xC2CB_90BE);
+    assert_eq!(r.next_u32(), 0xB7E8_22C6);
+    let mut r = crate::rng::RzRandomSuper::from_raw(&words, 622);
+    assert_eq!([r.uniform_u32(3), r.uniform_u32(4), r.uniform_u32(2)], [1, 3, 1]);
+    assert_eq!(r.raw().1, 1);
+    // The post-state equals the seeded generator after 625 draws.
+    let mut t = seeded_0x9e3d9501();
+    for _ in 0..625 {
+        t.next_u32();
+    }
+    assert_eq!(r.raw(), t.raw());
+    // Through the manager: the raw state round-trips.
+    let raw = m.random_raw().unwrap();
+    assert_eq!((&*raw.words, raw.k), (&words, 622));
+}
+
+#[test]
+fn t26_pending_order() {
+    let mut p = PendingSet::default();
+    assert_eq!(p.bucket_count(), 193);
+    for k in [0x0102u16, 0x0201, 0x0143, 0x00C3] {
+        p.insert(k);
+    }
+    let order: Vec<u16> = p.iter().copied().collect();
+    assert_eq!(order, vec![0x00C3, 0x0102, 0x0201, 0x0143]);
+    let mut p = PendingSet::default();
+    p.insert(2);
+    p.insert(195);
+    assert_eq!(p.first(), Some(195));
+    let mut p = PendingSet::default();
+    for k in 0..193u16 {
+        p.insert(k);
+        assert_eq!(p.bucket_count(), 193);
+    }
+    p.insert(193);
+    assert_eq!((p.bucket_count(), p.len()), (389, 194));
+}
+
+#[test]
+fn t27_pending_rehash_order() {
+    // The pure set, keys in the zoning handler's order (x fastest).
+    let mut p = PendingSet::default();
+    let mut n = 0;
+    for z in 9..=22 {
+        for x in 9..=22 {
+            p.insert(lot_key(x, z));
+            n += 1;
+            if n == 193 {
+                assert_eq!(p.bucket_count(), 193);
+            }
+            if n == 194 {
+                assert_eq!((lot_key(x, z), p.bucket_count()), (0x1416, 389));
+            }
+        }
+    }
+    assert_eq!(p.len(), 196);
+    let order: Vec<u16> = p.iter().copied().collect();
+    assert_eq!(&order[..4], &[0x1409, 0x140A, 0x140B, 0x140C]);
+    let in_bucket = |b: u16| order.iter().copied().filter(|k| k % 389 == b).collect::<Vec<u16>>();
+    assert_eq!(in_bucket(359), vec![0x0C0A, 0x0F14]);
+    assert_eq!(in_bucket(368), vec![0x0909, 0x0C13]);
+
+    // Through the zoning handler: the tile queries follow that order.
+    let (f, m, _) = lot_manager(vec![]);
+    m.do_message(&NetworkLotMessage {
+        rect: Some(rect(10, 10, 21, 21)),
+        ..NetworkLotMessage::of_type(msg::ZONING_CHANGED)
+    });
+    let queried: Vec<u16> = f.s.borrow().tile_queries.iter().map(|&(x, z)| lot_key(x, z)).collect();
+    assert_eq!(queried, order);
+    assert_eq!((m.pending_bucket_count(), m.snapshot().pending.len()), (389, 0));
+    // A following one-cell zoning change keeps B = 389: its 9 keys by key mod 389.
+    f.s.borrow_mut().tile_queries.clear();
+    m.do_message(&NetworkLotMessage {
+        rect: Some(rect(30, 30, 30, 30)),
+        ..NetworkLotMessage::of_type(msg::ZONING_CHANGED)
+    });
+    let queried: Vec<u16> = f.s.borrow().tile_queries.iter().map(|&(x, z)| lot_key(x, z)).collect();
+    let mut want: Vec<u16> = (29..=31).flat_map(|z| (29..=31).map(move |x| lot_key(x, z))).collect();
+    want.sort_by_key(|k| k % 389);
+    assert_eq!(queried, want);
+    assert_eq!(m.pending_bucket_count(), 389);
+    // Rule 6: a captured B for the next pass, refused while keys are pending.
+    assert!(m.set_pending_bucket_count(193));
+    assert_eq!(m.pending_bucket_count(), 193);
+    m.add_pending(1, 1);
+    assert!(!m.set_pending_bucket_count(389));
+}
+
+#[test]
+fn t28_duplicate_insert_resizes() {
+    let mut p = PendingSet::default();
+    for k in 0..193u16 {
+        p.insert(k);
+    }
+    assert!(!p.insert(5));
+    assert_eq!((p.bucket_count(), p.len()), (389, 193));
+    assert!(p.contains(&5));
+    // Erase never shrinks B.
+    for k in 0..193u16 {
+        assert!(p.remove(&k));
+    }
+    assert!(p.is_empty());
+    assert_eq!(p.bucket_count(), 389);
+    assert_eq!(next_prime(100), 193);
+    assert_eq!(next_prime(390), 769);
+}
