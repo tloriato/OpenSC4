@@ -4,9 +4,10 @@
 
 ## Handoff
 Goal: enable = terrain clean through 2032 (turbo), ref_warnings=0, using TR33-TR41 answers (terrain.md 15.5.11-15.5.13).
-Done: merged main c5e6b495 (questions/terrain.md taken from main; all TR33-TR41 answered).
-Next: crash fixes in engine/plugin/cFC4Terrain.cpp: fresh cRZMessage2Standard per post (15.5.12.1), StaticInit before view Init (15.5.12.2/3), Read->Load (15.5.13.5), then step 6/7 (15.5.13.1-.6).
-Facts: prior round evidence gt3-repl-4/5 (see git 094acd01 report). Game labels used: gt3-repl-1..5; next gt3-r2-1.
+Done: merged main c5e6b495; ed29ba77 crash fixes (no SetVoid1 on posts = TR38 cause; StaticInit in Init; Read->SC4GetIGZDBSegment->Load; Shutdown->view Shutdown+Release; step 6 weather; step 7 part 1 normals+MarkCliff).
+gt3-r2-1 (ed29ba77): Load reads 128x128 saved grid, StaticInit->1, view Init->1, no fault, ref_warnings=0; but verdict stalled at 2026-06-03 (main thread inside fc4_sim_on_tick -> game 0x52E0F5 -> ntdll; last calls budget). Resent as gt3-r2-2 to check determinism.
+Next: if gt3-r2-2 stalls at the same date, find whether terrain is involved; then step 7 part 2 (texture update 15.5.13.3/.6, needs game statics by address), TR37 per-cell view call in slots 93/94 etc, Save slot 97.
+Facts: labels used gt3-repl-1..5, gt3-r2-1; next free gt3-r2-3.
 ## Report (run4 round 1, 2026-10-21)
 
 Goal: `enable = terrain` clean to 2032 under turbo with ref_warnings=0. Not reached. This is not ready to
