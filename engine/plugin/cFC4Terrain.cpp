@@ -185,6 +185,12 @@ void SampleThreads() {
     THREADENTRY32 te{};
     te.dwSize = sizeof(te);
     const DWORD pid = GetCurrentProcessId(), me = GetCurrentThreadId();
+    DWORD tids[64] = {};
+    unsigned ntids = 0;
+    for (BOOL ok = Thread32First(snap, &te); ok && ntids < 64; ok = Thread32Next(snap, &te)) {
+        if (te.th32OwnerProcessID == pid) tids[ntids++] = te.th32ThreadID;
+    }
+    te.dwSize = sizeof(te);
     static DWORD stack[1024];
     unsigned threads = 0;
     for (BOOL ok = Thread32First(snap, &te); ok && threads < 32; ok = Thread32Next(snap, &te)) {
@@ -239,6 +245,35 @@ void SampleThreads() {
         LogWait(1000, "%s", line);
         // The objects a waiting thread may be blocked on: small handle-like words near the top of its stack,
         // named by their kernel type (public NtQueryObject), and for a thread handle, the thread id.
+        // A thread sleeping inside the game's wait at exe+0x5DA900: the pointer-like words of its first
+        // 0x100 stack words whose first or second dword holds a thread id of this process (a lock owner?),
+        // and the delay it sleeps for. Runtime evidence only.
+        bool inGameWait = false;
+        for (unsigned i = 0; i < 16 && i < got / 4; ++i) inGameWait |= (stack[i] == exeB + 0x5DA900);
+        if (inGameWait) {
+            LONGLONG delay = 0;
+            SIZE_T dg = 0;
+            if (stack[2] >= 0x10000) ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<const void*>(stack[2]), &delay, 8, &dg);
+            LogWait(1000, "terrain trace:   game wait: word2 -> %lld (100 ns units if a delay)", delay);
+            for (unsigned i = 0; i < 0x100 && i < got / 4; ++i) {
+                const uintptr_t v = stack[i];
+                if (v < 0x10000 || (v >= exeB && v < exeE) || (v >= ourB && v < ourE)) continue;
+                DWORD pv[4] = {};
+                SIZE_T pg = 0;
+                if (!ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<const void*>(v), pv, sizeof(pv), &pg) ||
+                    pg != sizeof(pv)) {
+                    continue;
+                }
+                for (unsigned k = 0; k < 4; ++k) {
+                    bool isTid = false;
+                    for (unsigned t = 0; t < ntids; ++t) isTid |= (pv[k] == tids[t]);
+                    if (isTid) {
+                        LogWait(1000, "terrain trace:   stack word %u = 0x%08X -> [%u] = thread id %lu (words %08lX %08lX %08lX %08lX)",
+                                i, static_cast<unsigned>(v), k, static_cast<unsigned long>(pv[k]), pv[0], pv[1], pv[2], pv[3]);
+                    }
+                }
+            }
+        }
         if (stack[0] != 0 && got >= 64) {
             using QueryObject = LONG(WINAPI*)(HANDLE, int, void*, ULONG, ULONG*);
             static QueryObject q = reinterpret_cast<QueryObject>(
