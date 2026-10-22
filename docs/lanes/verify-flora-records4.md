@@ -16,7 +16,8 @@
 - Guard2032 vfocc-r2-guard2032-20261022-a clean/ref0: each probe810/0, 340 refusals,70 undefined returns,0 fallbacks. Script full save ok1 (11484ms), date2031-01-11.
 - Immutable DLL build-runs/dlls/vfocc-r2-final/FreeCity4.dll SHA256 daed6fc7e7d83e3ed793787adbf4c20061c5b289220c1743b82ebaad2384a8aa.
 - Saved isolated-slot game-data fixture main build-runs/fixtures/vfocc-r2-save-20261022-a.sc4 SHA25682de3ffe2ac3e7b11ec36ce04917203d1afd82ad6d8286a2d42ce1ea396d4390 (never committed).
-- Next: wait reload2032 request, then same-fixture probe-disabled2032 control; final report with remaining FQ17 coverage gaps.
+- Reload vfocc-r2-reload2032-20261022-a clean/ref0 to2032-01-09; fixture hash matched; probes2x810/0, natural2575 then2569/invalid0.
+- Next: wait same-fixture probe-disabled2032 control; final report with remaining FQ17 coverage gaps.
 - Expanded probe compares native release counts with independently allocated Rust atomic reference model and destroys both at zero.
 - Probe opt-in flora_occupant_verify=1; enable simulator, keep flora_shadow=0 (avoids static-record getters entirely).
 - No game request outstanding. New labels unique; wait without qwait.
