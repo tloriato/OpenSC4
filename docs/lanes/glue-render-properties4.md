@@ -12,6 +12,8 @@
 - Quick gate PASS: 521 C API tests, native build 159/159. Added independent C++/Rust ABI test; it passes in full gate now running (session 51976).
 - New Rust module fmt PASS; shared lib.rs fmt recurses into pre-existing unrelated advisors.rs diffs; do not reformat those.
 - RP6 locale profiles remain unmeasured; no unsupported locale mutation or native construction calls added.
-- Next: finish full gate, immutable DLL copy, then queue unique candidate and union requests with scripted renderprops-check marks.
+- Stable full gate PASS: cargo 4642/4642, clippy zero diagnostics, build 6/6, ctest 69/69 (91.0s).
+- Substantive adapter commit 961fdaeb; C++ ABI fixture/quick gate commit 48237e0d.
+- Next: immutable DLL copy, then unique candidate and union game requests; no qwait.
 - Guard manifest: C:/Users/tlori/FreeCity4/build-runs/run4-glue-render-properties4-r1-manifest.json.
 - No game request outstanding. No ABI changes or questions yet.
