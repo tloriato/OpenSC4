@@ -178,10 +178,10 @@ or independently computed success. Property words are raw 32-bit values.
 | `0x0093E4F6` GetRegisterVal(key), P | Register-view slot +0x0C(26,key,0); this dispatch is not an ordinary lookup of key. |
 
 The last four labels are retained for locating the export, not as trustworthy API
-descriptions. Register-view key translation and notifications remain HT3; these
+descriptions. The short-key translation table remains external HT3 work; these
 wrappers must not be replaced by guessed semantics from their names. The core
 register-view dispatch bodies are specified in §5.2; the translation table and
-property-notification actions remain external/open boundaries.
+property-notification actions are specified in §5.3.
 Evidence: bytes at the individual entries; register forwarding adjustments are
 `this-8` on the sound view and `this+4` on the primary view.
 
@@ -235,7 +235,9 @@ P+0xA4. For **integer** reads, writes, containment and clear propagation, a key
 whose unsigned value is at most 255 is passed through shared translator
 `0x009377C9`; use its nonzero result, otherwise retain the original key. Negative
 signed words therefore do not enter this translation branch. The translator's
-table is an external encoding boundary. Float reads and writes do **not** perform
+table is an external encoding boundary. The helper indexes its 80-word table
+at `0x00B169F8` only for unsigned inputs below 80 and otherwise returns zero
+(`0x009377C9–0x009377DC`). Float reads and writes do **not** perform
 this translation in their own bodies.
 
 | Register-view slot / body | Local contract |
@@ -244,7 +246,7 @@ this translation in their own bodies.
 | +0x20 / `0x0093ADDD`, float read(key) | Same ordered search using a binary32 output variant (`0x00AD2BA4`) and the literal, untranslated key. Return the first successful output by FLD of its binary32 word. On failure return +0.0 (raw zero word at `0x00A81054`). This body performs no integer cast of the stored float. |
 | +0x18 / `0x0093AE2D`, contains(key) | Translate the key, ask entry zero's slot +0x24; if true return true, otherwise return entry one's +0x24 result. It does not inspect later providers and does not null-check either entry it accesses. This is deliberately different from read's full-vector search. |
 | +0x0C / `0x0093B268`, integer write(key,value,suppress) | Translate key; update primary comparison flags against signed zero using §3. Retain vector entry zero locally and write its +0x0C using the integer variant. Then perform the child propagation below. If suppress's low byte is zero, call primary +0x80(key) and return that callback's byte result; otherwise return true. Release the retained local provider before returning. Ignore the property write and child write return values. |
-| +0x1C / `0x0093B36F`, float write(key,value,suppress) | Use the literal key; compare the binary32 input against +0.0 using §3; retain entry zero and write its +0x0C using the float variant. Propagate to eligible children **through their integer-write slot**, converting input with shared `_ftol2` at `0x009EEF04` and passing its low 32 bits. For finite inputs in signed-32 range this truncates toward zero, e.g. -3.9 becomes -3. Suppression, callback-result selection and local provider release match integer write. Invalid/out-of-range conversion remains the compiler helper's boundary rather than a new clamp here. |
+| +0x1C / `0x0093B36F`, float write(key,value,suppress) | Use the literal key; compare the binary32 input against +0.0 using §3; retain entry zero and write its +0x0C using the float variant. Propagate to eligible children **through their integer-write slot**, converting input with shared `_ftol2` at `0x009EEF04` and passing its low 32 bits. For finite inputs in signed-32 range this truncates toward zero, e.g. -3.9 becomes -3. Suppression, callback-result selection and local provider release match integer write. See §5.3 for high-bit, low-word wrapping and masked-invalid conversion outcomes; no int32 clamp is introduced here. |
 | +0x14 / `0x0093B481`, clear propagation(key,suppress) | Translate key and visit all dependent sounds. For each supporting primary IID `0xBB1BE367`, obtain its register view through primary +0x18 and call its +0x14(key,0), then release the temporary primary view. This body does not erase a local provider property, query a child's track definition or check its override. If suppress's low byte is zero, call own primary +0x80(key) afterwards. There is no prescribed result. |
 
 Integer/float writes traverse dependent sounds in list order after the local
@@ -263,6 +265,132 @@ Evidence: integer key translation `0x0093B208–0x0093B221`; provider precedence
 `0x0093ADDD–0x0093AE2B`; integer propagation `0x0093B2D1–0x0093B36C`;
 float conversion and integer dispatch `0x0093B416–0x0093B42D`;
 clear propagation `0x0093B4AF–0x0093B505`.
+
+### 5.3 Property notifications and spatial coordinates
+
+HandleNotifySetPropertyValue (`0x0093BD06`, 745 bytes) enters on P with a
+32-bit key. First read its integer value through P+4 slot +0x10, even for an
+unknown or float-valued key. Dispatch by exact key equality as follows. Unless
+stated otherwise, return true and ignore delegated results; this method does not
+set the error latch itself. Keys absent from the table have no further action.
+
+| Keys | Action after the initial integer read |
+|---|---|
+| `0xFF0150F2`, `0xFF3071B9`, `0xFF734343`, `0xFF86FE79`, `0xFFD3D39B` | If main primary P+0x7C exists, re-read the key through the **float** getter P+4 slot +0x20, spill its x87 result to binary32, then call main primary +0x1C(key,float,0). No child enumeration. |
+| `0xFF050A94`, `0xFF595FFD`, `0xFF7E5922`, `0xFFA42951`, `0xFFA9B525`, `0xFFBDB196`, `0xFFF3EDF2`, `0xFFF7B8DF`, `0xFFFF4E79` | If main primary exists, call its integer setter +0x0C(key,initial integer value,0). |
+| `0xFF3EC880`, `0xFF40FF96`, `0xFF444C9A`, `0xFF469820`, `0xFF4A01D6`, `0xFF4C6660`, `0xFF53DBF3`, `0xFF90AAC8`, `0xFFA6A614`, `0xFFAAB623`, `0xFFC20061`, `0xFFC6B36D`, `0xFFCC3B29`, `0xFFCC4D2D`, `0xFFCE9997` | Call UpdateVolPan; ignore its boolean. |
+| `0xFF099DB2` | Call UpdatePitch; ignore its boolean. |
+| `0xFFAEC905` | Call UpdatePatch; ignore its boolean. |
+| `0xFF2D16F2` | If the initial integer value is nonzero, clear byte P+0x100. Zero leaves the byte unchanged. |
+| `0xFF5F15E1` | Call primary +0x68(initial integer value), the cursor-setup helper. **Return its byte result**, including false. |
+| `0xFFB36659` | If main primary exists, re-read this key as integer. Nonzero calls main sound-view Pause(0); zero calls its Unpause. Do not change the parent's pause dword here. |
+| `0xFFC6E666` | Clear/release P+0x84 first. A zero initial value finishes. Otherwise scan dependent sounds in list order, calling each sound-view +0x30 and comparing its returned 32-bit ID. On the first match, QI it for `0xEBB10CDD` into P+0x84 and stop searching. Failed QI diagnoses `Attempt to set target to object with no register interface` through HitMan +0x74(P,text), yet returns true. No match leaves the target null. |
+
+Evidence: complete decision tree and returns `0x0093BD06–0x0093BFEE`;
+float FSTP and three-argument setter `0x0093BE45–0x0093BE58`; target
+clear-before-search `0x0093BF58–0x0093BFB7`. Notifications are synchronous
+property side effects, not queued city messages.
+
+Spatial read `0x0093A9BC` (82 bytes) and SetPosition `0x0093AA0E` (97 bytes)
+enter on **P+8**, using P+4 as their register view. The coordinate order is
+`0xFFCC4D2D`, `0xFF4A01D6`, `0xFF469820`. Reading performs three ordered
+integer lookups, interprets each word as **signed** int32 with FILD, and stores
+each result to its caller-provided binary32 output. There is no scale factor,
+axis interchange, normalization or separate success return.
+
+SetPosition receives three binary32 arguments. In that same order, convert each
+through shared `_ftol2` (`0x009EEF04`) and write the low EAX word using integer
+setter(key,word,0), ignoring each result. Then write `0xFFCC156F`=0 with
+suppression 0 and return that final delegated result. Consequently observers can
+see partially updated coordinates; a failed coordinate write does not suppress
+later writes or the final invalidation write.
+
+For finite binary32 inputs representable as signed int64, this helper truncates
+toward zero, and the caller keeps the low 32 bits; it does not clamp to int32.
+For example, 2147483648.0 produces word `0x80000000`, read back as -2147483648.0;
+4294967296.0 produces zero. With x87 invalid exceptions masked, NaN, infinities
+and inputs outside signed-int64 range take the integer-indefinite path and also
+produce low word zero. Unmasked invalid exceptions can trap; no local recovery
+is installed. Evidence: helper FISTP **qword**, correction and indefinite path
+`0x009EEF0D–0x009EEF78`; coordinate FILD/FSTP and low-word arguments at the
+two owned entries. These are integer coordinate units exposed by the properties;
+this body establishes no conversion to city/world distance.
+
+### 5.4 Pitch computation and completion time
+
+The 49-byte helper `0x0093AA7E` computes a double-base, signed-int32-exponent
+power using x87 intermediates. Start an accumulator at 1 and current base at the
+incoming binary64 value. Take the exponent's magnitude by 32-bit negation when
+negative (INT_MIN remains unsigned magnitude `0x80000000`). Process bits from
+least significant upward: multiply accumulator by current base when the bit is
+set; shift magnitude logically right; if it is now nonzero, square the current
+base and repeat. Pop the current base at the end. For a negative original
+exponent return 1/accumulator, otherwise accumulator. No binary64 intermediate
+store occurs inside this helper. Exponent zero returns 1 even for a NaN base;
+zero base with a negative exponent can raise divide-by-zero or yield infinity
+under masked exceptions. This is not a library pow call with reordered products.
+
+UpdatePitch (`0x0093B508`, 454 bytes, P):
+
+1. Null main primary returns false. Otherwise QI it for `0x206077D2` into a
+   null-initialized temporary, **ignore the QI boolean**, and immediately call
+   the output's IsLoaded (+0x40). Failed/null QI can fault. If not loaded,
+   Release the temporary if present and return false.
+2. If parent containment (§5.2) says `0xFF099DB2` is absent, initialize an
+   integer variant to the temporary sound's GetOriginalFrequency (+0x70).
+   Ask this player's GetTrackDef for `0xEBB10CDD`; on success ask that provider
+   +0x20(key-address `0xFF099DB2`,variant) to override it, ignoring that query's
+   boolean. Write the resulting word locally with suppression **0**, then
+   Release the queried definition if present. This initialization can notify
+   recursively; there is no special recursion guard in this body.
+3. Read offsets a=`0xFF8DCFD8`, b=`0xFF69510B`, then frequency
+   f=`0xFF099DB2`, in that order. If both offsets are zero, use f directly and
+   skip random selection and the suppressed local frequency write below.
+4. Otherwise interpret f as signed int32 and store it as binary64. Compute two
+   **independent** endpoints: A=f when a=0, else f times the helper's power
+   of a; B=f when b=0, else f times that helper's power of b. The binary64
+   base constant is raw `0x3FF0F38F92D97963` (about 1.0594630943592953).
+   Each product uses the original stored f, not the other endpoint. Spill A
+   and B separately to binary64, convert A then B through `_ftol2`, keeping
+   their low 32-bit words. Call HitMan +0x68 with arguments **(B,A)**. Write
+   its returned word as parent `0xFF099DB2` with suppression 1 and use that
+   returned word thereafter, regardless of the local write's result.
+5. Write main-primary `0xFF099DB2`=chosen word with suppression 0. If the parent
+   contains `0xFF3071B9`, invoke its property notification; then do the same for
+   `0xFF86FE79`. Release the temporary sound view and return true. Neither
+   setter failures nor those notification results change this return.
+
+There is **no local clamp, endpoint sort or sum of pitch offsets**. The called
+HitMan +0x68 maps (B,A) to A+U(B-A), all word arithmetic modulo 2^32. For bound
+n=0, U returns zero without advancing its generator; otherwise U(n) is the high
+32 bits of an unsigned generator word times n. Thus normal increasing endpoints
+select [A,B), while reversed endpoints use a wrapped bound. This specifies the
+player's use of the external random service, not that service's full seed/stream
+contract. Evidence: QI/load and default `0x0093B511–0x0093B5B4`; signed FILD,
+two products, binary64 spills and conversion order `0x0093B5B7–0x0093B66F`;
+final forwarding `0x0093B675–0x0093B6C9`; shared Random and bounded draw
+`0x00939993–0x009399AA`, `0x009136B1–0x009136C9`.
+
+CompletionTime (`0x0093ACD6`, 212 bytes, P) returns binary32-rounded duration,
+promoted back into the x87 return register. It never interprets the track stream
+or includes dependent sounds. Null main primary returns +0.0. Otherwise QI main
+primary for `0x09D002D2` into a null temporary. Failed QI releases any non-null
+output and returns +0.0. On success call that view's +0x10 for a secondary
+pointer, then take one retained reference to it (`0x0096E773`). Null secondary
+releases the queried view and returns +0.0. Successful QI with null output is
+not guarded before its first virtual call.
+
+Ask secondary +0x40 for a borrowed format pointer. If pointer or its dword +8
+is zero, Release secondary then queried view and return +0.0. Otherwise get
+secondary +0x28 as numerator; treat numerator and format+8 denominator as
+**unsigned** 32-bit words. Each is loaded as signed int32 and corrected by adding
+4294967296.0 when its high bit is set. Divide numerator by denominator in x87,
+spill to binary32 **before** releasing secondary then queried view, reload that
+binary32 and return it. No additional divisor or milliseconds multiplier exists.
+Do not infer units beyond this provider ratio. Evidence: provider and failure
+paths `0x0093ACDB–0x0093AD35`, unsigned conversion and spill/release order
+`0x0093AD3A–0x0093ADA9`; correction constant `0x00A80AA8` is binary32
+`0x4F800000`, zero `0x00A81054` is raw zero.
 
 ## 6. Playback entry points
 
@@ -542,6 +670,38 @@ export; exact continuation behavior, exception-type matching and runtime dispatc
 remain a shared SEH boundary, not a claimed portable exception implementation.
 Command encodings and individual command state changes remain HT1.
 
+### 7.1 Verified command envelope and selected opcodes (partial body)
+
+DoCommand (`0x0093C229`, **6754 bytes, still open**) begins with current cursor
+C=P+0x6C. Fetch one **unsigned byte** opcode, save C locally, and immediately
+store C+1 in P+0x6C. Test unsigned (opcode-1) against 96. Values 1–97 dispatch
+through the absolute jump table at `0x0093DC8B`; opcode 0 and 98–255 go to
+the `Illegal Instruction` diagnostic and return true. The diagnostic itself
+does not restore the cursor or directly clear active/wait/error fields. The
+envelope contains no end-pointer or available-length check. The following rows
+are verified subcontracts, **not** full-body or opcode-set completion credit.
+
+| Opcode / encoded length | Verified action |
+|---|---|
+| `0x09` / 2 bytes | Read unsigned register byte, advance cursor, CheckedRegId, then signed comparison against 127. On accepted result, read integer register and store its full word as wait P+0x44; return true. Larger accepted-helper results diagnose `TRACK ERROR: kTrackCmdWait`, return true. A raw byte 255 is diagnosed by CheckedRegId and becomes register 1; it is not sign-extended to -1. |
+| `0x0B` / 1 byte | If main primary is absent or main sound IsPlaying is false, return true at C+1. Otherwise decrement current cursor back to C, set wait=**2**, return true. This polls and re-executes itself; it does not block the host thread. |
+| `0x0C` / 1 byte | If active byte P+0x58 is set, clear it **before** primary Release. Return true. If already clear, simply return true. There is no Kill, source Stop, cursor reset or update-target removal in this branch. |
+| `0x0D` / opcode plus 4-byte operand | Obtain a temporary HitMan reference; read the little-endian 32-bit operand at C+1 and set cursor to P+0x68 plus that word, modulo 2^32. Release the temporary, return true. Target is relative to the track base, not C or C+5. No operand-end or target-range check, and no separate C+5 cursor store, occurs in this branch. |
+| `0x0F`, `0x1D`, `0x1E`, `0x5D`, `0x5E` / 1 byte | Jump directly to the true-return tail. These consume no operands and perform no local state action beyond the envelope's cursor advance. |
+| `0x60` / 9 bytes | Read raw 32-bit destination key, advance cursor to C+5; read raw 32-bit source key, advance to C+9. Integer-read source from P+4 and integer-write destination with that result and suppression 0. No CheckedRegId or byte-key rejection. If write fails, diagnose `Could not set local property at kTrackCmdSetDirect`, yet return true. |
+| `0x61` / 9 bytes | Same raw operands and two cursor advances as 0x60; integer-read the source key, then integer-read the **returned word as a key**, then write destination with that second result and suppression 0. Failed write diagnoses `Could not set local property at kTrackCmdSetIndirect`, yet returns true. |
+
+All operand reads in these rows precede the associated external calls except
+the explicit temporary service acquisition in 0x0D; truncated operands are not
+locally guarded. Do not replace them with an inferred graceful-EOF contract.
+Evidence: envelope `0x0093C237–0x0093C24C`; wait/end/poll
+`0x0093C8A9–0x0093C915`, wait=2 tail `0x0093D639`; base jump
+`0x0093C821–0x0093C837`, release tail `0x0093C885`; direct/indirect property
+operations `0x0093C45A–0x0093C4D3`; diagnostic/true tail
+`0x0093DC72–0x0093DC8A`. Raw jump-table words verify the listed opcode labels,
+including all five no-op destinations `0x0093DC84`; decompiler case labels alone
+are not the mapping authority. All other opcode contracts remain HT1.
+
 ## 8. External boundaries and current limits
 
 Sound-system slots +0x78/+0x7C register/unregister the adjusted update-target
@@ -553,15 +713,17 @@ inferred from this player's 20-period registration argument.
 
 This is a call-driven object: the evidence above does not establish a city-message
 subscription or a DoMessage implementation. Its property-notification callback is
-`0x0093BD06`; the view at P+16 forwards to another callback body through a thunk.
-Those unresolved callback actions are HT3, not an assumed no-op message handler.
+`0x0093BD06`, specified in §5.3. The P+16 view's action entry at table
+`0x00AD3D44` points to shared thunk `0x0093E602`, which subtracts 16 and
+tail-calls UpdateVolPan (`0x0093AE8C`). It adds no reference or independent
+completion action. This non-owned thunk adds no body to the inventory.
 
 ## 9. Open coverage
 
 Only inventory rows with a section reference have a concrete contract here.
-Coverage: **82 / 110 bodies, 6324 / 16012 bytes specified**. Exactly
-**28 bodies / 9688 bytes remain open** (HT1: 1/6754; HT2: external cleanup only;
-HT3: 3/924; HT4: 3/715; HT5: 21/1295). These are body counts/bytes,
+Coverage: **88 / 110 bodies, 7963 / 16012 bytes specified**. Exactly
+**22 bodies / 8049 bytes remain open** (HT1: 1/6754; HT2: external cleanup only;
+HT3: external key-map boundary only; HT4: answered; HT5: 21/1295). These are body counts/bytes,
 not estimates from source-line length. The largest gap is DoCommand.
 Rows marked open remain necessary implementation work, grouped into HT1–HT5 in
 `questions/hit-track-player.md`. Reach/neighbour attribution alone is not proof
@@ -637,6 +799,43 @@ must be preserved when those gaps are filled.
     action and returns true. In both cases release definition before primary;
     do not release the borrowed input or sound view.
 
+19. Notify an unknown key: require one initial integer read, true, and no source
+    call. Notify `0xFF3071B9` with integer result 12 but float result -1.25:
+    require a later float read and main float setter(key,-1.25,0), not integer
+    forwarding. A failed cursor-setup notification alone propagates false.
+20. Select a dependent target when two children share an ID. Require release of
+    the old target before scanning and QI only on the first matching child. Make
+    that QI fail: one diagnostic, null target, no second-match retry, true result.
+21. Set coordinates (-3.9,2147483648.0,4294967296.0). Require integer words
+    -3, `0x80000000`, 0 in coordinate order, then the invalidation write. Make
+    the first setter fail: later writes still occur and the final write controls
+    the returned result. Readback interprets `0x80000000` as negative.
+22. Pitch f=100, a=0, b=1 gives truncated endpoints A=100, B=105. A controlled
+    generator word zero selects 100; `0xFFFFFFFF` selects 104. With a=b=1 both
+    endpoints are 105: chosen word 105 and no generator advance. With a=1,b=0,
+    the wrapped bound is `0xFFFFFFFB`; generator `0xFFFFFFFF` yields word 99,
+    demonstrating the lack of sorting/clamping. These control the random-service
+    input, not the original game's seed stream.
+23. Completion numerator `0xFFFFFFFF`, denominator `0x80000000`: unsigned ratio
+    is 1.9999999995343387, spilled binary32 result exactly 2.0. Zero denominator
+    or absent format returns +0.0 without division. Require secondary Release
+    before queried-view Release, after the result has been spilled.
+24. Power base 2, exponent -3 returns 0.125; base 1, exponent INT_MIN returns 1
+    and terminates. The latter distinguishes logical magnitude shifts from a
+    signed loop that cannot terminate.
+25. Command `09 FF`: unsigned raw register 255 becomes fallback register 1,
+    with the CheckedRegId diagnostic, then wait receives register 1's full word.
+    Command 0B with a playing main sound leaves its cursor at the opcode and
+    sets wait=2. Command 0C's Release observer sees active already clear. Each
+    no-op consumes exactly one byte; illegal 00 or FF also advances once and
+    returns true after its diagnostic.
+26. Command 60 with little-endian destination `0x11223344` and source
+    `0x55667788`, at cursor `0x1000`, reads that full source key and writes
+    destination with cursor already `0x1009`. For 61, make the first read return
+    `0xFEED0123`: a second read uses precisely that full key. Failed writes
+    diagnose but still return true. For 0D with track base `0x2000`, opcode
+    address `0x1000` and operand `0x20`, require target `0x2020`, not `0x1025`.
+
 These are discriminating implementation cases, not results of an executed game
 or an implementation test suite. No game/shadow claim is made for this docs lane.
 
@@ -660,11 +859,11 @@ audit. Open rows are tracked in the questions file as implementation gaps.
 | `0x0093A959` | 35 | `cHitTrackPlayer::CurrentPlayPosition` | name-high | §5 |
 | `0x0093A97C` | 39 | unnamed | neighbour | §5 |
 | `0x0093A9A3` | 25 | unnamed | neighbour | §5 |
-| `0x0093A9BC` | 82 | unnamed | neighbour | open |
-| `0x0093AA0E` | 97 | `cHitTrackPlayer::SetPosition` | name-high | open |
+| `0x0093A9BC` | 82 | unnamed | neighbour | §5.3 |
+| `0x0093AA0E` | 97 | `cHitTrackPlayer::SetPosition` | name-high | §5.3 |
 | `0x0093AA6F` | 8 | `cHitTrackPlayer::SetErrorCondition` | name-low | §5 |
 | `0x0093AA77` | 7 | `cHitTrackPlayer::GetErrorCondition` | name-low | §5 |
-| `0x0093AA7E` | 49 | unnamed | reach | open |
+| `0x0093AA7E` | 49 | unnamed | reach | §5.4 |
 | `0x0093AAB5` | 29 | unnamed | reach | open |
 | `0x0093AAD2` | 40 | unnamed | neighbour | open |
 | `0x0093AAFA` | 47 | unnamed | reach | open |
@@ -674,7 +873,7 @@ audit. Open rows are tracked in the questions file as implementation gaps.
 | `0x0093AC87` | 22 | `cHitTrackPlayer::GetTrackDef` | name-high | §5 |
 | `0x0093AC9D` | 20 | `cHitTrackPlayer::SetHitList` | name-high | §5 |
 | `0x0093ACB1` | 37 | `cHitTrackPlayer::GetHitList` | name-high | §5 |
-| `0x0093ACD6` | 212 | `cHitTrackPlayer::CompletionTime` | name-high | open |
+| `0x0093ACD6` | 212 | `cHitTrackPlayer::CompletionTime` | name-high | §5.4 |
 | `0x0093ADAA` | 16 | `cHitTrackPlayer::Reset` | name-high | §4 |
 | `0x0093ADBA` | 35 | `cHitTrackPlayer::SetRegisterVal` | name-high | §5 |
 | `0x0093ADDD` | 80 | unnamed | neighbour | §5.2 |
@@ -697,7 +896,7 @@ audit. Open rows are tracked in the questions file as implementation gaps.
 | `0x0093B268` | 263 | unnamed | neighbour | §5.2 |
 | `0x0093B36F` | 274 | unnamed | neighbour | §5.2 |
 | `0x0093B481` | 135 | unnamed | neighbour | §5.2 |
-| `0x0093B508` | 454 | `cHitTrackPlayer::UpdatePitch` | name-high | open |
+| `0x0093B508` | 454 | `cHitTrackPlayer::UpdatePitch` | name-high | §5.4 |
 | `0x0093B6CE` | 32 | unnamed | neighbour | open |
 | `0x0093B6EE` | 136 | unnamed | neighbour | open |
 | `0x0093B776` | 27 | unnamed | neighbour | open |
@@ -706,7 +905,7 @@ audit. Open rows are tracked in the questions file as implementation gaps.
 | `0x0093BB39` | 51 | unnamed | reach | open |
 | `0x0093BB6C` | 132 | unnamed | reach | open |
 | `0x0093BBF0` | 278 | `cHitTrackPlayer::Kill` | name-high | §6 |
-| `0x0093BD06` | 745 | `cHitTrackPlayer::HandleNotifySetPropertyValue` | name-high | open |
+| `0x0093BD06` | 745 | `cHitTrackPlayer::HandleNotifySetPropertyValue` | name-high | §5.3 |
 | `0x0093BFEF` | 82 | `cHitTrackPlayer::NoteOn` | name-high | §6.5 |
 | `0x0093C041` | 35 | unnamed | neighbour | open |
 | `0x0093C064` | 53 | unnamed | neighbour | open |

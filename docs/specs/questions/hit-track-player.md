@@ -1,14 +1,25 @@
 # cHitTrackPlayer — unresolved implementation questions
 
 About `docs/specs/hit-track-player.md`. Filed 2026-10-22 by `re-hittrack4`.
-No complete-owner credit: **82 / 110 bodies, 6324 / 16012 bytes specified;
-28 bodies / 9688 bytes remain open**. Sizes are exported body bytes. Groups below
+No complete-owner credit: **88 / 110 bodies, 7963 / 16012 bytes specified;
+22 bodies / 8049 bytes remain open**. Sizes are exported body bytes. Groups below
 partition every open inventory row exactly once; the cleanup boundary is additional
 external work and is not added to this owner’s byte count.
 
 **HT1 — Interpreter bytecode and control flow.** Target: `hit-track-player.md` §6–7.
 
 Specify every opcode reachable in `0x0093C229`: instruction/operand widths, signedness, register/key translation, cursor advance and branching, wait/active/error transitions, source and external-call ordering, malformed/truncated stream behavior, and return convention. The timer wrapper is specified; that does not specify DoCommand. Start from its own jump tables and operand fetch instructions, not another Hit owner.
+
+Round 2 partial: spec §7.1 proves the decoder envelope and 11 of 97 in-range
+opcode values: 09, 0B, 0C, 0D, 0F, 1D, 1E, 5D, 5E, 60, 61 (hex). All
+other **86** values remain uncontracted, including arithmetic/comparison,
+conditional branches, call/return-stack helper semantics, sound actions,
+wait-comparison loops, Hit-list selection and callback dispatch. Full DoCommand
+remains open at all 6754 bytes; no fractional byte/body credit is claimed for
+these subcontracts. Continue from the jump table at 0x0093DC8B and the saved
+opcode cursor, not the decompiler's pointer arithmetic (which confuses bytes
+with int pointers). Only the selected branches' unchecked/truncated behavior
+has been established, not the full malformed-stream contract.
 
 Remaining owned bodies: **1 / 6754 bytes**:
 
@@ -29,27 +40,16 @@ Remaining owned bodies in HT2: **0 / 0 bytes**; external cleanup remains open.
 
 **HT3 — Property, register and spatial dispatch.** Target: `hit-track-player.md` §3, §5, §8.
 
-Partial progress: register-view slot bodies, precedence, local variants, suppression and child propagation are now specified in §5.2. HT3 stays open for every branch of HandleNotifySetPropertyValue, including calls to pitch/patch/volume providers, and the spatial read/write units and rounding at 0x0093A9BC / 0x0093AA0E; decompiler labels such as _lua_gettop are not numeric evidence. Resolve the shared translation table at 0x009377C9 and invalid/out-of-range _ftol2 conversion as external encodings when reconciling notifications. Do not assume these are city messages or ordinary register-index setters.
+Owned dispatch, notification and spatial bodies are specified in §5.2–5.3;
+archived as HT3-owned. Remaining external encoding: publish the **80-entry**
+short-register map at 0x00B169F8, indexed by helper 0x009377C9. Instructions
+prove an unsigned input below 80 indexes that table, otherwise helper returns
+zero; callers retain their original key for a zero translation. The complete
+table contents are still needed by an implementer. `_ftol2` finite/high-bit and
+masked-invalid spatial outcomes are now specified in §5.3, not an open guess.
 
-Remaining owned bodies: **3 / 924 bytes**:
-
-| Entry | Bytes | Export name / local status |
-|---|---:|---|
-| `0x0093A9BC` | 82 | unnamed; contract unresolved |
-| `0x0093AA0E` | 97 | `cHitTrackPlayer::SetPosition` |
-| `0x0093BD06` | 745 | `cHitTrackPlayer::HandleNotifySetPropertyValue` |
-
-**HT4 — Pitch and completion-time arithmetic.** Target: `hit-track-player.md` §5, §8.
-
-Specify signed exponent handling and exact x87 multiplication order in 0x0093AA7E, UpdatePitch lookup/combination/clamp/conversion order, and CompletionTime provider selection, unsigned conversion and float spill/rounding order. Verify from bytes whether current pseudocode double/float casts and apparent this references are sound; include zero denominators, absent providers, negative and high-bit inputs. No numeric formulas from these three bodies are established by this document.
-
-Remaining owned bodies: **3 / 715 bytes**:
-
-| Entry | Bytes | Export name / local status |
-|---|---:|---|
-| `0x0093AA7E` | 49 | unnamed; contract unresolved |
-| `0x0093ACD6` | 212 | `cHitTrackPlayer::CompletionTime` |
-| `0x0093B508` | 454 | `cHitTrackPlayer::UpdatePitch` |
+Remaining owned bodies in HT3: **0 / 0 bytes**. HT4 is fully answered in the
+archive and spec §5.4; no open HT4-owned entry remains.
 
 **HT5 — Owned container and source-index support.** Target: `hit-track-player.md` §4–8.
 
