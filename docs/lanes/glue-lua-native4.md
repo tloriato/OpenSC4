@@ -15,7 +15,10 @@
 - fmt PASS using absolute touched paths; relative-path fmt failed because wrapper working directory differs.
 - First final all: cargo 4964/0, clippy 0, build 4/4; ctest 67/68 (ret_channel_check: two new unreviewed uses).
 - Open now cites published AL Boolean contract; unused original IsServiceRunning diagnostic removed rather than interpreting its return.
-- Next: stable final all, then immutable opt-in game trace through 2032 and full save/shutdown; no activation or comparison credit.
-- No game requests outstanding. No implementation changes yet.
+- Stable final all PASS on cf8d3ec1: cargo 4964/0, clippy 0 diagnostics, native build 4/4, ctest 68/68 (81.4s); no source changes during gate.
+- Frozen artifact and SHA/head record: build-runs/lua-native4-artifact.json. Final logs copied to build-runs/lua-native4-final-*.log.
+- Game request outstanding: lua-native4-r1-final-2032-20261022a (turbo, full save 2031-12-01, end 2032-01-01, enable=luascripts only).
+- Next: wait via build-runs/wait-lua-native4-r1.ps1 (no qwait), inspect verdict and LUASCRIPTS/save/shutdown lines; report wip, no comparison/activation credit.
+- LH5 asks exact primary slot-25 typed ABI; no hidden slot declaration guessed.
 - Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-glue-lua-native4-r1-manifest.json.
 - No tools/, analysis, executable, shared maps/defaults/ABI-table inputs permitted.
