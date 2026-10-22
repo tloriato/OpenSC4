@@ -337,6 +337,8 @@ const char* const kOtherKeys[] = {"disable", "enable", "budget_default", "refaud
                                   // the glue-span565-impl4 lane (FC4Span565Bridge.h)
                                   "span565_trace",
                                   "span8888_shadow",
+                                  // verify-ordinance4: independent original/Rust observation, off by default.
+                                  "ordinance_shadow",
 };
 // The switches that are off, for lock-free readers (autotest verdict).
 char g_offList[512] = "-";
