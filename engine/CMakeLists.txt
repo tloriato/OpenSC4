@@ -518,6 +518,9 @@ if(FC4_IS_WIN32_X86)
         # Opt-in 8888 bridge (span-render-8888.md section 1.1).
         plugin/FC4SpanRender8888.cpp
         plugin/FC4SpanRender8888.h
+        # Independent native grid verification (no public ABI table changes).
+        plugin/FC4SimGridsShadow.cpp
+        plugin/FC4SimGridsShadow.h
         # cRZMessage2Standard: foundations §5.1 says it differs from the game.
         "${FC4_GZCOM_DIR}/src/cRZCOMDllDirector.cpp"
         "${FC4_GZCOM_DIR}/src/cRZBaseString.cpp"

@@ -12,6 +12,7 @@
 // root); if not, see <https://www.gnu.org/licenses/>.
 
 #include "FC4HostGrid.h"
+#include "FC4SimGridsShadow.h"
 
 #include "FC4Log.h"
 #include "FC4Perf.h"
@@ -85,7 +86,7 @@ uint32_t ClassOf(void*, uint64_t t) {
 }
 
 // Slots 10-17 do not depend on the element type.
-void Geometry(void*, uint64_t t, fc4_grid_geometry* out) {
+void Geometry(void* u, uint64_t t, fc4_grid_geometry* out) {
     cISC4SimGrid<uint8_t>* g = As<uint8_t>(t);
     if (g == nullptr || out == nullptr) return;
     if (Unread(t)) {
@@ -100,19 +101,25 @@ void Geometry(void*, uint64_t t, fc4_grid_geometry* out) {
     out->width_z = g->GetTractWidthZ();
     out->inv_width_x = g->GetOneOverTractWidthX();
     out->inv_width_z = g->GetOneOverTractWidthZ();
+    SimGridsShadowTrack(Ctx(u)->tag,t);
 }
 
-double Get(void*, uint64_t t, uint32_t kind, int32_t x, int32_t z) {
+template<class T> T ObservedGet(uint64_t t,int32_t x,int32_t z) {
+    T v=As<T>(t)->GetTractValue(x,z);
+    SimGridsShadowValue(t,x,z,&v,sizeof(v)); return v;
+}
+double Get(void* u, uint64_t t, uint32_t kind, int32_t x, int32_t z) {
     if (t == 0 || Unread(t)) return 0.0;
     if (perf::On()) perf::Count(perf::kGridGet);  // tooling: perf_profile (FC4Perf.h)
+    SimGridsShadowTrack(Ctx(u)->tag,t);
     switch (kind) {
-        case kClsI16: return As<int16_t>(t)->GetTractValue(x, z);
-        case kClsI8: return As<int8_t>(t)->GetTractValue(x, z);
-        case kClsU16: return As<uint16_t>(t)->GetTractValue(x, z);
-        case kClsU32: return As<uint32_t>(t)->GetTractValue(x, z);
-        case kClsF32: return As<float>(t)->GetTractValue(x, z);
+        case kClsI16: return ObservedGet<int16_t>(t,x,z);
+        case kClsI8: return ObservedGet<int8_t>(t,x,z);
+        case kClsU16: return ObservedGet<uint16_t>(t,x,z);
+        case kClsU32: return ObservedGet<uint32_t>(t,x,z);
+        case kClsF32: return ObservedGet<float>(t,x,z);
         case kClsU8:
-        case kClsBool: return As<uint8_t>(t)->GetTractValue(x, z);
+        case kClsBool: return ObservedGet<uint8_t>(t,x,z);
         default: return 0.0;
     }
 }
@@ -129,6 +136,7 @@ uint32_t ReadAll(uint64_t t, void* out, uint32_t count) {
     for (int32_t x = 0; x < nx; ++x) {
         for (int32_t z = 0; z < nz; ++z) *o++ = g->GetTractValue(x, z);
     }
+    SimGridsShadowBulkRead(t,out,count,sizeof(T));
     return count;
 }
 
@@ -171,6 +179,7 @@ uint32_t WriteAll(uint64_t t, const uint32_t* index, const void* values, uint32_
         g->SetTractValue(static_cast<int32_t>(index[i] / static_cast<uint32_t>(nz)),
                          static_cast<int32_t>(index[i] % static_cast<uint32_t>(nz)), v[i]);
     }
+    SimGridsShadowBulkWrite(t,index,values,n,sizeof(T));
     return n;
 }
 
@@ -190,23 +199,29 @@ uint32_t BulkWrite(void* u, uint64_t t, uint32_t kind, const uint32_t* index, co
     }
 }
 
+template<class T> void ObservedSet(uint64_t t,int32_t x,int32_t z,double v) {
+    T value=Narrow<T>(v); As<T>(t)->SetTractValue(x,z,value);
+    SimGridsShadowSet(t,x,z,&value,sizeof(value));
+}
 void Set(void* u, uint64_t t, uint32_t kind, int32_t x, int32_t z, double v) {
     if (t == 0 || Unread(t) || !WritesOn(u, "grid SetTractValue")) return;
     if (perf::On()) perf::Count(perf::kGridSet);  // tooling: perf_profile (FC4Perf.h)
+    SimGridsShadowTrack(Ctx(u)->tag,t);
     switch (kind) {
-        case kClsI16: As<int16_t>(t)->SetTractValue(x, z, Narrow<int16_t>(v)); break;
-        case kClsI8: As<int8_t>(t)->SetTractValue(x, z, Narrow<int8_t>(v)); break;
-        case kClsU16: As<uint16_t>(t)->SetTractValue(x, z, Narrow<uint16_t>(v)); break;
-        case kClsU32: As<uint32_t>(t)->SetTractValue(x, z, Narrow<uint32_t>(v)); break;
-        case kClsF32: As<float>(t)->SetTractValue(x, z, Narrow<float>(v)); break;
+        case kClsI16: ObservedSet<int16_t>(t,x,z,v); break;
+        case kClsI8: ObservedSet<int8_t>(t,x,z,v); break;
+        case kClsU16: ObservedSet<uint16_t>(t,x,z,v); break;
+        case kClsU32: ObservedSet<uint32_t>(t,x,z,v); break;
+        case kClsF32: ObservedSet<float>(t,x,z,v); break;
         case kClsU8:
-        case kClsBool: As<uint8_t>(t)->SetTractValue(x, z, Narrow<uint8_t>(v)); break;
+        case kClsBool: ObservedSet<uint8_t>(t,x,z,v); break;
         default: break;
     }
 }
 
 void Fill(void* u, uint64_t t, uint32_t kind, double v) {
     if (t == 0 || Unread(t) || !WritesOn(u, "grid SetTractValues")) return;
+    SimGridsShadowTrack(Ctx(u)->tag,t);
     switch (kind) {
         case kClsI16: As<int16_t>(t)->SetTractValues(Narrow<int16_t>(v)); break;
         case kClsI8: As<int8_t>(t)->SetTractValues(Narrow<int8_t>(v)); break;
@@ -217,12 +232,14 @@ void Fill(void* u, uint64_t t, uint32_t kind, double v) {
         case kClsBool: As<uint8_t>(t)->SetTractValues(Narrow<uint8_t>(v)); break;
         default: break;
     }
+    SimGridsShadowFill(t,v);
 }
 
 void Shutdown(void* u, uint64_t t) {
     if (t == 0) return;
     FC4_LOGV("%s: grid %p shut down", Ctx(u)->tag, static_cast<void*>(FromToken(t)));
-    As<uint8_t>(t)->Shutdown();
+    const bool result=As<uint8_t>(t)->Shutdown();
+    SimGridsShadowShutdown(t,result);
 }
 
 void Release(void*, uint64_t t) { ReleaseGameGrid(t); }
@@ -255,10 +272,12 @@ uint64_t CreateGameGrid(const char* tag, uint32_t kind, uint32_t instance, int32
         Setup<uint8_t>(p, tractSize, instance);
     }
     FC4_LOGV("%s: grid 0x%08X created (class 0x%08X, tract size %d) at %p", tag, instance, kind, tractSize, p);
+    SimGridsShadowTrack(tag,TokenOf(p));
     return TokenOf(p);
 }
 
 uint32_t ReleaseGameGrid(uint64_t token) {
+    SimGridsShadowRelease(token);
     ForgetUnreadRef(token);
     // The token's reference is ours whichever way it came: GetClassObject in
     // CreateGameGrid, or a save's ReadGZSerializable (then QueryInterface'd to
