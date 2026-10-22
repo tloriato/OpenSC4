@@ -10,6 +10,7 @@
 - Milestone 93ac8e92: production transport/front and initial focused test. Additional test checks null/wrong type, scalar no-reference effects, fullword fields, clone's one AddRef and replacement AddRef-before-Release.
 - Baseline tests completed, clippy compiling; serial gate helper will wait for baseline PID 29392, run quick then final all, freeze DLL only on success. Logs remain in build-runs; no concurrent builds.
 - Baseline cargo measured 5039 passed/0 failed/0 ignored across 21 result lines; this is NOT a full gate. Clippy still live. Stable focused/full gates pending.
+- Baseline clippy subsequently passed (`Finished dev` in 10m19s); CMake is compiling fc4-core release/i686. No DLL/gate claimed yet. Helper PID 22184 remains waiting and will run serially. Initial native AddRef/Release pair uses refaudit macros.
 - Code tip 3a2bd237 (20f67574 substantive test/verifier; 93ac8e92 production transport). Helper session 67843; baseline session 79550. The already-running helper loaded its original code before snapshot support was added; do not assume baseline/quick archives exist.
 - Prepared (not queued): advice-r2-{control,probe,current40}.template, immutable DLL destination build-runs/immutable-subject-r2/FreeCity4.dll. Unique labels end 20261022a. Probe-OFF control must pass first; only then matched probe-ON, then literal CURRENT40.
 - Supported script now saves at 2031-12-01 with before/after marks. No supplied persisted reload fixture was found in permitted inputs; reload remains unmeasured. No game request outstanding.

@@ -188,8 +188,8 @@ inline void CompareProductionFronts() {
         return;
     }
     FC4_LOG("advice-subject-verify: factory established class=%08X cells=%u,%u independent=1", clsid, h.x, h.z);
-    v.Check("initial AddRef count", n->AddRef(), c->AddRef());
-    v.Check("initial Release count", n->Release(), c->Release());
+    v.Check("initial AddRef count", FC4_ADDREF(n), c->AddRef());
+    v.Check("initial Release count", FC4_RELEASE(n), c->Release());
     for (uint32_t iid : {1u, kFC4_IID_cISC4AdviceSubject, GZIID_cIGZSerializable}) {
         void* out = nullptr;
         const bool ok = c->QueryInterface(iid, &out);
