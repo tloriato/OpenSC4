@@ -18,6 +18,7 @@
 - e920474c: native harness UI/init probes and binding teardown log; full gate PASS4240/clippy0/ctest67/67.
 - Ours persist1022c: automatic GetItem found1/active1; native construction before first query; NEXT task1; save ok1; binding restored1. Trace matches original. Run clean2032 but ref_warning1: correctly freed our constructed window, classified as borrowed in ReleaseCb. Fixed callback/destructor to RELEASE_CREATED (two existing acquired refs, no lifetime change); rerun required.
 - Captured active original and ours snapshots under main fixtures/glue-tutorial-complete4, hashes c8eb1347 and b343d366; source shipped hash preserved. Original reload/UI1022d outstanding.
+- 0a2037f5 stable final code gate PASS: cargo4240/0, clippy0 diagnostics, ctest67/67; build4/4. Initial persisted fixture traces5/5 exact in `build-runs/tutorial-fixture-persist-comparison.json` (separate processes; no shadow). Must rerun replacement after ownership annotation fix for ref0.
 
 ## Report (2026-10-22, one guarded round)
 
