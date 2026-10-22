@@ -1,6 +1,6 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| core-scene-renderer4 (first portable cSC43DRender owner) | Codex / `core-scene-renderer4` (engine lane, detached HEAD) | continue: guard context 154k/150k; code 93a6fc20; initial workspace Rust 5142/0/0 and clippy clean, baseline CMake active; new 13 tests unvalidated; final gates/fmt pending; 130 owner denominator, body bytes unknown; ABI unchanged; RND5–RND7; no merge queue | (1) Collect baseline session 3939. (2) Respect existing family budget; serial quick/final all and absolute fmt remain outstanding. (3) Measure source/artifact correspondence before ready. |
+| core-scene-renderer4 (first portable cSC43DRender owner) | Codex / `core-scene-renderer4` (engine lane, detached HEAD) | in progress, round 2/3: old operation reconciled with terminal outcome UNKNOWN; baseline archived; stable-source quick active; 13 owner tests awaiting result; final all/fmt pending; denominator 130, bytes UNKNOWN; ABI unchanged | Collect quick (qbuild PID38324, started 00:48:17 BST); fix only demonstrated failures, absolute fmt and final all; preserve source/artifact evidence. No concurrent check. |
 
 ## Handoff
 - Round 2 resumed 2026-10-23 at detached 12bb9830. Current state: in progress, reconciliation complete; one stable-source quick/final all and absolute fmt remain next. Historical r1 notes below are retained as dated evidence, not current process status.
@@ -25,29 +25,29 @@
 - Evidence locations: qbuild-test.log (SHA256 a8d5eeacc0e0b779c1e97c97087dd1957b42eedcdb3679d37947be831d35f816), qbuild-clippy.log (80072f9ba4c8ba51de131c2521230152808b9208fdcaf57e7eb2a157f473d9b7), fc4verify-build.log/configure.log in build-runs. collect-scene-renderer4.py emits read-only totals and source/artifact hashes; format-scene-renderer4.py emits apply_patch updates from rustfmt stdout. The latter was used for formatting but is not a successful qbuild fmt check.
 - Exact next commands after collecting baseline: `python C:/Users/tlori/FreeCity4/.claude/lane-bin/qbuild.py --wt C:/Users/tlori/FreeCity4/.claude/worktrees/core-scene-renderer4 quick`, then the same wrapper `all`; then `fmt` with absolute paths to lib.rs and all seven scene_renderer/*.rs files. Preserve baseline evidence before overwritten logs. Existing long gate must be collected first; do not overlap.
 
-## Initial named-method inventory (committed before implementation in f4d643d0)
+## Named-method inventory (initial inventory committed in f4d643d0; support refined in round 2)
 
 Denominator: **130 owner functions**, including folded bodies. Exact implemented body-byte subtotal **unknown**. Interface slots are not unique bodies (slots 18/19 share one folded body); no 130/130 claim can be made. The publication does not enumerate every physical body by name/address, so unnamed residual members of that denominator stay uncredited.
 
-| Published methods / distinct overloads | Specification status | Initial implementation scope |
+| Published methods / distinct overloads | Specification status | Current bounded implementation support |
 |---|---|---|
 | QueryInterface; AddRef; Release; constructor; GetGZCLSID | §1 algorithms, destruction body absent | Typed identity/count; last Release reaches explicit Shutdown boundary before destruction |
 | Write; Read | §2 record, RND1 unresolved native slot name | Portable typed record only; version and partial-read ordering, no native wire binding |
-| SetMapScaleFactor; GetViewUtilities; GetLightingManager; GetDrawContext; GetViewportSize; SetViewportSize; SetSubpixelImageBias; GetCamera; SetCamera; GetCameraControl; SetCameraControl | §3 specified | Local state/reference operations, reuse existing camera/view utilities within their domains |
+| SetMapScaleFactor; GetViewUtilities; GetLightingManager; GetDrawContext; GetViewportSize; SetViewportSize; SetSubpixelImageBias; GetCamera; SetCamera; GetCameraControl; SetCameraControl | §3 specified | Local size/map/bias/borrowed camera getters supported; SetCamera has raw reference/depth primitives and checked domain; SetCameraControl partial within existing view-utilities domain. GetLightingManager/GetDrawContext Unsupported |
 | GetProjectionMatrixEntries; GetViewMatrixEntries (same folded body) | view3d slot names only | Unsupported |
-| SetZoom; ZoomIn; ZoomOut; SetRotation; RotateLeft; RotateRight; SetZoomAndRotation | §3 forwarding only | Preserve camera-control domain; no new camera math |
-| Set3DCameraView; Set2DCameraView; SetUICameraView; BorrowRenderSystem; ReturnRenderSystem | §3 specified primitive effects | Bounded state/effect operations; no native service mutation |
+| SetZoom; ZoomIn; ZoomOut; SetRotation; RotateLeft; RotateRight; SetZoomAndRotation | §3 forwarding only | SetZoom/SetRotation/SetZoomAndRotation forward to actual existing CameraControl methods; ZoomIn/ZoomOut/RotateLeft/RotateRight Unsupported |
+| Set3DCameraView; Set2DCameraView; SetUICameraView; BorrowRenderSystem; ReturnRenderSystem | §3 specified primitive effects | Borrow flag supported; Return clears flag then returns explicit Unsupported at camera/driver state; all three camera-view setters Unsupported |
 | GetViewFogEnabled; SetViewFogEnabled; GetLightingEnabled; SetLightingEnabled; SetViewportClearColor; EnableBackgroundPicture; GetBackgroundPicture; EnableTransparentBackground; GetBackingStoreEnabled; SetBackingStoreEnabled; GetShakeOffsets | §3 specified | Local state and explicit shared backing state; RND2 retained |
 | ForceFullRedraw; DoFullViewUpdate; ClearDirtyRectangleQueue | §§4,6 specified | Coalescing and owned queue effects; existing frustum helper restrictions propagate |
-| UpdateViewportRect; DoPartialViewUpdate; ProcessDirtyRectangleQueue; DoViewCleanup | §§4,6 specified outer policy, own draw/clip helpers absent | Partial/Unsupported at first missing helper, no callbacks returning renderer outcomes |
+| UpdateViewportRect; DoPartialViewUpdate; ProcessDirtyRectangleQueue; DoViewCleanup | §§4,6 specified outer policy, own draw/clip helpers absent | Unsupported, no callbacks returning renderer outcomes |
 | AddDirtyRectangle(rect); AddDirtyRectangle(box); AddDirtyRectangleInternal; signed rect filter 0x007C2C70 | §6 specified | Owned merge/filter algorithm; existing projection only |
 | ModelShouldGoIntoBackingStore; queue-item copy 0x007C2E50; ProcessModelChangeQueue; IsModelInserted; InsertModel; RemoveModel; MoveModel; ChangeModel; UpdateGridElementObjectFlags; MoveGridElement; SetQuadrantFlagsForElement | §5 specified queue policy; flag derivation/grid geometry partial | Owned typed queue and decision effects; missing geometry/flag derivation remains explicit |
 | StartScreenShake(parameters); StartScreenShake(overload); StopScreenShake; SetShakeOffsets; node-copy 0x007C63A0 | §§6,10 specified | Owned list, start/stop, seed-88 random table, bounded exact arithmetic; RND4 fade=0 choice; extended sine domain unsupported |
 | AddViewObject; InsertIntoViewObjectList; FindInViewObjectList; FindViewObject; RemoveViewObject; list clear 0x007C3B60 | §11 specified | Stable unsigned lists, duplicate refs, first removal per list, null terrain quirk |
-| IsModelVisible(model); IsModelVisible(element) | §11 routing, existing helper restrictions | Reuse current view utilities only |
-| PickTerrain(ray); PickTerrain(screen); Pick(ray); Pick(screen) | §11 specified selection/routing but own ray-container helper absent for Pick | Terrain routing may be bounded; full Pick stays partial |
+| IsModelVisible(model); IsModelVisible(element) | §11 routing, existing helper restrictions | Unsupported; existing view utilities alone do not implement these owner wrappers |
+| PickTerrain(ray); PickTerrain(screen); Pick(ray); Pick(screen) | §11 specified selection/routing but own ray-container helper absent for Pick | Unsupported, no picking/routing credit |
 | PickTerrainAlways(ray); PickTerrainAlways(screen); point insert 0x007C6EC0 | §11.6 outline | Unsupported; no invented ray clip |
-| CreateBackingStore; DestroyBackingStore; SaveBackingStore; RestoreBackingStore(rect); RestoreBackingStore(); ReevaluateBackingStoreObjectFlags | §12 specified | Explicit shared buffers and owned clipping/probe/gates; raw driver primitives only |
+| CreateBackingStore; DestroyBackingStore; SaveBackingStore; RestoreBackingStore(rect); RestoreBackingStore(); ReevaluateBackingStoreObjectFlags | §12 specified | First five supported within checked arithmetic/explicit owned shared-state domain, raw buffer primitives only; ReevaluateBackingStoreObjectFlags Unsupported |
 | Init; ReadProperties; Shutdown | §9 outer sequence, grid/destruction/static service dependencies partial | Never-initialized no-op paths; full lifecycle Unsupported at missing own helper |
 | DrawPreDynamicView; DrawPostDynamicView; DrawPreStaticView; DrawPostStaticView | view3d §3.3 calls specified, slot interpretation inferred | No native binding or invented pass contract |
 | DoMessage; Draw; DrawStaticView; DrawDynamicView | view3d §§3–4 outer policy partial, own helpers missing | Explicit Unsupported, no unexecuted plan promoted as complete Draw |
