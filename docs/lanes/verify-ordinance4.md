@@ -24,5 +24,7 @@
 - Normal completed clean2032-01-01/ref0,72 months,744378/746138 total matches,1760 differences; dynamic742426/742426, fixture368/688, sample1584/3024; bootstrap1/resync0/fallback0/refusal0. Both saves succeeded, all21 actions ran. Differences persist without turbo.
 - Diagnostic: all20 records equal lengths, first_diff=size-68,native17/Rust0A; CPR232bytes offset164, Smoke247bytes offset179. SV3 filed in docs/specs/questions/ordinance.md; literal semantics retained. No further code changes planned.
 - Next queued label vo4r1-union-native-2269d93c-20261022c: literal current40 enable list with ordinance disabled for native authority and shadow; then full40 replacement control.
+- Combined native run completed2032-01-01, harness clean BUT ref_warnings=1 (FAIL ref0),178173/179933 matches,1760differences; dynamic176221/176221, fixture368/688,sample1584/3024. Warning is last release of native ordinance simulator classA990C08E; preserve log, do not waive.
+- Last pending control label vo4r1-current40-2269d93c-20261022d uses all40 replacements and requests shadow (must be INACTIVE, never self-compare).
 - No game requests outstanding. No ABI changes. No questions yet.
 - Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-verify-ordinance4-r1-manifest.json
