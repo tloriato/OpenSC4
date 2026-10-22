@@ -11,5 +11,7 @@
 - Stable full gate fbaa0b67 PASS: cargo4938/0, clippy0 diagnostics, CMake7/7, ctest68/68; no source edits after gate. No Rust files touched, fmt n/a.
 - Next: immutable DLL native shadow request pd4-native-fbaa2032-1022a, then combined literal40 request pd4-combined-fbaa2032-1022a, one outstanding at a time. Script build-runs/propdev-actions-96caf552.txt has zone/network/dezone, two full saves, digests; no published reload action. Full independent capture is NOT implemented/credited.
 - q.py cannot launch Bash (Bash/Service/CreateInstance/E_ACCESSDENIED); use bounded PowerShell commands and required Python wrappers directly.
-- No game requests outstanding; no ABI changes; no RE sources read.
+- Native pd4-native-fbaa2032-1022a clean2032/ref0: owner134648CC agent134648D0; native Idle/Day45486, independent0/45486 refused45486, return observations45486/45486; serialization72/72, query72/72; failures0 bootstrap1 resync0 fallback0; secondary messages30392. Network ok1, zone22/24, dezone24/24, full saves ok1 at2027-01-09 and2031-12-07, clean shutdown.
+- Native record/query matches are diagnostic only. Native/Rust creations differ in some months (e.g. final4/8); these counts are explicitly unverified, never native operation exactness. No reload or independent selection/placement/lifetime/resource credit.
+- Next request pd4-combined-fbaa2032-1022a uses literal40; native shadow must remain INACTIVE with propdev replaced, no Rust-v-itself credit. No ABI changes; no RE sources read.
 - Guard manifest: C:/Users/tlori/FreeCity4/build-runs/run4-verify-propdev-shadow4-r1-manifest.json
