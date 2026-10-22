@@ -1,6 +1,6 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| verify-advice-subject4: independent native AdviceSubject verification | Codex / `verify-advice-subject4` (engine lane, detached HEAD) | in progress: corrected full gate PASS; immutable DLL/PDB verified | Submit OFF control, then matched ON only if OFF passes all required lifecycle checks. |
+| verify-advice-subject4: independent native AdviceSubject verification | Codex / `verify-advice-subject4` (engine lane, detached HEAD) | in progress: full gate and OFF lifecycle PASS | Submit matched ON, require actual native comparisons, then CURRENT40. |
 
 ## Handoff
 - Final round 3/3: reconcile completed gate, then bounded independent native/production Rust subject measurement; no further family round or promotion.
@@ -14,7 +14,9 @@
 - Provenance helper retry-subject-gate.py SHA256 957acdf05d82353a38d36c2c8217588ea81ce64b1aa387ab076029c203f620f6; CTest LastTest.log 70d6ca835e845e7b9f2518d6cbb6eaa00fd1b90afeb773fec3e3bcde56f1a034. Hash/count/RSDS verification helper: build-runs/reconcile-gate-r3.py (exit 0).
 - Earlier logger compile failure, cached 1/4 rejection, and actual 67/68 return-channel failure remain failures (below; build-runs/failed-all-r2 and failed-ret-r2 retained). Two unchecked native SetLocation/SetObject AL calls required published [abi-ret] annotations in 2993f562; no game flakiness or all-green baseline claimed.
 - Existing vas4-r2 templates remain unsubmitted: own game-queue/results directories absent at first inspection. Next use unique vas4-r3 labels. No game request outstanding; actual native measurements still unmeasured.
-- Next exact step: finish reading published subject boundary/verifier, submit immutable OFF (empty enable/disable budget, Konradshohe, turbo1, seconds900/end2032, explicit timeout, full-save script), wait using existing wait-advice-verdict.ps1; only after full clean OFF submit matched ON, then literal CURRENT40. No builds while requests queued/running.
+- 4dce3ca6: corrected gate/artifact reconciliation committed. OFF vas4-r3-native-control-20261023a now clean: reached 2032-01-01, final verdict date 2032-01-15; full SaveCity ok=1 in 11016ms on 2031-12-12, both script marks and both shutdown hooks; ref/exception/stall/rtc/overrun all 0. Actual enabled {simulator}, budget original/disabled. Subject lines 0 as required OFF. Generic config validator warns unknown advice_subject_verify (same warning must be retained ON; actual verifier output required).
+- OFF queued 2026-10-23 00:12:09 BST, started 00:12:16 slot1, wall64s; seconds900/timeout1050. Own request SHA256 8fddf995688a21bf1fdbb6f3fe6f69c0b316e389f990f2de6de3bad6b6db49a3; log 1586cdba95ca06c7936f0eebe4ed67f7dcc4fd18d9e133df2a4c957214130879; verdict caeabca7131836dfe81124f8764772e1f7fab03b00f9b080b8de69f10d9f0c49. Script e1f13846cf9d890c763586104abee9439fad72ffca8676e483633d67bbefc0d7. Normalized request excluding label/probe SHA256 357158bcb5a09cf7adfce5d8436782fa174231d61940d54c582bb8cd8df9b6e0. Run record 255.
+- Next exact step: submit matched ON (only unique label/advice_subject_verify=1 differ), wait using existing wait-advice-verdict.ps1 and inspect actual native results/lifecycle before literal CURRENT40. No request outstanding; no builds while requests queued/running. Same immutable DLL/PDB rehashed after OFF, unchanged.
 - Five private additive C exports: ABI=true; public ABI tables/version unchanged. AD17 public typed GetClassObject only; AD18 actual production clone transport present. No new question IDs. AD11/AD16, serialization and reload remain unmeasured/withheld.
 - Current manifest: C:/Users/tlori/FreeCity4/build-runs/run4-verify-advice-subject4-r3-manifest.json. Documentation-only commits preserve engine/artifact correspondence.
 
