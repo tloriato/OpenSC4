@@ -23,6 +23,7 @@
 - Serial helper `build-runs/run-tutorial-final-evidence.py` active, session41624: fixed ours persist1022e outstanding, then original/ours minimal reload1022f/g (captures closed snapshots), safe ours UI1022h, explicit39+tutorial union1022i. At most one request, no source changes while gate runs. Need safe original UI repeat after helper finishes; compare safe states, not the blocked modal tail.
 - Fixed ours persist1022e PASS acceptance: clean2032-01-02/ref0; active snapshot captured hashbe51d685 (2037083bytes). Original minimal reload1022f now outstanding. Finish helper session33495 waits for union1022i before safe original UI1022j and original/ours closed reload1022k/l, then writes four comparison JSONs. No concurrent request; do not submit a manual request while either helper is active.
 - Original minimal reload1022f PASS clean2032-01-17/ref0 (143.468s); closed snapshot66ff9124 captured. A proposed f2/dialog retry was withdrawn before running after f passed; duplicate helper sessions1661/41188 interrupted. Original serial helpers41624/33495 remain authoritative; g outstanding. No dialog override in actual profiles. No extra game process started.
+- Ours minimal reload1022g clean2032-01-10/ref0; closed snapshotc775a697 captured. Ours safe UI1022h clean2032-01-02/ref0 (109.344s), remaining valid cheat save calls excluded. Union1022i now outstanding; j/k/l still serially scheduled by33495. Must retain WIP for live catalog, modal valid-save completion, region-reset cheat and branch-specific UI effects.
 
 ## Report (2026-10-22, one guarded round)
 
