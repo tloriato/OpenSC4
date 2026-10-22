@@ -331,7 +331,17 @@ void Records() {
         OStreamAdapter oy(y);
         const bool by = fc4_ordinance_write(g_objects[i], oy.Get());
         Check("ordinance serialization success", ax && by);
-        if (ax && by) Check("ordinance serialized bytes", x.Bytes() == y.Bytes());
+        if (ax && by) {
+            const auto& a = x.Bytes(); const auto& b = y.Bytes();
+            Check("ordinance serialized bytes", a == b);
+            if (a != b) {
+                size_t first = 0;
+                while (first < a.size() && first < b.size() && a[first] == b[first]) ++first;
+                Log("ordinance shadow record: class=%08X original=%p native_bytes=%u rust_bytes=%u first_diff=%u native=%02X rust=%02X",
+                    fc4_ordinance_class_id(g_objects[i]), FromToken(g_tokens[i]), unsigned(a.size()), unsigned(b.size()),
+                    unsigned(first), first < a.size() ? a[first] : 0, first < b.size() ? b[first] : 0);
+            }
+        }
     }
     g_sampling = wasSampling;
 }

@@ -17,5 +17,7 @@
 - Final stable c2baaf8a gate PASS: cargo 4938/0, clippy 0 diagnostics, CMake 4/4, ctest 68/68 (73.49s). Logs preserved build-runs/ordinance-final-{cargo,clippy,ctest}.log.
 - Immutable DLL build-runs/dlls/ordinance-c2baaf8a/FreeCity4.dll SHA256 E6445DCBEAC88EECAE1C13C579F4C18E091BAC13460735943E297F998BBE40F4.
 - Enqueue next: vo4r1-native-c2baaf8a-20261022a (native ordinance + shadow, fixture toggles, full saves April2026/December2031, quit2032).
+- Completed vo4r1-native-c2baaf8a-20261022a: clean2032-01-17/ref0; 72 months, 1 bootstrap, 0 resync/fallback. All21 script actions ran, two full saves ok=1. Aggregate 731207/732967 matches, 1760 differences (all20 ordinance serialized records each month and fixture); dynamic729255/729255, fixture368/688, serialized sample1584/3024. No exact claim.
+- Next: diagnostic first differing byte/class/size (no semantic fixes), full gate then normal-speed and combined replacement profiles. Serialize mismatch question after diagnostic evidence; required host/effect/reload gaps remain WIP.
 - No game requests outstanding. No ABI changes. No questions yet.
 - Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-verify-ordinance4-r1-manifest.json
