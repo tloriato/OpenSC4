@@ -37,3 +37,8 @@
   [choice] Keep the published production implementation unchanged, preserve and count every difference
   under SG3, and grant no exact-average or full-family verification credit. This is a bounded contract
   question, not authorization for another RE round. SG1/SG2 remain open.
+  Diagnostic native39-b complete return bits (zero-extended little-endian T): u32 S=8 cell/tract average
+  native0x40000000 versus shipped0x40000003; i64 S=8 cell/tract average native0x0048D15A00000000 versus
+  shipped0x0048D159E26AF380; f64 S=3 cell average native0x4014E38E40000000 versus shipped0x4014E38E38E38E39.
+  The independent normal-speed `sgm4-r1-normal39-20261022b` run repeats the same31 differences, so they are
+  not confined to turbo. Its verdict is CLEAN/ref0; native natural scalar/full-buffer comparisons remain exact.

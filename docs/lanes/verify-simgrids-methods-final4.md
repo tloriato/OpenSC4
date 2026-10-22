@@ -20,5 +20,8 @@
 - Starting b controls via build-runs/run-sgm4-controls.ps1, then run-sgm4-normal.ps1 and audit-sgm4.py. No further source changes planned.
 - Native39-b CLEAN2033/ref1 repeats native landvalue development Unhold:254 warning. Guard stopped save copy and downstream chain. Native4,312,882/4,312,882 exact; methods5,219,544; gets4,312,690/sets505,438/bulk_get401,408/read64/write192; cleanup74 all1,0. Fixtures569/600 SG3diff31 with complete bits.
 - Outstanding:sgm4-r1-normal39-20261022b (single independent normal-speed control). Next: independent current40 control from original parent fixture, audit, final wip report. Do not claim the required ref0 save/reload chain; do not change development or profiles to hide the warning. No fourth round.
+- Normal39-b completed CLEAN2032-03-01/ref0; native1,080,802/1,080,802 exact, SG3diff31/600 persists at normal speed.
+- Short native39-2032c exited(-1) without verdict, plugin access violation; remained2031-12-02 paused/emergency. Neither scripted save nor target date reached; final denominator unknown, no equality/control credit. No dumps/maps/executable investigation. Guard stopped all downstream requests; no saves copied.
+- Outstanding:sgm4-r1-current40-control-20261022d, independent parent-fixture run (no script/save-chain claim), frozen-b DLL. Final state wip; required zero-warning native/current40/native save/reload chain has not passed. No further requests after current40 control.
 - Required: focused tests, stable full gate, frozen unique native/current40/native save/reload2032+ref0 controls. No qwait.
 - Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-verify-simgrids-methods-final4-r1-manifest.json.
