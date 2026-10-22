@@ -862,7 +862,10 @@ fn private_subject_clone_owns_distinct_state_and_one_more_object_reference() {
             assert_eq!((state.data1, state.data2), (word, word));
         }
         assert!(fc4_private_adv_subject_set_data1(copy, changed.data1));
-        assert!(game.reference_events.borrow().is_empty(), "scalar setters do not re-hold object");
+        assert!(
+            game.reference_events.borrow().is_empty(),
+            "scalar setters do not re-hold object"
+        );
         assert!(fc4_private_adv_subject_set_object(copy, OTHER));
         assert_eq!(*game.reference_events.borrow(), vec![(true, OTHER), (false, HOME)]);
         assert!(fc4_adv_subject_get(source, &mut state));
