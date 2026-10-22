@@ -1,6 +1,6 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| tools-build-singleflight4: build/check single-flight | Codex / `tools-build-singleflight4` (tooling; reserved branch, detached HEAD) | wip: implementation committed; focused 40/40 and stdlib 161/161 pass; doccheck ok; required pytest unavailable | Coordinator runs full pytest in a pytest-enabled environment, then promotes queue entry to ready |
+| tools-build-singleflight4: build/check single-flight | Codex / `tools-build-singleflight4` (tooling; reserved branch, detached HEAD) | wip: coordinator full pytest 9 failed / 168 passed; six descendant exclusion failures reproduced on final helper; earlier focused 40/40 and stdlib 161/161 remain historical passes | Same-family repair and discriminating regression tests required; keep merge entry held |
 
 ## Changes
 
@@ -74,3 +74,26 @@ Coordinator: run `python -m pytest -q tools/tests` with pytest available against
 failures, then promote the queue entry to ready if clean. No engine baseline gate is required by this brief.
 Cargo, clippy and CTest: n/a; no real Cargo/CMake/game/RE, ABI, defaults, coverage, guard/provider/orchestration,
 live queue/state or main changes. Game runs: none. Questions filed: none.
+
+## Coordinator validation and review, 2026-10-22
+
+The coordinator ran the required full suite on clean source `946556c7` using
+`C:/Users/tlori/FreeCity4/build-runs/pytest-venv/Scripts/python.exe -m pytest -q tools/tests`.
+It completed with **9 failed, 168 passed in 306.40 s**, exit 1. All nine failing ownership tests timed out
+waiting for fixture socket events; the complete tracebacks remain in this worktree's
+`build-runs/coordinator-full-tools-2231.log`. The interpreter/child identity cause is not yet established.
+The earlier unittest pass cannot substitute for this failure, and no ready promotion is authorized by it.
+
+Independently, an isolated copy of the final committed helper reproduced six exclusion failures: normal
+direct-child exit, abrupt exit and timeout, each with file and captured output. In every case a contender
+was admitted while a retained OS handle proved the first command's output-writing grandchild remained alive.
+All six fixture descendants were explicitly released and observed exited; no real compiler, worktree, cache
+or shared process was touched. Exact final-copy evidence is in main's ignored
+`build-runs/singleflight-descendant-repro-20261022/current-946/run-ur8nftjb/summary.json`.
+The helper SHA256 was `cdceda66f887ed81a150acb310ae637872af09cd40af242f8c860961eacc8f2b`.
+
+A separate static review found that authenticated `Listener.accept()` can block during an incomplete
+handshake and `close()` joins that acceptor without a bound. This finding still needs an actual isolated
+half-open-peer regression. Preserve PID-bound authentication and fail-closed command ownership while
+repairing bounded handshake/cleanup. The future sccache idle-lifetime issue remains separate and unresolved.
+These findings require a guarded continuation within the existing three-round family, not a renamed budget.
