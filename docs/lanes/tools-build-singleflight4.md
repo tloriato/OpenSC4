@@ -1,6 +1,16 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| tools-build-singleflight4: build/check single-flight | Codex / `tools-build-singleflight4` (tooling; reserved branch, detached HEAD) | wip: coordinator full pytest 9 failed / 168 passed; six descendant exclusion failures reproduced on final helper; earlier focused 40/40 and stdlib 161/161 remain historical passes | Same-family repair and discriminating regression tests required; keep merge entry held |
+| tools-build-singleflight4: build/check single-flight | Codex / `tools-build-singleflight4` (tooling; reserved branch, detached HEAD) | in progress: same-family round 2 ownership repair; original failed evidence preserved | Repair descendant containment, venv peer authorization and bounded authentication; validate with supplied pytest venv |
+
+## Handoff
+
+- Goal: repair all three demonstrated ownership defects on original family, no engine/build/game work.
+- Baseline/report tip dd50e233; copied baseline scripts/JSON remain untouched under build-runs/evidence-run4.
+- Inspected helper: direct Popen.communicate drains no DEVNULL descendants; Listener.accept authenticates without deadline; venv peer differs from Popen PID.
+- Next: implement Windows Job containment before command entry, strict venv redirector authorization and bounded authenticated accept/close.
+- Required interpreter: C:/Users/tlori/FreeCity4/build-runs/pytest-venv/Scripts/python.exe.
+- Old full-suite log: build-runs/coordinator-full-tools-2231.log (9 failed, 168 passed); do not overwrite.
+- No current run labels; cache idle DRAFT remains deferred. No new queue publication until measured validation.
 
 ## Changes
 
