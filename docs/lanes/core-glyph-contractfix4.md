@@ -18,7 +18,8 @@
 - Narrow test correction: 0x3DCCCCCD = 13421773/134217728, so 111 - 100*factor = 101 - 20/134217728, truncating to 100. Correct stale expected 101 to 100 and add adjacent (112,100)->101; retain 32 tests/13 new. No production arithmetic change or source-fitting.
 - Done: 6c5a12ab corrects the stale contract vector only; production remains 6d551576 plus f019f36a's blank-line removal. Failed driver is stopped and logs archived; no overlapping compiler/quick driver before restart.
 - Running: final-glyph-gate-r2.ps1 (exec session 23749), serial quick -> touched-file fmt -> all, jobs/testthreads=1. Frozen source 6c5a12abbb1069b37b71b578d69d262d492c3e32; engine ea151c3fa85633f402efd7c4aba4dc77601f1f86; glyph 3eeae93406b7c7b851155666d0eed81b2eaa69e7. Recheck actual OS processes before any restart, never infer from a session number.
-- Next: collect actual 32 glyph/3060 core/workspace totals, clippy, completed doctests/linking, full CTest and engine tree-changed flag. Do not duplicate this live pipeline or edit source. No final PASS/queue yet.
+- Measured corrected-source focused cargo: core 3060 passed/0 failed, glyph 32/32, core doctest suite completed (0 tests); compile 10m21s, core tests 177.30s, raw log NUL=0. Engine/glyph hashes still match frozen source. Quick's dependency compilation is now running; fmt/all/full CTest remain pending, no final PASS or queue.
+- Next: collect completed quick/fmt/all, summed workspace totals, clippy diagnostics, all doctests/link completion, full CTest and engine tree-changed flag. Do not duplicate this live pipeline or edit source.
 - Scope: glyph_textures only plus independent tests/conformance; no ABI, game, textures_materials, RE, or shared-table changes.
 - Reservation is FINAL phase 2/2, logical 3/3, maxRounds=1; no further round, rename or budget reset. Original parked evidence retained.
 - GT1/GT2 remain foreign unknown boundaries. Unsupported invalid-memory/nontermination must stay explicit.
