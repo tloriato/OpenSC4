@@ -7,6 +7,8 @@
 - Prior report and prototype read; private export/local declarations authorized, ABI tables/version unchanged.
 - Done: private owned Obj::Subject clone transport invokes actual Rust clone_subject; production front rewired. Four private single-field setters preserve Rust returns and ownership effects (no aggregate-set replay).
 - Focused ownership/independence CAPI test added. Opt-in verifier wired; fullword native results logged and clone refusal counted separately.
+- Milestone 93ac8e92: production transport/front and initial focused test. Additional test checks null/wrong type, scalar no-reference effects, fullword fields, clone's one AddRef and replacement AddRef-before-Release.
+- Baseline tests completed, clippy compiling; serial gate helper will wait for baseline PID 29392, run quick then final all, freeze DLL only on success. Logs remain in build-runs; no concurrent builds.
 - Next: collect baseline all (session 79550, live qbuild PID 29392 at inspection), then quick/focused checks and ONE final stable all. No overlap.
 - fmt absolute paths required; check currently reports pre-existing formatting differences (advisors.rs weak handles and tests); no mass format performed.
 - Old log timestamps alone do not establish a live check or PASS; WMI process inspection denied.

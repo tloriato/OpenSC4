@@ -135,7 +135,7 @@ inline void CompareProductionFronts() {
     // do not probe private constructors or another factory on refusal.
     if (!GZCOM() || !GZCOM()->GetClassObject(kFC4_CLSID_cSC4AdviceSubject,
             kFC4_IID_cISC4AdviceSubject, reinterpret_cast<void**>(&n)) || n == nullptr) {
-        FC4_LOG("advice-subject-verify: REFUSED factory CLSID=6A26D049 IID=6A26D050; comparisons=0");
+        FC4_LOG("advice-subject-verify: REFUSED factory CLSID=6A26D049 IID=6A26D050; native_calls=0 differences=0 refusals=1 undefined_returns=0 unverified=1");
         return; // Do not infer failure-output ownership or try another endpoint.
     }
     FC4_ACQUIRED(n, "AdviceSubject CreateInstance independent fixture");
@@ -163,6 +163,11 @@ inline void CompareProductionFronts() {
         void* out = nullptr;
         const bool ok = n->QueryInterface(iid, &out);
         v.Check("QI supported", ok && out != nullptr, true);
+        if (!ok || out == nullptr) {
+            FC4_RELEASE_CREATED(n);
+            FC4_LOG("advice-subject-verify: REFUSED required QI IID=%08X refusals=1 unverified=1", iid);
+            return;
+        }
         if (ok && out != nullptr) {
             auto* p = static_cast<cIGZUnknown*>(out);
             FC4_ACQUIRED(p, "AdviceSubject QI supported");
@@ -183,6 +188,19 @@ inline void CompareProductionFronts() {
         return;
     }
     FC4_LOG("advice-subject-verify: factory established class=%08X cells=%u,%u independent=1", clsid, h.x, h.z);
+    v.Check("initial AddRef count", n->AddRef(), c->AddRef());
+    v.Check("initial Release count", n->Release(), c->Release());
+    for (uint32_t iid : {1u, kFC4_IID_cISC4AdviceSubject, GZIID_cIGZSerializable}) {
+        void* out = nullptr;
+        const bool ok = c->QueryInterface(iid, &out);
+        v.Check("core QI supported", ok && out != nullptr, true);
+        if (ok && out != nullptr) {
+            if (iid == GZIID_cIGZSerializable) static_cast<cIGZSerializable*>(out)->Release();
+            else static_cast<cIGZUnknown*>(out)->Release();
+        } else {
+            ++v.refusals;
+        }
+    }
     v.State(n, c, nullptr, nullptr);
     ++v.calls[6]; ++v.calls[4]; ++v.calls[5]; ++v.calls[9]; ++v.calls[11];
     v.Check("default HasLocation", n->HasLocation(), false);

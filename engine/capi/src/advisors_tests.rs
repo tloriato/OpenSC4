@@ -43,6 +43,7 @@ struct Game {
     created: RefCell<Vec<(u32, u32, usize)>>,
     next_token: Cell<u64>,
     refs: RefCell<BTreeMap<u64, i32>>,
+    reference_events: RefCell<Vec<(bool, u64)>>,
     posts: RefCell<Vec<fc4_adv_out_message>>,
     subs: RefCell<Vec<(u32, i32, u32)>>,
     history: Cell<f64>,
@@ -173,9 +174,11 @@ unsafe extern "C" fn ordinance_text(
     true
 }
 unsafe extern "C" fn add_ref(u: *mut c_void, t: u64) {
+    g(u).reference_events.borrow_mut().push((true, t));
     *g(u).refs.borrow_mut().entry(t).or_insert(0) += 1;
 }
 unsafe extern "C" fn release(u: *mut c_void, t: u64) {
+    g(u).reference_events.borrow_mut().push((false, t));
     *g(u).refs.borrow_mut().entry(t).or_insert(0) -= 1;
 }
 unsafe extern "C" fn resolve_ref(_: *mut c_void, t: u64, _iid: u32) -> u64 {
@@ -814,6 +817,12 @@ fn private_subject_clone_owns_distinct_state_and_one_more_object_reference() {
         assert!(fc4_private_adv_subject_clone(std::ptr::null()).is_null());
         let system = fc4_advisors_system_object(p);
         assert!(fc4_private_adv_subject_clone(system).is_null());
+        for invalid in [std::ptr::null(), system as *const fc4_adv_obj] {
+            assert!(!fc4_private_adv_subject_set_location(invalid, 1.0, 2.0));
+            assert!(!fc4_private_adv_subject_set_object(invalid, HOME));
+            assert!(!fc4_private_adv_subject_set_data1(invalid, 0));
+            assert!(!fc4_private_adv_subject_set_data2(invalid, u32::MAX));
+        }
         fc4_adv_obj_destroy(system);
         let source = fc4_advisors_new_subject(p);
         let initial = fc4_adv_subject_state {
@@ -827,17 +836,35 @@ fn private_subject_clone_owns_distinct_state_and_one_more_object_reference() {
         };
         assert!(fc4_adv_subject_set(source, &initial));
         assert_eq!(game.refs(HOME), 1);
+        game.reference_events.borrow_mut().clear();
         let copy = fc4_private_adv_subject_clone(source);
         assert!(!copy.is_null());
         assert_eq!(fc4_adv_obj_kind(copy), FC4_ADV_OBJ_SUBJECT);
         assert!(!fc4_adv_obj_same(source, copy));
         assert_ne!(fc4_adv_obj_token(source), fc4_adv_obj_token(copy));
         assert_eq!(game.refs(HOME), 2, "clone holds the same foreign object again");
+        assert_eq!(*game.reference_events.borrow(), vec![(true, HOME)]);
         let mut state = fc4_adv_subject_state::default();
         assert!(fc4_adv_subject_get(copy, &mut state));
         assert_eq!(state, initial);
-        let changed = fc4_adv_subject_state { object: OTHER, data1: 0x8000_0000, x: 17.0, ..initial };
-        assert!(fc4_adv_subject_set(copy, &changed));
+        let changed = fc4_adv_subject_state {
+            object: OTHER,
+            data1: 0x8000_0000,
+            x: 17.0,
+            ..initial
+        };
+        game.reference_events.borrow_mut().clear();
+        assert!(fc4_private_adv_subject_set_location(copy, changed.x, changed.z));
+        for word in [0, 0x1234_5600, 0x8000_0000, u32::MAX] {
+            assert!(fc4_private_adv_subject_set_data1(copy, word));
+            assert!(fc4_private_adv_subject_set_data2(copy, word));
+            assert!(fc4_adv_subject_get(copy, &mut state));
+            assert_eq!((state.data1, state.data2), (word, word));
+        }
+        assert!(fc4_private_adv_subject_set_data1(copy, changed.data1));
+        assert!(game.reference_events.borrow().is_empty(), "scalar setters do not re-hold object");
+        assert!(fc4_private_adv_subject_set_object(copy, OTHER));
+        assert_eq!(*game.reference_events.borrow(), vec![(true, OTHER), (false, HOME)]);
         assert!(fc4_adv_subject_get(source, &mut state));
         assert_eq!(state, initial, "copy mutation leaves the source intact");
         assert_eq!((game.refs(HOME), game.refs(OTHER)), (1, 1));
