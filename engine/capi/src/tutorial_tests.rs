@@ -201,7 +201,10 @@ fn prepare_cheat_save_sets_all_fields_before_callbacks() {
         fc4_tutorial_prepare_city_save(t, 0xCC02_D3A3);
     }
     let s = state(t);
-    assert_eq!((s.is_tutorial, s.guid, s.task_number, s.end_pending), (1, 0xCC02_D3A3, 0, 0));
+    assert_eq!(
+        (s.is_tutorial, s.guid, s.task_number, s.end_pending),
+        (1, 0xCC02_D3A3, 0, 0)
+    );
     assert_eq!(s.window, 0);
     unsafe { fc4_tutorial_destroy(t) };
 }

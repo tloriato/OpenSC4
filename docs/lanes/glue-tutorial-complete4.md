@@ -9,7 +9,8 @@
 - q.py cannot start Bash (E_ACCESSDENIED); use bounded native PowerShell commands.
 - Done a504c48a: TU9 constructor ref0, two owner refs, synchronized state, publish before Init and reentry test.
 - Done (next commit): version-gated TU6/TU9 native boundaries; singleton binding/conditional restoration; unlock native calls; native window slots; TU7 cheat/TU8 filter; CAPI save-preparation export (ABI=true); start/cheat harness actions.
-- Quick first attempt failed on stale ref1 CAPI fake and missing initializer_list include; both fixed. Next: quick, stable all gate, real-game original/ours traces and candidate regression.
+- Done 80570fae: native boundaries and harness actions committed. Quick retry built successfully; Rust fmt check passed all six touched files. Initial fake-ref/include failures fixed.
+- Next: stable full gate, real-game original/ours constructed probe, genuine tutorial fixture/reopen, and candidate regression. Gate must complete before any source edits.
 - Fixture unresolved: queue documents only FC4 Test region; native tutorial-city reopen requires a persisted shipped tutorial fixture, not constructed-only ordinary-city actions.
 - Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-glue-tutorial-complete4-r1-manifest.json.
 - No game request outstanding. No subagents. One round only.
