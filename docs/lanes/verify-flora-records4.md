@@ -26,6 +26,8 @@
 - Reload vfocc-r3-reload2032-20261022-a STALLED/ref0 at2031-01-07, WATCHDOG inside core fc4_sim_on_tick >10s; zero occupant probes/queries before stall, no reload credit. Preserve verdict/log; same-fixture probe-off diagnostic next.
 - Probe-off vfocc-r3-control2032-20261022-a also STALLED/ref0 at2031-01-07 inside fc4_sim_on_tick, zero probe events. Fresh-save stall reproduced with instrumentation disabled; no attribution to query/QI code and no clean fresh-reload credit. Next compare preserved round2 fixture with current immutable DLL.
 - Serial full workspace retry passed4943/0; final CTest underway, not yet full gate success.
+- Known round2 fixture reload vfocc-r3-knownreload2032-20261022-a clean/ref0 to2032-01-11 with current immutable DLL: 2x25 creations,23900 mixed/0 differences,12700 Rust queries,4250 refusals,1100 undefined; natural5145/30870/invalid0. Fixture hash82de3ffe... matched.
+- Next: known-fixture probe-off control, await final CTest; fresh-save failures remain unresolved and prevent full save/reload acceptance. Final family closes with explicit residuals, no fourth round.
 - Next: focused quick/fmt, review measured differences, stable final all then immutable-DLL game controls.
 - FQ18 added for failed-QI output/null-address policy and multi-bit flag semantics; no guessed equivalence.
 - Need final stable all, immutable DLL, unique coordinator guarded2032/save/reload/probe-off runs.
