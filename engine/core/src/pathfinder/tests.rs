@@ -1110,6 +1110,33 @@ fn suspend_and_resume() {
     assert!(pf.result_node().is_some());
 }
 
+/// A delivery-boundary sample cannot reconstruct a search that suspended
+/// before the boundary. Section 4.4 keeps scored nodes on resume, but a new
+/// unlimited search scores them against the current volumes. This is a
+/// diagnostic witness for traffic TS68, not proof of train73's cause.
+#[test]
+fn resumed_search_and_atomic_replay_can_read_different_volume_histories() {
+    let (w, mut net) = street_city();
+    net.congestion_curve = ResponseCurve::from_points(&[(0.0, 1.0), (1.0, 2.0)]);
+    let mut resumed = test2_pathfinder(&w);
+    resumed.set_max_work_time(5);
+    w.deadline_reached.set(true);
+    assert_eq!(find(&mut resumed, &w, &mut net), result::SUSPENDED);
+
+    // The first expansion has already scored the next street node. A
+    // provider change between deliveries does not retroactively rescore it.
+    for x in 0..=4 {
+        w.volumes.borrow_mut().insert((1, x, 3), 16.0);
+    }
+    w.deadline_reached.set(false);
+    assert_eq!(find(&mut resumed, &w, &mut net), result::FOUND);
+
+    let mut atomic = test2_pathfinder(&w);
+    assert_eq!(find(&mut atomic, &w, &mut net), result::FOUND);
+    assert_eq!(route_of(&resumed), route_of(&atomic));
+    assert_ne!(resumed.get_trip_length().to_bits(), atomic.get_trip_length().to_bits());
+}
+
 /// §4.12: `DistanceToRectangle`.
 #[test]
 fn distance_to_rectangle() {

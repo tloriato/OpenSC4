@@ -516,7 +516,7 @@ bool EnsureShadow(const void* city, const void* sim) {
     DropShadow();
     MakeHost();
     // The copy's generator. Against the original its draws cannot be the
-    // original's (the generator is not readable, §4.15), so a fixed seed is as
+    // original's (this shadow does not capture its state, §4.15 TS66), so a fixed seed is as
     // good as any: the draws are excluded from the comparison. In the
     // self-check both sides are our core, so the copy takes the live class's
     // session seed (fc4.h, foundations §6.3) and the excluded draws stay
@@ -739,9 +739,15 @@ void TrafficShadowStartup(bool simulatorReplaced, bool trafficReplaced) {
         "to where the original stopped and its record, trip lists, lot and connection holder arrays and "
         "grids are compared bitwise; one line per month, at most %ld delivery lines a month, %ld differences "
         "named per line. Not compared: the strategy draws (property 0x4A611773) and the pothole and accident "
-        "draws' choices (the original's generator is not readable), posted messages, history, incomes, "
+        "draws' choices (the original's generator state is not captured), posted messages, history, incomes, "
         "network costs, budget items, accidents",
         src, g_lines, g_diffs);
+    // Diagnostic scope only: do not change comparisons or resync acceptance.
+    // TS65 permits suspended native searches; our §3.4 atomic search and the
+    // delivery pre-image do not capture their retained nodes/provider reads.
+    Log("traffic shadow: delivery diagnostics: native_search_capture=0 native_provider_read_capture=0 "
+        "native_rng_capture=0; pre-image=delivery-boundary; replay_search=atomic-unlimited; "
+        "a clean comparison does not prove native search/input timing equivalence (TS68)");
     LogRetiredHypotheses();
 }
 
