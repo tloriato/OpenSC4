@@ -1,6 +1,17 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| glue-tutorial-complete4: native tutorial replacement | Codex / `glue-tutorial-complete4` (engine lane, detached HEAD) | WIP: native glue committed; cargo4240/clippy0/ctest67/67; original and ours clean2032/ref0; constructed trace12/12 exact; ABI=true; no coverage promotion | 1. Supply persisted shipped tutorial fixture. 2. Verify automatic reopen/GetItem and task callbacks. 3. Complete candidate union regression and remaining UI/cheat cases. |
+| glue-tutorial-complete4: native tutorial replacement | Codex / `glue-tutorial-complete4` (engine lane, detached HEAD) | in progress: final shipped-fixture validation round; preserved6d6bb03d; ABI=true; no coverage promotion | Observe original/ours automatic init on shipped fixture, capture save/reload, broaden actions, final gate and union. |
+
+## Handoff
+
+- Goal: final implementation-family round; shipped BigCityTutorial automatic init/reopen, matching original/ours actions, persistence reload and candidate union.
+- Preserved:6d6bb03d TU6-TU9 implementation; prior full gate cargo4240/clippy0/ctest67/67 and constructed trace12/12 (separate processes, no shadow).
+- Next: inspect harness request/action grammar and existing tutorial probe; queue unique original fixture run with early fixture-date query before any manual start.
+- Fixture: `C:/Users/tlori/FreeCity4/build-runs/fixtures/tutorial/BigCityTutorial.sc4`; immutable version2/flag1/task0/GUIDCC02D3A3; read adjacent provenance.
+- Capture successful isolated slot save before slot reuse to unique file under main build-runs/fixtures/glue-tutorial-complete4; only data snapshot/JSON writes authorized there.
+- No outstanding request; no new questions; no defaults/map/ABI version changes; no subagents/branch changes.
+- Manifest: `C:/Users/tlori/FreeCity4/build-runs/run4-glue-tutorial-complete4-r2-manifest.json`.
+- Earlier report below is supporting prior-round evidence, not shipped-fixture validation.
 
 ## Report (2026-10-22, one guarded round)
 
