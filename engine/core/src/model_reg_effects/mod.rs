@@ -80,9 +80,13 @@ impl CrtLocale {
     }
 
     fn equal(&self, left: &str, right: &str) -> bool {
-        left.bytes().take_while(|&byte| byte != 0).map(|b| self.lower[usize::from(b)]).eq(
-            right.bytes().take_while(|&byte| byte != 0).map(|b| self.lower[usize::from(b)]),
-        )
+        left.bytes()
+            .take_while(|&byte| byte != 0)
+            .map(|b| self.lower[usize::from(b)])
+            .eq(right
+                .bytes()
+                .take_while(|&byte| byte != 0)
+                .map(|b| self.lower[usize::from(b)]))
     }
 }
 

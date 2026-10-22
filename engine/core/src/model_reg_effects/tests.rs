@@ -226,10 +226,13 @@ fn attachment_same_null_and_explicit_init_shutdown_reference_order() {
     assert_eq!(factory.take(), [Event::Acquire(1)]);
     owner.init(&mut factory);
     assert_eq!(factory.take(), [Event::Create("a".into())]);
-    let effect = owner.get_effect("fx_a").unwrap() as *const dyn VisualEffect;
+    let effect = owner.get_effect("fx_a").unwrap() as *const dyn VisualEffect as *const ();
     assert!(owner.instance().is_some());
     owner.attach(Some(first.clone()));
-    assert!(std::ptr::eq(effect, owner.get_effect("fx_a").unwrap()));
+    assert_eq!(
+        effect,
+        owner.get_effect("fx_a").unwrap() as *const dyn VisualEffect as *const ()
+    );
     assert!(factory.take().is_empty());
     drop(first);
     owner.attach(Some(instance(2, regions(&["fx_b"]), &factory.log)));
@@ -795,7 +798,10 @@ fn owner_zero_instance_flags_shortcut_and_null_effect_update_gate() {
     let mut owner = ModelRegEffects::new();
     let model = instance(1, None, &factory.log);
     *model.transform.lock().unwrap() = Transform {
-        version: 9, translation: [100.0, 0.0, 200.0], scale: 99.0, ..Transform::IDENTITY
+        version: 9,
+        translation: [100.0, 0.0, 200.0],
+        scale: 99.0,
+        ..Transform::IDENTITY
     };
     owner.attach(Some(model));
     owner.add_effect("a-loaded", "a", records(vec![RECORD]), &mut factory);
@@ -807,9 +813,31 @@ fn owner_zero_instance_flags_shortcut_and_null_effect_update_gate() {
     let report = owner.update();
     assert!(report.success);
     assert_eq!(report.transformed, 2);
-    assert_eq!(factory.take(), [Event::InstanceTransform, Event::AnimationQuery,
-        Event::Started(0), Event::Transform(0, Transform { flags: 5, translation: [1.0, 2.0, 3.0], ..Transform::IDENTITY }),
-        Event::Started(1), Event::Transform(1, Transform { translation: [100.0, 0.0, 200.0], scale: 99.0, ..Transform::IDENTITY })]);
+    assert_eq!(
+        factory.take(),
+        [
+            Event::InstanceTransform,
+            Event::AnimationQuery,
+            Event::Started(0),
+            Event::Transform(
+                0,
+                Transform {
+                    flags: 5,
+                    translation: [1.0, 2.0, 3.0],
+                    ..Transform::IDENTITY
+                }
+            ),
+            Event::Started(1),
+            Event::Transform(
+                1,
+                Transform {
+                    translation: [100.0, 0.0, 200.0],
+                    scale: 99.0,
+                    ..Transform::IDENTITY
+                }
+            )
+        ]
+    );
 }
 
 #[test]
