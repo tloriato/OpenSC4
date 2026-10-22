@@ -56,7 +56,10 @@ private:
 
 struct OccupantProbeCounts {
     size_t compared = 0, different = 0, refused = 0, fallback = 0, undefined = 0;
-    void Check(bool equal) { ++compared; if (!equal) ++different; }
+    void Check(bool equal) {
+        ++compared;
+        if (!equal) { ++different; Log("flora occupant difference: event=%zu", compared); }
+    }
 };
 
 void CheckOccupant(cISC4Occupant* o, cISC4FloraOccupant* f,
@@ -97,11 +100,15 @@ void FloraOccupantProbe(cISC4City* city, int64_t day) {
         }
         auto* o = static_cast<cISC4Occupant*>(raw);
         FC4_ACQUIRED(o, "GetClassObject");
+        void* rustRefs = nullptr;
+        c.Check(fc4_flora_occupant_reference(&rustRefs, 0) == 1);
         void* fq = nullptr; void* sq = nullptr;
         bool fqOK = o->QueryInterface(GZIID_cISC4FloraOccupant, &fq) && fq;
         bool sqOK = o->QueryInterface(GZIID_cIGZSerializable, &sq) && sq;
         if (fqOK) FC4_ACQUIRED(static_cast<cIGZUnknown*>(fq), "QueryInterface");
         if (sqOK) FC4_ACQUIRED(static_cast<cIGZUnknown*>(sq), "QueryInterface");
+        if (fqOK) fc4_flora_occupant_reference(&rustRefs, 1);
+        if (sqOK) fc4_flora_occupant_reference(&rustRefs, 1);
         c.Check(fqOK); c.Check(sqOK);
         if (fqOK && sqOK) {
             auto* f = static_cast<cISC4FloraOccupant*>(fq);
@@ -137,11 +144,40 @@ void FloraOccupantProbe(cISC4City* city, int64_t day) {
             f->SetFloraType(input.flora_type); f->SetBirthDate(input.birth);
             f->SetLastSeedingDate(input.seeding); f->SetState(input.state);
             f->SetOrientation(input.orientation); c.undefined += 5; // flora §11.4
+            cS3DVector3 moved;
+            input.position[0] = moved.fX = 23.5f;
+            input.position[1] = moved.fY = -4.0f;
+            input.position[2] = moved.fZ = 999.0f;
+            o->SetPosition(&moved); ++c.undefined;
+            for (const auto& mutation : {std::make_pair(0u, 0xCDu), std::make_pair(1u, 0x80u),
+                    std::make_pair(2u, 8u), std::make_pair(3u, 30u),
+                    std::make_pair(4u, 3u), std::make_pair(5u, 1u)}) {
+                const uint32_t op = mutation.first, arg = mutation.second;
+                fc4_flora_occupant_mutate(&input, op, arg);
+                switch (op) {
+                    case 0: o->SetAllFlags(arg); break;
+                    case 1: o->SetFlag(arg); break;
+                    case 2: o->ClearFlag(arg); break;
+                    case 3: o->SetHighlight(arg, false); break;
+                    case 4: o->SetRemovalFlags(arg); break;
+                    case 5: o->UnsetRemovalFlags(arg); break;
+                }
+                ++c.undefined;
+                c.Check(o->GetFlags() == input.flags);
+                c.Check(o->GetHighlight() == input.highlight);
+                for (uint32_t mask : {0u, 1u, 2u, 3u})
+                    c.Check(o->CanRemove(mask) == fc4_flora_occupant_mutate(&input, 6, mask));
+            }
             const size_t m = fc4_flora_occupant_encode(&input, bytes, sizeof(bytes));
             fc4_flora_occupant_decode(bytes, m, &expected);
             CheckOccupant(o, f, expected, c);
             written.Reset(); c.Check(s->Write(written));
             c.Check(written.Size() == m && memcmp(written.Data(), bytes, m) == 0);
+            CaptureStream failedNative, failedRust;
+            failedNative.Fail(); failedRust.Fail();
+            OStreamAdapter errorAdapter(failedRust);
+            c.Check(s->Write(failedNative) == fc4_flora_occupant_write(&input, errorAdapter.Get()));
+            c.Check(failedNative.GetError() != 0 && failedRust.GetError() != 0);
             // Read versions, every strict truncation, and the base-reject quirk.
             for (size_t shortSize = 0; shortSize < m; ++shortSize) {
                 OccupantInputStream shortIn(bytes, shortSize);
@@ -157,12 +193,16 @@ void FloraOccupantProbe(cISC4City* city, int64_t day) {
                 fc4_flora_occupant_input ignored{};
                 c.Check(s->Read(bad) == fc4_flora_occupant_decode(sample.first, sample.second, &ignored));
             }
-            const uint32_t added = FC4_ADDREF(f);
-            c.Check(FC4_RELEASE(f) + 1 == added);
+            c.Check(FC4_ADDREF(f) == fc4_flora_occupant_reference(&rustRefs, 1));
+            c.Check(FC4_RELEASE(f) == fc4_flora_occupant_reference(&rustRefs, 2));
+            void* unknown = nullptr;
+            c.Check(!f->QueryInterface(0x7f4cffff, &unknown));
+            c.Check(unknown == nullptr);
         }
-        if (fqOK) FC4_RELEASE(static_cast<cIGZUnknown*>(fq));
-        if (sqOK) FC4_RELEASE(static_cast<cIGZUnknown*>(sq));
-        c.Check(FC4_RELEASE_CREATED(o) == 0);
+        if (fqOK) c.Check(FC4_RELEASE(static_cast<cIGZUnknown*>(fq)) == fc4_flora_occupant_reference(&rustRefs, 2));
+        if (sqOK) c.Check(FC4_RELEASE(static_cast<cIGZUnknown*>(sq)) == fc4_flora_occupant_reference(&rustRefs, 2));
+        c.Check(FC4_RELEASE_CREATED(o) == fc4_flora_occupant_reference(&rustRefs, 2));
+        c.Check(rustRefs == nullptr);
     }
     Log("flora occupant probe: day=%lld owned=5 comparisons=%zu differences=%zu refusals=%zu fallbacks=%zu undefined_returns=%zu static_calls=0 FQ17",
         static_cast<long long>(day), c.compared, c.different, c.refused, c.fallback, c.undefined);

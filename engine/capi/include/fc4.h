@@ -12744,6 +12744,9 @@ extern "C" {
 #endif
 size_t fc4_flora_occupant_encode(const fc4_flora_occupant_input*, uint8_t*, size_t);
 bool fc4_flora_occupant_decode(const uint8_t*, size_t, fc4_flora_occupant_input*);
+bool fc4_flora_occupant_mutate(fc4_flora_occupant_input*, uint32_t operation, uint32_t value);
+bool fc4_flora_occupant_write(const fc4_flora_occupant_input*, const fc4_ostream*);
+uint32_t fc4_flora_occupant_reference(void** handle, uint32_t operation);
 #ifdef __cplusplus
 }
 #endif

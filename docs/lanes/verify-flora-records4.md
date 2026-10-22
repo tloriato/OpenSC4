@@ -10,7 +10,10 @@
 - Baseline all: workspace tests and clippy passed, CMake/ctest 68/68 passed (logs build-runs/qbuild-*, fc4verify-*).
 - q.py cannot start Bash (E_ACCESSDENIED); use capped local PowerShell commands.
 - Done: a25cef82 independent Rust occupant codec committed before call 30; FQ17 partial-state/override question appended.
-- Next: finish focused build of typed C ABI and owned native factory probe; unique game controls and stable full gate.
+- Done: 6f3a7fad typed probe; quick 3452 tests PASS, dependents compiled, build PASS (tree changed; stable gate still required).
+- Game vfocc-r2-d1-20261022-1758 clean/ref0: 585 comparisons/0 differences, 340 FQ17 refusals, 2607 natural occupants/15642 read-only queries, invalid0.
+- Next: stable full gate of expanded independent reference lifetime/base mutations/output-error probe; immutable 2032/save/reload controls.
+- Expanded probe compares native release counts with independently allocated Rust atomic reference model and destroys both at zero.
 - Probe opt-in flora_occupant_verify=1; enable simulator, keep flora_shadow=0 (avoids static-record getters entirely).
 - No game request outstanding. New labels unique; wait without qwait.
 

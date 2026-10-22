@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Typed independent flora occupant codec for native verification.
+use crate::stream::{fc4_ostream, COut};
 use fc4_core::flora::occupant::OccupantRecord;
+use fc4_core::flora::occupant::OccupantReferences;
 use fc4_core::stream::{ByteReader, ByteWriter};
 
 #[repr(C)]
@@ -36,6 +38,56 @@ impl FloraOccupantInput {
         r.base.removal = self.removal;
         r.base.cell_rect = self.cells;
         r
+    }
+}
+
+/// # Safety
+/// `input` must be writable for the duration of the call.
+#[no_mangle]
+pub unsafe extern "C" fn fc4_flora_occupant_mutate(input: *mut FloraOccupantInput, operation: u32, value: u32) -> bool {
+    let Some(input) = input.as_mut() else { return false };
+    let mut record = input.record();
+    let result = record.mutate(operation, value);
+    input.flags = record.base.flags;
+    input.highlight = record.base.highlight;
+    input.removal = record.base.removal;
+    result
+}
+
+/// # Safety
+/// `input` and `out` must be valid; stream callbacks must obey fc4_ostream.
+#[no_mangle]
+pub unsafe extern "C" fn fc4_flora_occupant_write(input: *const FloraOccupantInput, out: *const fc4_ostream) -> bool {
+    let (Some(input), Some(out)) = (input.as_ref(), out.as_ref()) else {
+        return false;
+    };
+    if out.struct_size < std::mem::size_of::<fc4_ostream>() as u32 {
+        return false;
+    }
+    input.record().write(&mut COut(out))
+}
+
+/// # Safety
+/// `handle` must be writable, initially null, then only managed by this function.
+/// Operations: 0 construct, 1 AddRef, 2 Release (clears handle at destruction).
+#[no_mangle]
+pub unsafe extern "C" fn fc4_flora_occupant_reference(handle: *mut *mut OccupantReferences, operation: u32) -> u32 {
+    let Some(handle) = handle.as_mut() else { return u32::MAX };
+    match operation {
+        0 if handle.is_null() => {
+            *handle = Box::into_raw(Box::default());
+            1
+        }
+        1 if !handle.is_null() => (**handle).add_ref(),
+        2 if !handle.is_null() => {
+            let count = (**handle).release();
+            if count == 0 {
+                drop(Box::from_raw(*handle));
+                *handle = std::ptr::null_mut();
+            }
+            count
+        }
+        _ => u32::MAX,
     }
 }
 
@@ -88,4 +140,38 @@ pub unsafe extern "C" fn fc4_flora_occupant_decode(
         cells: r.base.cell_rect,
     };
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn typed_boundary_refusals_and_owned_lifetime() {
+        unsafe {
+            let input = FloraOccupantInput {
+                state: 255,
+                orientation: 257,
+                ..Default::default()
+            };
+            let mut bytes = [0; 128];
+            assert_eq!(fc4_flora_occupant_encode(&input, bytes.as_mut_ptr(), 1), 0);
+            assert_eq!(
+                fc4_flora_occupant_encode(std::ptr::null(), bytes.as_mut_ptr(), bytes.len()),
+                0
+            );
+            let size = fc4_flora_occupant_encode(&input, bytes.as_mut_ptr(), bytes.len());
+            let mut output = FloraOccupantInput::default();
+            assert!(fc4_flora_occupant_decode(bytes.as_ptr(), size, &mut output));
+            assert_eq!((output.state, output.orientation), (-1, 1));
+            let mut refs = std::ptr::null_mut();
+            assert_eq!(fc4_flora_occupant_reference(&mut refs, 0), 1);
+            assert_eq!(fc4_flora_occupant_reference(&mut refs, 0), u32::MAX);
+            assert_eq!(fc4_flora_occupant_reference(&mut refs, 1), 2);
+            assert_eq!(fc4_flora_occupant_reference(&mut refs, 2), 1);
+            assert_eq!(fc4_flora_occupant_reference(&mut refs, 2), 0);
+            assert!(refs.is_null());
+            assert_eq!(fc4_flora_occupant_reference(&mut refs, 2), u32::MAX);
+        }
+    }
 }

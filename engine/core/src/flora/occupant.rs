@@ -31,6 +31,40 @@ impl Default for OccupantRecord {
 }
 
 impl OccupantRecord {
+    /// Inherited public mutations, occupant-manager §13.1. Undefined native
+    /// return channels are deliberately absent; CanRemove is a defined bool.
+    pub fn mutate(&mut self, operation: u32, value: u32) -> bool {
+        match operation {
+            0 => self.base.flags = value as u8,
+            1 => self.base.flags |= value as u8,
+            2 => self.base.flags &= !(value as u8),
+            3 => self.base.highlight = (value & 15) as u8,
+            4 | 5 => {
+                let mut low = self.base.removal as u8;
+                let mut high = (self.base.removal >> 8) as u8;
+                let step = if operation == 4 { 1 } else { 255 };
+                if value & 1 != 0 {
+                    high = high.wrapping_add(step);
+                }
+                if value & 2 != 0 {
+                    low = low.wrapping_add(step);
+                }
+                self.base.removal = u16::from(low) | (u16::from(high) << 8);
+            }
+            6 => {
+                return if value & 1 != 0 {
+                    self.base.removal >> 8 == 0
+                } else if value & 2 != 0 {
+                    self.base.removal & 255 == 0
+                } else {
+                    true
+                };
+            }
+            _ => return false,
+        }
+        true
+    }
+
     pub fn write(&self, out: &mut dyn OutStream) -> bool {
         out.put_u16(3);
         self.base.write(out);
@@ -82,10 +116,42 @@ impl OccupantRecord {
     }
 }
 
+/// Counted native-interface boundary (SDK cIGZUnknown, flora §3.4).
+/// Destruction is performed by the owning C ABI handle at the zero transition.
+pub struct OccupantReferences(std::sync::atomic::AtomicU32);
+
+impl Default for OccupantReferences {
+    fn default() -> Self {
+        Self(std::sync::atomic::AtomicU32::new(1))
+    }
+}
+
+impl OccupantReferences {
+    pub fn add_ref(&self) -> u32 {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::AcqRel) + 1
+    }
+
+    pub fn release(&self) -> u32 {
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::AcqRel) - 1
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::stream::{ByteReader, ByteWriter};
+
+    #[test]
+    fn removal_counter_wrap_and_combined_mask_precedence() {
+        let mut record = OccupantRecord::default();
+        for _ in 0..256 {
+            record.mutate(4, 1);
+        }
+        assert!(record.mutate(6, 1));
+        record.mutate(5, 2);
+        assert!(!record.mutate(6, 2));
+        assert!(record.mutate(6, 3)); // bit 1 has priority, not a combined test
+    }
 
     #[test]
     fn versions_truncation_and_normalization() {

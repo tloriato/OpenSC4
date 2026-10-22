@@ -86,6 +86,7 @@ public:
     const uint8_t* Data() const { return bytes_.empty() ? nullptr : bytes_.data(); }
     size_t Size() const { return bytes_.size(); }
     bool Good() const { return good_; }
+    void Fail() { good_ = false; } // occupant verification: sticky output error
 
     // cIGZUnknown
     bool QueryInterface(uint32_t riid, void** ppvObj) override {
