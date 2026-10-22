@@ -21,7 +21,8 @@
 - Retry runner waits for first gate to finish, archives it, then repeats the full gate once with RUST_TEST_THREADS=1 (no skipped tests). Do not launch another gate.
 - First native gate complete: build138/138 and CTest68/68 passed (487.02s); first all failed only the two preserved Rust timing tests. Serial retry now running asset-data tests after earlier suites passed.
 - Frozen game DLL build-runs/dlls/vfocc-r3-games/FreeCity4.dll SHA256 a4579088af1b685bd30bd62d12104ec5e4dbb98021bf162a28098a6d1b2e1cf1; never overwrite it. Final gate runner freezes to a different directory.
-- Outstanding unique game request vfocc-r3-guard2032-20261022-a; wait helper running, saves fixture to main build-runs/fixtures/vfocc-r3-save-20261022-a.sc4 on completed verdict. No second request until verdict.
+- Guard vfocc-r3-guard2032-20261022-a clean/ref0 to2032-01-09: 8x25 creations,95600 mixed/0 differences,50800 Rust query comparisons,17000 refusals,4400 undefined returns,0 fallbacks; natural20682/124092 queries/invalid0.
+- Saved fixture main build-runs/fixtures/vfocc-r3-save-20261022-a.sc4 SHA256 efb152e603bdb0ac760514891084e9ea76e9956f1cabdbf54a7ae9515b7ca14a. Guard complete; reload next, then probe-off; no fourth family round.
 - Next: focused quick/fmt, review measured differences, stable final all then immutable-DLL game controls.
 - FQ18 added for failed-QI output/null-address policy and multi-bit flag semantics; no guessed equivalence.
 - Need final stable all, immutable DLL, unique coordinator guarded2032/save/reload/probe-off runs.
