@@ -111,7 +111,7 @@ All four flag writes pass true, in the order above (`0x0056E02D–0x0056E062`). 
 lifetime limit and elapsed (`+0x2B4/+0x2B8`), still/backwards time, crash time and `+0x2C4`; idle budget is cleared
 later, after copying/normalizing the headings. Init clears `+0x2CC` as well as being-towed, collision-sunk,
 docking/queue, neighbour-route and tow-armed bytes. Thus restoring a lifetime limit before Init does not preserve
-it. Native stores: `0x0056E0F3–0x0056E177`, `0x0056E2CC`.
+it. Native stores: `0x0056E0F3–0x0056E177`, `0x0056E2A0`.
 
 ### 3.1 Serialization boundary and query interface
 
@@ -150,12 +150,21 @@ first); then the automaton's `Shutdown`.
 "End the docking" (`EndDocking`, `0x0056D4D0`): with a current station and a held berth, clear docking in progress,
 give the berth back (`DoneDocking`), clear the held flag and flag `0x10000000`.
 
+The owner enter hook first calls base HandleEnterState and preserves its boolean; it still performs the owner
+switch if the base returned false. For 70/71 the owner notification arguments are exactly **(0xB,0)**, not the
+state duration: zero is pushed at `0x0056E40A`, event 0xB at `0x0056E40B`, slot 102 called at `0x0056E40F`.
+This resolves the watercraft-owner argument conflict with automata §6.6; it does not erase notifications emitted
+by inherited or collision-entry paths. No duration is substituted into this owner callback.
+
 ## 5. AI movement *[compat]*
 
 ### 5.1 The animation tick (`DoAnimationTick`, `0x00572CF0`)
 
-The tick gets two frame times in ms; the first drives movement and timers, the second the idle budget and the
-sounds *[inferred]*.
+The tick takes two binary32 times in ms, A then B. **B drives the watercraft owner's timers, sound and AI motion**;
+both A and B are forwarded, unchanged and in order, to `0x00508740`. This corrects the previous inferred split.
+Native stack evidence: sound loads B at `0x00572D67`; base arguments at `0x00572E53–0x00572E5B`; after the saved
+EDI is popped, backwards time reads B at `0x00572E80`, lifetime at `0x00573165`, motion at `0x00573186–0x005731C5`.
+The base boolean is saved in A's now-unused low byte; it is not a time conversion.
 
 1. A speed modifier (slot 125) below 0.00001 ends the tick with true.
 2. With `+0x2CC`, the idle budget grows by the second time; above 60,000 ms, `PushState(73)`.
@@ -180,6 +189,33 @@ sounds *[inferred]*.
     `Ferry_DockRequests` and `Ferry_ClearDockRequests`.
 13. The effect and model updates (slots 104 and 107).
 
+All timer additions above use **unclamped B** and store binary32. Only the AI movement block clamps B to
+`[0,p35]`, passes the value to `Engine_AIBoatMotion`, then its address to `Movement_PositionNew`. The lifetime
+comparison precedes the elapsed-time addition, is strict `limit<elapsed`, and is guarded by `limit!=0`; crossing
+the limit by addition therefore takes effect on a later tick. State-stack exclusions precede this test and can
+suspend it. Expiry that retains the boat clears the limit and flag `0x10000`, then skips the rest of movement
+for that tick. Top-state 7 and a state-76 stack entry suppress the elapsed addition.
+
+The movement/heading tests in step 7 use full three-component Euclidean norms; heading change means
+`length(currentHeading-previousHeading)`, **not an angle**. The cached movement threshold is a binary32 store of
+city cell size times binary32 0.2. Equality counts as moving. Still time 250 or 5000 exactly does not trigger the
+strict greater-than actions. If the base step returns false, only slots 104 and 107 remain and false propagates.
+The exceptional still-time false return in step 8 bypasses those two callbacks. All other paths through step 13
+return the saved base boolean; the speed-modifier early return is true with no callbacks.
+Evidence: norms/threshold branches `0x00572EC7–0x00572FB9`; still rejection `0x00572FB9–0x00573033`;
+lifetime/AI block `0x005730B2–0x0057320E`; final return `0x0057320E–0x0057322D`.
+
+The rope-effect path contains an asymmetric null contract: while towing it checks the connection effect before
+use; with no tow it directly calls effect slot 5 on `+0xDC0`, stopping with argument false if active
+(`0x00572E38–0x00572E50`). A failed acquisition of that effect is thus not generally safe to animate, even though
+Init reports success. Do not invent automatic rollback or silently claim native null tolerance.
+
+Independent ordering vectors: with A=1 and B=1000, a permitted non-idle AI boat adds 1000 to elapsed and passes at
+most 100 to AI movement under default tuning. With `(limit,elapsed)=(1000,1000)` and B=1 it does not expire that
+tick; `(1000,1001)` tests retention before adding time. With still time 5000, B=0, zero speed and unchanged pose,
+the 5000-ms removal predicate is false. A base-false vector calls neither wakes nor lifetime nor motion, but calls
+slots 104 then 107 once and returns false. A still-time rejection calls neither final callback.
+
 ### 5.2 Picking cells (`Engine_AIPickLocation`, `0x00570620`)
 
 The travel points are topped up to 10 entries, starting from the last point, or from the boat's cell and the
@@ -199,9 +235,29 @@ direction of its heading when the list is empty. A start outside the city ends t
   At most 15 rounds are made.
 
 `Engine_AIBoatMotion` (`0x00571880`, 2.8 KB) picks cells when needed, steers the heading toward the next point and
-sets the speed; `Movement_PositionNew` (`0x0056C430`, with `0x00569940`, `0x00569E70`, `0x0056A440` and
-`0x0056AF90`) moves the boat by speed × time, turns it, keeps it on the water surface and tilts the model
-*[summary]*.
+sets the speed; its full equations remain open. `Movement_PositionNew` (`0x0056C430`) directly calls turning
+helper `0x00569940`, straight helper `0x00568230`, and orientation/height helper `0x00569E70`; §6.2.2 specifies
+straight translation and publication. **`0x0056A440` and `0x0056AF90` are crash-motion helpers**, reached from
+`DoCrashSequenceTick`, not direct callees of `Movement_PositionNew` (calls `0x005703FF`, `0x00570493`). These
+unnamed helpers have no recovered method names here; do not turn descriptive labels into purported native names.
+
+Direction step helper `0x00567000` mutates signed cell x/z by this table; an unsigned direction above 7 (including
+negative signed inputs reinterpreted as unsigned) leaves both unchanged. Evidence: switch at `0x00567004`, table
+`0x00567060–0x0056707F`, increment/decrement targets `0x00567010–0x0056705D`.
+
+| Direction | Δx | Δz |
+|---|---|---|
+| 0 | −1 | −1 |
+| 1 | 0 | −1 |
+| 2 | +1 | −1 |
+| 3 | +1 | 0 |
+| 4 | +1 | +1 |
+| 5 | 0 | +1 |
+| 6 | −1 | +1 |
+| 7 | −1 | 0 |
+
+This proves cell stepping, not the still-untraced continuous-heading-to-direction quantizer or compressed route
+byte format. Independent vector: direction 0 maps `(10,20)` to `(9,19)`; direction 5 to `(10,21)`; 8 leaves it alone.
 
 ### 5.3 Ferries: requests and docking
 
@@ -265,6 +321,25 @@ is above the level of terrain slot 29 *[inferred: the sea level]*.
    (player) or entry 16 (AI), as |speed| / entry 7, plays AEMS event 7 for the player and runs `Crash_DetermineCase`
    (automata.md §6.6); slower hits bump.
 
+For the boat-to-boat threshold-passing branch, size class is 3 for group ancestry `0x4414`, else 2 for `0x4413`,
+else 1 (`0x00566D60`). With at most one player-driven participant, native comparisons select the following
+outcomes; **equal sizes do not select a single loser**:
+
+| Participants | Smaller participant | Equal sizes | Larger participant |
+|---|---|---|---|
+| Both AI | state 73 | both state 73 | unaffected |
+| Player and AI | state 71, regardless of which is smaller | both state 71 | unaffected |
+
+Each state-71 selection first notifies `(0xB,0)`, then pushes 71 with that boat's p21 duration and the true
+state argument. A selected player also gets collision-sunk `+0x2B2=true`; a selected AI does **not** get that
+byte set merely because the player wins. Thus sinking and the collision-mushroom effect flag are separate.
+The receiver processes its own outcome first, returns early if strictly smaller, otherwise also processes the
+other boat. Evidence: no-player comparisons `0x0056C1C5–0x0056C264`; player-receiver comparisons and flag store
+`0x0056C282–0x0056C2DE`; AI receiver/player-other `0x0056C2E0–0x0056C35D`. This specifies selection and callbacks,
+not footprint intersection, bump equations, RNG or sink/heel animation, which remain WC5.
+Independent vectors: classes (1,1), both AI, remove both; (2,2), player/AI, sink both but set collision-sunk only
+on the player; player class 3 versus AI class 1 sinks only the AI without setting that AI byte.
+
 ## 6. U-Drive-It *[compat]*
 
 ### 6.1 The drive tick (`DoPlayerDriveTick`, `0x0056D310`)
@@ -281,8 +356,8 @@ The group must have an AEMS sound set (group `+0x64`, or its parent's); otherwis
 - **Gear.** Throttle at least entry 33 → forward with the throttle; else reverse input at least entry 32 → reverse
   with −the input; else neutral.
 - **Speed.** The speed moves toward the gear's target (clamped to entries 6–7) by dt × entry 10 per tick, or by
-  dt × entry 10 × entry 0 in reverse and when braking; a change of direction first brakes through 0 *[summary of
-  the cases]*.
+  dt × entry 10 × entry 0 when braking; the exact input mapping and crossing-zero behavior are in §6.2.1.
+  Same-sign acceleration and command-channel feedback remain partly summarized.
 - **Steering.** Left and right inputs change the steering at rates from entries 1, 2 and 5 (entry 5 when steering
   against the current turn), scaled by dt × entry 10 × entry 0, clamped to entries 8–9 *[summary]*; the turn
   (`+0x2E0`) is the steering, and the rudder angle shown is −0.125 × the steering.
@@ -363,6 +438,31 @@ A tug's armed tow is used by message `0xAC400A31` (§7). A towed boat (state 77,
 keeps on the water surface and stays radius + 10 behind its tug: it turns toward the tug by at most dt × entry 38
 degrees and moves toward the point behind it when farther; it does nothing without a tug.
 
+More precisely, `DoFollowingTick(dt)` returns false without a tug and true for every normal path with one.
+It first sets base position y to surface-water height. Unnamed helpers `0x00567A50` and `0x00567AB0` compute
+respectively `currentPosition-radius*currentHeading` (stern) and `currentPosition+radius*currentHeading` (bow).
+The radius is obtained from slot 17 on the **helper's receiver**. Heading is not normalized inside these helpers.
+Following obtains the tug's stern twice, replacing the first copy's y with water height. Its horizontal desired
+heading is from the towed boat's base position to the tug stern; its separation vector is from the **towed boat's
+bow** to the first stern copy. The allowed separation is the **towed boat's own radius + 10**, not the tug radius.
+Evidence: receivers/radius `0x005694D9–0x00569517`, bow receiver `0x00569625–0x00569642`; helper bodies
+`0x00567A50–0x00567B05`.
+
+For finite, nondegenerate geometry, let `d` be that full 3D separation vector, `D=length(d)` and
+`excess=D-(ownRadius+10)`. A nonpositive excess suppresses **both translation and turning**. Otherwise, when
+the heading-angle/distance gate is active, add `normalize(d)*excess` to base position in this tick: translation
+has no dt multiplier, no p39 scale and no speed cap (`0x00569695–0x00569761`). Turn allowance alone is
+`round32(dt*p38)` degrees, with unclamped dt; NaN in the computed angle is replaced by zero
+(`0x00569551–0x0056955B`, `0x005695F4–0x00569625`). The heading-angle gate skips movement only when angle <1
+degree **and** D<1. Actual angle evaluation and degenerate normalization remain WC7 residuals; no zero-vector or
+antiparallel fallback is specified by this partial path. Successful motion calls slot 16 with position/heading,
+then advances both previous/current pose pairs. A no-motion true return does not publish those pairs.
+
+Independent finite aligned example: tug current position `(0,0,100)`, heading `(0,0,1)`, radius 5; follower at
+`(0,0,0)`, same heading, radius 2; water height 0. Tug stern is z=95, follower bow z=2, D=93, allowed gap=12;
+the follower translates 81 units to z=81 even with dt=0. Its new bow is z=83, exactly 12 behind the stern.
+This is a following-translation vector, not a claim to have validated every following angle/math case.
+
 ## 7. Messages (`DoMessage`, `0x00569230`) *[compat]*
 
 - `0x26D31EC1`: reload the drive parameters.
@@ -390,6 +490,9 @@ speed, cell, current position and current heading.
 
 See [questions/watercraft.md](questions/watercraft.md). WC3–WC7 include residuals beyond the traced paths below;
 neither a method inventory nor one complete arithmetic subpath establishes whole-owner coverage.
+The reproducible address/byte census and its discrepancy with the requested 79-function brief are published in
+[watercraft-owner-inventory.md](watercraft-owner-inventory.md). Its 75 entries are not presented as a fabricated
+79-method signature inventory.
 
 ## 11. Conformance tests
 

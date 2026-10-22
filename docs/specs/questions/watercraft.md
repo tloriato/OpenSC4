@@ -24,3 +24,28 @@
 
 <!-- from: core-watercraft4 (2026-10-22) -->
 - **WC7 - sections 5.2-5.5 routes and docking:** publish the direction-to-cell/heading convention, compressed route reader format and errors, backtracking tried-bit choice, ferry exhaustion, station-vs-berth distance coordinates, initial station dock-request acquisition, and queued-with-occupied-berth behavior. When undocking cannot move/is not navigable, or docking pushes 72 on land, what does its tick return? What happens for zero-length/antiparallel heading or away vectors, including a boat exactly at the route occupant? Which station owns a newly acquired berth when current crossing still starts at the other station; when is held-berth set? For towing, which radius determines following distance, what is its translation rate, and what breaks nearest-boat distance ties? Does exiting 77 clear being_towed (not stated in section 4)? [decoded network cells only; occupied queued branch retains state; zero/antiparallel/tied cases explicitly unsupported; no guessed held-berth assignment; being_towed not cleared on exit]
+
+## Partial evidence published 2026-10-22 (re-watercraft-completion4)
+
+These questions remain open as compound requests; the following subparts now have native contracts in watercraft.md.
+No entry is moved to answered while its remaining requested bodies or failure cases are untraced.
+
+- WC3: §3/§3.1 prove the fourth Init flag 0x8000, unconditional continuation after base Init, ignored effect
+  acquisition returns/no rollback, clearing both lifetime fields, exact owner-version-2 gate, and query ownership.
+  The companion watercraft-owner-inventory.md lists all 75 functions / 38073 bytes reproducible with current
+  attribution, versus the requested 79 / 38556. The four-function/483-byte discrepancy, constructor/destructor
+  closure, all signatures and inherited internals remain unresolved. No attribution or coverage inputs changed.
+- WC4: §5.1 corrects time provenance: the second float drives owner timers and AI motion; gives lifetime/wake/
+  callback ordering and strict boundaries, plus an asymmetric null-effect hazard. §6.2.2 specifies full straight
+  translation and outer movement publication, including p4 scale and displacement stores. §5.2 corrects the
+  helper grouping: 0x0056A440 and 0x0056AF90 belong to crash motion. Full AI steering/interpolation, turning,
+  height/tilt and inherited step internals remain open; no whole animation/movement implementation claim.
+- WC5: §4 proves owner crash-entry notification (0xB,0); §5.7 gives equal-size double outcomes, class priority,
+  callback order, and the distinction between AI sinking and the collision-sunk effect byte. Footprint/inanimate
+  geometry, bump response and the complete crash/RNG equations remain open.
+- WC6: §6.2.1 gives native nonlinear magnitude mapping and crossing-zero braking, with independent numeric
+  vectors. A braking step can cross zero without a separate leftover-dt acceleration step. Full same-sign speed
+  cases, inverse feedback, steering, sound, fire/skier positions and tween behavior remain open.
+- WC7: §5.2 gives exact eight-direction signed cell deltas; §6.3 proves stern/bow coordinates, own-radius+10
+  separation and instantaneous excess-distance correction, independent of dt/p39. Degenerate angle/normalization,
+  route decoding, route selection/backtracking, dock ownership and nearest-boat ties remain open.
