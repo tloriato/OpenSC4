@@ -208,7 +208,8 @@ enum class ScriptOp {
     Port,
     Tutorial,
     Dispatch,
-    PortProps
+    PortProps,
+    Ordinance
 };
 
 constexpr int32_t kScriptMaxCell = 4095;  // [choice] cities are at most 256 cells a side
@@ -247,6 +248,7 @@ inline const char* ScriptOpName(ScriptOp op) {
         case ScriptOp::Tutorial: return "tutorial";
         case ScriptOp::Dispatch: return "dispatch";
         case ScriptOp::PortProps: return "portprops";
+        case ScriptOp::Ordinance: return "ordinance";
     }
     return "?";
 }
@@ -266,6 +268,7 @@ struct ScriptAction {
     int32_t disaster = 0;                    // disaster: kDisasterFire, kDisasterRiot, kDisasterSurvey
     int32_t facing = 0;                      // port: the lot's facing 0..3 (kind: 0 airport, 1 seaport; type)
     std::string text;                        // mark; the arguments as written for the others
+    uint32_t ordinanceID = 0;                // ordinance: hexadecimal public ID
 };
 
 struct ScriptError {
@@ -512,6 +515,25 @@ inline bool ParseScriptLine(const std::string& raw, int32_t lineNo, ScriptAction
             *error = "disaster '" + (nargs > 0 ? tok[2] : std::string()) + "' is not fire, riot or survey";
             return false;
         }
+    } else if (name == "ordinance") {
+        a.op = ScriptOp::Ordinance;
+        if (!wantArgs(3, "hex-ID on|available|enabled 0|1")) return false;
+        std::string id = detail::Lower(tok[2]);
+        if (id.size() >= 2 && id.substr(0, 2) == "0x") id.erase(0, 2);
+        if (id.empty() || id.size() > 8) { *error = "ordinance ID requires 1..8 hex digits"; return false; }
+        for (char c : id) {
+            const uint32_t digit = c >= '0' && c <= '9' ? uint32_t(c - '0') :
+                c >= 'a' && c <= 'f' ? uint32_t(c - 'a' + 10) : 16;
+            if (digit == 16) { *error = "invalid ordinance hex ID"; return false; }
+            a.ordinanceID = a.ordinanceID * 16 + digit;
+        }
+        const std::string mode = detail::Lower(tok[3]);
+        if (mode != "available" && mode != "on" && mode != "enabled") {
+            *error = "ordinance mode must be available, on or enabled"; return false;
+        }
+        a.kind = mode == "available" ? 0 : mode == "on" ? 1 : 2;
+        if (tok[4] != "0" && tok[4] != "1") { *error = "ordinance state must be 0 or 1"; return false; }
+        a.on = tok[4] == "1";
     } else if (name == "portprops") {
         // Explicit diagnostic action: native PD12 switch on an existing lot.
         a.op = ScriptOp::PortProps;

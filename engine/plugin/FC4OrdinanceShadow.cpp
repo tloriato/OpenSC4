@@ -11,16 +11,21 @@
 #include "cISC4City.h"
 #include "cISC4Ordinance.h"
 #include "cIGZMessageTarget2.h"
+#include "cIGZString.h"
 #include <array>
 #include <cstring>
 #include <mutex>
 #include <vector>
+#include <memory>
+#include <type_traits>
+#include <exception>
 
 namespace fc4 {
 namespace {
 std::recursive_mutex g_lock;
 bool g_enabled = false, g_valid = false;
 thread_local bool g_native = false;
+thread_local bool g_fixture = false;
 cISC4OrdinanceSimulator* g_original = nullptr; // borrowed until PreCityShutdown
 fc4_ordinance_sim* g_core = nullptr;
 std::vector<fc4_ordinance*> g_objects;
@@ -30,6 +35,16 @@ void** g_originalTable = nullptr;
 uint64_t g_checks = 0, g_differences = 0, g_months = 0, g_refusals = 0;
 uint64_t g_posts = 0, g_effects = 0, g_nested = 0, g_bootstraps = 0;
 std::array<uint64_t, 26> g_calls{};
+std::array<uint64_t, 26> g_fixtureCalls{};
+void Call(size_t slot) { ++(g_fixture ? g_fixtureCalls : g_calls)[slot]; }
+struct OrdTap {
+    void* object;
+    fc4_ordinance* core;
+    void** original;
+    std::array<void*, 32> saved, table; // 30 public + SetKey/FromData (§10.2)
+    std::array<uint64_t, 30> calls{};
+};
+std::vector<std::unique_ptr<OrdTap>> g_taps;
 void Records();
 
 struct NativeScope {
@@ -60,7 +75,7 @@ template<size_t Slot, uint32_t Which>
 bool __fastcall Query(cISC4OrdinanceSimulator* self, void*, uint32_t id) {
     std::lock_guard<std::recursive_mutex> lock(g_lock);
     if (g_native) { ++g_nested; return Original<Slot, bool>(self, id); }
-    ++g_calls[Slot];
+    Call(Slot);
     const bool a = Original<Slot, bool>(self, id);
     if (g_valid) Check("natural query", a == fc4_ordinance_sim_query(g_core, Which, id));
     return a;
@@ -69,7 +84,7 @@ template<size_t Slot, uint32_t Which>
 bool __fastcall Set(cISC4OrdinanceSimulator* self, void*, uint32_t id, bool value) {
     std::lock_guard<std::recursive_mutex> lock(g_lock);
     if (g_native) { ++g_nested; return Original<Slot, bool>(self, id, value); }
-    ++g_calls[Slot];
+    Call(Slot);
     const bool b = g_valid && fc4_ordinance_sim_set(g_core, Which, id, value);
     const bool a = Original<Slot, bool>(self, id, value);
     if (g_valid) { Check("natural setter result", a == b); Records(); }
@@ -79,7 +94,7 @@ template<size_t Slot, uint32_t Which>
 uint32_t __fastcall Count(cISC4OrdinanceSimulator* self, void*) {
     std::lock_guard<std::recursive_mutex> lock(g_lock);
     if (g_native) { ++g_nested; return Original<Slot, uint32_t>(self); }
-    ++g_calls[Slot];
+    Call(Slot);
     const auto a = Original<Slot, uint32_t>(self);
     if (g_valid) Check("natural count", a == fc4_ordinance_sim_count(g_core, Which));
     return a;
@@ -89,7 +104,7 @@ uint32_t __fastcall Array(cISC4OrdinanceSimulator* self, void*, uint32_t* out, u
     std::lock_guard<std::recursive_mutex> lock(g_lock);
     using Fn = uint32_t(__thiscall*)(cISC4OrdinanceSimulator*, uint32_t*, uint32_t&);
     if (g_native) { ++g_nested; return reinterpret_cast<Fn>(g_saved[Slot])(self, out, n); }
-    ++g_calls[Slot];
+    Call(Slot);
     const uint32_t capacity = n;
     // Refuse unreasonable buffers rather than allocate from an unchecked caller size.
     std::vector<uint32_t> expected(capacity <= 4096 && out ? capacity : 0);
@@ -109,14 +124,14 @@ template<size_t Slot, uint32_t Which>
 int64_t __fastcall Money(cISC4OrdinanceSimulator* self, void*) {
     std::lock_guard<std::recursive_mutex> lock(g_lock);
     if (g_native) { ++g_nested; return Original<Slot, int64_t>(self); }
-    ++g_calls[Slot];
+    Call(Slot);
     const auto a = Original<Slot, int64_t>(self);
     if (g_valid) Check("natural money", a == fc4_ordinance_sim_money(g_core, Which));
     return a;
 }
 int64_t __fastcall Offset(cISC4OrdinanceSimulator* self, void*, uint32_t prop, uint32_t index) {
     std::lock_guard<std::recursive_mutex> lock(g_lock);
-    if (!g_native) ++g_calls[24]; else ++g_nested;
+    if (!g_native) Call(24); else ++g_nested;
     const bool compare = !g_native && g_valid;
     const auto a = Original<24, int64_t>(self, prop, index);
     // §6.1 specifies only the low 32 bits for native; upper bits are untested.
@@ -126,7 +141,7 @@ int64_t __fastcall Offset(cISC4OrdinanceSimulator* self, void*, uint32_t prop, u
 }
 float __fastcall Factor(cISC4OrdinanceSimulator* self, void*, uint32_t prop, uint32_t index) {
     std::lock_guard<std::recursive_mutex> lock(g_lock);
-    if (!g_native) ++g_calls[25]; else ++g_nested;
+    if (!g_native) Call(25); else ++g_nested;
     const bool compare = !g_native && g_valid;
     const float a = Original<25, float>(self, prop, index);
     if (compare) {
@@ -140,11 +155,91 @@ bool __fastcall Membership(cISC4OrdinanceSimulator* self, void*, cISC4Ordinance&
     std::lock_guard<std::recursive_mutex> lock(g_lock);
     using Fn = bool(__thiscall*)(cISC4OrdinanceSimulator*, cISC4Ordinance&);
     if (!g_native) {
-        ++g_calls[Slot]; ++g_refusals; g_valid = false;
+        Call(Slot); ++g_refusals; g_valid = false;
         Log("ordinance shadow: refused natural membership change slot=%u; following invalid, no resync", unsigned(Slot));
     }
     NativeScope scope;
     return reinterpret_cast<Fn>(g_saved[Slot])(self, o);
+}
+
+OrdTap& Tap(void* self) {
+    for (auto& t : g_taps) if (t->object == self) return *t;
+    // Only installed objects can reach these dispatch entries.
+    std::terminate();
+}
+template<size_t Slot, uint32_t Op, typename R>
+R __fastcall OrdQuery(void* self, void*) {
+    std::lock_guard<std::recursive_mutex> lock(g_lock);
+    auto& t = Tap(self);
+    using Fn = R(__thiscall*)(void*);
+    const bool compare = !g_native && g_valid;
+    if (!g_native) ++t.calls[Slot]; else ++g_nested;
+    R a;
+    { NativeScope scope; a = reinterpret_cast<Fn>(t.saved[Slot])(self); }
+    if (compare) {
+        const int64_t raw = fc4_ordinance_call(t.core, Op, 0);
+        if constexpr (std::is_same<R, float>::value) {
+            uint32_t bits = 0; std::memcpy(&bits, &a, 4);
+            Check("natural ordinance float", bits == static_cast<uint32_t>(raw));
+        } else Check("natural ordinance query", a == static_cast<R>(raw));
+    }
+    return a;
+}
+template<size_t Slot, uint32_t Op, typename A>
+bool __fastcall OrdSet(void* self, void*, A arg) {
+    std::lock_guard<std::recursive_mutex> lock(g_lock);
+    auto& t = Tap(self);
+    using Fn = bool(__thiscall*)(void*, A);
+    const bool compare = !g_native && g_valid;
+    if (!g_native) ++t.calls[Slot]; else ++g_nested;
+    const bool b = compare && fc4_ordinance_call(t.core, Op, static_cast<int64_t>(arg));
+    bool a;
+    { NativeScope scope; a = reinterpret_cast<Fn>(t.saved[Slot])(self, arg); }
+    if (compare) { Check("natural ordinance setter", a == b); Records(); }
+    return a;
+}
+template<size_t Slot, uint32_t Which>
+cIGZString* __fastcall OrdText(void* self, void*) {
+    std::lock_guard<std::recursive_mutex> lock(g_lock);
+    auto& t = Tap(self);
+    using Fn = cIGZString*(__thiscall*)(void*);
+    const bool compare = !g_native && g_valid;
+    if (!g_native) ++t.calls[Slot]; else ++g_nested;
+    cIGZString* a;
+    { NativeScope scope; a = reinterpret_cast<Fn>(t.saved[Slot])(self); }
+    if (compare) {
+        std::string text;
+        fc4_ordinance_text(t.core, Which, [](void* p, const uint8_t* b, size_t n) {
+            static_cast<std::string*>(p)->append(reinterpret_cast<const char*>(b), n);
+        }, &text);
+        Check("natural ordinance text", a && std::string(a->Data(), a->Strlen()) == text);
+    }
+    return a;
+}
+void InstallOrd(size_t i) {
+    auto tap = std::make_unique<OrdTap>();
+    tap->object = FromToken(g_tokens[i]); tap->core = g_objects[i];
+    tap->original = *reinterpret_cast<void***>(tap->object);
+    std::memcpy(tap->saved.data(), tap->original, sizeof(tap->saved)); tap->table = tap->saved;
+    // Init, Shutdown and Simulate mutate state: not a query. They remain explicitly untested.
+#define ORD_Q(slot, op, type) tap->table[slot] = reinterpret_cast<void*>(&OrdQuery<slot, op, type>)
+    ORD_Q(5, FC4_ORD_CURRENT_MONTHLY_INCOME, int64_t); ORD_Q(6, FC4_ORD_ID, uint32_t);
+    tap->table[7] = reinterpret_cast<void*>(&OrdText<7, 0>); tap->table[8] = reinterpret_cast<void*>(&OrdText<8, 1>);
+    ORD_Q(9, FC4_ORD_YEAR_FIRST_AVAILABLE, uint32_t); ORD_Q(10, FC4_ORD_CHANCE_AVAILABILITY, uint32_t);
+    ORD_Q(11, FC4_ORD_ENACTMENT_INCOME, int64_t); ORD_Q(12, FC4_ORD_RETRACMENT_INCOME, int64_t);
+    ORD_Q(13, FC4_ORD_MONTHLY_CONSTANT_INCOME, int64_t); ORD_Q(14, FC4_ORD_MONTHLY_INCOME_FACTOR, float);
+    ORD_Q(15, FC4_ORD_ADVISOR_ID, uint32_t); ORD_Q(17, FC4_ORD_IS_AVAILABLE, bool);
+    ORD_Q(18, FC4_ORD_IS_ON, bool); ORD_Q(19, FC4_ORD_IS_ENABLED, bool);
+    ORD_Q(20, FC4_ORD_MONTHLY_ADJUSTED_INCOME, int64_t); ORD_Q(21, FC4_ORD_CHECK_CONDITIONS, bool);
+    ORD_Q(22, FC4_ORD_IS_INCOME_ORDINANCE, bool);
+#undef ORD_Q
+#define ORD_S(slot, op, type) tap->table[slot] = reinterpret_cast<void*>(&OrdSet<slot, op, type>)
+    ORD_S(24, FC4_ORD_SET_AVAILABLE, bool); ORD_S(25, FC4_ORD_SET_ON, bool); ORD_S(26, FC4_ORD_SET_ENABLED, bool);
+    ORD_S(27, FC4_ORD_FORCE_AVAILABLE, bool); ORD_S(28, FC4_ORD_FORCE_ON, bool);
+    ORD_S(29, FC4_ORD_FORCE_MONTHLY_ADJUSTED_INCOME, int64_t);
+#undef ORD_S
+    auto* t = tap.get(); g_taps.push_back(std::move(tap));
+    *reinterpret_cast<void***>(t->object) = t->table.data();
 }
 
 // Resolve only independent Rust standard objects. Never manufacture foreign
@@ -246,6 +341,7 @@ void Install(cISC4OrdinanceSimulator* p) {
     g_table[22] = reinterpret_cast<void*>(&Money<22, 0>); g_table[23] = reinterpret_cast<void*>(&Money<23, 1>);
     g_table[24] = reinterpret_cast<void*>(&Offset); g_table[25] = reinterpret_cast<void*>(&Factor);
     *reinterpret_cast<void***>(p) = g_table.data();
+    for (size_t i = 0; i < g_objects.size(); ++i) InstallOrd(i);
 }
 }
 void OrdinanceShadowStartup(bool replaced) {
@@ -262,6 +358,18 @@ bool OrdinanceShadowDeliver(cIGZMessageTarget2* target, const char* name, cIGZMe
         auto* city = ObserverCity();
         g_original = city ? city->GetOrdinanceSimulator() : nullptr;
         if (!g_original) { ++g_refusals; return false; }
+        void* owner = nullptr;
+        if (!target->QueryInterface(kFC4_IID_cISC4OrdinanceSimulator, &owner) || !owner) {
+            ++g_refusals; g_original = nullptr;
+            Log("ordinance shadow: agent cannot identify simulator owner; delivery untested");
+            return false;
+        }
+        auto* identity = static_cast<cISC4OrdinanceSimulator*>(owner);
+        FC4_ACQUIRED(identity, "QueryInterface");
+        const bool sameOwner = identity == g_original;
+        FC4_RELEASE(identity);
+        if (!sameOwner) { ++g_refusals; g_original = nullptr; return false; }
+        Log("ordinance shadow: runtime native owner=%p agent=%p name=%s", g_original, target, name);
         g_valid = Bootstrap(g_original);
         if (g_valid) Install(g_original);
         else { ++g_refusals; Log("ordinance shadow: bootstrap refused; no comparisons, no native fallback"); }
@@ -279,11 +387,18 @@ void OrdinanceShadowCityShutdown() {
     if (!g_enabled) return;
     Log("ordinance shadow: shutdown months=%llu exact=%llu/%llu differences=%llu bootstraps=%llu resync=0 fallback=0 refusals=%llu nested=%llu",
         g_months, g_checks - g_differences, g_checks, g_differences, g_bootstraps, g_refusals, g_nested);
-    for (size_t i = 0; i < g_calls.size(); ++i) Log("ordinance shadow: natural slot=%u calls=%llu", unsigned(i), g_calls[i]);
-    Log("ordinance shadow: UNTESTED native host-read capture, effects/messages, direct ordinance calls, Init/Read/Write/Shutdown interception, names; zero-call slots untested");
+    for (size_t i = 0; i < g_calls.size(); ++i) Log("ordinance shadow: simulator slot=%u natural=%llu fixture=%llu", unsigned(i), g_calls[i], g_fixtureCalls[i]);
+    for (auto& t : g_taps) {
+        for (size_t i = 0; i < t->calls.size(); ++i)
+            Log("ordinance shadow: object=%p class=%08X slot=%u natural=%llu", t->object, fc4_ordinance_class_id(t->core), unsigned(i), t->calls[i]);
+        *reinterpret_cast<void***>(t->object) = t->original;
+    }
+    g_taps.clear();
+    Log("ordinance shadow: UNTESTED native host-read capture, effects/messages, Init/Read/Write/Shutdown/Simulate interception, simulator names/ByID/ByName, misc holder; zero-call slots untested");
     if (g_originalTable && g_original) *reinterpret_cast<void***>(g_original) = g_originalTable;
     if (g_core) fc4_ordinance_sim_destroy(g_core);
     for (auto* o : g_objects) fc4_ordinance_destroy(o);
     g_objects.clear(); g_tokens.clear(); g_core = nullptr; g_original = nullptr; g_originalTable = nullptr; g_valid = false;
 }
+void OrdinanceShadowFixture(bool active) { g_fixture = active; }
 }

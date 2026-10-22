@@ -388,6 +388,21 @@ void CellRectArgsTests() {
 }  // namespace
 
 int main() {
+    {
+        using namespace fc4::harness;
+        ScriptAction action;
+        std::string error;
+        bool has = false;
+        CHECK(ParseScriptLine("2026-03-01 ordinance 0xFFFFFFFF on 1", 1, &action, &has, &error));
+        CHECK(has && action.op == ScriptOp::Ordinance && action.ordinanceID == 0xFFFFFFFFu && action.kind == 1 && action.on);
+        CHECK(ParseScriptLine("2026-03-01 ordinance 62bf1daa enabled 0", 1, &action, &has, &error));
+        CHECK(action.ordinanceID == 0x62BF1DAAu && action.kind == 2 && !action.on);
+        CHECK(!ParseScriptLine("2026-03-01 ordinance 100000000 on 1", 1, &action, &has, &error));
+        CHECK(!ParseScriptLine("2026-03-01 ordinance 123xyz on 1", 1, &action, &has, &error));
+        CHECK(!ParseScriptLine("2026-03-01 ordinance 123 enable 1", 1, &action, &has, &error));
+        CHECK(!ParseScriptLine("2026-03-01 ordinance 123 on 2", 1, &action, &has, &error));
+        CHECK(!ParseScriptLine("2026-03-01 ordinance 123 on", 1, &action, &has, &error));
+    }
     DateTests();
     RateTests();
     JulianTests();

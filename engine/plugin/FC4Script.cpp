@@ -12,6 +12,7 @@
 // root); if not, see <https://www.gnu.org/licenses/>.
 
 #include "FC4Script.h"
+#include "FC4OrdinanceShadow.h"
 
 #include "FC4Config.h"
 #include "FC4Diag.h"
@@ -34,6 +35,7 @@
 
 #include "SC4Rect.h"
 #include "cISC4City.h"
+#include "cISC4OrdinanceSimulator.h"
 #include "cISC4DispatchManager.h"
 #include "cISC4Occupant.h"
 #include "cS3DVector3.h"
@@ -449,6 +451,16 @@ void RunAction(const harness::ScriptAction& a, int32_t julian, cISC4City* city) 
         case ScriptOp::Tutorial: result = RunTutorial(a, city); break;
         case ScriptOp::Dispatch: result = RunDispatch(a, julian, city); break;
         case ScriptOp::PortProps: result = PortScriptProps(a.x0, a.z0, static_cast<uint32_t>(a.type)); break;
+        case ScriptOp::Ordinance: {
+            auto* o = city ? city->GetOrdinanceSimulator() : nullptr;
+            if (!o) { result = "skipped: no ordinance simulator"; break; }
+            OrdinanceShadowFixture(true);
+            const bool ok = a.kind == 0 ? o->SetOrdinanceAvailable(a.ordinanceID, a.on) :
+                a.kind == 1 ? o->SetOrdinanceOn(a.ordinanceID, a.on) : o->SetOrdinanceEnabled(a.ordinanceID, a.on);
+            OrdinanceShadowFixture(false);
+            result = std::string("fixture action; native/city setter returned ") + (ok ? "true" : "false");
+            break;
+        }
     }
     std::string late;
     if (julian != a.julian) late = " (run on " + harness::FormatDate(harness::CivilFromJulian(julian)) + ")";
