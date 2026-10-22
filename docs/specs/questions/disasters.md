@@ -20,3 +20,16 @@ numbers (its Q26-Q42) are given in parentheses; the current choice is in bracket
   simgrid §4.1 step 1's one-tract test with `x + w − 1 < x`) is not specified: what coverage byte does the original's
   step 4 (and §5.6's spread) read for such an occupant, and does it refuse? [the plugin reads 0 coverage, so it does
   not refuse at step 4; unreachable for an occupant inside the city]
+
+<!-- from: glue-disasters-final4, final publication boundary audit (2026-10-22) -->
+- **DS47 - sections 2.8 and 15, complete typed layer interface:** please publish the complete C++ declaration
+  of the 19-slot `cISC4DisasterLayer` interface, explicitly identifying the `void` returns required for activation.
+  The current SDK header declares `bool` for slots 3/4/8/9/11/13/14/15 and gives slot 9 an instance argument;
+  section 2.4 resolves the slot 9 argument to none, but does not specify its C++ return type. The published
+  `interfaces.tsv` rows classify slot 8 as `via-call` and slots 3/4/9/11/13/14/15 as `eax-or-void`, rather than
+  giving typed return contracts. The existing compiled `FC4AutomataInterfaces.h` declaration has only 16 slots,
+  placeholders for 3-12, and a one-argument slot 15; the preserved owned draft supplies 19 slots but declares
+  those methods `bool`. Which of these returns must be `void`, and what are the exact declarations of all 19
+  slots (including slot 15 arguments and slot 18 record-pointer type)? [activation withheld; no guessed return
+  signatures, no native calls through the draft, no plugin/config/build registration changes; DS46 is resolved by
+  section 2.6.1 and is not the blocker]
