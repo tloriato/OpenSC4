@@ -35,8 +35,11 @@
 //     in the cell walk (not kept, §4.3 step 3.9) must be among them.
 // Not compared: which kept prop the member generator removes (§4.3 step 5)
 // and the creations (member and wealth generators, §5). At each SimNewMonth
-// the original's record is read into a second core and its state and lists
-// compared with the running shadow core; a difference resyncs it.
+// native Write bytes and reference identities are compared directly with Rust
+// Write and the signs-visible query is probed. These are diagnostic probes.
+// Bootstrap happens once per owner; no resync or regrowth after faults. Missing
+// identical RNG and callback capture (PV14/PV15) refuses operation credit for
+// every observed natural Idle/Day call, including matching returns/scanners.
 //
 // Log lines (always written):
 //   propdev shadow: ON (...) | requested but INACTIVE (...)                  game start

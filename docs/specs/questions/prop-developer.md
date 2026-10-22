@@ -1,0 +1,8 @@
+# prop-developer: open questions
+<!-- Append-only questions; index regeneration is left to the coordinator. -->
+
+<!-- from: verify-propdev-shadow4 (2026-10-22) -->
+- **PV14 - section 5, identical-input native shadow:** what published, version-checked interface permits observing the original developer's member-generator draws, file-static wealth-generator draws and C rand night shuffle, with draw order and bounds, without replacing or advancing any native generator? The current read-only host uses a different seed, stand-in creation tokens and selector answers; block creation/removal counts cannot establish selection, placement or lifetime equality. [Park full operation exactness; keep every natural Idle/Day call in the denominator and refuse credit without a complete captured transcript. No native RNG memory or executable inspection.]
+
+<!-- from: verify-propdev-shadow4 (2026-10-22) -->
+- **PV15 - sections 3.3, 4 and 8.4, native callback capture boundary:** what published interface permits capturing the exact ordered typed object/resource/tuning/date/lot/requester callback inputs and mutation results used by native operations (including natural Add/RemoveRequester, Show/Toggle, Read/Write and shutdown), while replaying into isolated Rust without repeated game getters, callbacks, prop mutations, registration or original-operation forwarding? Existing post-load message listening and pre-step live getters do not capture those inputs; no contract currently identifies an observation-only interposer. [Park identical-input selection/placement/lifetime/resource and natural save/reload/shutdown credit, and all secondary-owner credit. Direct monthly native Write/query probes are diagnostics, not natural method interception or exact operations.]

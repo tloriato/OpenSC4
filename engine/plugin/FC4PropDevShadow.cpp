@@ -12,6 +12,7 @@
 // root); if not, see <https://www.gnu.org/licenses/>.
 
 #include "FC4PropDevShadow.h"
+#include "FC4PropDevEvidence.h"
 
 #include "FC4Config.h"
 #include "FC4Diag.h"
@@ -75,6 +76,9 @@ bool g_replaced = false;
 bool g_loggedOurs = false;
 bool g_listening = false;
 bool g_tickRegistered = false;
+PropDevEvidence g_evidence;
+bool g_bootstrapAttempted = false;
+bool g_faulted = false;
 
 const void* g_orig = nullptr;
 cIGZMessageTarget2* g_agent = nullptr;
@@ -241,76 +245,6 @@ fc4_prop_state StateOf(fc4_prop_developer* core) {
     return st;
 }
 
-std::vector<fc4_prop_ref> ListOf(fc4_prop_developer* core, uint32_t which) {
-    std::vector<fc4_prop_ref> v(fc4_prop_developer_list(core, which, nullptr, 0));
-    if (!v.empty()) fc4_prop_developer_list(core, which, v.data(), v.size());
-    return v;
-}
-
-std::vector<uint64_t> TokensOf(const std::vector<fc4_prop_ref>& v) {
-    std::vector<uint64_t> t;
-    t.reserve(v.size());
-    for (const fc4_prop_ref& r : v) t.push_back(r.token);
-    return t;
-}
-
-std::vector<std::pair<uint32_t, std::vector<uint64_t>>> TriggersOf(fc4_prop_developer* core) {
-    std::vector<std::pair<uint32_t, std::vector<uint64_t>>> out;
-    for (uint32_t i = 0;; ++i) {
-        uint32_t trig = 0;
-        const size_t n = fc4_prop_developer_trigger_entry(core, i, &trig, nullptr, 0);
-        if (n == SIZE_MAX) break;
-        std::vector<fc4_prop_ref> refs(n);
-        if (n != 0) fc4_prop_developer_trigger_entry(core, i, &trig, refs.data(), n);
-        std::vector<uint64_t> t = TokensOf(refs);
-        std::sort(t.begin(), t.end());
-        out.emplace_back(trig, std::move(t));
-    }
-    std::sort(out.begin(), out.end());
-    return out;
-}
-
-// The running core against a core read from the original's record now.
-void CompareCores(fc4_prop_developer* ours, fc4_prop_developer* rec, Diff& d) {
-    const fc4_prop_state a = StateOf(rec), b = StateOf(ours);
-    if (a.scan_flag != b.scan_flag) d.Add("scan flag %d/%d (orig/ours)", a.scan_flag, b.scan_flag);
-    if (a.scanner_state != b.scanner_state || a.scanner_x != b.scanner_x || a.scanner_z != b.scanner_z ||
-        a.scanner_step != b.scanner_step || a.clip_x0 != b.clip_x0 || a.clip_z0 != b.clip_z0 ||
-        a.clip_x1 != b.clip_x1 || a.clip_z1 != b.clip_z1) {
-        d.Add("scanner (%u %d,%d)/(%u %d,%d)", a.scanner_state, a.scanner_x, a.scanner_z, b.scanner_state,
-              b.scanner_x, b.scanner_z);
-    }
-    if (a.wealth_added != b.wealth_added) d.Add("wealthAdded %u/%u", a.wealth_added, b.wealth_added);
-    if (a.night_cursor != b.night_cursor || a.night_mode != b.night_mode || a.night_acc != b.night_acc ||
-        (a.night_mode != 0 && a.night_batch != b.night_batch)) {
-        d.Add("night cursor/mode/batch/acc %u/%u/%u/%u vs %u/%u/%u/%u", a.night_cursor, a.night_mode, a.night_batch,
-              a.night_acc, b.night_cursor, b.night_mode, b.night_batch, b.night_acc);
-    }
-    if (a.is_night != b.is_night) d.Add("isNight %u/%u", a.is_night, b.is_night);
-    if (a.signs_visible != b.signs_visible) d.Add("signsVisible %u/%u", a.signs_visible, b.signs_visible);
-    if (TokensOf(ListOf(rec, FC4_PROP_LIST_REQUESTERS)) != TokensOf(ListOf(ours, FC4_PROP_LIST_REQUESTERS))) {
-        d.Add("requesters %u/%u (objects in order)", a.requester_count, b.requester_count);
-    }
-    {
-        std::vector<uint64_t> x = TokensOf(ListOf(rec, FC4_PROP_LIST_NIGHT)), y = TokensOf(ListOf(ours, FC4_PROP_LIST_NIGHT));
-        std::sort(x.begin(), x.end());
-        std::sort(y.begin(), y.end());
-        if (x != y) d.Add("night list %u/%u (as sets)", U(x.size()), U(y.size()));
-    }
-    const struct {
-        uint32_t which;
-        const char* name;
-    } ordered[] = {{FC4_PROP_LIST_TIME_OF_DAY, "time-of-day"},
-                   {FC4_PROP_LIST_DATED, "dated"},
-                   {FC4_PROP_LIST_POWER, "power"},
-                   {FC4_PROP_LIST_SIGNS, "signs"}};
-    for (const auto& l : ordered) {
-        const std::vector<uint64_t> x = TokensOf(ListOf(rec, l.which)), y = TokensOf(ListOf(ours, l.which));
-        if (x != y) d.Add("%s list %u/%u (in order)", l.name, U(x.size()), U(y.size()));
-    }
-    if (TriggersOf(rec) != TriggersOf(ours)) d.Add("trigger map %u/%u entries", a.trigger_count, b.trigger_count);
-}
-
 // ---- the original's scanner (raw, §2) ---------------------------------------------------------------
 
 template <class T>
@@ -393,21 +327,23 @@ struct MonthStats {
 };
 MonthStats g_month;
 uint32_t g_months = 0, g_cleanMonths = 0;
-bool g_needResync = false;
 WriteCapture g_capture;
 
 void Follow(const char* how) {
-    // "first" or "resynced" wins over "yes" for the month line.
+    // The explicit checkpoint label wins over subsequent deliveries.
     if (g_month.followed == nullptr || std::strcmp(g_month.followed, "yes") == 0) g_month.followed = how;
 }
 
 bool StartFromOriginal(const void* orig, const char* how) {
+    // A single explicit checkpoint bootstrap, never recovery from divergence.
+    // PV14/PV15: neither bootstrap nor subsequent probes earn operation credit.
+    g_bootstrapAttempted = true;
     g_run.Drop();
     if (!g_capture.Capture(static_cast<cIGZUnknown*>(const_cast<void*>(orig)))) return false;
     if (!ReadInto(g_run, g_capture, orig)) return false;
     StartRun();
     Follow(how);
-    g_needResync = false;
+    ++g_evidence.bootstraps;
     return true;
 }
 
@@ -450,6 +386,7 @@ struct Step {
     cIGZMessage2* msg = nullptr;
     uint32_t type = 0;
     bool ran = false;
+    bool result = false;
     const char* incomplete = nullptr;
     bool block = false;
     fc4_prop_block blk{};
@@ -459,9 +396,13 @@ struct Step {
 
 void StepBefore(void* ctx) {
     Step& s = *static_cast<Step*>(ctx);
-    if (g_run.core == nullptr || g_run.orig != s.orig || g_needResync) {
-        const char* how = g_run.core == nullptr || g_run.orig != s.orig ? "first" : "resynced";
-        if (!StartFromOriginal(s.orig, how)) {
+    if (g_faulted || (g_bootstrapAttempted && g_run.core == nullptr)) {
+        s.incomplete = "shadow stopped; no state regrowth or resync permitted";
+        return;
+    }
+    if (g_run.core == nullptr) {
+        if (!StartFromOriginal(s.orig, "checkpoint")) {
+            ++g_evidence.failures;
             s.incomplete = "the original's record could not be captured or read";
             return;
         }
@@ -477,7 +418,7 @@ void StepBefore(void* ctx) {
     g_uncertain = false;
     g_pendingUncertain = false;
     g_inStep = true;
-    fc4_prop_developer_do_message(g_run.core, &m);
+    s.result = fc4_prop_developer_do_message(g_run.core, &m);
     g_inStep = false;
     if (g_pendingUncertain) g_uncertain = true;
     g_pendingUncertain = false;
@@ -505,7 +446,6 @@ void StepAfter(void* ctx) {
         if (!ScannerEqual(r, st)) {
             g_month.d.Add("step %u: scanner orig flag %d (%u %d,%d) ours flag %d (%u %d,%d)", g_month.steps, r.flag,
                           r.state, r.v[0], r.v[1], st.scan_flag, st.scanner_state, st.scanner_x, st.scanner_z);
-            g_needResync = true;
         }
     }
     if (!s.block) return;
@@ -549,6 +489,7 @@ void CallMessage(void* ctx) {
 }
 
 void OnMessage(cIGZMessage2* msg) {
+    if (msg != nullptr) ++g_evidence.secondaryMessages;
     if (msg == nullptr || g_run.core == nullptr) return;
     if (msg->GetType() == kMsgAnimationTick) {
         ++g_month.ticks;
@@ -559,6 +500,8 @@ void OnMessage(cIGZMessage2* msg) {
     if (!SehGuard("propdev shadow (followed message)", &CallMessage, &m)) {
         Log("propdev shadow: a fault in a followed message; the shadow core is abandoned (its references leak)");
         g_run.Abandon();
+        g_faulted = true;
+        ++g_evidence.failures;
     }
 }
 
@@ -646,13 +589,13 @@ void Unlisten() {
 struct Month {
     const void* orig = nullptr;
     bool compared = false;
-    bool resynced = false;
     const char* incomplete = nullptr;
     fc4_prop_state st{};
 };
 
 void MonthCompare(void* ctx) {
     Month& mo = *static_cast<Month*>(ctx);
+    ++g_evidence.recordAttempts;
     if (g_run.core == nullptr || g_run.orig != mo.orig) {
         mo.incomplete = "no shadow core yet";
         return;
@@ -661,26 +604,73 @@ void MonthCompare(void* ctx) {
         mo.incomplete = "the original's record could not be captured";
         return;
     }
-    CoreBox rec;
-    if (!ReadInto(rec, g_capture, mo.orig)) {
-        mo.incomplete = "the original's record could not be read";
+    // Compare native Write bytes and reference identities directly with Rust
+    // Write. Do not decode the native output into another Rust oracle. Retain
+    // every byte difference, including map ordering and inactive night fields.
+    WriteCapture ours;
+    OStreamAdapter out(ours);
+    if (!fc4_prop_developer_write(g_run.core, out.Get()) || ours.GetError() != 0) {
+        mo.incomplete = "the running Rust record could not be written";
         return;
     }
-    const uint32_t before = g_month.d.mismatches;
-    CompareCores(g_run.core, rec.core, g_month.d);
-    mo.compared = true;
-    if (g_month.d.mismatches != before) {
-        g_run.Swap(rec);  // ours continues from the original's record
-        StartRun();
-        mo.resynced = true;
-        g_needResync = false;
+    ++g_evidence.recordCompared;
+    bool equal = g_capture.Bytes() == ours.Bytes();
+    size_t differences = 0;
+    const size_t common = std::min(g_capture.Bytes().size(), ours.Bytes().size());
+    for (size_t i = 0; i < common; ++i) {
+        if (g_capture.Bytes()[i] != ours.Bytes()[i]) ++differences;
     }
+    differences += std::max(g_capture.Bytes().size(), ours.Bytes().size()) - common;
+    for (uint32_t id = 1; g_capture.Object(id) != nullptr || ours.Object(id) != nullptr; ++id) {
+        if (g_capture.Object(id) != ours.Object(id) || g_capture.ClassOf(id) != ours.ClassOf(id)) {
+            equal = false;
+            g_month.d.Add("serialized reference %u differs", id);
+        }
+    }
+    if (differences != 0) g_month.d.Add("serialized bytes differ at %u positions (native/Rust size %u/%u)",
+                                      U(differences), U(g_capture.Bytes().size()), U(ours.Bytes().size()));
+    if (equal) ++g_evidence.recordEqual;
+    mo.compared = true;
     mo.st = StateOf(g_run.core);
+    ++g_evidence.queryAttempts;
+    const bool visible = static_cast<cISC4PropDeveloper*>(const_cast<void*>(mo.orig))->AreSignsAndLabelsVisible();
+    ++g_evidence.queryCompared;
+    if (visible == fc4_prop_developer_signs_visible(g_run.core)) ++g_evidence.queryEqual;
+    else g_month.d.Add("native/Rust signs query differs");
 }
 
 void ReadSettings() { g_enabled = SettingInt("propdev_shadow", "FC4_PROPDEV_SHADOW", 0) != 0; }
 
 bool Active() { return g_enabled && g_simulatorReplaced && !g_replaced; }
+
+void LogEvidence(const char* phase) {
+    Log("propdev evidence %s: native-owner=%p agent=%p replaced=%u native-calls=%llu "
+        "independent-exact=%llu/%llu compared=%llu refused=%llu failures=%llu "
+        "return-observations=%llu/%llu serialization-probes=%llu/%llu attempts=%llu "
+        "query-probes=%llu/%llu attempts=%llu diagnostic-mismatches=%llu "
+        "checkpoint-bootstraps=%llu resyncs=%llu fallbacks=%llu secondary-messages=%llu; "
+        "input-capture=INCOMPLETE(PV14,PV15) secondary-owners=PARKED natural-save-read-write=UNOBSERVED",
+        phase, g_orig, static_cast<void*>(g_agent), g_replaced ? 1u : 0u,
+        static_cast<unsigned long long>(g_evidence.nativeCalls),
+        static_cast<unsigned long long>(g_evidence.equal),
+        static_cast<unsigned long long>(g_evidence.nativeCalls),
+        static_cast<unsigned long long>(g_evidence.compared),
+        static_cast<unsigned long long>(g_evidence.refused),
+        static_cast<unsigned long long>(g_evidence.failures),
+        static_cast<unsigned long long>(g_evidence.returnEqual),
+        static_cast<unsigned long long>(g_evidence.returnCompared),
+        static_cast<unsigned long long>(g_evidence.recordEqual),
+        static_cast<unsigned long long>(g_evidence.recordCompared),
+        static_cast<unsigned long long>(g_evidence.recordAttempts),
+        static_cast<unsigned long long>(g_evidence.queryEqual),
+        static_cast<unsigned long long>(g_evidence.queryCompared),
+        static_cast<unsigned long long>(g_evidence.queryAttempts),
+        static_cast<unsigned long long>(g_evidence.diagnosticMismatches),
+        static_cast<unsigned long long>(g_evidence.bootstraps),
+        static_cast<unsigned long long>(g_evidence.resyncs),
+        static_cast<unsigned long long>(g_evidence.fallbacks),
+        static_cast<unsigned long long>(g_evidence.secondaryMessages));
+}
 
 cISC4PropDeveloper* OriginalOf(cISC4City* city) {
     cISC4PropDeveloper* p = city ? city->GetPropDeveloper() : nullptr;  // slot 41, borrowed
@@ -708,6 +698,7 @@ void PropDevShadowStartup(bool simulatorReplaced, bool propdevReplaced) {
         Log("propdev shadow: requested (propdev_shadow from %s) but INACTIVE: it compares against the ORIGINAL prop "
             "developer, and propdev is enabled (ours)",
             src);
+        LogEvidence("INACTIVE-replacement");
     } else if (!simulatorReplaced) {
         Log("propdev shadow: requested (propdev_shadow from %s) but INACTIVE: it follows the original's agent "
             "deliveries, which pass through FreeCity4's simulator, and simulator is not enabled",
@@ -718,7 +709,8 @@ void PropDevShadowStartup(bool simulatorReplaced, bool propdevReplaced) {
             "animation tick; every block step of the original is wrapped: the scan flag and the scanner (raw, "
             "+0x14/+0x18) compared after it, and when every keep check of ours was certain, the props the original "
             "removed from the block against ours (count; the not-kept ones each). Monthly: the original's record "
-            "read into a second core and compared with ours (state, requesters, lists, trigger map). Not compared: "
+            "compared directly with Rust Write bytes and reference identities (no second Rust oracle). "
+            "No resync or fault recovery. All operation credit REFUSED (PV14/PV15). Not compared: "
             "which kept prop is removed (member generator) and the creations (member and wealth generators)",
             src);
     }
@@ -735,6 +727,7 @@ bool PropDevShadowDeliver(cIGZMessageTarget2* target, const char* agentName, cIG
     if (orig == nullptr) return false;
     if (orig != g_orig) {
         g_run.Drop();
+        g_bootstrapAttempted = false;
         Track(orig);
     }
     if (target != g_agent) return false;
@@ -746,12 +739,20 @@ bool PropDevShadowDeliver(cIGZMessageTarget2* target, const char* agentName, cIG
     if (!SehGuard("propdev shadow (before the step)", &StepBefore, &s)) {
         Log("propdev shadow: a fault before the original's step; the shadow core is abandoned (its references leak)");
         g_run.Abandon();
+        g_inStep = false;
+        g_faulted = true;
+        ++g_evidence.failures;
         s.ran = false;
     }
     *finished = target->DoMessage(msg);  // the original's step, exactly once
+    // PV14/PV15: no complete native RNG/callback transcript; return equality
+    // and state observations cannot earn independent operation exactness.
+    g_evidence.ObserveCall(s.ran, *finished, s.result, false);
     if (!SehGuard("propdev shadow (after the step)", &StepAfter, &s)) {
         Log("propdev shadow: a fault after the original's step; the shadow core is abandoned (its references leak)");
         g_run.Abandon();
+        g_faulted = true;
+        ++g_evidence.failures;
     }
     s.pool.Drain();
     static bool loggedIncomplete = false;
@@ -777,7 +778,10 @@ void PropDevShadowMonth(cISC4City* city, int32_t julian) {
     char date[16];
     propcity::DateText(julian, date);
     if (!mo.compared) {
+        ++g_evidence.failures;
+        g_evidence.diagnosticMismatches += g_month.d.mismatches;
         Log("propdev shadow month %s: INCOMPLETE (%s); not compared", date, mo.incomplete ? mo.incomplete : "?");
+        LogEvidence(date);
         g_month = MonthStats{};
         return;
     }
@@ -788,24 +792,28 @@ void PropDevShadowMonth(cISC4City* city, int32_t julian) {
              "propdev shadow month %s: followed=%s steps=%u blocks=%u certain=%u raw-compared=%u removed orig/ours "
              "%u/%u (not kept %u) created orig/ours %u/%u (not compared) messages=%u ticks=%u message-removals=%u; "
              "record: scan=%d scanner=(%u %d,%d) requesters=%u night=%u tod=%u dated=%u power=%u signs=%u "
-             "triggers=%u isNight=%u%s",
+             "triggers=%u isNight=%u; diagnostics only, independent operation credit refused",
              date, g_month.followed ? g_month.followed : "yes", g_month.steps, g_month.blocks, g_month.certain,
              g_month.rawCompared, g_month.origRemoved, g_month.oursRemoved, g_month.notKept, g_month.origCreated,
              g_month.oursCreated, g_month.messages, g_month.ticks, g_messageRemovals, mo.st.scan_flag,
              mo.st.scanner_state, mo.st.scanner_x, mo.st.scanner_z, mo.st.requester_count, mo.st.night_count,
              mo.st.time_of_day_count, mo.st.dated_count, mo.st.power_count, mo.st.sign_count, mo.st.trigger_count,
-             mo.st.is_night, mo.resynced ? " (resynced from the record)" : "");
+             mo.st.is_night);
     const std::string line = std::string(head) + "; mismatches=" + std::to_string(g_month.d.mismatches) +
                              (g_month.d.listed.empty() ? std::string() : "; differences: " + g_month.d.listed);
     LogShadowLine("propdev shadow (cont.)", reinterpret_cast<const uint8_t*>(line.data()), line.size());
+    g_evidence.diagnosticMismatches += g_month.d.mismatches;
+    LogEvidence(date);
     g_month = MonthStats{};
     g_messageRemovals = 0;
 }
 
 void PropDevShadowCityShutdown() {
+    if (g_enabled) LogEvidence("city-shutdown");
     if (g_run.core == nullptr && g_orig == nullptr) return;
     if (g_months > 0) {
-        Log("propdev shadow: city shutdown: %u month lines, %u with mismatches=0", g_months, g_cleanMonths);
+        Log("propdev shadow: city shutdown: %u diagnostic month lines, %u without observed differences; "
+            "independent exactness unproved", g_months, g_cleanMonths);
     }
     g_run.Drop();
     Unlisten();
@@ -813,6 +821,8 @@ void PropDevShadowCityShutdown() {
     g_agent = nullptr;
     g_vtable = nullptr;
     g_month = MonthStats{};
+    g_bootstrapAttempted = false;
+    g_faulted = false;
 }
 
 }  // namespace fc4

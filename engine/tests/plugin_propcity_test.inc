@@ -20,6 +20,7 @@
 // lines with ours enabled.
 
 #include "cISC4PropDeveloper.h"
+#include "FC4PropDevEvidence.h"
 
 namespace propcity_test {
 
@@ -74,6 +75,18 @@ void PutU32(std::vector<uint8_t>& b, uint32_t v) {
 }  // namespace propcity_test
 
 int PropDevEnableTest(const std::string& dll, const std::string& ini, const std::string& log) {
+    // Negative controls: matching returns with missing inputs, failed replay,
+    // and mismatches all remain in the full native denominator. No zero-call
+    // equality or creation/read/write count can turn them into exact credit.
+    fc4::PropDevEvidence evidence;
+    CHECK(evidence.nativeCalls == 0 && evidence.equal == 0 && evidence.compared == 0);
+    evidence.ObserveCall(true, true, true, false);
+    evidence.ObserveCall(false, true, true, false);
+    evidence.ObserveCall(true, false, true, false);
+    CHECK(evidence.nativeCalls == 3 && evidence.refused == 3);
+    CHECK(evidence.compared == 0 && evidence.equal == 0);
+    CHECK(evidence.returnCompared == 2 && evidence.returnEqual == 1);
+    CHECK(evidence.diagnosticMismatches == 1);
     using namespace cmglue_test;
     using namespace propcity_test;
     // Off by default; `enable = propdev` registers the developer and the
