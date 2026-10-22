@@ -81,6 +81,7 @@
 #include "FC4FormatsShadow.h"  // the glue-formats4 lane
 #include "FC4Span1555Shadow.h"  // the glue-span1555-impl4 lane
 #include "FC4SpanContext.h"  // the glue-span-context-final4 lane
+#include "FC4WeatherShadow.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -610,6 +611,7 @@ public:
                 DemolitionPriceShadowCityLoaded(CurrentCity());  // the glue23 lane: demolition_price_shadow = 1 only
                 DispatchShadowCityLoaded(CurrentCity());  // dispatch_shadow = 1 only
                 PropLotShadowCityLoaded(CurrentCity());    // propmgr_shadow / lotcfg_shadow / tutorial_shadow = 1 only
+                WeatherShadowCityLoaded(CurrentCity());
                 EffectsShadowCityLoaded(CurrentCity());  // effects_shadow = 1 only
                 TerrainShadowCityLoaded(CurrentCity());  // terrain_shadow = 1 only
                 DisastersShadowCityLoaded(CurrentCity());  // disasters_shadow = 1 only
@@ -627,6 +629,7 @@ public:
                 break;
             case kMsgPreSave:
                 PropLotShadowPreSave(CurrentCity());  // the records just before the save writes them
+                WeatherShadowPreSave();
                 break;
             case kMsgConnectionsReady:
                 PopupDialogsOnConnectionsReady();
@@ -660,6 +663,7 @@ public:
                 DemolitionShadowCityShutdown();
                 DemolitionPriceShadowCityShutdown();  // the glue23 lane
                 DispatchShadowCityShutdown();
+                WeatherShadowCityShutdown();
                 PropLotShadowCityShutdown();    // the prop / lot configuration / tutorial shadows' totals
                 TerrainShadowCityShutdown();  // terrain_shadow: the totals line, then our terrain goes
                 DisastersShadowCityShutdown();  // disasters_shadow: the mirror core and its references

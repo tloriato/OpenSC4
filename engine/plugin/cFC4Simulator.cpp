@@ -34,6 +34,7 @@
 #include "FC4PropDevShadow.h"  // the glue12b1 lane
 #include "FC4TrafficShadow.h"
 #include "FC4PortsShadow.h"
+#include "FC4WeatherShadow.h"
 #include "FC4HarnessLogic.h"
 #include "FC4Pacing.h"
 #include "FC4Perf.h"
@@ -412,7 +413,8 @@ bool cFC4Simulator::HostDeliver(void* user, fc4_sim*, fc4_agent agent, const fc4
         !fc4::HistoryShadowDeliver(target, name, m, msg->type, msg->data1, &finished) &&
         !fc4::TrafficShadowDeliver(target, name, m, msg->type, msg->data1, &finished) &&
 !fc4::PropDevShadowDeliver(target, name, m, msg->type, msg->data1, &finished) &&
-        !fc4::PortsShadowDeliver(target, name, m, msg->type, msg->data1, &finished)) {
+        !fc4::PortsShadowDeliver(target, name, m, msg->type, msg->data1, &finished) &&
+        !fc4::WeatherShadowDeliver(target, name, m, msg->type, msg->data1, &finished)) {
         finished = target->DoMessage(m);
     }
     if (perfT0 != 0) fc4::perf::AddDelivery(target, LevelOfType(msg->type), name, fc4::perf::Now() - perfT0);
