@@ -74,6 +74,7 @@ generated index: the questions live one file per spec, so read only the file for
 | GZ | framework-gz-services |
 | HD | html-document |
 | HG | foundations |
+| HT | hit-track-player |
 | HW | history |
 | IN | commercial-industrial |
 | LC | legacy-control |
@@ -204,6 +205,7 @@ generated index: the questions live one file per spec, so read only the file for
 | graphics-formats | 0 | 35 | FS18, GF19 | - |
 | graphics-rules | 3 | 0 | GR4 | questions/graphics-rules.md |
 | history | 0 | 17 | HW18 | - |
+| hit-track-player | 5 | 0 | HT6 | questions/hit-track-player.md |
 | html-document | 1 | 6 | HD8 | questions/html-document.md |
 | landfill | 0 | 36 | LF7, LG31 | - |
 | landvalue | 3 | 6 | LV8 | questions/landvalue.md |
@@ -285,4 +287,4 @@ generated index: the questions live one file per spec, so read only the file for
 | win-grid | 2 | 2 | WG5 | questions/win-grid.md |
 | zone-tool | 1 | 0 | ZT2 | questions/zone-tool.md |
 | zones | 2 | 56 | ZG43, ZQ17 | questions/zones.md |
-| **total** | **303** | **1152** | | |
+| **total** | **308** | **1152** | | |
