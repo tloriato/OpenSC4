@@ -4,24 +4,24 @@
 
 ## Handoff
 - FINAL logical round 3/3; phase 2 starts at clean a8b403fd. Engine tree a6f8ca9f35d248ad366f0da9739a1ddc60af70b4 equals final source 9fdea6f2. Documentation movement does not invalidate matching engine evidence.
-- CURRENT NEXT: archive old logs, inspect remaining published contracts, then run ONE serial stable qbuild all. Final all has NOT started. No new quick is needed solely for documentation movement.
+- CURRENT NEXT: ONE serial final all is ACTIVE, started 00:26:42.054922+01 at 59e33eb6, same engine tree. Driver 2256 / qbuild 30132; refresh identities before action. Read build-runs/final-all-result.json and final-all-stdout.log; do not duplicate all/quick. Collector awaits completion then runs four absolute touched-file fmt checks; see build-runs/final-round-state-r2.md. This milestone changes documentation only.
 - Collected quick session 43478 file evidence: 3269 passed / 0 failed / 0 ignored over 11 test summaries; all 25 model_reg_effects fixtures passed; core/formats doctests 0/0. Dependency log is compilation-only. No surviving wrapper or recovered wrapper exit/stdout record: this is NOT complete quick acceptance.
 - Refreshed OS identities at 00:23:05+01: own old pipelines/cargo/compiler absent; 19336/21180 absent. Owned orphan stats client 28760 created 23:43:57.828985+01, parent 21180 absent, own cwd, exact --show-stats --stats-format json, CPU 0.03125s; verified handle/creation/argv/cwd and terminated ONLY that client. Cache daemon 35492 created 23:20:46.856140+01 has only conhost 7568, no compiler child; untouched. No direct cache RPC or claim about disappeared parents. Metadata fallback used after CIM access denied; descendants filtered by creation time to avoid reused PIDs.
 - Source complete for supported scope; report/inventory below is a working draft. Preserve GF19-GF24; GF25 appended. Final report must replace this Handoff after gates; no native/game/whole-owner credit.
 - Goal: implement unambiguous graphics-formats 3.11 contracts; no native/glue/default promotion.
-- Reserved detached worktree reused; initial status clean and main.. empty.
+- Reserved detached worktree reused; source remains unchanged in this final round.
 - First q.py attempt failed because Bash service access is denied; direct PowerShell reads work.
 - Read 3.11.1-4 and dependency coordinator review; first correction 5548319b separates Shutdown and attachment; same pointer is no-op and attachment does not discover.
-- Baseline qbuild all launched (session 60676); collect its completed result/log before reporting.
+- Baseline session 60676 collected: mixed-source FAILED all, 5140/0 over 22 test summaries (16 owner fixtures), then clippy E0502. Original logs archived in build-runs/previous-validation/; build progress is not CTest acceptance.
 - Implemented explicit reference primitives, shared record storage leases, CRT byte-table boundary, controls/recreation/failures and transform/motion updates; added independent core traces and adapted formats integration.
 - GF25 appended for unidentified empty-key-map check. Existing GF19-GF24 preserved open.
 - Rustfmt patches restricted to four touched Rust files; wrapper fmt needs absolute paths (relative attempt failed).
-- Next: collect baseline and quick gates; fix compile/test diagnostics; inventory report for 23 roles, stable-source final all, then ready queue.
+- Published sections 3.11.1-4 and the existing 23-role audit reviewed; no additional source defect diagnosed. Next: inspect final test/clippy/native/CTest and fmt records, sum actual results, replace Handoff with full report and queue only if required checks pass.
 - Storage leases extend portable allocation lifetimes without native AddRef; destruction drops host wrappers without foreign Stop/Release. No native adapter or equivalence claimed.
-- Thin-address fixture fix and role inventory committed in 91f667d6; touched-file fmt passed. Native baseline build still outstanding; first quick ended E0502/configure failure, both documented below.
-- Baseline workspace test log aggregates 5,140 passed / 0 failed / 0 ignored, 22 result lines; initial all clippy failed on the now-fixed in-flight fixture, native baseline result pending.
+- Thin-address fixture fix and role inventory committed in 91f667d6; touched-file fmt passed. First quick E0502/configure failure preserved below; old native baseline is not final-source evidence.
+- At 00:34:20+01 final compiler 30584 still accumulated CPU; cache daemon 35492 was absent without any lane daemon-stop request. No inference about vanished processes. Full identity/argv snapshots are in build-runs/process-evidence-r2-*.json.
 - Added explicit manual-entry/null attachment transitions; core suite now 25 tests versus original 16. Comment boundary milestone 6755b875.
-- Attachment coverage committed a20a42ab. Static review made zero-instance-flags unit scale explicit; baseline native build compiling 214 C++ steps, subsequent gates remain serialized.
+- Attachment coverage committed a20a42ab; explicit zero-instance-flags unit scale committed 9fdea6f2. Final all reached workspace test execution by 00:36:02+01. Previous native 214/214 was build-step progress, not a measured final CTest count.
 
 ## Contract reconciliation (working)
 
