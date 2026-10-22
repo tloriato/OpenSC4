@@ -97,6 +97,7 @@
 #include "cFC4Parks.h"       // the cmglue lane: parks
 #include "cFC4Tutorial.h"    // the glue15 lane: tutorial
 #include "FC4PortsShadow.h"    // the glue12b2 lane: ports
+#include "FC4OrdinanceShadow.h"
 #include "cFC4PortDeveloper.h"  // the glue12b2 lane: ports
 #include "cFC4PropManager.h"  // the glue21 lane: propmgr
 #include "cFC4LotConfigManager.h"  // the glue21 lane: lotcfg
@@ -736,6 +737,7 @@ void Resolve() {
     Span1555Startup(enabledKey("span1555"));
     // Scripted actions (FC4Script.h; tooling): the whole file is parsed now.
     ScriptReload();
+    OrdinanceShadowStartup(enabledKey("ordinance"));
 }
 
 }  // namespace

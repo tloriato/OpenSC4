@@ -12,6 +12,7 @@
 // root); if not, see <https://www.gnu.org/licenses/>.
 
 #include "FC4Observer.h"
+#include "FC4OrdinanceShadow.h"
 
 #include "FC4AuraShadow.h"
 #include "FC4Autoload.h"
@@ -647,6 +648,7 @@ public:
                 break;
             }
             case kMsgPreCityShutdown:
+                OrdinanceShadowCityShutdown();
                 TractShadowCityShutdown();  // tract_shadow: the forwarder's core goes with the city
                 LotDevShadowCityShutdown();
                 CommercialShadowCityShutdown();  // commercial_shadow: the shadow core goes with the city

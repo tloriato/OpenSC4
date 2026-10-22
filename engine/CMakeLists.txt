@@ -942,6 +942,8 @@ add_test(NAME mysims_message_payload_test COMMAND mysims_message_payload_test)
 
 # PD12 native prop boundary vectors; provider grid policy is emulated by the test.
 if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 4)
+    # Independent ordinance public-interface shadow (verify-ordinance4).
+    target_sources(FreeCity4 PRIVATE plugin/FC4OrdinanceShadow.cpp plugin/FC4OrdinanceShadow.h)
     add_executable(fc4_port_props_test tests/port_props_test.cpp)
     target_include_directories(fc4_port_props_test PRIVATE "${FC4_GZCOM_DIR}/include" plugin)
     target_compile_definitions(fc4_port_props_test PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
