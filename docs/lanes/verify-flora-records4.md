@@ -1,8 +1,10 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| verify-flora-records4 (occupant native verification, round 2) | `Codex` / `verify-flora-records4` (engine lane, detached HEAD) | in progress | Independent occupant comparison, focused/full gate, unique guarded2032/ref0/save/reload controls. |
+| verify-flora-records4 (occupant native verification, round 2) | `Codex` / `verify-flora-records4` (engine lane, detached HEAD) | wip: independent codec/reference probe delivered; cargo4941/0, clippy0, ctest68/68; guarded2032/save/reload/control clean/ref0; 8100 mixed checks/0 differences; FQ17; ABI exports added | Complete remaining public inherited/QI/lifecycle cases and broader state corpus before full occupant verification credit; FQ16 static scope stays excluded. |
 
-## Handoff
+## Result: occupant-only implementation and evidence
+
+This round delivers an independent Rust occupant record codec, inherited flag/highlight/removal mutations, atomic counted-reference lifetime model, and an opt-in native factory probe. It advances the independent occupant task without using the missing static-record contract. **WIP, not full owner verification:** remaining inherited/lifecycle/QI cases and corpus limitations are listed below. No coverage map or default changes were made.
 
 - Goal: owned native factory versus independent Rust occupant; full specified queries/mutations/serialization/lifetime; read-only natural snapshots.
 - Prior round d5c82b44 parked static-record FQ16; excluded this round, no static getter calls or static coverage credit.
@@ -17,29 +19,33 @@
 - Immutable DLL build-runs/dlls/vfocc-r2-final/FreeCity4.dll SHA256 daed6fc7e7d83e3ed793787adbf4c20061c5b289220c1743b82ebaad2384a8aa.
 - Saved isolated-slot game-data fixture main build-runs/fixtures/vfocc-r2-save-20261022-a.sc4 SHA25682de3ffe2ac3e7b11ec36ce04917203d1afd82ad6d8286a2d42ce1ea396d4390 (never committed).
 - Reload vfocc-r2-reload2032-20261022-a clean/ref0 to2032-01-09; fixture hash matched; probes2x810/0, natural2575 then2569/invalid0.
-- Next: wait same-fixture probe-disabled2032 control; final report with remaining FQ17 coverage gaps.
+- Control vfocc-r2-control2032-20261022-a clean/ref0 to2032-01-04, same saved fixture and same immutable DLL, probe/natural lines0 as expected.
 - Expanded probe compares native release counts with independently allocated Rust atomic reference model and destroys both at zero.
 - Probe opt-in flora_occupant_verify=1; enable simulator, keep flora_shadow=0 (avoids static-record getters entirely).
 - No game request outstanding. New labels unique; wait without qwait.
 
-## Result
+## Independent inputs, boundary and accounting
 
-Stopped at the required acquisition audit, concluded within the first 10 tool calls. The joint original-native versus Rust occupant/static-record comparison cannot meet the requested public-boundary and lifetime constraints with the published contracts. No engine implementation was changed. The audit and FQ16 were committed as fd6ec340 on the reserved detached worktree, starting from eaae6c54.
+`engine/core/src/flora/occupant.rs` implements flora version3, base version4 via the existing independent base codec, sign/zero byte narrowing, position/dates/type/lot-tag, the base-version rejection quirk, inherited mutations, and atomic references. Five new C ABI exports bridge typed input/encode/decode/mutation/write/reference operations (encode, decode, mutate, write, reference). ABI version and ABI tables were not changed.
 
-## Published boundary and blocker
+`engine/plugin/FC4FloraOccupantProbe.inc` creates owned originals using published CLSID0xA9C05C85 and QIs SDK flora/serializable views. The typed input is statically checked at44 bytes. Every native call uses the published SDK interface and slot contract; there are no address-based calls, native field extraction, binary scans, static-record getters, simulator RNG changes, or copied native outputs used as computed expectations. `AsOccupant` is borrowed; acquired views and explicit AddRefs are balanced; created occupants use FC4_RELEASE_CREATED. Final Release counts match independently allocated Rust references and both lifetimes end at zero.
 
-- `docs/specs/flora.md` sections 3.4, 11.4 and 13.2 publish occupant CLSID `0xA9C05C85`, QI `0xC83DD057`, the getters/setters, and counted occupant ownership. `engine/plugin/cFC4Flora.cpp` already acquires original occupants using `GetClassObject` and QI with tracked references. This portion has a safe boundary; it does not establish static-record verification.
-- Section 11.1 slot 7 publishes `GetStaticFloraData(type)` as a borrowed concrete pointer. The SDK's `cISC4FloraSimulator.h` and `cISC4FloraOccupant.h` forward-declare `cSC4StaticFloraData`; the latter exposes only a setter taking the pointer. They provide no public full-record query or lifetime interface.
-- Section 13.2 and `docs/abi/layouts.md` (Static flora record, Memory) publish raw layout/counting requirements: no AddRef function, direct reference-count increments and non-virtual Release. Those facts support the existing compatibility block, but using native fields or address-based non-virtual calls is outside this task's allowed boundary. This audit read published documentation and existing source only, never native memory or executable bytes.
-- Existing `FC4FloraShadow.cpp` seeds simulator comparisons with `FloraBlockValues` extraction of native records. Extending that extraction or feeding those results back as Rust inputs would not supply the independent typed-input algorithm comparison requested here. Occupant bounding-box projections also cannot expose the complete table, flags, families, cost and record lifetime.
-- The current core `FloraOccupant` is a value snapshot and the flora host callbacks delegate occupant actions to original interfaces; this existing delegation is not an independent occupant record/lifetime oracle.
+Each final probe pass creates5 native originals and performs810 **mixed checks**, not810 independent algorithm results. These include native/Rust record/query/mutation/stream/reference comparisons, published ABI/type/identity assertions and Rust-only sanity checks. The successful native Writes are compared against independently generated typed-input Rust bytes, never a second Rust oracle. Each pass has10 complete byte comparisons of66 bytes,345 Read-result comparisons (full inputs, every strict truncation0..65, bad flora version, bad base version),15 Write-result checks including pre-existing sticky errors, and25 native/Rust reference-count comparisons. Native setter/get-position return channels without specified results are ignored and counted separately.
 
-## Validation and accounting
+The final guarded run has8 passes/40 owned creations,6480 checks/0 differences,2720 refusals,560 undefined return observations and0 fallbacks. Reload has2 passes/10 owned creations,1620 checks/0 differences,680 refusals,140 undefined observations and0 fallbacks. Combined:50 created originals across repetitions of5 typed cases,8100 mixed checks/0 differences,100 complete record-byte comparisons (6600 bytes),3450 Read results,150 Write results,250 reference counts,3400 refusals and700 undefined observations. These are repetitions, not50 unique input cases.
 
-Builds and games were not run: the task explicitly requires stopping if the safe native endpoint is absent and prohibits a code-free baseline build. Cargo, clippy, ctest, native comparisons, constructed/natural event counts, differences, refusals, fallbacks and unaccounted events are **n/a (no comparison instrumentation executed)**. No creation/query/destruction/save/reload/shutdown results or ref-warning measurements were obtained. No claim of exactness, a successful zero-event comparison, owner coverage, or extension of existing simulator71/71 coverage is made.
+Each pass's340 refusals are330 unproved partial-state comparisons after short reads and10 unproved bounds projections; only the short-read **result** is compared. Unexercised methods below are explicit coverage gaps, not additional measured runtime refusals or zero-event successes. No unaccounted mismatch or fallback was observed within instrumented paths; no assertion of full method accounting is made.
 
-No C ABI exports, ABI tables, defaults, replacement keys, shared glue files or game files changed. No game requests are outstanding. No mutation was replayed, RNG reseeded, private state inferred, snapshot resynchronized, or second Rust oracle introduced.
+Natural snapshots are separate read-only observations: guard20658 repeated occupant visits/123948 public queries; reload5144 visits/30864 queries; combined25802 visits/154812 queries, invalid0, mutations0 and computed credit0. Their values never become owned-corpus expected outputs. The older diagnostic DLL's585/0 checks and2607 visits are retained separately, not added to final-DLL totals.
 
-## Question and next steps
+## Validation, questions and remaining work
 
-FQ16 is appended in `docs/specs/questions/flora.md` (next free ID from `docs/specs/QUESTIONS.md`). It asks for an already-published callable static-record input/output and lifetime boundary, or explicit confirmation that this scope must remain parked; it requests no new RE. The coordinator must regenerate the question index: this lane is forbidden to run `tools/` or edit the generated index. Queue state is wip, not ready, because the native-verification objective remains blocked.
+All four unique run labels above have completed clean/ref0 verdicts. Final DLL SHA256 and saved fixture SHA256 are recorded above and matched in both fixture staging results. The script saved the isolated game city successfully before the reload; game files remain uncommitted. The probe-disabled control ran to2032 with zero probe events. No turbo-only differences occurred, so no normal-speed diagnostic was required. This is not a cross-run city-state equality claim: original pacing varies, and the end dates overshoot by different days.
+
+Baseline all passed; final stable all on code17369af7 passed4941 Rust tests, clippy-Dwarnings with0 diagnostics, CMake4/4 and CTest68/68. Focused quick passed3452 tests and dependent builds before the final two tests were added. New Rust files pass qbuild fmt; checking shared module roots recursively reports existing formatting differences in unrelated modules (left untouched). Evidence: build-runs/qbuild-*.log, fc4verify-*.log, game-results/<label>.{log,verdict}, flora-r2-counts.json, and immutable dlls/vfocc-r2-final/.
+
+FQ17 is newly appended to docs/specs/questions/flora.md for short-read partial state, constructor defaults and unproved flora-specific inherited projections. FQ16 remains excluded; no static-record credit is requested. Coordinator must regenerate the question index; no new RE was requested or performed.
+
+Remaining work before full occupant verification credit: exercise normal states0..4/orientations0..3 as well as the current byte-narrowing cases; complete positive canonical-IUnknown/cross-view QI and its failure/out-parameter matrix; add supported inherited visibility, lot-tag, holder/group and lifecycle cases, and explicitly enumerate refusals for methods whose flora override or message lifetime remains unpublished. Init/Shutdown, placeable objects, notifications, bounds/city-cell queries, nonempty property holders, static-pointer assignment and constructor-default state are not proved by these runs. Some flag/removal snapshot predicates remain C++ assertions over independent Rust fields rather than Rust query methods. Do not promote the whole owner or simulator71/71 coverage from this partial instrumentation.
+
+No game requests remain outstanding. No subagents, restart, merge, push, tools/maps/default/ABI-table/unreconciled edits, game executable access, or private native fields were used.
