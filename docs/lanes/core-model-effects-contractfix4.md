@@ -21,7 +21,8 @@
 - Thin-address fixture fix and role inventory committed in 91f667d6; touched-file fmt passed. First quick E0502/configure failure preserved below; old native baseline is not final-source evidence.
 - At 00:34:20+01 final compiler 30584 still accumulated CPU; cache daemon 35492 was absent without any lane daemon-stop request. No inference about vanished processes. Full identity/argv snapshots are in build-runs/process-evidence-r2-*.json.
 - Added explicit manual-entry/null attachment transitions; core suite now 25 tests versus original 16. Comment boundary milestone 6755b875.
-- Attachment coverage committed a20a42ab; explicit zero-instance-flags unit scale committed 9fdea6f2. Final all advanced to clippy at 00:37:32+01 after the CAPI test failure. Prior collector timed out without launching fmt; new single collector awaits the same all. Previous native 214/214 was build progress, not CTest.
+- Attachment coverage committed a20a42ab; explicit unit scale committed 9fdea6f2. Clippy finished without reported diagnostics; native build started 00:42:09+01. At 00:49:43+01 actual port-4889 service 31276 had compiler child rustc 13064 (created 00:48:39+01, CPU 11.828125s) plus conhost 35196; client 32772 and cargo/CMake/Ninja pipeline remain owned/active. Full identity/argv JSON retained; no new cache RPC/daemon stop.
+- Two collectors timed out without fmt; only a third collector now awaits the same all (transport session 94782), then four absolute-file fmt checks. Final all still one invocation, no retry. Final all/driver result will be in build-runs/final-all-result.json; previous native 214/214 was build progress, not CTest.
 
 ## Contract reconciliation (working)
 
