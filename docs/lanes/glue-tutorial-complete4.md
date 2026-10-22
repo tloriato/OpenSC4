@@ -6,7 +6,10 @@
 
 - Goal: final implementation-family round; shipped BigCityTutorial automatic init/reopen, matching original/ours actions, persistence reload and candidate union.
 - Preserved:6d6bb03d TU6-TU9 implementation; prior full gate cargo4240/clippy0/ctest67/67 and constructed trace12/12 (separate processes, no shadow).
-- Next: inspect harness request/action grammar and existing tutorial probe; queue unique original fixture run with early fixture-date query before any manual start.
+- Next: capture original persisted save, run ours at matching fixture dates; validate new harness actions after quick PASS.
+- Original fixture observe1022a clean/ref0 at2016-12-20; native initial Julian2457283 =2015-09-17.
+- Original persist1022b clean2032/ref0: first query automatic window/task0, NEXT task1, full save ok1, end0 window cleared; no manual start/cheat-save. SaveCity renamed slot file to `City - Big City Tutorial.sc4` at13:13:05; capture helper follows this observed name.
+- Harness additions: repeated init notification, hints, plain TU8 filters, pointer-coordinate clicks; restoration log. First quick link failed on SDK message symbols, corrected to existing cFC4Message2Standard; quick PASS4083/0, build5/5.
 - Fixture: `C:/Users/tlori/FreeCity4/build-runs/fixtures/tutorial/BigCityTutorial.sc4`; immutable version2/flag1/task0/GUIDCC02D3A3; read adjacent provenance.
 - Capture successful isolated slot save before slot reuse to unique file under main build-runs/fixtures/glue-tutorial-complete4; only data snapshot/JSON writes authorized there.
 - No outstanding request; no new questions; no defaults/map/ABI version changes; no subagents/branch changes.

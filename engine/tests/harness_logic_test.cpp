@@ -243,6 +243,14 @@ void ScriptParseTests() {
               a.kind == kTutorialCheat && a.text == "NEXT 1");
         CHECK(ErrorIs("2026-02-01 tutorial next 1", "tutorial next takes 0 argument(s)"));
         CHECK(ErrorIs("2026-02-01 tutorial end 2", "tutorial end argument '2' is not 0 or 1"));
+        CHECK(ParseScriptLine("2015-09-18 tutorial initdone", 20, &a, &has, &error) && a.kind == kTutorialInitDone);
+        CHECK(ParseScriptLine("2015-09-18 tutorial hints", 21, &a, &has, &error) && a.kind == kTutorialHints);
+        CHECK(ParseScriptLine("2015-09-18 tutorial click 10 20 2", 22, &a, &has, &error) &&
+              a.kind == kTutorialClick && a.x0 == 10 && a.z0 == 20 && a.x1 == 2);
+        CHECK(ParseScriptLine("2015-09-18 tutorial filter 3 3 11 22", 23, &a, &has, &error) &&
+              a.kind == kTutorialFilter && a.x0 == 3 && a.z0 == 3 && a.x1 == 11 && a.z1 == 22);
+        CHECK(ErrorIs("2015-09-18 tutorial filter 3 4 0 0", "tutorial filter ID selector is not 0..3"));
+        CHECK(ErrorIs("2015-09-18 tutorial click 1 2", "tutorial click takes 3 argument(s)"));
         CHECK(ErrorIs("2026-02-01 port airport 4096 2", "x '4096' is not a cell coordinate 0..4095"));
     }
 

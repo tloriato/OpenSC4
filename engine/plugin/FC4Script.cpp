@@ -32,6 +32,8 @@
 #include "cGZMessage.h"
 #include "cIGZMessageTarget.h"
 #include "cRZBaseString.h"
+#include "cIGZMessageTarget2.h"
+#include "cFC4Message2Standard.h"
 
 #include "SC4Rect.h"
 #include "cISC4City.h"
@@ -349,6 +351,37 @@ void TutorialStep(void* p) {
         case harness::kTutorialEnd: c.ret = c.t->endTutorial(a.x0 != 0) ? 1 : 0; break;               // slot 6
         case harness::kTutorialEvent: c.ret = c.t->OnTutorialEvent(static_cast<uint32_t>(a.x0)) ? 1 : 0; break;
         case harness::kTutorialReset: c.ret = c.t->ResetTutorialNumAndIndex(a.x0, a.z0) ? 1 : 0; break;  // 17
+        case harness::kTutorialInitDone: {
+            cIGZMessageTarget2* target = nullptr;
+            if (c.t->QueryInterface(0x452294AA, reinterpret_cast<void**>(&target)) && target) {
+                FC4_ACQUIRED(target, "tutorial initdone QueryInterface");
+                auto* msg = cFC4Message2Standard::New();
+                msg->AddRef();
+                FC4_ACQUIRED(msg, "tutorial initdone message creator reference");
+                msg->SetType(0xEA8AE29A);
+                c.ret = target->DoMessage(msg) ? 1 : 0;
+                FC4_RELEASE(msg);
+                FC4_RELEASE(target);
+            }
+            break;
+        }
+        case harness::kTutorialHints:
+            c.t->ShowUIHintsForUsers(); // TU9: no consumed return channel
+            break;
+        case harness::kTutorialClick: {
+            int32_t x = a.x0, z = a.z0;
+            c.ret = c.t->FilterLeftMouseClick(x, z, a.x1) ? 1 : 0;
+            Log("tutorial script click: coordinates %d,%d -> %d,%d stage=%d", a.x0, a.z0, x, z, a.x1);
+            break;
+        }
+        case harness::kTutorialFilter: {
+            // TU8: plain read-only four-dword record; selector 0 is an unhandled ID.
+            const uint32_t ids[] = {0, 0x287259F6, 0x287259F7, 0x49D993D4};
+            const uint32_t record[] = {static_cast<uint32_t>(a.x0), ids[a.z0],
+                                       static_cast<uint32_t>(a.x1), static_cast<uint32_t>(a.z1)};
+            c.ret = c.t->FilterMessage(static_cast<uint32_t>(reinterpret_cast<uintptr_t>(record))) ? 1 : 0;
+            break;
+        }
         default: break;
     }
     c.is = c.t->IsTutorial() ? 1u : 0u;                // slot 8
@@ -473,7 +506,7 @@ void ScriptOnNewDay(int32_t julian) {
     cISC4City* city = ObserverCity();
     for (const harness::ScriptAction* a : due) {
         const bool tutorialMutation = a->op == harness::ScriptOp::Tutorial &&
-            (a->kind == harness::kTutorialStart || a->kind == harness::kTutorialCheat);
+            a->kind != harness::kTutorialQuery;
         if (g_waiting.empty() && !g_inTick && a->op != harness::ScriptOp::Save && !tutorialMutation) {
             RunAction(*a, julian, city);
             continue;

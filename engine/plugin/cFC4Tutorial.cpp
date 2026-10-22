@@ -215,7 +215,10 @@ cFC4TutorialSystem::~cFC4TutorialSystem() {
     core_ = nullptr;
     if (nativeOwnerBound_) {
         void** global = fc4::compat::TutorialNative()->systemGlobal;
-        if (*global == static_cast<cISC4TutorialSystem*>(this)) *global = previousNativeOwner_;
+        const bool restored = *global == static_cast<cISC4TutorialSystem*>(this);
+        if (restored) *global = previousNativeOwner_;
+        fc4::Log("tutorial native: binding teardown restored=%u previous=%p current=%p", restored,
+                 previousNativeOwner_, *global);
     }
     fc4::Log("cFC4TutorialSystem destroyed (%u IsTutorial calls, %u off-main calls)", isTutorialCalls_.load(),
              lock_.OffMainCalls());
@@ -413,9 +416,7 @@ int32_t cFC4TutorialSystem::GetTutorialGUID() {
     return static_cast<int32_t>(fc4_tutorial_guid(core_));
 }
 
-// §4.4 slot 13: the argument's layout ("a message of kind 3 with ID ...,
-// data field 2 / 3") is not specified (TU8): not decoded; with no window the
-// slot answers true without reading it, as the original.
+// §4.4 slot 13 / TU8: a plain four-dword prefix; no-window calls do not read it.
 bool cFC4TutorialSystem::FilterMessage(uint32_t message) {
     // TU8: plain record, never a COM message. With no window do not read it.
     if (State().window == 0) return true;

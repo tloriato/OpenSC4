@@ -221,6 +221,10 @@ constexpr int32_t kTutorialEvent = 4;  // tutorial event e: slot 18 OnTutorialEv
 constexpr int32_t kTutorialReset = 5;  // tutorial reset a b: slot 17 ResetTutorialNumAndIndex(a, b)
 constexpr int32_t kTutorialStart = 6;  // tutorial start: only on a valid tutorial fixture
 constexpr int32_t kTutorialCheat = 7;  // tutorial cheat <whole command after Tutorial>
+constexpr int32_t kTutorialInitDone = 8;  // repeat the city-init notification, not Init()
+constexpr int32_t kTutorialHints = 9;
+constexpr int32_t kTutorialClick = 10;  // borrowed coordinate addresses, signed stage
+constexpr int32_t kTutorialFilter = 11; // kind, ID selector (0..3), data2, data3
 constexpr int32_t kScriptMaxTutorialArg = 999999;
 
 // The `disaster` action's kinds.
@@ -570,21 +574,33 @@ inline bool ParseScriptLine(const std::string& raw, int32_t lineNo, ScriptAction
             a.kind = kTutorialEvent, want = 1;
         } else if (what == "reset") {
             a.kind = kTutorialReset, want = 2;
+        } else if (what == "initdone") {
+            a.kind = kTutorialInitDone;
+        } else if (what == "hints") {
+            a.kind = kTutorialHints;
+        } else if (what == "click") {
+            a.kind = kTutorialClick, want = 3;
+        } else if (what == "filter") {
+            a.kind = kTutorialFilter, want = 4;
         } else {
-            *error = "tutorial '" + what + "' is not query, task, next, end, event, reset, start or cheat";
+            *error = "tutorial '" + what + "' is not query, task, next, end, event, reset, start, cheat, initdone, hints, click or filter";
             return false;
         }
         if (nargs != want + 1) {
             *error = "tutorial " + what + " takes " + std::to_string(want) + " argument(s)";
             return false;
         }
-        int32_t* const dst[2] = {&a.x0, &a.z0};
+        int32_t* const dst[4] = {&a.x0, &a.z0, &a.x1, &a.z1};
         for (size_t i = 0; i < want; ++i) {
             if (!detail::ParseCount(tok[3 + i], what == "end" ? 1 : kScriptMaxTutorialArg, dst[i])) {
                 *error = "tutorial " + what + " argument '" + tok[3 + i] + "' is not " +
                          (what == "end" ? "0 or 1" : "0..999999");
                 return false;
             }
+        }
+        if (a.kind == kTutorialFilter && a.z0 > 3) {
+            *error = "tutorial filter ID selector is not 0..3";
+            return false;
         }
     } else if (name == "save_as") {
         // [question] Not implemented: what cISC4App::SaveCity(path, fast)
