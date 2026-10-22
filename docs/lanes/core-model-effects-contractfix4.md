@@ -16,12 +16,12 @@
 - Implemented explicit reference primitives, shared record storage leases, CRT byte-table boundary, controls/recreation/failures and transform/motion updates; added independent core traces and adapted formats integration.
 - GF25 appended for unidentified empty-key-map check. Existing GF19-GF24 preserved open.
 - Rustfmt patches restricted to four touched Rust files; wrapper fmt needs absolute paths (relative attempt failed).
-- Published sections 3.11.1-4 and the existing 23-role audit reviewed; no additional source defect diagnosed. Next: inspect final test/clippy/native/CTest and fmt records, sum actual results, replace Handoff with full report and queue only if required checks pass.
+- Published sections 3.11.1-4 and the existing 23-role audit reviewed; no model-effects defect diagnosed. Final workspace stage FAILED: fc4-capi occupant_manager_tests::slot44_holds_the_lock_across_threads, 536 passed / 1 failed. CAPI edits are excluded; no retry/new all. Next: finish collecting this gate/clippy/native/CTest/fmt, then report WIP with exact evidence.
 - Storage leases extend portable allocation lifetimes without native AddRef; destruction drops host wrappers without foreign Stop/Release. No native adapter or equivalence claimed.
 - Thin-address fixture fix and role inventory committed in 91f667d6; touched-file fmt passed. First quick E0502/configure failure preserved below; old native baseline is not final-source evidence.
 - At 00:34:20+01 final compiler 30584 still accumulated CPU; cache daemon 35492 was absent without any lane daemon-stop request. No inference about vanished processes. Full identity/argv snapshots are in build-runs/process-evidence-r2-*.json.
 - Added explicit manual-entry/null attachment transitions; core suite now 25 tests versus original 16. Comment boundary milestone 6755b875.
-- Attachment coverage committed a20a42ab; explicit zero-instance-flags unit scale committed 9fdea6f2. Final all reached workspace test execution by 00:36:02+01. Previous native 214/214 was build-step progress, not a measured final CTest count.
+- Attachment coverage committed a20a42ab; explicit zero-instance-flags unit scale committed 9fdea6f2. Final all advanced to clippy at 00:37:32+01 after the CAPI test failure. Prior collector timed out without launching fmt; new single collector awaits the same all. Previous native 214/214 was build progress, not CTest.
 
 ## Contract reconciliation (working)
 
