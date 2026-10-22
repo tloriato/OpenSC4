@@ -12747,6 +12747,10 @@ bool fc4_flora_occupant_decode(const uint8_t*, size_t, fc4_flora_occupant_input*
 bool fc4_flora_occupant_mutate(fc4_flora_occupant_input*, uint32_t operation, uint32_t value);
 bool fc4_flora_occupant_write(const fc4_flora_occupant_input*, const fc4_ostream*);
 uint32_t fc4_flora_occupant_reference(void** handle, uint32_t operation);
+/* Queries: 0 type, 1 flora type, 2 birth, 3 seeding, 4 signed state bits,
+ * 5 orientation, 6 highlight, 7 flags, 8 single-bit flag(argument),
+ * 9 CanRemove(argument). Null/unknown operation returns UINT32_MAX. */
+uint32_t fc4_flora_occupant_query(const fc4_flora_occupant_input*, uint32_t operation, uint32_t argument);
 #ifdef __cplusplus
 }
 #endif

@@ -42,6 +42,22 @@ impl FloraOccupantInput {
 }
 
 /// # Safety
+/// `input` must be readable. Returns UINT32_MAX for null/unknown operation;
+/// state is returned as a sign-extended i32 bit pattern. Operations are documented
+/// beside OccupantRecord::query, including single-bit-only flag query credit.
+#[no_mangle]
+pub unsafe extern "C" fn fc4_flora_occupant_query(
+    input: *const FloraOccupantInput,
+    operation: u32,
+    argument: u32,
+) -> u32 {
+    input
+        .as_ref()
+        .and_then(|input| input.record().query(operation, argument))
+        .unwrap_or(u32::MAX)
+}
+
+/// # Safety
 /// `input` must be writable for the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn fc4_flora_occupant_mutate(input: *mut FloraOccupantInput, operation: u32, value: u32) -> bool {

@@ -1,6 +1,23 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| verify-flora-records4 (occupant native verification, round 2) | `Codex` / `verify-flora-records4` (engine lane, detached HEAD) | wip: independent codec/reference probe delivered; cargo4941/0, clippy0, ctest68/68; guarded2032/save/reload/control clean/ref0; 8100 mixed checks/0 differences; FQ17; ABI exports added | Complete remaining public inherited/QI/lifecycle cases and broader state corpus before full occupant verification credit; FQ16 static scope stays excluded. |
+| verify-flora-records4 (occupant native verification, final round 3) | `Codex` / `verify-flora-records4` (engine lane, detached HEAD) | in progress: resumed c5fa937b; baseline all running | Add normal 20-case corpus, production Rust queries, supported QI/visibility checks; preserve FQ16/FQ17 exclusions. |
+
+## Handoff
+
+- Goal: final occupant-family round; no fourth continuation, static/whole-owner/default promotion.
+- Start c5fa937b; prior round2 report and evidence below retained intact.
+- Baseline qbuild all started before changes; logs build-runs/qbuild-*.
+- q.py still fails Bash E_ACCESSDENIED; capped PowerShell used.
+- Done: substantive Rust query/visibility and 25-case native corpus/QI matrix implemented; first code commit includes this handoff.
+- Next: focused quick/fmt, review measured differences, stable final all then immutable-DLL game controls.
+- FQ18 added for failed-QI output/null-address policy and multi-bit flag semantics; no guessed equivalence.
+- Need final stable all, immutable DLL, unique coordinator guarded2032/save/reload/probe-off runs.
+- No game request outstanding; wait without qwait; reuse completed unique verdict.
+- FQ16 static callable and FQ17 partial-state/default/bounds/override gaps remain refused.
+- Source allowed: occupant-manager section13.1 for inherited methods, flora3.4/9.1/11.4, lot-records2.3/11, public SDK.
+- Separate mixed assertions, independent queries, bytes, stream results, QI, references and natural observations.
+
+## Preserved round2 report
 
 ## Result: occupant-only implementation and evidence
 

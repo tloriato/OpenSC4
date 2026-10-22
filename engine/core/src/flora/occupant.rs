@@ -31,6 +31,46 @@ impl Default for OccupantRecord {
 }
 
 impl OccupantRecord {
+    pub fn flags(&self) -> u32 {
+        u32::from(self.base.flags)
+    }
+
+    pub fn highlight(&self) -> u32 {
+        u32::from(self.base.highlight & 15)
+    }
+
+    pub fn is_flag_set(&self, bit: u32) -> bool {
+        // Literal single-bit flag query; multi-bit semantics remain FQ18.
+        self.flags() & bit != 0
+    }
+
+    pub fn can_remove(&self, mask: u32) -> bool {
+        if mask & 1 != 0 {
+            self.base.removal >> 8 == 0
+        } else if mask & 2 != 0 {
+            self.base.removal & 255 == 0
+        } else {
+            true
+        }
+    }
+
+    /// Typed production query boundary. No bounds, static or default inference.
+    pub fn query(&self, operation: u32, argument: u32) -> Option<u32> {
+        Some(match operation {
+            0 => self.base.occupant_type,
+            1 => self.flora_type,
+            2 => self.birth,
+            3 => self.seeding,
+            4 => self.state as i32 as u32,
+            5 => u32::from(self.orientation),
+            6 => self.highlight(),
+            7 => self.flags(),
+            8 => u32::from(self.is_flag_set(argument)),
+            9 => u32::from(self.can_remove(argument)),
+            _ => return None,
+        })
+    }
+
     /// Inherited public mutations, occupant-manager §13.1. Undefined native
     /// return channels are deliberately absent; CanRemove is a defined bool.
     pub fn mutate(&mut self, operation: u32, value: u32) -> bool {
@@ -51,14 +91,14 @@ impl OccupantRecord {
                 }
                 self.base.removal = u16::from(low) | (u16::from(high) << 8);
             }
-            6 => {
-                return if value & 1 != 0 {
-                    self.base.removal >> 8 == 0
-                } else if value & 2 != 0 {
-                    self.base.removal & 255 == 0
+            6 => return self.can_remove(value),
+            // occupant-manager §13.1 slot18, post=false at this boundary.
+            7 => {
+                if value != 0 {
+                    self.base.flags |= 4;
                 } else {
-                    true
-                };
+                    self.base.flags &= !4;
+                }
             }
             _ => return false,
         }
@@ -140,6 +180,45 @@ impl OccupantReferences {
 mod tests {
     use super::*;
     use crate::stream::{ByteReader, ByteWriter};
+
+    #[test]
+    fn normal_cross_queries_and_visibility_preserve_unrelated_flags() {
+        for state in 0..5 {
+            for orientation in 0..4 {
+                let mut r = OccupantRecord {
+                    state,
+                    orientation,
+                    ..OccupantRecord::default()
+                };
+                assert_eq!(r.query(4, 0), Some(state as u32));
+                assert_eq!(r.query(5, 0), Some(u32::from(orientation)));
+                r.mutate(0, 0x181);
+                assert_eq!(r.flags(), 0x81);
+                r.mutate(7, 1);
+                assert_eq!(r.flags(), 0x85);
+                assert!(r.is_flag_set(4));
+                assert!(!r.is_flag_set(256));
+                r.mutate(7, 0);
+                assert_eq!(r.flags(), 0x81);
+                assert!(!r.is_flag_set(4));
+            }
+        }
+    }
+
+    #[test]
+    fn query_removal_precedence_and_highlight_narrowing() {
+        let mut r = OccupantRecord::default();
+        r.base.removal = 1;
+        for (mask, expected) in [(0, true), (1, true), (2, false), (3, true), (4, true)] {
+            assert_eq!(r.can_remove(mask), expected);
+            assert_eq!(r.query(9, mask), Some(u32::from(expected)));
+        }
+        r.mutate(3, 0x1e);
+        assert_eq!(r.query(6, 0), Some(14));
+        r.mutate(3, 0x100);
+        assert_eq!(r.query(6, 0), Some(0));
+        assert_eq!(r.query(99, 0), None);
+    }
 
     #[test]
     fn removal_counter_wrap_and_combined_mask_precedence() {
