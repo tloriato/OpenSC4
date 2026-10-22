@@ -1,6 +1,16 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| verify-flora-records4 (native flora record verification) | `Codex` / `verify-flora-records4` (engine lane, detached HEAD) | blocked: public static-record calling/lifetime boundary absent; audit fd6ec340; FQ16 filed; cargo/clippy/ctest n/a; game n/a; no new verification credit | (1) Resolve FQ16 from already-published contracts or retain parked scope; (2) coordinator regenerates question index. |
+| verify-flora-records4 (occupant native verification, round 2) | `Codex` / `verify-flora-records4` (engine lane, detached HEAD) | in progress | Independent occupant comparison, focused/full gate, unique guarded2032/ref0/save/reload controls. |
+
+## Handoff
+
+- Goal: owned native factory versus independent Rust occupant; full specified queries/mutations/serialization/lifetime; read-only natural snapshots.
+- Prior round d5c82b44 parked static-record FQ16; excluded this round, no static getter calls or static coverage credit.
+- Start HEAD d5c82b44 detached; no branch/ref changes. Prior report below is historical.
+- Baseline qbuild all invoked; inspect outcome before further builds.
+- q.py cannot start Bash (E_ACCESSDENIED); use capped local PowerShell commands.
+- Next: inspect published occupant contract and existing harness; commit code by tool call 30.
+- No game request outstanding. New labels unique; wait without qwait.
 
 ## Result
 

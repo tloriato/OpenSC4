@@ -127,6 +127,7 @@
 //! - Interface returns: "AL only" slots return a clean bool (§11.1's own
 //!   [choice]).
 
+pub mod occupant;
 mod registry;
 mod simulator;
 #[cfg(test)]
