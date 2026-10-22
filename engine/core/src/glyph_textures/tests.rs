@@ -94,9 +94,17 @@ impl TextureServices for Services {
         })
     }
 
-    fn render_text(&mut self, font: Option<&Font>, text: &[u8], rect: Option<[f32; 4]>,
-        binding: &mut Option<Binding>) -> RenderOutputWords {
-        record(&self.log, format!("render:{}:{text:?}:{rect:?}", font.map_or(0, |f| f.id)));
+    fn render_text(
+        &mut self,
+        font: Option<&Font>,
+        text: &[u8],
+        rect: Option<[f32; 4]>,
+        binding: &mut Option<Binding>,
+    ) -> RenderOutputWords {
+        record(
+            &self.log,
+            format!("render:{}:{text:?}:{rect:?}", font.map_or(0, |f| f.id)),
+        );
         let succeeded = !self.failed_text.iter().any(|failed| failed == text);
         if succeeded || self.write_on_failure {
             self.serial += 1;
@@ -256,8 +264,10 @@ fn character_array_clears_releases_then_uses_code_page_and_skips_failure() {
     let first = m.get_glyph_texture(key(b"old", 1)).unwrap();
     let mut output = vec![first];
     m.services.failed_text.push(b"!".to_vec());
+    m.services.log.lock().unwrap().clear();
     m.string_to_glyph_texture_array(7, b"A\x81\x40!A", &mut output).unwrap();
     assert!(m.glyph(first).is_none());
+    assert_eq!(&log(&m)[..2], ["binding-release:1", "font-lookup:7"]);
     assert_eq!(output.len(), 3);
     assert_eq!(output[0], output[2]);
     assert_eq!(m.glyph(output[1]).unwrap().character(), b"\x81\x40");
@@ -265,9 +275,15 @@ fn character_array_clears_releases_then_uses_code_page_and_skips_failure() {
     m.string_to_glyph_texture_array(7, b"", &mut output).unwrap();
     assert!(output.is_empty());
     m.services.char_length_override = Some(0);
-    assert_eq!(m.string_to_glyph_texture_array(7, b"A", &mut output), Err(ArrayUnsupported::NativeNontermination));
+    assert_eq!(
+        m.string_to_glyph_texture_array(7, b"A", &mut output),
+        Err(ArrayUnsupported::NativeNontermination)
+    );
     m.services.char_length_override = Some(8);
-    assert_eq!(m.string_to_glyph_texture_array(7, b"A", &mut output), Err(ArrayUnsupported::NativeInvalidRead));
+    assert_eq!(
+        m.string_to_glyph_texture_array(7, b"A", &mut output),
+        Err(ArrayUnsupported::NativeInvalidRead)
+    );
     assert!(output.is_empty());
 }
 
@@ -286,10 +302,7 @@ fn published_size_vectors_and_padded_dimension_boundaries() {
         assert_eq!(m.services.serial, 0);
     }
     assert_eq!(padded_dimension(u32::MAX), Ok(1));
-    assert_eq!(
-        padded_dimension(0x8000_0000),
-        Ok(1)
-    );
+    assert_eq!(padded_dimension(0x8000_0000), Ok(1));
 }
 
 #[test]
@@ -320,7 +333,10 @@ fn published_lazy_render_identity_and_cache_reference() {
 fn failed_string_render_retries_and_typed_precreation_failures() {
     let mut m = manager();
     m.services.missing_font = Some(9);
-    assert_eq!(m.get_cached_string_texture(9, b"x"), Err(StringError::UnsupportedNullFont));
+    assert_eq!(
+        m.get_cached_string_texture(9, b"x"),
+        Err(StringError::UnsupportedNullFont)
+    );
     assert_eq!(m.reference_count(), 1);
     m.services.width = 0x4000_0000;
     assert_eq!(
@@ -536,4 +552,253 @@ fn misses_increment_process_counter_for_success_and_failure_only() {
     // Other tests may increment the process counter concurrently; this owner's
     // exact contribution is two, and the global value includes at least that.
     assert!(global_cache_misses() >= before + 2);
+}
+
+#[test]
+fn constructor_inherited_slots_and_wrapping_references() {
+    let mut m = GlyphTextureManager::new(Services::default());
+    assert_eq!((m.reference_count(), m.last_sweep()), (0, 0));
+    assert_eq!(m.budget(), 1_048_576);
+    assert!(!m.initialized());
+    assert_eq!(m.release(), Some(0xffff_ffff));
+    assert!(!m.deleted());
+    assert_eq!(m.add_ref(), Some(0));
+    assert_eq!(m.service_id(), 0xabeb_5e37);
+    assert_eq!((m.priority(), m.second_priority()), (0xffe1_7b80, 0xffe1_7b80));
+    assert_eq!(m.running(), 0);
+    m.set_service_id(123);
+    m.set_running(0x1234_56ab);
+    assert_eq!((m.service_id(), m.running()), (123, 0xab));
+    assert!(m.service_slot_11(u32::MAX));
+    // The auxiliary word is separate from manager references; these are
+    // independent receiver-state inputs, not guessed constructor initialization.
+    m.auxiliary_count = Some(0);
+    assert_eq!(m.auxiliary_release(), Some(0));
+    m.auxiliary_count = Some(2);
+    assert_eq!(m.auxiliary_release(), Some(1));
+    assert_eq!(m.auxiliary_count(), Some(1));
+    assert_eq!(m.reference_count(), 0);
+    m.add_ref();
+    m.init(0x0040_0001);
+    assert_eq!(m.budget(), 1024);
+}
+
+#[test]
+fn info_constructors_qi_untouched_underflow_and_borrowed_binding() {
+    let mut m = manager();
+    let g = m.create_glyph_info();
+    let s = m.create_string_info();
+    let glyph = m.glyph(g).unwrap();
+    assert_eq!(glyph.character(), b"");
+    assert_eq!(
+        (glyph.texture_size(), glyph.glyph_size(), glyph.uv()),
+        (None, None, None)
+    );
+    assert!(!glyph.has_manager());
+    assert!(glyph.binding().is_none());
+    let string = m.string(s).unwrap();
+    assert_eq!(string.size(), None);
+    assert!(string.font.is_none());
+    assert!(!string.has_manager());
+    for iid in [0, 1, IID_GLYPH_TEXTURE_MANAGER, u32::MAX] {
+        let mut out = 0x1234_5678;
+        assert!(!m.glyph(g).unwrap().query_interface(iid, &mut out));
+        assert_eq!(out, 0x1234_5678);
+        assert!(!m.string(s).unwrap().query_interface(iid, &mut out));
+        assert_eq!(out, 0x1234_5678);
+    }
+    assert_eq!(m.release_glyph(g), Some(u32::MAX));
+    assert_eq!(m.release_string(s), Some(u32::MAX));
+    assert_eq!(m.add_ref_glyph(g), Some(0));
+    assert_eq!(m.add_ref_string(s), Some(0));
+    let live = m.get_glyph_texture(key(b"live", 7)).unwrap();
+    m.services.log.lock().unwrap().clear();
+    let info = m.glyph(live).unwrap();
+    assert_eq!(info.binding().unwrap().first_texture(), 1);
+    assert_eq!(info.binding().unwrap().first_texture(), 1);
+    assert!(log(&m).is_empty());
+    assert_eq!(info.reference_count(), 2);
+}
+
+#[test]
+fn unsigned_font_order_unique_insertion_and_absent_identity_removal() {
+    let mut m = manager();
+    let high = m.get_glyph_texture(key(b"A", 0x8000_0000)).unwrap();
+    let low = m.get_glyph_texture(key(b"A", 0x7fff_ffff)).unwrap();
+    assert_eq!(m.glyph_map.iter().map(|(_, id)| *id).collect::<Vec<_>>(), [low, high]);
+    let other = m.create_glyph_info();
+    let refs = m.glyph(low).unwrap().reference_count();
+    assert_eq!(m.insert_unique(key(b"A", 0x7fff_ffff), other), (low, 0));
+    assert_eq!(m.glyph_map.len(), 2);
+    assert_eq!(m.tree_count, 2);
+    assert_eq!(m.glyph(low).unwrap().reference_count(), refs);
+    assert_eq!(m.glyph(other).unwrap().reference_count(), 0);
+    m.remove_glyph(other);
+    assert_eq!(m.glyph(other).unwrap().reference_count(), 0);
+    assert_eq!(m.insert_unique(key(b"B", 7), other), (other, 1));
+    assert_eq!(m.tree_count, 3);
+    assert_eq!(m.glyph(other).unwrap().reference_count(), 0);
+    // Remove scans values, even when a glyph's own key differs from map key.
+    m.add_ref_glyph(other);
+    m.remove_glyph(other);
+    assert!(m.glyph(other).is_none());
+    assert_eq!(m.glyph_map.len(), 2);
+    assert_eq!(m.tree_count, 2);
+}
+
+#[test]
+fn failed_glyph_lookup_and_render_preserve_prefilled_output() {
+    let mut m = manager();
+    let first = m.get_glyph_texture(key(b"old", 7)).unwrap();
+    let mut out = Some(first);
+    m.services.missing_font = Some(8);
+    assert!(!m.get_glyph_texture_out(key(b"missing", 8), &mut out));
+    assert_eq!(out, Some(first));
+    m.services.failed_text.push(b"bad".to_vec());
+    m.services.write_on_failure = true;
+    assert!(!m.get_glyph_texture_out(key(b"bad", 7), &mut out));
+    assert_eq!(out, Some(first));
+    assert_eq!(m.glyph_map.len(), 1);
+    assert_eq!(m.reference_count(), 2);
+    assert!(m.get_glyph_texture_out(key(b"old", 7), &mut out));
+    assert_eq!(m.glyph(first).unwrap().reference_count(), 3);
+}
+
+#[test]
+fn signed_original_renderer_dimensions_raw_uv_order_and_extended_subtraction() {
+    let mut m = manager();
+    m.services.texture_size = [0xffff_0000, 16];
+    m.services.extents = [16_777_216.0, 7.5, -1.0, -2.25];
+    let g = m.get_glyph_texture(key(b"x87", 7)).unwrap();
+    let info = m.glyph(g).unwrap();
+    assert_eq!(info.texture_size(), Some([0, 16]));
+    assert_eq!(info.glyph_size(), Some([1, 9]));
+    assert_eq!(info.uv(), Some([0.0000152587890625, -0.140625, -256.0, 0.46875]));
+}
+
+#[test]
+fn restore_keeps_failure_written_binding_and_all_metadata_even_without_font() {
+    let mut m = manager();
+    let g = m.get_glyph_texture(key(b"A", 7)).unwrap();
+    let before = m.glyph(g).unwrap();
+    let metadata = (before.texture_size(), before.glyph_size(), before.uv());
+    m.services.failed_text.push(b"A".to_vec());
+    m.services.write_on_failure = true;
+    m.services.missing_font = Some(7);
+    m.services.texture_size = [123, 456];
+    m.services.extents = [9.0, 8.0, 7.0, 6.0];
+    m.services.log.lock().unwrap().clear();
+    m.do_message(RESTORE_TEXTURES);
+    let info = m.glyph(g).unwrap();
+    assert_eq!(info.binding().unwrap().first_texture(), 2);
+    assert_eq!((info.texture_size(), info.glyph_size(), info.uv()), metadata);
+    assert_eq!(
+        log(&m),
+        [
+            "binding-release:1",
+            "font-lookup:7",
+            "render:0:[65]:Some([0.0, 0.0, 1.0, 1.0])"
+        ]
+    );
+}
+
+#[test]
+fn destruction_is_storage_only_not_shutdown_and_flags_only_test_bit_zero() {
+    for flags in [0, 1, 2, 3, 0xffff_fffe] {
+        let mut m = manager();
+        let g = m.get_glyph_texture(key(b"A", 7)).unwrap();
+        let s = m.get_cached_string_texture(7, b"cache").unwrap();
+        m.string_texture(s);
+        let refs = m.reference_count();
+        m.services.log.lock().unwrap().clear();
+        let address = &mut m as *mut _;
+        assert_eq!(m.deleting_destructor(flags), address);
+        assert!(m.deleted());
+        assert_eq!(m.allocation_freed, flags & 1 != 0);
+        assert!(m.initialized()); // No Shutdown mutation or unsubscription.
+        assert!(m.glyph_map.is_empty());
+        assert!(m.cache.is_empty());
+        assert_eq!(m.glyph(g).unwrap().reference_count(), 2);
+        assert!(m.glyph(g).unwrap().has_manager());
+        assert_eq!(m.string(s).unwrap().reference_count(), 2);
+        assert_eq!(m.reference_count(), refs);
+        assert!(log(&m).is_empty()); // No binding/font/manager Release.
+        assert_eq!(m.unreleased_bindings.len(), 1);
+    }
+}
+
+#[test]
+fn set_manager_acquire_store_release_equal_noop_and_info_destructor_order() {
+    let mut m = manager();
+    let g = m.get_glyph_texture(key(b"A", 7)).unwrap();
+    m.set_glyph_manager(g, Some(ManagerLink::Foreign(10)));
+    m.services.log.lock().unwrap().clear();
+    m.set_glyph_manager(g, Some(ManagerLink::Foreign(20)));
+    assert_eq!(log(&m), ["manager-addref:20", "manager-release:10"]);
+    assert_eq!(m.glyph(g).unwrap().manager, Some(ManagerLink::Foreign(20)));
+    m.set_glyph_manager(g, Some(ManagerLink::Foreign(20)));
+    assert_eq!(log(&m).len(), 2);
+    m.services.log.lock().unwrap().clear();
+    assert_eq!(m.destroy_glyph(g, 2), Some(g));
+    assert_eq!(log(&m), ["manager-release:20", "binding-release:1"]);
+    assert!(m.glyph(g).unwrap().destroyed); // allocation kept, destructor ran.
+    assert!(m.glyph(g).unwrap().character().is_empty());
+    let s = m.get_cached_string_texture(7, b"text").unwrap();
+    m.strings.get_mut(&s).unwrap().manager = Some(ManagerLink::Foreign(30));
+    m.release(); // Balance the replaced local link in this constructed state.
+    m.services.log.lock().unwrap().clear();
+    assert_eq!(m.destroy_string(s, 1), Some(s));
+    assert!(m.string(s).is_none());
+    assert_eq!(log(&m), ["font-release:7", "manager-release:30"]);
+}
+
+#[test]
+fn signed_float32_sweep_and_zero_budget_no_eviction_use_stored_dimensions() {
+    assert_eq!(sweep_target(1_100_000_001, 1_000_000_000), 1_000_000_000);
+    assert_eq!(sweep_target(1_200_000_000, 1_000_000_000), 1_099_999_998);
+    assert_eq!(sweep_target(16_777_217, 0), 16_777_216); // B is stored as f32 first.
+    assert_eq!(sweep_target(100, 0), 100);
+    let mut m = manager();
+    m.services.width = 6;
+    m.services.height = 6;
+    m.services.texture_size = [999, 777];
+    let s = m.get_cached_string_texture(7, b"cost").unwrap();
+    m.string_texture(s);
+    assert_eq!(m.cached_bytes(), 256); // stored 8*8*4, not renderer dimensions.
+    m.cache[0].bytes = 100;
+    m.bytes = 100;
+    m.budget = 0;
+    m.cache[0].used = false;
+    m.on_tick(51);
+    assert_eq!(m.cached_entries(), 1);
+    assert_eq!(m.cached_bytes(), 100);
+    m.bytes = 0x8000_0000;
+    m.budget = 1;
+    m.on_tick(102);
+    assert_eq!(m.cached_entries(), 1); // signed B is below L.
+}
+
+#[test]
+fn uv_stores_round_once_ties_even_and_preserve_signs_and_subnormals() {
+    for (input, dimension, expected) in [
+        (0x3f80_0000, 3, 0x3eaa_aaab),
+        (0x3f80_0000, 0xffff_fffd, 0xbeaa_aaab),
+        (0x0000_0001, 2, 0x0000_0000),
+        (0x0000_0003, 2, 0x0000_0002),
+        (0x0080_0000, 3, 0x002a_aaab),
+        (0x8000_0000, 3, 0x8000_0000),
+        (0x0000_0000, 0xffff_ffff, 0x8000_0000),
+        (0x3f80_0000, 0, 0x7f80_0000),
+    ] {
+        assert_eq!(stored_uv(f32::from_bits(input), dimension).to_bits(), expected);
+    }
+}
+
+#[test]
+fn unsupported_string_slot_never_uses_a_standalone_renderer() {
+    let mut m = manager();
+    let raw = m.create_string_info();
+    assert_eq!(m.try_string_texture(raw), Err(StringError::UnsupportedManagerLink));
+    assert_eq!(m.services.serial, 0);
+    assert_eq!(m.string(raw).unwrap().size(), None);
 }

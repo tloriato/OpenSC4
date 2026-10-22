@@ -222,6 +222,10 @@ pub enum StringError {
     UnsupportedNullFont,
     /// Native signed P loops forever on this domain; this is not a native error.
     UnsupportedNonterminatingPower,
+    UnsupportedManagerLink,
+    UnsupportedUninitializedInfo,
+    UnsupportedNullBinding,
+    StaleToken,
     DeletedManager,
 }
 
@@ -258,9 +262,55 @@ fn padded_dimension(value: u32) -> Result<u16, StringError> {
 fn narrow_metric(value: f64) -> u16 {
     // Only the published finite signed-integer conversion domain is supported;
     // do not promise Rust's saturating float cast as an x87 invalid conversion.
-    assert!(value.is_finite() && (-2_147_483_648.0..2_147_483_648.0).contains(&value.trunc()),
-        "unsupported x87 invalid integer conversion");
+    assert!(
+        value.is_finite() && (-2_147_483_648.0..2_147_483_648.0).contains(&value.trunc()),
+        "unsupported x87 invalid integer conversion"
+    );
     (value.trunc() as i32) as u16
+}
+
+/// Correctly round a float32 word divided by a signed dimension to float32.
+/// Integer quotient/remainder avoids a possible f64-to-f32 double rounding.
+/// These 24/31-bit inputs also fit the x87 precision before the final store.
+fn stored_uv(value: f32, dimension: u32) -> f32 {
+    let signed = dimension as i32;
+    if signed == 0 || !value.is_finite() || value == 0.0 {
+        return (f64::from(value) / f64::from(signed)) as f32;
+    }
+    let bits = value.to_bits();
+    let sign = (bits & 0x8000_0000) ^ if signed < 0 { 0x8000_0000 } else { 0 };
+    let exponent = ((bits >> 23) & 0xff) as i32;
+    let numerator = u128::from((bits & 0x7f_ffff) | if exponent == 0 { 0 } else { 1 << 23 });
+    let denominator = u128::from(signed.unsigned_abs());
+    let base = if exponent == 0 { -149 } else { exponent - 150 };
+    let mut ratio_exponent = (127 - numerator.leading_zeros()) as i32 - (127 - denominator.leading_zeros()) as i32;
+    if (ratio_exponent >= 0 && numerator < denominator << ratio_exponent)
+        || (ratio_exponent < 0 && numerator << -ratio_exponent < denominator)
+    {
+        ratio_exponent -= 1;
+    }
+    let output_exponent = base + ratio_exponent;
+    let shift = if output_exponent < -126 {
+        base + 149
+    } else {
+        23 - ratio_exponent
+    };
+    let (scaled, divisor) = if shift >= 0 {
+        (numerator << shift, denominator)
+    } else {
+        (numerator, denominator << -shift)
+    };
+    let mut quotient = scaled / divisor;
+    let remainder = scaled % divisor;
+    if remainder * 2 > divisor || (remainder * 2 == divisor && quotient & 1 != 0) {
+        quotient += 1;
+    }
+    let magnitude = if output_exponent < -126 {
+        quotient as u32 // Can round upward into the smallest normal.
+    } else {
+        ((output_exponent + 126) as u32) * (1 << 23) + quotient as u32
+    };
+    f32::from_bits(sign | magnitude)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -284,9 +334,11 @@ pub struct GlyphTextureManager<P: TextureServices> {
     auxiliary_count: Option<u32>,
     allocation_freed: bool,
     glyph_map: Vec<(GlyphKey, GlyphId)>,
+    tree_count: u32,
     glyphs: BTreeMap<GlyphId, GlyphTextureInfo<P::Binding>>,
     strings: BTreeMap<StringId, StringTextureInfo<P::Font>>,
     cache: Vec<CacheEntry<P::Binding>>,
+    entry_count: u32,
     // Native destruction frees nodes without releasing their pointer values.
     // Keep those references in the safe host arena until Rust context teardown.
     unreleased_bindings: Vec<P::Binding>,
@@ -311,9 +363,11 @@ impl<P: TextureServices> GlyphTextureManager<P> {
             auxiliary_count: None,
             allocation_freed: false,
             glyph_map: Vec::new(),
+            tree_count: 0,
             glyphs: BTreeMap::new(),
             strings: BTreeMap::new(),
             cache: Vec::new(),
+            entry_count: 0,
             unreleased_bindings: Vec::new(),
             budget: DEFAULT_CACHE_BYTES,
             bytes: 0,
@@ -327,14 +381,30 @@ impl<P: TextureServices> GlyphTextureManager<P> {
         &self.services
     }
 
-    pub fn service_id(&self) -> u32 { self.service_id }
-    pub fn set_service_id(&mut self, word: u32) { self.service_id = word; }
-    pub fn priority(&self) -> u32 { self.priority }
-    pub fn second_priority(&self) -> u32 { self.second_priority }
-    pub fn running(&self) -> u8 { self.running }
-    pub fn set_running(&mut self, word: u32) { self.running = word as u8; }
-    pub fn service_slot_11(&self, _word: u32) -> bool { true }
-    pub fn auxiliary_count(&self) -> Option<u32> { self.auxiliary_count }
+    pub fn service_id(&self) -> u32 {
+        self.service_id
+    }
+    pub fn set_service_id(&mut self, word: u32) {
+        self.service_id = word;
+    }
+    pub fn priority(&self) -> u32 {
+        self.priority
+    }
+    pub fn second_priority(&self) -> u32 {
+        self.second_priority
+    }
+    pub fn running(&self) -> u8 {
+        self.running
+    }
+    pub fn set_running(&mut self, word: u32) {
+        self.running = word as u8;
+    }
+    pub fn service_slot_11(&self, _word: u32) -> bool {
+        true
+    }
+    pub fn auxiliary_count(&self) -> Option<u32> {
+        self.auxiliary_count
+    }
     pub fn auxiliary_release(&mut self) -> Option<u32> {
         let count = self.auxiliary_count.as_mut()?;
         *count = count.saturating_sub(1);
@@ -365,8 +435,8 @@ impl<P: TextureServices> GlyphTextureManager<P> {
         self.bytes
     }
 
-    pub fn cached_entries(&self) -> usize {
-        self.cache.len()
+    pub fn cached_entries(&self) -> u32 {
+        self.entry_count
     }
 
     pub fn last_sweep(&self) -> u32 {
@@ -438,6 +508,7 @@ impl<P: TextureServices> GlyphTextureManager<P> {
                 self.release_glyph(id);
             }
             self.glyph_map.clear();
+            self.tree_count = 0;
             self.services.unsubscribe(RESTORE_TEXTURES);
             self.initialized = false;
         }
@@ -466,6 +537,7 @@ impl<P: TextureServices> GlyphTextureManager<P> {
             Ok(index) => (self.glyph_map[index].1, 0),
             Err(index) => {
                 self.glyph_map.insert(index, (key, id));
+                self.tree_count = self.tree_count.wrapping_add(1);
                 (id, 1)
             }
         }
@@ -473,44 +545,72 @@ impl<P: TextureServices> GlyphTextureManager<P> {
 
     fn acquire_manager_link(&mut self, link: ManagerLink) {
         match link {
-            ManagerLink::Local => { self.add_ref(); }
+            ManagerLink::Local => {
+                self.add_ref();
+            }
             ManagerLink::Foreign(id) => self.services.add_ref_manager(id),
         }
     }
 
     fn release_manager_link(&mut self, link: ManagerLink) {
         match link {
-            ManagerLink::Local => { self.release(); }
+            ManagerLink::Local => {
+                self.release();
+            }
             ManagerLink::Foreign(id) => self.services.release_manager(id),
         }
     }
 
     pub fn set_glyph_manager(&mut self, id: GlyphId, new: Option<ManagerLink>) -> Option<()> {
         let old = self.glyphs.get(&id)?.manager;
-        if old == new { return Some(()); }
-        if let Some(link) = new { self.acquire_manager_link(link); }
+        if old == new {
+            return Some(());
+        }
+        if let Some(link) = new {
+            self.acquire_manager_link(link);
+        }
         self.glyphs.get_mut(&id)?.manager = new;
-        if let Some(link) = old { self.release_manager_link(link); }
+        if let Some(link) = old {
+            self.release_manager_link(link);
+        }
         Some(())
     }
 
     /// Constructor state has no initialized size/UV fields and no references.
     pub fn create_glyph_info(&mut self) -> GlyphId {
         let id = GlyphId(self.allocate_id());
-        self.glyphs.insert(id, GlyphTextureInfo {
-            key: GlyphKey { character: Vec::new(), font_id: 0 },
-            texture_size: None, glyph_size: None, uv: None, binding: None,
-            refs: 0, manager: None, destroyed: false,
-        });
+        self.glyphs.insert(
+            id,
+            GlyphTextureInfo {
+                key: GlyphKey {
+                    character: Vec::new(),
+                    font_id: 0,
+                },
+                texture_size: None,
+                glyph_size: None,
+                uv: None,
+                binding: None,
+                refs: 0,
+                manager: None,
+                destroyed: false,
+            },
+        );
         id
     }
 
     pub fn create_string_info(&mut self) -> StringId {
         let id = StringId(self.allocate_id());
-        self.strings.insert(id, StringTextureInfo {
-            size: None, refs: 0, manager: None, text: Vec::new(), font: None,
-            destroyed: false,
-        });
+        self.strings.insert(
+            id,
+            StringTextureInfo {
+                size: None,
+                refs: 0,
+                manager: None,
+                text: Vec::new(),
+                font: None,
+                destroyed: false,
+            },
+        );
         id
     }
 
@@ -519,27 +619,29 @@ impl<P: TextureServices> GlyphTextureManager<P> {
         if let Some(id) = self.get_glyph_texture(key) {
             *out = Some(id);
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 
     pub fn get_glyph_texture(&mut self, key: GlyphKey) -> Option<GlyphId> {
         if self.deleted {
             return None;
         }
-        match self.find_key(&key) {
-            Ok(index) => {
-                let id = self.glyph_map[index].1;
-                self.add_ref_glyph(id);
-                return Some(id);
-            }
-            Err(_) => (),
+        if let Ok(index) = self.find_key(&key) {
+            let id = self.glyph_map[index].1;
+            self.add_ref_glyph(id);
+            return Some(id);
         }
         let font = self.services.lookup_font(key.font_id)?;
         let mut binding = None;
-        let rendered = self.services.render_text(Some(&font), &key.character,
-            Some([0.0, 0.0, 1.0, 1.0]), &mut binding);
-        if !rendered.succeeded { return None; }
-        let [w, h] = rendered.texture_size.map(|word| f64::from(word as i32));
+        let rendered = self
+            .services
+            .render_text(Some(&font), &key.character, Some([0.0, 0.0, 1.0, 1.0]), &mut binding);
+        if !rendered.succeeded {
+            return None;
+        }
+        let [w, h] = rendered.texture_size;
         let [r0, r1, r2, r3] = rendered.extents.map(f64::from);
         let id = self.create_glyph_info();
         self.set_glyph_manager(id, Some(ManagerLink::Local));
@@ -547,9 +649,10 @@ impl<P: TextureServices> GlyphTextureManager<P> {
         info.key = key.clone();
         info.texture_size = Some(rendered.texture_size.map(|n| n as u16));
         // Differences of float32 operands are exact for the supported integer
-        // conversion domain in f64; division rounds only at the float32 store.
+        // conversion domain in f64. UVs round only at their float32 stores.
         info.glyph_size = Some([narrow_metric(r0 - r2), narrow_metric(r1 - r3)]);
-        info.uv = Some([(r2 / w) as f32, (r3 / h) as f32, (r0 / w) as f32, (r1 / h) as f32]);
+        let [v0, v1, v2, v3] = rendered.extents;
+        info.uv = Some([stored_uv(v2, w), stored_uv(v3, h), stored_uv(v0, w), stored_uv(v1, h)]);
         info.binding = binding;
         self.insert_unique(key, id);
         self.add_ref_glyph(id); // Separate map and caller references, not helper work.
@@ -559,23 +662,30 @@ impl<P: TextureServices> GlyphTextureManager<P> {
 
     pub fn add_ref_glyph(&mut self, id: GlyphId) -> Option<u32> {
         let info = self.glyphs.get_mut(&id)?;
-        if info.destroyed { return None; }
+        if info.destroyed {
+            return None;
+        }
         info.refs = info.refs.wrapping_add(1);
         Some(info.refs)
     }
 
     pub fn release_glyph(&mut self, id: GlyphId) -> Option<u32> {
         let info = self.glyphs.get_mut(&id)?;
-        if info.destroyed { return None; }
+        if info.destroyed {
+            return None;
+        }
         info.refs = info.refs.wrapping_sub(1);
         let count = info.refs;
         if count == 1 && info.manager.is_some() {
             // Foreign managers are primitives; the local owner computes its own
             // identity scan/erasure/Release. A foreign link is not integrated.
-            if info.manager == Some(ManagerLink::Local) {
-                self.remove_glyph(id);
-            }
-            return Some(0);
+            assert_eq!(
+                info.manager,
+                Some(ManagerLink::Local),
+                "unsupported foreign manager RemoveGlyph dispatch"
+            );
+            self.remove_glyph(id);
+            return Some(self.glyphs.get(&id).map_or(0, |glyph| glyph.refs));
         }
         if count == 0 {
             self.destroy_glyph(id, 1);
@@ -588,46 +698,69 @@ impl<P: TextureServices> GlyphTextureManager<P> {
     pub fn remove_glyph(&mut self, id: GlyphId) {
         if let Some(index) = self.glyph_map.iter().position(|(_, existing)| *existing == id) {
             self.glyph_map.remove(index);
+            self.tree_count = self.tree_count.wrapping_sub(1);
             self.release_glyph(id);
         }
     }
 
     pub fn destroy_glyph(&mut self, id: GlyphId, flags: u32) -> Option<GlyphId> {
         let info = self.glyphs.get_mut(&id)?;
-        if info.destroyed { return None; }
+        if info.destroyed {
+            return None;
+        }
         info.destroyed = true;
         let manager = info.manager.take();
-        if let Some(link) = manager { self.release_manager_link(link); }
+        if let Some(link) = manager {
+            self.release_manager_link(link);
+        }
         let info = self.glyphs.get_mut(&id)?;
         drop(info.binding.take());
         info.key.character.clear();
-        if flags & 1 != 0 { self.glyphs.remove(&id); }
+        if flags & 1 != 0 {
+            self.glyphs.remove(&id);
+        }
         Some(id)
     }
 
     pub fn destroy_string(&mut self, id: StringId, flags: u32) -> Option<StringId> {
         let info = self.strings.get_mut(&id)?;
-        if info.destroyed { return None; }
+        if info.destroyed {
+            return None;
+        }
         info.destroyed = true;
         drop(info.font.take());
         info.text.clear();
         let manager = info.manager.take();
-        if let Some(link) = manager { self.release_manager_link(link); }
-        if flags & 1 != 0 { self.strings.remove(&id); }
+        if let Some(link) = manager {
+            self.release_manager_link(link);
+        }
+        if flags & 1 != 0 {
+            self.strings.remove(&id);
+        }
         Some(id)
     }
 
     /// Clear and Release the old vector first. Unsupported reports native
     /// nontermination/invalid memory; it is never a claimed native safety stop.
-    pub fn string_to_glyph_texture_array(&mut self, font_id: u32, text: &[u8], out: &mut Vec<GlyphId>)
-        -> Result<(), ArrayUnsupported> {
-        for id in out.drain(..) { self.release_glyph(id); }
+    pub fn string_to_glyph_texture_array(
+        &mut self,
+        font_id: u32,
+        text: &[u8],
+        out: &mut Vec<GlyphId>,
+    ) -> Result<(), ArrayUnsupported> {
+        for id in out.drain(..) {
+            self.release_glyph(id);
+        }
         let mut offset = 0;
         let mut remaining = text.len() as u32;
         while (remaining as i32) > 0 {
             let length = self.services.char_length(&text[offset..]);
-            if length == 0 { return Err(ArrayUnsupported::NativeNontermination); }
-            if length > text.len() - offset { return Err(ArrayUnsupported::NativeInvalidRead); }
+            if length == 0 {
+                return Err(ArrayUnsupported::NativeNontermination);
+            }
+            if length > text.len() - offset {
+                return Err(ArrayUnsupported::NativeInvalidRead);
+            }
             let key = GlyphKey {
                 character: text[offset..offset + length].to_vec(),
                 font_id,
@@ -647,7 +780,10 @@ impl<P: TextureServices> GlyphTextureManager<P> {
         }
         // Native has no null-font branch: report unsupported invalid memory,
         // rather than presenting a safe rejection as native behavior.
-        let font = self.services.lookup_font(font_id).ok_or(StringError::UnsupportedNullFont)?;
+        let font = self
+            .services
+            .lookup_font(font_id)
+            .ok_or(StringError::UnsupportedNullFont)?;
         let size = [
             padded_dimension(font.text_width(text))?,
             padded_dimension(font.height())?,
@@ -665,14 +801,18 @@ impl<P: TextureServices> GlyphTextureManager<P> {
 
     pub fn add_ref_string(&mut self, id: StringId) -> Option<u32> {
         let info = self.strings.get_mut(&id)?;
-        if info.destroyed { return None; }
+        if info.destroyed {
+            return None;
+        }
         info.refs = info.refs.wrapping_add(1);
         Some(info.refs)
     }
 
     pub fn release_string(&mut self, id: StringId) -> Option<u32> {
         let info = self.strings.get_mut(&id)?;
-        if info.destroyed { return None; }
+        if info.destroyed {
+            return None;
+        }
         let count = info.release();
         if count == 0 || (count == 1 && info.manager.is_none()) {
             self.destroy_string(id, 1);
@@ -681,34 +821,45 @@ impl<P: TextureServices> GlyphTextureManager<P> {
     }
 
     /// §3 slot 4 / §1.4: a token identifies a string object, not its text content.
+    /// Panics on an explicitly unsupported native path; valid native render
+    /// failures still return zero. Use try_string_texture to inspect the boundary.
     pub fn string_texture(&mut self, id: StringId) -> u32 {
-        if !self.strings.contains_key(&id) || self.deleted {
-            return 0;
+        self.try_string_texture(id)
+            .expect("unsupported native string texture path")
+    }
+
+    pub fn try_string_texture(&mut self, id: StringId) -> Result<u32, StringError> {
+        if self.deleted {
+            return Err(StringError::DeletedManager);
         }
+        let info = self.strings.get(&id).ok_or(StringError::StaleToken)?;
         // An absent manager/font is a native invalid dereference, unsupported
         // by this token API; no independent standalone renderer is invented.
-        if self.strings[&id].manager != Some(ManagerLink::Local) { return 0; }
+        if info.manager != Some(ManagerLink::Local) {
+            return Err(StringError::UnsupportedManagerLink);
+        }
         if let Some(index) = self.cache.iter().position(|entry| entry.owner == id) {
             let mut entry = self.cache.remove(index);
             entry.used = true;
             self.cache.push(entry);
-            return self
+            return Ok(self
                 .cache
                 .last()
                 .expect("just appended cache hit")
                 .binding
-                .first_texture();
+                .first_texture());
         }
         self.misses = self.misses.wrapping_add(1);
         CACHE_MISSES.fetch_add(1, AtomicOrdering::Relaxed);
         let info = &self.strings[&id];
+        let font = info.font.as_ref().ok_or(StringError::UnsupportedNullFont)?;
         let mut binding = None;
-        let rendered = self.services.render_text(info.font.as_ref(), &info.text, None, &mut binding);
+        let rendered = self.services.render_text(Some(font), &info.text, None, &mut binding);
         if !rendered.succeeded {
-            return 0;
+            return Ok(0);
         }
-        let Some(binding) = binding else { return 0; }; // Unsupported native null binding dereference.
-        let [w, h] = info.size().expect("unsupported uninitialized string dimensions");
+        let binding = binding.ok_or(StringError::UnsupportedNullBinding)?;
+        let [w, h] = info.size().ok_or(StringError::UnsupportedUninitializedInfo)?;
         let bytes = w.wrapping_mul(h).wrapping_mul(4);
         self.add_ref_string(id);
         self.cache.push(CacheEntry {
@@ -718,16 +869,19 @@ impl<P: TextureServices> GlyphTextureManager<P> {
             used: true,
         });
         self.bytes = self.bytes.wrapping_add(bytes);
-        self.cache
+        self.entry_count = self.entry_count.wrapping_add(1);
+        Ok(self
+            .cache
             .last()
             .expect("just appended cache miss")
             .binding
-            .first_texture()
+            .first_texture())
     }
 
     fn drop_cache_entry(&mut self, index: usize) {
         let entry = self.cache.remove(index);
         self.bytes = self.bytes.wrapping_sub(entry.bytes);
+        self.entry_count = self.entry_count.wrapping_sub(1);
         drop(entry.binding);
         self.release_string(entry.owner);
     }
@@ -767,8 +921,12 @@ impl<P: TextureServices> GlyphTextureManager<P> {
                     let font = self.services.lookup_font(info.key.font_id);
                     // The renderer gets the actual cleared slot, regardless of
                     // lookup/success. Ignore metric outputs and success status.
-                    self.services.render_text(font.as_ref(), &info.key.character,
-                        Some([0.0, 0.0, 1.0, 1.0]), &mut info.binding);
+                    self.services.render_text(
+                        font.as_ref(),
+                        &info.key.character,
+                        Some([0.0, 0.0, 1.0, 1.0]),
+                        &mut info.binding,
+                    );
                 }
             }
         }
@@ -780,11 +938,15 @@ impl<P: TextureServices> GlyphTextureManager<P> {
             self.drop_cache_entry(0);
         }
         self.bytes = 0;
+        self.entry_count = 0;
     }
 
-    pub fn deleting_destructor(&mut self, flags: u32) {
+    /// The returned pointer is an identity observation only. Rust owns the host
+    /// allocation; bit 0 records native deletion without freeing a borrowed self.
+    pub fn deleting_destructor(&mut self, flags: u32) -> *mut Self {
+        let address = self as *mut Self;
         if self.deleted {
-            return;
+            return address;
         }
         self.deleted = true;
         for entry in self.cache.drain(..) {
@@ -792,6 +954,7 @@ impl<P: TextureServices> GlyphTextureManager<P> {
         }
         self.glyph_map.clear(); // Destroy key strings/nodes, never mapped glyphs.
         self.allocation_freed = flags & 1 != 0;
+        address
     }
 }
 
