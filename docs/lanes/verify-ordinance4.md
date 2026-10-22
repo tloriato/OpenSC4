@@ -21,5 +21,8 @@
 - Next: diagnostic first differing byte/class/size (no semantic fixes), full gate then normal-speed and combined replacement profiles. Serialize mismatch question after diagnostic evidence; required host/effect/reload gaps remain WIP.
 - Diagnostic2269d93c full stable gate PASS: cargo4938/0, clippy0 diagnostics, build4/4, ctest68/68 (72.49s). Immutable DLL build-runs/dlls/ordinance-2269d93c/FreeCity4.dll.
 - Next queued label: vo4r1-normal-2269d93c-20261022b; same actions at normal speed through2032, no simultaneous request.
+- Normal completed clean2032-01-01/ref0,72 months,744378/746138 total matches,1760 differences; dynamic742426/742426, fixture368/688, sample1584/3024; bootstrap1/resync0/fallback0/refusal0. Both saves succeeded, all21 actions ran. Differences persist without turbo.
+- Diagnostic: all20 records equal lengths, first_diff=size-68,native17/Rust0A; CPR232bytes offset164, Smoke247bytes offset179. SV3 filed in docs/specs/questions/ordinance.md; literal semantics retained. No further code changes planned.
+- Next queued label vo4r1-union-native-2269d93c-20261022c: literal current40 enable list with ordinance disabled for native authority and shadow; then full40 replacement control.
 - No game requests outstanding. No ABI changes. No questions yet.
 - Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-verify-ordinance4-r1-manifest.json
