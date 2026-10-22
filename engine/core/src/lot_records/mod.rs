@@ -23,6 +23,7 @@
 pub mod construction;
 pub mod lifecycle;
 pub mod lot;
+pub mod mutation;
 pub mod walls;
 
 #[cfg(test)]
@@ -33,6 +34,8 @@ mod tests;
 mod tests_construction;
 #[cfg(test)]
 mod walls_tests;
+#[cfg(test)]
+mod mutation_tests;
 
 use std::any::Any;
 use std::cell::RefCell;
