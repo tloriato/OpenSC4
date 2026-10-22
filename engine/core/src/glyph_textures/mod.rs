@@ -259,14 +259,34 @@ fn padded_dimension(value: u32) -> Result<u16, StringError> {
     }
 }
 
-fn narrow_metric(value: f64) -> u16 {
+fn narrow_metric(left: f32, right: f32) -> u16 {
+    // Error-free TwoSum retains the subtraction tail lost by a single f64
+    // operation. Only an integer rounded sum can cross a truncation boundary
+    // when rounded to x87's 64-bit significand. At such a boundary, compare the
+    // tail with half the x87 spacing toward zero. Ties round to the integer
+    // (its significand is even throughout the signed conversion domain).
+    let a = f64::from(left);
+    let b = -f64::from(right);
+    let sum = a + b;
+    let part = sum - a;
+    let tail = (a - (sum - part)) + (b - part);
+    let mut integer = sum.trunc();
+    if sum != 0.0 && sum.fract() == 0.0 && tail.signum() != sum.signum() {
+        let bits = sum.abs().to_bits();
+        let exponent = ((bits >> 52) & 0x7ff) as i32 - 1023;
+        let power_of_two = bits & ((1_u64 << 52) - 1) == 0;
+        let half_spacing = 2.0_f64.powi(exponent - 64 - i32::from(power_of_two));
+        if tail.abs() > half_spacing {
+            integer -= sum.signum();
+        }
+    }
     // Only the published finite signed-integer conversion domain is supported;
     // do not promise Rust's saturating float cast as an x87 invalid conversion.
     assert!(
-        value.is_finite() && (-2_147_483_648.0..2_147_483_648.0).contains(&value.trunc()),
+        integer.is_finite() && (-2_147_483_648.0..2_147_483_648.0).contains(&integer),
         "unsupported x87 invalid integer conversion"
     );
-    (value.trunc() as i32) as u16
+    (integer as i32) as u16
 }
 
 /// Correctly round a float32 word divided by a signed dimension to float32.
@@ -642,15 +662,14 @@ impl<P: TextureServices> GlyphTextureManager<P> {
             return None;
         }
         let [w, h] = rendered.texture_size;
-        let [r0, r1, r2, r3] = rendered.extents.map(f64::from);
+        let [r0, r1, r2, r3] = rendered.extents;
         let id = self.create_glyph_info();
         self.set_glyph_manager(id, Some(ManagerLink::Local));
         let info = self.glyphs.get_mut(&id).expect("constructed glyph");
         info.key = key.clone();
         info.texture_size = Some(rendered.texture_size.map(|n| n as u16));
-        // Differences of float32 operands are exact for the supported integer
-        // conversion domain in f64. UVs round only at their float32 stores.
-        info.glyph_size = Some([narrow_metric(r0 - r2), narrow_metric(r1 - r3)]);
+        // Keep x87 subtraction precision until truncation; no float32 store.
+        info.glyph_size = Some([narrow_metric(r0, r2), narrow_metric(r1, r3)]);
         let [v0, v1, v2, v3] = rendered.extents;
         info.uv = Some([stored_uv(v2, w), stored_uv(v3, h), stored_uv(v0, w), stored_uv(v1, h)]);
         info.binding = binding;

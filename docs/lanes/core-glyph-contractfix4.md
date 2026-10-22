@@ -7,15 +7,17 @@
 - Done: read published §§1–3.4/7, answered GT3–GT6 and signed P contract; baseline all launched before edits (logs in build-runs).
 - Done: substantive corrections committed as 6dcdff59 (before call 30); inherited state, wrapping refs, storage-only destruction, renderer slot writes, signed arithmetic, identity removal and unique insertion.
 - Done: 11 independent contract tests added (30 total glyph tests), expanded metric vectors, exact rational float32 UV stores and fixed-point sweep arithmetic, wrapped tree/cache count words, typed unsupported string paths; touched-file fmt PASS.
-- Done: corrected source and 30 glyph tests committed as fabf19ce; exact 43-body/shared-entry/unsupported checklist below; fmt PASS (2 touched Rust files), diff --check clean.
-- Next: let baseline and quick finish, collect stable quick and final all results on fabf19ce, then replace Handoff with measured report and queue tested source. No source edits since final all was launched.
+- Done: corrected source and first 30 glyph tests committed as fabf19ce; exact 43-body/shared-entry/unsupported checklist below; fmt PASS (2 touched Rust files), diff --check clean.
+- Done: final arithmetic audit found f64 subtraction loses a retained x87 tail at integer boundaries; error-free TwoSum plus explicit 64-bit-significand rounding now distinguishes 2^-60, half-spacing 2^-65, and 2^-70. Added a 31st independent glyph test.
+- Next: run serial stable quick/fmt/all on the new arithmetic commit, inspect counts, replace Handoff with measured report, queue tested source.
 - Scope: glyph_textures only plus independent tests/conformance; no ABI, game, textures_materials, RE, or shared-table changes.
 - Family reservation remains logical round 2/3, this phase max 2 remaining rounds; original parked evidence retained.
 - GT1/GT2 remain foreign unknown boundaries. Unsupported invalid-memory/nontermination must stay explicit.
 - Baseline command returned session 96574; quick command session 92060 (do not poll; inspect quiet logs). No game requests.
 - Focused quick reissued on corrected source after the independent vectors; quiet logs own the completion record.
-- Final stable all launched on fabf19ce (session 15722); baseline first workspace run is ahead of it. Final source checksum is the fabf19ce engine tree.
+- Prior all launched on fabf19ce (session 15722), superseded by the necessary x87-tail correction; do not treat it as the final stable gate.
 - Baseline measured so far: capi 2/0, conformance 1232/0; all 19 original glyph tests passed. Whole baseline core/cargo/clippy/native/CTest still pending at 21:45 local. Corrected 30-test execution has not been claimed.
+- Earlier quick/all wrappers still own their logs. The stable serial pipeline will use q.py to retain its own unambiguous console-count log under build-runs/q/.
 - Baseline and first quick still compiling at 21:37 local, machine has many concurrent Rust compilations; no PASS claimed. Formatting helper uses rustfmt stdin plus engine/rustfmt.toml; only touched files change through apply_patch.
 - Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-core-glyph-contractfix4-r1-manifest.json.
 
@@ -33,7 +35,7 @@ The exact attribution remains **43 bodies / 4475 bytes**: manager 30/3938, glyph
 | Manager 005D8800, 005D8900 | First pointer-identity removal erases before Release; destruction frees logical container storage without Shutdown, unsubscription, glyph-link changes or stored object Releases. |
 | Manager 005D8980, 005D8990, 005D89A0, 005D89B0, 005D89C0, 005D89D0, 005D89E0, 005D89F0 | Adjusted-view operations use primary query/ref methods; auxiliary deleting entry uses flags wrapper; message target delegates to primary query/ref methods. Receiver offsets are native layout, not new owner decisions. |
 | Manager 005D8A00, 005D8AF0, 005D8BA0 | Shutdown separately clears links/releases map refs/unsubscribes, leaves cache alone. Private helpers compute unique insertion/ordered linkage/count in Rust; duplicate retains first pointer, no glyph AddRef. Sorted safe storage represents logical tree order/endpoints, not native node allocation/rotations. |
-| Manager 005D8CA0, 005D8D40, 005D9120 | Exact published initial manager/base words; storage-only destructor, bit-0 deletion flag and returned address; shared glyph lookup/output, raw renderer metadata/UV order and signed original dimensions. |
+| Manager 005D8CA0, 005D8D40, 005D9120 | Exact published initial manager/base words; storage-only destructor, bit-0 deletion flag and returned address; shared glyph lookup/output, x87-rounded subtraction through truncation, raw renderer metadata/UV order and signed original dimensions. |
 | Remote 0080BCD0, 0080BD00 | Adjusted manager AddRef, same primary wrapping word. |
 | Remote 0080BCE0, 0080BCF0 | **Excluded neighboring ordinance Release/QI attribution**, never exposed as manager operations. |
 | Glyph 005D7C40, 005D7C70 | Equal-link no-op, acquire/store/release assignment; stored raw UV getter. |

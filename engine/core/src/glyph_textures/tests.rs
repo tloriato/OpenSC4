@@ -802,3 +802,18 @@ fn unsupported_string_slot_never_uses_a_standalone_renderer() {
     assert_eq!(m.services.serial, 0);
     assert_eq!(m.string(raw).unwrap().size(), None);
 }
+
+#[test]
+fn metric_truncation_observes_x87_subtraction_rounding_not_f64_or_exact_real() {
+    // 2^-60 survives the x87 subtraction but vanishes in a single f64 sum.
+    assert_eq!(narrow_metric(1.0, f32::from_bits(0x2180_0000)), 0);
+    assert_eq!(narrow_metric(-1.0, -f32::from_bits(0x2180_0000)), 0);
+    // Half the x87 spacing immediately below 1 is 2^-65: tie goes to 1.
+    assert_eq!(narrow_metric(1.0, f32::from_bits(0x1f00_0000)), 1);
+    assert_eq!(narrow_metric(1.0, f32::from_bits(0x1f00_0001)), 0);
+    // 2^-70 vanishes even at x87 precision: exact-real truncation would be 0.
+    assert_eq!(narrow_metric(1.0, f32::from_bits(0x1c80_0000)), 1);
+    assert_eq!(narrow_metric(-1.0, -f32::from_bits(0x1c80_0000)), 65535);
+    // The rounded f64 sum may be just outside the valid signed conversion range.
+    assert_eq!(narrow_metric(2_147_483_648.0, 0.0000001), 65535);
+}
