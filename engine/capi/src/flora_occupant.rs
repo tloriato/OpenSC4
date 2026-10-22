@@ -60,11 +60,7 @@ pub unsafe extern "C" fn fc4_flora_occupant_query(
 /// # Safety
 /// `input` must be writable for the duration of the call.
 #[no_mangle]
-pub unsafe extern "C" fn fc4_flora_occupant_mutate(
-    input: *mut FloraOccupantInput,
-    operation: u32,
-    value: u32,
-) -> bool {
+pub unsafe extern "C" fn fc4_flora_occupant_mutate(input: *mut FloraOccupantInput, operation: u32, value: u32) -> bool {
     let Some(input) = input.as_mut() else {
         return false;
     };
@@ -79,10 +75,7 @@ pub unsafe extern "C" fn fc4_flora_occupant_mutate(
 /// # Safety
 /// `input` and `out` must be valid; stream callbacks must obey fc4_ostream.
 #[no_mangle]
-pub unsafe extern "C" fn fc4_flora_occupant_write(
-    input: *const FloraOccupantInput,
-    out: *const fc4_ostream,
-) -> bool {
+pub unsafe extern "C" fn fc4_flora_occupant_write(input: *const FloraOccupantInput, out: *const fc4_ostream) -> bool {
     let (Some(input), Some(out)) = (input.as_ref(), out.as_ref()) else {
         return false;
     };
@@ -96,10 +89,7 @@ pub unsafe extern "C" fn fc4_flora_occupant_write(
 /// `handle` must be writable, initially null, then only managed by this function.
 /// Operations: 0 construct, 1 AddRef, 2 Release (clears handle at destruction).
 #[no_mangle]
-pub unsafe extern "C" fn fc4_flora_occupant_reference(
-    handle: *mut *mut OccupantReferences,
-    operation: u32,
-) -> u32 {
+pub unsafe extern "C" fn fc4_flora_occupant_reference(handle: *mut *mut OccupantReferences, operation: u32) -> u32 {
     let Some(handle) = handle.as_mut() else {
         return u32::MAX;
     };
