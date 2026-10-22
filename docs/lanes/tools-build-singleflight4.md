@@ -1,27 +1,142 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| tools-build-singleflight4: build/check single-flight | Codex / `tools-build-singleflight4` (tooling; reserved branch, detached HEAD) | in progress | Verify installed storage/client capability and implement the reviewed whole-output ownership design within final original-family round |
+| tools-build-singleflight4: build/check single-flight | Codex / `tools-build-singleflight4` (tooling; reserved branch, detached HEAD) | wip: partial cache-launch quarantine; final supplied-venv pytest 207 passed in 228.91 s; compile/diff/doccheck passed; service-owned output repair and real cache reuse proof remain missing; ABI unchanged; game n/a | Keep held; review the precise missing service protocol and failed owned compiler fixtures below; no new round or promotion is requested |
 
-## Handoff
+## FINAL3 result: partial quarantine, service repair unimplemented
 
-- Goal: FINAL3/3, preserve canonical whole-worktree exclusion including service-owned writes; no production cache/compiler mutation.
-- Start verified: clean detached `53ed3bc47cf16101a3a7cbc4078ccf9bc02c978f`; actual copied r2 result is WIP with 195 passed, not approval to promote.
-- Historical evidence: dd50e233 9 failed / 168 passed / 306.40 s; 6/6 descendant violations; 6/6 service violations and distinct new persistent-service uncertainty must remain.
-- Source design: copied `build-runs/evidence-run4/coordinator-singleflight-service-design.md`; capability/config/service-role proof mandatory, no name exemptions or legacy fallback.
-- Intake: `build-runs/r3-intake-02.json`: no old recorded PID matches or attributable old check; native command-line inventory used after CIM access denied; do not touch other live lanes.
-- Verified ZIP SHA256 `8056ff89839725c64c2f878a0a703ab4e3f68e90ce192f9d68ce90a770dfdcbb`, 70 files; pinned installed binary SHA256 `7600fb817625313850b8a0525c7743c5d44f53494141390223187e57f394ccb0`.
-- Actual bounded isolated wire probe (`r3-protocol-probe.json`): true/file true/ERROR_LOG send StorageHandshake(5); false/empty/LOG empty/distributed send legacy Compile(4); invalid errors without request. No request serviced and no real daemon used.
-- Partial safety change: detected cached paths now reject before log opening/command launch at actual qbuild/fc4verify and guardian boundaries; no service exemption, cache-off fallback or client-side readiness claim.
-- Done `96fd83c4`: partial quarantine; no permission to promote. Focused provided-venv pytest `r3-cache-focused-01`: **10 passed in 19.62 s**, exit 0, dirty development source recorded.
-- Focused cases use actual qbuild/CLI/imported/nested/direct Lease dispatch, held OS ownership, BUSY contenders, unchanged sentinel logs/verdicts, and bounded uncached fixture recovery; no service writer is launched or claimed drained.
-- Fixed explicit `env={}` inheritance and retained clippy's wrapper removal. No cache env/hash/endpoint/idle policy changes.
-- Done `c321ce7a`: actual-boundary regressions and empty-env fix committed; new pinned-binary regressions `r3-installed-mode-focused-01`: **2 passed in 8.25 s**, exit 0 (20 config cases, 4 handshake failures), development source recorded.
-- Isolated compiler attempts `r3-isolated-real-cache-01..04` all FAIL before any object compilation: vcvars access denied; extra live Job member; retained member proved conhost; no-console startup then native endpoint API load error 31. No exemptions/kills/replay or production daemon/cache use.
-- Owned failure-fixture named Jobs later absent and recorded startup PIDs unavailable; observation JSON explicitly retains the lost-handle proof limitation. Never use that as production owner-recovery authorization.
-- Missing: authenticated service-control/bootstrap/restart/classification, config snapshot/race enforcement, actual all-client Storage RPC dataflow, output-writer/crash matrix, real Rust/C++ cache miss+hit. Quarantine is NOT the root-reviewed repair.
-- Next: ONE final clean-source full pytest plus compile/diff/doccheck; then report WIP, preserving all failed labels. No more compiler attempts or new rounds.
-- Required final full pytest uses provided `C:/Users/tlori/FreeCity4/build-runs/pytest-venv/Scripts/python.exe` once on stable committed source after new focused tests.
-- No subagents, engine edits, current-daemon probes/mutations, shared cache/compiler checks, merge/ref edits or new rounds.
+**Keep this lane WIP.** The root-reviewed client-side/storage service repair was not completed.
+The new code rejects detected cached launches before execution; it does not admit a verified
+storage service, implement service-control RPCs or demonstrate whole-worktree output ownership.
+Passing tooling tests must not promote this partial result. This ends the original family's final
+round; no fourth round, budget reset or weaker invariant is requested.
+
+### What changed
+
+- `96fd83c4`: added `build_cache.py` and rejection at actual qbuild/fc4verify log-entry boundaries
+  and guardian command execution. Nonempty Rust wrapper settings (including Cargo environment
+  settings), direct cache executable names and explicit CMake cache/launcher switches reject with
+  an actionable missing-proof diagnostic. The guard has no proof-token bypass, legacy fallback,
+  cache-off fallback or process exemption. **Detected cache-enabled checks now fail explicitly.**
+- `c321ce7a`: actual wrapper/lease regressions and a fix for explicit `env={}` being replaced by
+  the guardian's inherited environment. Tests cover qbuild, CLI verify, imported verify, nested
+  delegation and direct Lease file/capture calls. Contenders are BUSY while acknowledged boundary
+  entry holds the actual OS lease; sentinel logs/verdicts stay unchanged, then an uncached harmless
+  fixture reacquires ownership after the rejection. No writer is launched at this boundary, so this
+  is rejection/recovery evidence, **not** the requested held-service-writer drainage matrix.
+- `4d094c35`: pinned installed-binary effective-mode and failed-handshake regressions. These use
+  isolated loopback wire sinks, real CLI processes and Windows Jobs. They never service Compile,
+  launch a daemon or execute a compiler.
+
+Existing cache configuration, ports, directories, idle policy, endpoints and hash inputs remain
+unchanged. No `CARGO_*` ownership token was added. Clippy's deliberate `RUSTC_WRAPPER` removal remains.
+No service is exempted from Job accounting. Authentication, venv identity, delegated claim checks,
+kernel lease/inode and conservative crash recovery were retained and pass the full suite.
+
+The detector cannot discover arbitrary service calls hidden inside commands, copied/renamed direct
+executables or all Cargo/CMake configuration files. It is not a comprehensive service containment
+boundary. Config snapshots/races, trusted executable enforcement and endpoint/server identity
+validation are **not implemented**. The pin in the regression is a test fixture, not a production
+trust validator. Unknown installations skip that capability fixture rather than claim support.
+
+### Intake and actual installed-binary evidence
+
+Reused clean detached `53ed3bc47cf16101a3a7cbc4078ccf9bc02c978f`. Read the copied actual r2 result:
+WIP, with 195 passing tests; the earlier pre-finish review was not treated as implementation approval.
+`build-runs/r3-intake-02.json` records native process creation identities/images/command lines and
+no old recorded peer/guardian PID matches or attributable old singleflight check. CIM access was
+denied, so the inventory used Toolhelp and native command-line queries. Other live lanes were untouched.
+The baseline helper matched copied846 exactly, SHA256
+`982f23a37efe9191da703ad749ba5f6d85a480f78c4a52d706959071b12b7806`.
+
+The copied public ZIP verified as SHA256
+`8056ff89839725c64c2f878a0a703ab4e3f68e90ce192f9d68ce90a770dfdcbb`;
+all 70 manifest file hashes verified before extraction into `build-runs/sccache-source/`.
+Only that local source snapshot was inspected. Installed executable:
+`C:/Users/tlori/.cargo/bin/sccache.exe`, SHA256
+`7600fb817625313850b8a0525c7743c5d44f53494141390223187e57f394ccb0`.
+
+Actual first-wire requests agree with the inspected config branch: enabled client mode sends
+StorageHandshake(tag5); false/empty default mode, `SCCACHE_LOG` present including empty, and configured
+distributed scheduler send legacy Compile(tag4). `SCCACHE_ERROR_LOG` empty/file remains on the storage
+branch. Environment/file precedence, file changes between invocations and malformed bool config are
+exercised. The 20 config cases and four old/partial/malformed handshake responses pass; after those
+client-side handshake failures, only tag5 was observed, with no legacy fallback or successful check.
+This does **not** prove a compatible handshake with an actual daemon, authenticate one, establish all
+owned clients' dataflow, or protect against config changes during a production invocation.
+
+### Failed isolated compiler capability fixtures
+
+`r3-isolated-real-cache-01..04` are retained FAIL labels, with JSON/logs and per-fixture evidence under
+`build-runs/r3-real-cache-*/`. The probe script evolved between failed attempts; these are development
+experiments, not stable-source promotion tests. Every attempt stopped before an object compilation:
+
+1. `01`: `vcvars32.bat` execution returned **Access is denied** before service startup.
+2. `02`: direct compiler discovery/sysroot query succeeded, but the new service Job had extra members;
+   the fixture rejected them instead of assuming the launcher or daemon was the only member.
+3. `03`: retained kernel identity proved an additional live `C:/Windows/System32/conhost.exe` member
+   (creation FILETIME134371835192068453); its five-second handle wait returned258. It was not exempted.
+4. `04`: fixture startup requested CREATE_NO_WINDOW; startup acknowledged an owned loopback endpoint,
+   then native endpoint-query DLL loading failed with **PermissionError13 / WinError31**. No compatible
+   actual StorageHandshake or Rust/C++ miss/hit was established. No further compiler attempts ran.
+
+Only test-owned scratch cache/service/endpoints were started. They used a known 30-second fixture idle
+setting, not a change to production policy. No shared daemon was probed/stopped, no broad kill or
+compiler replay occurred, and no member was ignored by name. Failure-fixture observer JSON records
+named Jobs later absent and selected recorded startup PIDs unavailable. It explicitly records
+`drained:null` and the lost startup-handle limitation; **do not treat these observations as complete
+retained-kernel exit proof or as authorization to clear a production uncertain owner**.
+
+### Validation on final committed source
+
+The single full command was
+`C:/Users/tlori/FreeCity4/build-runs/pytest-venv/Scripts/python.exe -m pytest -q tools/tests`.
+It printed **207 passed in 228.91s (0:03:48)**, exit0. Source was committed and clean at start and finish:
+head `4d094c352b04f48ecc16f3561df8c78793af136c`, tree
+`148c8477618287c417a3094dcdde8338eec0d5dd`; both stayed identical. UTC start
+`2026-10-22T23:04:30.866067+00:00`, finish `2026-10-22T23:08:20.611382+00:00`.
+Helper SHA256 `9841053acee267ba203cdbb769404e3dda6f4ae74658478ea6f1b0894cd0b488`.
+The capture records the provided venv executable/prefix and base interpreter separately, no PYTHONPATH
+injection, and identical hashes for all seven changed Python source/test files before/after.
+The final documentation commit changes no tested Python source.
+
+| Check actually run | Printed result | Artifact under `build-runs/` |
+|---|---|---|
+| Focused actual-boundary pytest | 10 passed in 19.62s; exit0 | `r3-cache-focused-01.log` / `.json` |
+| Focused pinned installed-mode pytest | 2 passed in 8.25s; exit0 | `r3-installed-mode-focused-01.log` / `.json` |
+| One full supplied-venv tooling pytest | 207 passed in 228.91s; exit0 | `r3-final-tools-pytest-01.log` / `.json` |
+| `py_compile` on seven changed Python files | no errors; exit0 | `r3-final-compilation-01.log` / `.json` |
+| `git diff --check 53ed3bc4 HEAD` | no errors; exit0 | `r3-final-diffcheck-01.log` / `.json` |
+| `tools/doccheck.py check` | doccheck check: ok; exit0 | `r3-final-doccheck-01.log` / `.json` |
+
+Focused runs retain their dirty development-source provenance; the clean full run includes both modules.
+Checks ran sequentially. `r3-final-validation-01.json` contains all four stable-source records;
+`r3-evidence-index.json` hashes 48 artifacts. No full engine Cargo/clippy/CMake/CTest gate or game ran;
+those gate fields and game/shadow are n/a. No engine, ABI, game install or provider/orchestration changes.
+Questions filed: none.
+
+### Historical failures and remaining work
+
+Preserve original dd50e233 **9 failed / 168 passed / 306.40s**, all **6/6 descendant failures**, r2's clean
+**195 passed / 207.73s** on846, and all six actual-Lease external-service violations on the pinned helper.
+The service JSON still records **6/6 overlap_proved:true** with acknowledged writers alive before/after
+admitted contenders and writer exit waits0. Those fixtures used actual Lease, not actual wrapper dispatch
+or real sccache, and do not establish the cause of any production cache warning.
+The distinct newly launched persistent-service case remains: request writer already completed,
+five-second drain still failed, and contenders remained uncertain even after acknowledged service exit.
+No historical failure was rewritten or cleared by switching mode for later requests.
+
+Still missing: narrow guardian-owned authenticated storage bootstrap; exact existing/restarted service
+creation/role/environment/endpoint identity; configuration race enforcement; all owned clients proven
+client-side through actual Cargo/CMake/Ninja/Rust/C++ paths; unknown-member classification without subtree
+exemptions; acknowledged held-writer/crash/timeout/cache-hit/preprocessing drainage and justified recovery;
+and real isolated Rust/C++ cache misses followed by hits with worktree outputs owned throughout.
+The requested service repair and complete ownership invariant therefore remain unproved.
+
+No keepalive companion was adopted. The generic cache-lifetime DRAFT remains separate. Source facts still
+allow late PutRaw EOF to lose upload/stats after successful compilation, and early preprocessing/handshake
+EOF to fail; blocking IPC still needs an outer deadline. Nothing here proves historical910.341s fallback
+causation, cache EOF immunity or permission to replay a completed compile. Coordinator review should keep
+this result held and assess these exact missing implementation/proof obligations within the original scope.
 
 ## Preserved round-two report
 
