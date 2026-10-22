@@ -1,6 +1,14 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| verify-advice-subject4: independent native AdviceSubject verification | Codex / `verify-advice-subject4` (engine lane, detached HEAD) | blocked: AD18 required Rust Clone ownership transport absent; committed prototype, native comparisons 0/0, no game runs; gate pending | Resolve AD18 within ABI constraints, then complete stable gate and own/immutable controls. No merge queue entry. |
+| verify-advice-subject4: independent native AdviceSubject verification | Codex / `verify-advice-subject4` (engine lane, detached HEAD) | in progress: round 2, private clone transport authorized | Implement actual Rust clone transport, focused ownership test, stable gate, immutable probe controls. |
+
+## Handoff
+- Round 2 goal: implement actual production clone transport, then independent native subject measurement.
+- Prior report and prototype read; private export/local declarations authorized, ABI tables/version unchanged.
+- Next: inspect old live checks; implement Obj::Subject clone handle and rewire production front.
+- Old log timestamps alone do not establish a live check or PASS; WMI process inspection denied.
+- No game request outstanding. No native measurements yet.
+- Manifest: `C:/Users/tlori/FreeCity4/build-runs/run4-verify-advice-subject4-r2-manifest.json`.
 
 ## Report
 - Goal: compare independently created native AdviceSubject fixtures against actual production Rust methods, without advisor activation or replacement registration.
