@@ -19,5 +19,7 @@
 - Enqueue next: vo4r1-native-c2baaf8a-20261022a (native ordinance + shadow, fixture toggles, full saves April2026/December2031, quit2032).
 - Completed vo4r1-native-c2baaf8a-20261022a: clean2032-01-17/ref0; 72 months, 1 bootstrap, 0 resync/fallback. All21 script actions ran, two full saves ok=1. Aggregate 731207/732967 matches, 1760 differences (all20 ordinance serialized records each month and fixture); dynamic729255/729255, fixture368/688, serialized sample1584/3024. No exact claim.
 - Next: diagnostic first differing byte/class/size (no semantic fixes), full gate then normal-speed and combined replacement profiles. Serialize mismatch question after diagnostic evidence; required host/effect/reload gaps remain WIP.
+- Diagnostic2269d93c full stable gate PASS: cargo4938/0, clippy0 diagnostics, build4/4, ctest68/68 (72.49s). Immutable DLL build-runs/dlls/ordinance-2269d93c/FreeCity4.dll.
+- Next queued label: vo4r1-normal-2269d93c-20261022b; same actions at normal speed through2032, no simultaneous request.
 - No game requests outstanding. No ABI changes. No questions yet.
 - Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-verify-ordinance4-r1-manifest.json
