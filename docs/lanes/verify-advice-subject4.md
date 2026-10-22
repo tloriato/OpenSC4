@@ -9,6 +9,10 @@
 - Focused ownership/independence CAPI test added. Opt-in verifier wired; fullword native results logged and clone refusal counted separately.
 - Milestone 93ac8e92: production transport/front and initial focused test. Additional test checks null/wrong type, scalar no-reference effects, fullword fields, clone's one AddRef and replacement AddRef-before-Release.
 - Baseline tests completed, clippy compiling; serial gate helper will wait for baseline PID 29392, run quick then final all, freeze DLL only on success. Logs remain in build-runs; no concurrent builds.
+- Baseline cargo measured 5039 passed/0 failed/0 ignored across 21 result lines; this is NOT a full gate. Clippy still live. Stable focused/full gates pending.
+- Code tip 3a2bd237 (20f67574 substantive test/verifier; 93ac8e92 production transport). Helper session 67843; baseline session 79550. The already-running helper loaded its original code before snapshot support was added; do not assume baseline/quick archives exist.
+- Prepared (not queued): advice-r2-{control,probe,current40}.template, immutable DLL destination build-runs/immutable-subject-r2/FreeCity4.dll. Unique labels end 20261022a. Probe-OFF control must pass first; only then matched probe-ON, then literal CURRENT40.
+- Supported script now saves at 2031-12-01 with before/after marks. No supplied persisted reload fixture was found in permitted inputs; reload remains unmeasured. No game request outstanding.
 - Next: collect baseline all (session 79550, live qbuild PID 29392 at inspection), then quick/focused checks and ONE final stable all. No overlap.
 - fmt absolute paths required; check currently reports pre-existing formatting differences (advisors.rs weak handles and tests); no mass format performed.
 - Old log timestamps alone do not establish a live check or PASS; WMI process inspection denied.
