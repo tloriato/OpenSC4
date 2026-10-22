@@ -158,7 +158,9 @@ pub struct MissingRecord {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UpdateReport {
-    /// Native AL result, including detached and checked-domain diagnostics.
+    /// Published AL result on defined inputs. Checked diagnostics also retain
+    /// true as a portable policy; this does not assert native safe completion
+    /// for an unchecked empty/out-of-range record access.
     pub success: bool,
     pub transformed: usize,
     pub missing_records: Vec<MissingRecord>,

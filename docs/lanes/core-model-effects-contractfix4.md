@@ -13,6 +13,7 @@
 - Rustfmt patches restricted to four touched Rust files; wrapper fmt needs absolute paths (relative attempt failed).
 - Next: collect baseline and quick gates; fix compile/test diagnostics; inventory report for 23 roles, stable-source final all, then ready queue.
 - Storage leases extend portable allocation lifetimes without native AddRef; destruction drops host wrappers without foreign Stop/Release. No native adapter or equivalence claimed.
+- Thin-address fixture fix and role inventory committed in 91f667d6; touched-file fmt passed. Native baseline build still outstanding; first quick ended E0502/configure failure, both documented below.
 
 ## Contract reconciliation (working)
 
@@ -24,7 +25,7 @@ The 23 attributed bodies / 8,406 bytes identify roles, not whole-owner or native
 | 1 Shutdown | `shutdown`: clear effects while instance alive, then explicit instance Release, true. |
 | 2 SetModelInstance | `attach`: pointer identity no-op (including null); otherwise Shutdown then explicit acquire; no discovery. |
 | 4 motion update | Started nonnull entries only, SetTransform then parameter 15 / vector of three binary32 speed products / count 1. Unused native first word has no positioning API. |
-| 5 update | Instance transform and temporary animation query/frame/release bracket traversal. Native true is `UpdateReport.success`; checked diagnostics are portable additions. |
+| 5 update | Instance transform and temporary animation query/frame/release bracket traversal. `UpdateReport.success` represents published true on defined inputs; retaining true for checked diagnostics is portable policy, not a native safe result. |
 | 6 StartAll | Query primitive IsStarted and forward full control only when false. |
 | 7 StopAll | Query primitive IsStarted and forward full control only when true, including repeated deferred stops. |
 | 8 AddEffect | Exact-key replacement Stop(1)/Release before creation; preserve old storage through creation; erase on false; no extra effect acquire, Start or transform. |
@@ -51,7 +52,7 @@ Shared bodies outside the count: attached-instance getter borrows without acquir
 - `RecordVector` leases shared immutable storage without copying records or acquiring model/record references. Region leases keep the adapter allocation alive and reborrow the same stable vector by exact key. This can extend **portable allocation** lifetime; it is not a native vector ownership claim. Arc operations and wrapper Drop are not used as evidence of native AddRef/Release.
 - Providers must keep model keys/vectors stable and must not attach foreign Release to effect-wrapper Drop. Native references intentionally receive no Release during owner destruction alone. Clients requiring cleanup must call Shutdown. No native adapter/glue exists here to validate that convention in the game.
 - Parsed strings are valid UTF-8. Exact keys use unsigned bytes; effect names use a caller-supplied current CRT-locale byte-lowering table and stop at NUL. Default table is explicitly C locale, not asserted native thread locale. Non-UTF-8 strings, CRT thread-locale refresh and real interface bindings remain outside this core.
-- Null record vector uses local identity; a nonnull empty/out-of-range vector reports key/frame/count and skips both output operations. This is a safe portable diagnostic, never a native clamp/fallback/false result. Wrapped 32-bit record addressing/computed-zero pointers are not represented.
+- Null record vector uses local identity; a nonnull empty/out-of-range vector reports key/frame/count and skips both output operations. This is a safe portable diagnostic, never a native clamp/fallback/result. `success=true` on those diagnostics is portable policy, not a claim the unchecked native call completes. Wrapped 32-bit record addressing/computed-zero pointers are not represented; the existing u16 animation-frame input domain is retained.
 - Loaded records have flags 5; local-zero copies instance; instance-zero copies local at scale 1; both nonzero compose and retain instance scale/flags OR 5; outgoing version is always 0. No camera, visibility, global/local or owner-index APIs were added.
 - Normalization follows `(z²+y²)+x²`, square root/reciprocal and separate binary32 component stores using the existing 24-bit numerical primitive (scaled for tiny squared axes); angle multiplies binary32 -0.5 before host sin/cos. GF13 zero-axis identity remains an explicit portable choice. Full x87/transcendental, NaN-payload and all downstream matrix-store equivalence remain unverified.
 - AddEffect's unavailable-manager path is an explicit safe-domain assertion, not invented native graceful failure. Creation success and nullable output are separate; false/non-null receives no foreign Release. True/null is retained safely; unsafe native dereference behavior is not asserted.
