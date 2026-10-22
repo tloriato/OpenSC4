@@ -3,6 +3,11 @@
 | core-model-effects-contractfix4 (portable model effects contracts) | Codex / core-model-effects-contractfix4 | in progress | Audit Consumer 1, correct production owner, focused checks and final full gate |
 
 ## Handoff
+- CONTINUATION: context guard measured 149074/150000; no merge queue written. Source committed at 9fdea6f2, fmt four files passed.
+- CURRENT NEXT: collect quick session 43478 (logs fc4verify-quick-test/deps/build); handoff commit may invalidate its tree record, so rerun quick if required. Then commit its result and run ONE stable final qbuild all. Final all has NOT started.
+- Quick last log: core/formats test execution reached formats game_data sweeps; sweep_model_keys passed, two long sweeps pending, no failures observed. Do not invent final counts.
+- Background automation cell 70 was terminated to prevent post-handoff commits/all launch; its qbuild quick child may remain active. Initial obsolete all wrappers 19336/21180 were cancelled after no build/test child remained.
+- Source complete for supported scope; report/inventory below is a working draft. Preserve GF19-GF24; GF25 appended. Final report must replace this Handoff after gates; no native/game/whole-owner credit.
 - Goal: implement unambiguous graphics-formats 3.11 contracts; no native/glue/default promotion.
 - Reserved detached worktree reused; initial status clean and main.. empty.
 - First q.py attempt failed because Bash service access is denied; direct PowerShell reads work.
