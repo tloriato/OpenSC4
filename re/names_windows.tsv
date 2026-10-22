@@ -122,10 +122,10 @@ va	name	source	confidence	note
 00411bc0	cSC4AdvisorCityPlanning::update_occupant_variables	auto:A	high	mac 0030889e score 1.0 support 0
 00411c80	cSC4AdvisorCityPlanning::Write	auto:B6	medium	mac 0030a212 score 0.986 support 1.0
 00411d70	cSC4SafeListIterator<cISC4Lot*>::GetNext	auto:B0	medium	mac 00608a3a score 0.783 support 3.0
-00411df0	std::set<cISC4RegionalCity*,std::less<cISC4RegionalCity*>,std::allocator<cISC4RegionalCity*>>::insert	auto:B0	medium	mac 00607f24 score 0.84 support 2.0
+00411df0	std::list<cRZAutoRefCount<cISC4RegionalCity>>::clear	manual:region-model.tsv	high	region-model.md §1.4, §6.2; was std::set<cISC4RegionalCity*,...>::insert; releases the reference of every node, frees the node and resets the list head to empty; 20 callers (cSC4Region::Shutdown 0x004A5C72, GetAllCities 0x004A4CED, cSC4NeighborsSimulator::Init and others)
 00411f10	cSC4AdvisorCityPlanning::GetLandmarkCount	auto:D	medium	mac 0030a652 score 0.5 support 1
 00411f50	cSC4AdvisorCityPlanning::HasLandmark	auto:D	medium	mac 00308708 score 0.5 support 1
-00411fe0	cSC4NeighborsSimulator::update_deals_in_regional_cities	auto:B1	medium	mac 0004dfac score 0.785 support 3.0
+00411fe0	std::list<cRZAutoRefCount<cISC4RegionalCity>>::~list	manual:region-model.tsv	high	region-model.md §1.4; was cSC4NeighborsSimulator::update_deals_in_regional_cities; calls the clear 0x00411DF0 and then frees the list head node; 17 callers, among them FUN_004A4C30 for the overflow list (this+0x40) and the temporary list of cSC4Region::LoadCities (0x004A651D)
 00412040	std::_Rb_tree<long,std::pair<long_const,long>,std::_Select1st<std::pair<long_const,long>>,std::less<long>,std::allocator<std::pair<long_const,long>>>::insert_unique	auto:B2	medium	mac 0068fda8 score 0.984 support 3.0
 004121d0	cSC4AdvisorCityPlanning::DoMessage	auto:B0	medium	mac 0030a3ea score 0.972 support 4.5
 004123e0	cSC4AdvisorCityPlanning::Read	auto:B1	medium	mac 0030a2f2 score 0.985 support 1.0
@@ -1644,9 +1644,12 @@ va	name	source	confidence	note
 004a4760	__gnu_cxx::hashtable<std::pair<SC4Point<long>const,cRZAutoRefCount<cISC4RegionalCity>*>,SC4Point<long>,cSC4Region::RegionalCellHashFunction,std::_Select1st<std::pair<SC4Point<long>const,cRZAutoRefCount<cISC4RegionalCity>*>>,std::equal_to<SC4Point<long>>,std::allocator<cRZAutoRefCount<cISC4RegionalCity>*>>::erase	auto:B0	medium	mac 006c73c2 score 0.98 support 1.0
 004a4830	__gnu_cxx::hashtable<std::pair<SC4Point<long>const,cRZAutoRefCount<cISC4RegionalCity>*>,SC4Point<long>,cSC4Region::RegionalCellHashFunction,std::_Select1st<std::pair<SC4Point<long>const,cRZAutoRefCount<cISC4RegionalCity>*>>,std::equal_to<SC4Point<long>>,std::allocator<cRZAutoRefCount<cISC4RegionalCity>*>>::find_or_insert	auto:B0	medium	mac 006c7ece score 0.908 support 1.0
 004a4930	cSC4Region::GetCity	auto:C	high	mac 001ee80e score 1.0 support 1
+004a4970	cSC4Region::OverlapsOccupiedCell	manual:region-model.tsv	high	region-model.md §5.2; descriptive name, no Mac match; true when any cell of the city's rectangle (GetPosition + GetCitySize) is already a key of the cell map at this+0x50; sole caller LoadCities (0x004A647D)
+004a4a50	std::list<cRZAutoRefCount<cISC4RegionalCity>>::erase	manual:region-model.tsv	high	region-model.md §5.2; descriptive name; unlinks the node, releases its reference, frees the node through the allocator service and writes the next node into the result; callers LoadCities (0x004A6585), cSC4NeighborsSimulator::GetAllConnectedCities (0x006D1D3E), ProposeDeals (0x006D26DC)
 004a4ad0	__gnu_cxx::hash_map<SC4Point<long>,cRZAutoRefCount<cISC4RegionalCity>*,cSC4Region::RegionalCellHashFunction,std::equal_to<SC4Point<long>>,std::allocator<cRZAutoRefCount<cISC4RegionalCity>*>>::operator[]	auto:D	medium	mac 006c7f68 score 0.5 support 1
 004a4b50	cSC4Region::RemoveCity	auto:C	high	mac 001efdfc score 1.0 support 1
 004a4c20	cSC4Region::GetCityLocations	auto:C	high	mac 001ee83e score 1.0 support 1
+004a4c30	cSC4Region::DestroyMembers	manual:region-model.tsv	high	region-model.md §1.4; descriptive name; the body of the deleting destructor 0x004A53E0: stores the vtable, destroys the cell map, the directory name, the locations vector, the overflow list and the name; sole caller 0x004A53E3
 004a4ca0	cSC4Region::GetBaseTerrainHeight	auto:C	low	mac 006c6b4c score 1.0 support 1
 004a4cb0	cSC4Region::SetBaseTerrainType	auto:C	low	mac 006c6b5e score 1.0 support 1
 004a4cc0	cSC4Region::GetWaterPrefs	auto:C	high	mac 006c6b6c score 1.0 support 1
@@ -1657,6 +1660,7 @@ va	name	source	confidence	note
 004a51c0	cSC4Region::MoveOverflowCitiesToDownloadDirectory	auto:B1	medium	mac 001f0056 score 0.901 support 2.0
 004a53e0	cSC4Region::~cSC4Region	auto:C	high	mac 001eebf2 score 1.0 support 1
 004a5400	cSC4Region::ResetTutorialCity	auto:A	high	mac 001ee66c score 0.569 support 0
+004a5640	cSC4Region::ParseCityLocations	manual:region-model.tsv	high	region-model.md §4.2; descriptive name, no Mac match; reads a config picture row by row, one location per unvisited pixel with exactly one channel at 255 (1, 2 or 4 cells), appends {x, y, log2 size} to the vector at this+0x44; sole caller LoadCityLocations (0x004A6C49)
 004a58d0	cSC4Region::LoadCitiesFromDirectory	auto:B1	medium	mac 001ef98c score 0.943 support 4.0
 004a5b30	cSC4Region::cSC4Region	auto:B5	medium	mac 001eecc8 score 0.95 support 2.0
 004a5be0	cSC4Region::Shutdown	auto:B0	medium	mac 001ef650 score 0.813 support 3.5
@@ -4091,9 +4095,9 @@ va	name	source	confidence	note
 005db9b0	operator>>	auto:B5	medium	mac 000982fa score 0.931 support 2.0
 005dbae0	operator>>	auto:B5	medium	mac 00098592 score 0.947 support 2.0
 005dbc10	SC4CloseSaveGame	auto:B3	medium	mac 001630c8 score 0.94 support 3.0
-005dbc40	SC4ReadBinaryRecord	auto:B2	medium	mac 00163106 score 0.971 support 2.0
+005dbc40	SC4ExportRecordToFile	manual:region-model.tsv	high	region-model.md §6.4; was SC4ReadBinaryRecord; takes a DB segment, a record key and a file: reads the record's bytes (segment slot +0x70) and writes them into the file (length 0 first), returns the byte count or -1; removes a file it created when it fails
 005dbd40	SC4CreateCitySerialNumber	auto:B1	medium	mac 001633d8 score 0.956 support 2.0
-005dbdc0	SC4ReadBinaryRecord	auto:B1	medium	mac 00163240 score 0.982 support 3.0
+005dbdc0	SC4ExportRecordToFile	manual:region-model.tsv	high	region-model.md §6.4; was SC4ReadBinaryRecord; the overload that asks the resource manager (0x00B43CA8 slot +0x80) for the segment holding the key, then calls 0x005DBC40; returns -1 when no segment has it; 5 callers: cSC4App::SetupWinCtrlMgr (0x0044DD41), cSC4Nation::ResetTutorialCities (0x00499B08), cSC4Region::ResetTutorialCity (0x004A552E), cSC4Region::CreateRegion (0x004A6A41), cSLCursor::Load (0x00602DCE)
 005dbe20	SC4ReadStringRecord	auto:B0	medium	mac 0016346e score 0.952 support 3.0
 005dbea0	SC4WriteStringRecord	auto:B0	medium	mac 00163510 score 0.953 support 2.0
 005dbf30	SC4ReadAppLoadSaveVersion	auto:B0	medium	mac 001635b6 score 0.995 support 2.0
@@ -8258,12 +8262,18 @@ va	name	source	confidence	note
 007a9c20	cSC4WinRegionClouds::SetCloudArea	auto:B3	medium	mac 002cddb4 score 0.978 support 2.0
 007a9d60	cSC4WinRegionClouds::GZPaint	auto:B2	medium	mac 002cd9e0 score 0.982 support 2.0
 007aa2a0	cSC4RegionalTerrainMap::QueryInterface	auto:A	high	mac 0019e9e6 score 1.0 support 0
+007aa300	cSC4RegionalTerrainMap::GetCellSize	manual:region-model.tsv	high	region-model.md §9; descriptive name; returns the float at this+0x20 (64.0 from the constructor); vtable 0x00AB8C00 slot 6
+007aa310	cSC4RegionalTerrainMap::CellToVertexIndex	manual:region-model.tsv	high	region-model.md §9.2; descriptive name; y * (this+0x1C) + x with this+0x1C = width + 1; slot 9
+007aa320	cSC4RegionalTerrainMap::VertexIndexToCell	manual:region-model.tsv	high	region-model.md §9.2; descriptive name; x = index mod stride, y = index / stride (signed idiv by this+0x1C); slot 10
+007aa4b0	cSC4RegionalTerrainMap::GetHeightAt	manual:region-model.tsv	high	region-model.md §9.2; descriptive name; ignores both float arguments and returns the base height at this+0x0C (270.0); slots 13, 14, 18, 19
+007aa4d0	cSC4RegionalTerrainMap::GetBaseHeight	manual:region-model.tsv	high	region-model.md §9.2; descriptive name; returns the float at this+0x0C (270.0); slots 21 and 22; called by cSC4RegionalTerrainView::Update
 007aa520	cSC4WinRegionScroll::Init	auto:A	high	mac 0019ec8a score 1.0 support 0
 007aa570	cSC4WinRegionScroll::Shutdown	auto:C	high	mac 0019ecf4 score 1.0 support 1
 007aa600	cSC4WinRegionScreen::GZOnMouseEnter	auto:C	high	mac 0019ee98 score 1.0 support 1
 007aa640	cSC4WinRegionScreen::QueryInterface	auto:C	high	mac 0019ef02 score 1.0 support 2
 007aa860	(anonymous_namespace)::GenerateKernel<__gnu_cxx::__normal_iterator<float*,std::vector<float,std::allocator<float>>>,double(*)(double)>	auto:D	medium	mac 006fa208 score 0.5 support 1
 007aace0	cSC4RegionalTerrainMap::cSC4RegionalTerrainMap	auto:A	high	mac 001a0f94 score 1.0 support 0
+007aadf0	cSC4RegionalTerrainMap::GetNormal	manual:region-model.tsv	high	region-model.md §9.2; descriptive name; writes the vector (0.0, 1.0, 0.0) to its output; slots 26, 27, 28
 007aae10	cSC4WinRegionScroll::cSC4WinRegionScroll	auto:A	high	mac 0019f560 score 0.701 support 0
 007aaec0	cSC4WinRegionScroll::GZOnMouseUpR	auto:C	high	mac 0019f670 score 1.0 support 1
 007aaf20	cSC4WinRegionScroll::GZOnMouseMove	auto:C	high	mac 0019f91c score 1.0 support 1
@@ -11773,6 +11783,7 @@ va	name	source	confidence	note
 00917d1a	SplitDirectory	manual:paths.tsv	high	paths.md §1.6; parts from the end, 260 bytes each, trailing '\' added; a single part without trailing separator loses its last char
 00917e7c	Fullpath	manual:paths.tsv	high	paths.md §1.2; the normaliser against a base: 521-byte work buffer, '.' and '..' components, ':' guard, trailing separator restored; malloc result for a null out
 00918080	IsFullPath	manual:paths.tsv	high	paths.md §1.1; descriptive name; isalpha + ':' + '\', or '\\', and no strstr '\.' (0x00ACEFC0) or '/.' (0x00ACEFBC)
+009180d4	IsFileNameCharAllowed	manual:region-model.tsv	high	region-model.md §6.4; descriptive name; false for < > : \ / " | * ? (0x3C 0x3E 0x3A 0x5C 0x2F 0x22 0x7C 0x2A 0x3F), true for every other byte; the per-character test of MakeFileNameValid (0x0091917D) and IsFileNameValid (0x009197E9)
 00918103	MatchPattern	auto:B1	medium	mac 000204ba score 0.914 support 1.0
 009182ff	cRZFile::QueryInterface	auto:A	high	mac 000205ee score 1.0 support 0
 00918374	cRZFile::SeekToPosition	auto:B4	medium	mac 000207ac score 0.831 support 3.0

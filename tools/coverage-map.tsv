@@ -229,6 +229,7 @@ cSC4AnimationTickManager	other simulation	simulation	-	-	-	-
 # ---- region
 cSC4Nation	region	region	nation.md	-	-	-
 cSC4RegionalCity	region	region	-	-	-	-
+cSC4Region	region	region	region-model.md	-	-	-
 cSC4Region*	region	region	-	-	-	-
 cSC4WinRegion*	region	region	-	-	-	-
 cSC4NewRegionDialog	region	region	-	-	-	-
