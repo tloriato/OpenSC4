@@ -115,13 +115,26 @@ impl ModelRegEffects {
         Self::default()
     }
 
-    /// Explicit portable attachment policy (GF20): stop/release the old effects
-    /// while their old model is still alive, acquire the new model, then rebuild.
-    /// This is not a claim about native slot 2's unspecified same-pointer behavior.
-    pub fn attach(&mut self, instance: Option<Arc<dyn ModelInstance>>, factory: &mut dyn EffectFactory) {
-        self.clear();
+    /// Slot 2: identical pointers (including null) do nothing. A different
+    /// instance is installed only after Shutdown; discovery requires explicit Init.
+    pub fn attach(&mut self, instance: Option<Arc<dyn ModelInstance>>, _factory: &mut dyn EffectFactory) {
+        let same = match (&self.instance, &instance) {
+            (Some(old), Some(new)) => Arc::ptr_eq(old, new),
+            (None, None) => true,
+            _ => false,
+        };
+        if same {
+            return;
+        }
+        self.shutdown();
         self.instance = instance;
-        self.init_effects_list(factory);
+    }
+
+    /// Slot 1: effects are cleared while their attached instance is alive.
+    pub fn shutdown(&mut self) -> bool {
+        self.clear();
+        self.instance = None;
+        true
     }
 
     pub fn instance(&self) -> Option<&Arc<dyn ModelInstance>> {
