@@ -455,8 +455,9 @@ void StepAfter(void* ctx) {
     const size_t step5 = std::min<size_t>(s.blk.removed, g_removed.size());
     const size_t notKept = g_removed.size() - step5;
     g_month.notKept += U(notKept);
-    if (g_uncertain) return;
-    ++g_month.certain;
+    // Keep diagnostics for uncertain blocks too. The uncertainty changes
+    // credit (all operations are refused), never the mismatch population.
+    if (!g_uncertain) ++g_month.certain;
     if (removed.size() != g_removed.size()) {
         g_month.d.Add("block (%d,%d) removed orig %u ours %u", s.blk.bx, s.blk.bz, U(removed.size()),
                       U(g_removed.size()));
@@ -627,6 +628,8 @@ void MonthCompare(void* ctx) {
     mo.compared = true;
     mo.st = StateOf(g_run.core);
     ++g_evidence.queryAttempts;
+    // [abi-ret] prop-developer.md section 8.1 slot 10 explicitly specifies
+    // AL boolean (and section 4.11 defines the visible flag query).
     const bool visible = static_cast<cISC4PropDeveloper*>(const_cast<void*>(mo.orig))->AreSignsAndLabelsVisible();
     ++g_evidence.queryCompared;
     if (visible == fc4_prop_developer_signs_visible(g_run.core)) ++g_evidence.queryEqual;

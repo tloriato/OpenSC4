@@ -29,8 +29,7 @@
 // and then
 //   - the scan flag and the block scanner (§2, raw +0x14 / +0x18..+0x34,
 //     vtable-checked) are compared with ours (exact);
-//   - when every keep check of ours was certain (wealth, pollution, a crime
-//     prop with incident ID 0: crime.md §11.6), the number of props the
+//   - for every observed block, including uncertain selectors, the number of props the
 //     original removed from the block with ours, and every prop ours removed
 //     in the cell walk (not kept, §4.3 step 3.9) must be among them.
 // Not compared: which kept prop the member generator removes (§4.3 step 5)
