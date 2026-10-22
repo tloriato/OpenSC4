@@ -1,10 +1,10 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| verify-fsh-native4 (independent native FSH verification) | `verify-fsh-native4` / (engine lane, detached worktree) | in progress | Establish published acquisition/output/lifetime contract within 15 calls; implement by call 30 if supported. |
+| verify-fsh-native4 (independent native FSH verification) | `verify-fsh-native4` / (engine lane, detached worktree) | in progress; contract blocked; GF25–GF27 filed; no native coverage | Finish baseline ctest; publish typed native contract before further implementation. |
 
 ## Handoff
 - Goal: native FSH verification for cS3DFSHTextureFactory/cS3DShapeFile; exclude models and DX7 drivers.
-- Baseline all started, exec session 73257; result pending.
+- Baseline all: cargo 4947 passed/0 failed/0 ignored; clippy clean; CMake 208/208 PASS; ctest pending (exec session 73257).
 - Worktree reused at reserved detached HEAD; initial status clean, no main.. commits.
 - q.py cannot start Bash (E_ACCESSDENIED); use bounded native PowerShell reads and permitted wrappers.
 - Contract review complete within first 15 orchestration calls: no supported full native output/lifetime contract.
