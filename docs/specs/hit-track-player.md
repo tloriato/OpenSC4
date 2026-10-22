@@ -702,6 +702,83 @@ operations `0x0093C45A–0x0093C4D3`; diagnostic/true tail
 including all five no-op destinations `0x0093DC84`; decompiler case labels alone
 are not the mapping authority. All other opcode contracts remain HT1.
 
+### 7.2 Integer, property and comparison-wait families
+
+Notation for the command tables: `b` is one unsigned byte; `w` is one
+little-endian 32-bit word, read at the current byte address without alignment
+padding. Lengths include the opcode. Each encoded register byte is passed to
+CheckedRegId (§3), **zero-extended**, before use. Thus bytes 75–255 diagnose
+and become register 1; they do not become negative register IDs. A table
+operand `d` or `s` denotes this translated key, and `R(k)` denotes integer
+property-view P+4 slot +0x10. `W(k,v)` is that view's +0x0C with `(k,v,0)`.
+Unless stated otherwise, arguments are consumed and translated left to right,
+each translation is followed by a signed `key <= 127` check, and failure
+diagnoses the named command/operand without consuming later operands. For
+ordinary byte operands the check cannot fail after CheckedRegId's fallback;
+the checks still occur. There are no bytecode end/length checks. Cursor writes
+precede the calls, so a diagnostic, provider failure or exception does not
+transactionally undo consumption.
+
+| Opcodes (hex) / native entry | Operands; full length | Action after decoding |
+|---|---|---|
+| `04` / `0x0093C3BF` | d:b, value:b; 3 | W(d, unsigned value); **255 stays 255**. False write result diagnoses Loadb. |
+| `05` / `0x0093C40C` | d:b, value:w; 6 | W(d, full value word); false write diagnoses Loadl. |
+| `06`, `4A` / `0x0093C4D8` | d:b, s:b; 3 | W(d,R(s)); false write diagnoses Set. |
+| `0E` / `0x0093CBD2` | s:b; 2 | Compare R(s) with signed zero; set equal/greater/less flags at P+0x9C/+0x9D/+0x9E. |
+| `10` / `0x0093CDA4` | d:b, s:b; 3 | Read R(d), then R(s); W(d,low32(first+second)). |
+| `11` / `0x0093CE10` | d:b, s:b; 3 | Same read order; W(d,low32(first−second)). |
+| `12` / `0x0093CE76` | d:b, s:b; 3 | Same read order; signed 32-bit quotient first/second, truncated toward zero. No zero or overflow check; divide by zero and INT_MIN/−1 raise the native divide exception before W. |
+| `13` / `0x0093CEE4` | d:b, s:b; 3 | Same read order; W(d,low32(first×second)). |
+| `14` / `0x0093CCB9` | a:b, b:b; 3 | Read R(a), then R(b); overwrite the three flags with signed equality, greater-than, less-than, respectively. No property write. |
+| `15` / `0x0093CF4E` | d:b, s:b; 3 | W(d, signed R(d)<R(s) ? 1 : 0), reading both in that order. |
+| `16` / `0x0093CFBE` | d:b, s:b; 3 | W(d, signed R(d)>R(s) ? 1 : 0). |
+| `17` / `0x0093D226` | d:b; 2 | W(d, R(d)==0 ? 1 : 0), logical negation, not word complement. |
+| `18` / `0x0093D25E` | d:b, min:b, max:b; 4 | Read R(min), then R(max); call HitMan +0x68 with **(max value,min value)**; W(d, returned word). No local sorting or range validation. |
+| `19` / `0x0093D2F7` | d:b; 2 | W(d, signed absolute value of R(d)); INT_MIN remains 0x80000000 by wrapping negation. The bad-destination diagnostic says Rand. |
+| `1B` / `0x0093D3F8` | none; 1 | Call sound view P+12 slot +0x20 (Stop). Ignore its result. |
+| `1C` / `0x0093D3C5` | s:b; 2 | Read R(s); only when zero, perform the same Stop call as 1B. Invalid key diagnoses Assert. |
+| `1F` / `0x0093D405` | d:b, s:b; 3 | W(d,R(R(s))); the second lookup key is a full word, with no CheckedRegId or 127 check. |
+| `28` / `0x0093D009` | d:b, s:b; 3 | **Same signed greater-than result as 16**, despite the And diagnostic. It joins the same native comparison tail. |
+| `29` / `0x0093D077` | d:b, s:b; 3 | Logical NAND, result 0/1. Read R(d) first; read R(s) only if the first is nonzero. Both encoded keys were already consumed/checked. |
+| `2A` / `0x0093D0E4` | d:b, s:b; 3 | Read both, in order; W(d, bitwise OR). |
+| `2B` / `0x0093D14D` | d:b, s:b; 3 | Logical NOR, result 0/1. Read R(s) only if R(d) is zero. |
+| `2C` / `0x0093D1BD` | d:b, s:b; 3 | Read both, in order; W(d, bitwise XOR). |
+| `2D` / `0x0093D335` | d:b, bound:w; 6 | Read R(d); write bound only if signed R(d)>bound. It imposes an upper bound although diagnostic says Max. |
+| `2E` / `0x0093D380` | d:b, bound:w; 6 | Write bound only if signed R(d)<bound; diagnostic says Min. Equality skips W. |
+| `2F` / `0x0093C7B2` | d:b; 2 | W(d,low32(R(d)+1)). |
+| `30` / `0x0093C7EF` | d:b; 2 | W(d,low32(R(d)−1)). |
+| `4D` / `0x0093C91A` | a:b, b:b; 3 | Comparison wait: proceed when R(a)==R(b). |
+| `4E` / `0x0093C991` | a:b, b:b; 3 | Comparison wait: proceed when R(a)!=R(b). |
+| `4F` / `0x0093CA02` | a:b, b:b; 3 | Comparison wait: proceed when signed R(a)>R(b). |
+| `50` / `0x0093CA76` | a:b, b:b; 3 | Comparison wait: proceed when signed R(a)<R(b). |
+| `51` / `0x0093CAEA` | a:b, b:b; 3 | Comparison wait: proceed when signed R(a)>=R(b). |
+| `52` / `0x0093CB5E` | a:b, b:b; 3 | Comparison wait: proceed when signed R(a)<=R(b). |
+
+Arithmetic, logical, indirect-read and bound writes above ignore W's boolean
+result and return true. They do **not** update comparison flags. The flag
+helper belongs only to explicit tests/comparisons here; incidental processor
+flags are not persisted. Comparison waits consume/check both keys, read the
+first property then the second, and on an unsatisfied condition subtract 3
+from the **current** P+0x6C and set P+0x44=2. On satisfaction they leave wait
+unchanged and retain the advanced cursor. They never set sequencer-active,
+clear pause, or clear a previous error. Read/callback reentrancy can change the
+current cursor; the subtraction is not an assignment from the saved opcode
+address.
+
+Native-width/order evidence: unsigned immediate load `0x0093C3E1–0x0093C3F2`;
+dword load `0x0093C42E–0x0093C440`; arithmetic
+`0x0093CDF9–0x0093CF49` (including CDQ/IDIV at `0x0093CEDC–0x0093CEDD`);
+signed comparison and the shared 16/28 tail `0x0093D054–0x0093D072`;
+NAND/NOR short-circuit tails `0x0093D0C1–0x0093D0DF`,
+`0x0093D197–0x0093D1B8`; random argument pushes `0x0093D2C5–0x0093D2E9`;
+bound comparisons `0x0093D370–0x0093D3C3`; wait tests/rewind
+`0x0093C980–0x0093C98C`, `0x0093CA68–0x0093CA71`,
+`0x0093CADC–0x0093CAE5`, `0x0093CB50–0x0093CB59`,
+`0x0093CBC4–0x0093CBCD`; return tail `0x0093DC84–0x0093DC8A`.
+Jump-table entries at `0x0093DC8B` fix the opcode identities; these are native
+subcontracts and still carry **zero whole-DoCommand credit** until all other
+families and failure paths are reconciled.
+
 ## 8. External boundaries and current limits
 
 Sound-system slots +0x78/+0x7C register/unregister the adjusted update-target
@@ -835,6 +912,29 @@ must be preserved when those gaps are filled.
     `0xFEED0123`: a second read uses precisely that full key. Failed writes
     diagnose but still return true. For 0D with track base `0x2000`, opcode
     address `0x1000` and operand `0x20`, require target `0x2020`, not `0x1025`.
+
+27. **Unsigned byte load and fallback.** Stream `04 02 FF` writes register 2
+    with 255 and leaves cursor at C+3. Stream `04 FF 80` first diagnoses the
+    register byte 255, translates it to 1, then writes 128 to register 1.
+28. **Arithmetic widths and divide exception.** With R(2)=−7 and R(3)=2,
+    `12 02 03` writes −3 to register 2. With divisor zero or INT_MIN/−1, require
+    an integer divide exception before any write, cursor already at C+3;
+    do not invent a zero result or boolean failure. `2F 02` on INT_MAX wraps
+    to INT_MIN without changing saved comparison flags.
+29. **Names are not operations.** With R(2)=8,R(3)=3, `28 02 03` writes 1,
+    whereas bitwise AND would write 0. `29 02 03` writes 0. With R(2)=0,
+    NAND writes 1 without calling the getter for key 3; NOR does read it.
+30. **Flags, bounds and indirect lookup.** R(2)=−1,R(3)=0:
+    `14 02 03` sets (equal,greater,less)=(0,0,1). `2D 02 FE FF FF FF`
+    writes −2; repeating it skips the setter. `1F 04 03`, with R(3)=0x1234
+    and R(0x1234)=99, writes 99 to key 4 without translating 0x1234.
+31. **Wait retry family.** At C=0x1000, R(2)=−1,R(3)=0, opcode 4F with
+    bytes `02 03` reads keys 2 then 3, rewinds to 0x1000 and writes wait=2.
+    Repeating with R(2)=1 leaves cursor 0x1003 and wait unchanged. At equality,
+    4D/51/52 proceed and 4E/4F/50 retry. Use signed comparisons on high-bit words.
+32. **Random boundary order.** For `18 04 02 03`, R(2)=7,R(3)=−9,
+    require getter order (2,3), HitMan +0x68 arguments (−9,7), then write its
+    supplied return word to key 4. No guessed distribution or endpoint repair.
 
 These are discriminating implementation cases, not results of an executed game
 or an implementation test suite. No game/shadow claim is made for this docs lane.
