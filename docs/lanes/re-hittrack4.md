@@ -9,7 +9,8 @@
 - Done: lifecycle/scheduling commit 427fa043; latest contracts cover 75/110 bodies, 4385/16012 bytes, including six register/property dispatch bodies.
 - Remaining: 35 bodies / 11627 bytes, partitioned exactly into HT1–HT5 in docs/specs/questions/hit-track-player.md; no complete-owner credit.
 - Validation: exact inventory/question partition PASS; questions.py index/check PASS; git diff --check PASS. Cargo/clippy/ctest and game n/a (docs only).
-- Next: commit final report and queue this partial-owner documentation for review; no further round requested.
+- Stop: guard reported context 151k over 150k; return continue, no merge-queue file written.
+- Next: preserve commits 442a01aa, 427fa043, 53339208; review existing 75-body partial spec, replace this Handoff with final report, commit and queue only when coordinator permits continuation. No further RE round requested.
 - First concrete contract commit required by call 30; round cap 100 calls / 150000 context.
 - Main read sources: C:/Users/tlori/FreeCity4/{decomp,re,ghidra/export/windows,docs/abi}.
 - Guard manifest: C:/Users/tlori/FreeCity4/build-runs/run4-re-hittrack4-r1-manifest.json.
