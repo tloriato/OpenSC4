@@ -329,7 +329,7 @@ fn shake_s1_s6_stop_fade_strict_expiry_and_rounding() {
     use shake::*;
     let mut s = Shakes::default();
     let patterns = Patterns::default();
-    let (h, restart) = s.start_overload(5.0, 2.0, 19.0).unwrap();
+    let (h, restart) = s.start_overload(5.0, 2.0, 0.0).unwrap();
     assert!(restart);
     let (h2, restart) = s.start_overload(5.0, 2.0, 0.0).unwrap();
     assert!(!restart);
@@ -695,4 +695,14 @@ fn typed_record_version_and_sticky_error_partial_writes_are_literal() {
     assert_eq!((record.width_bits, record.height_bits), (800, 600));
     assert_eq!(record.camera_derived, 0);
     assert_eq!(record.camera_control_token, None);
+}
+
+#[test]
+fn failed_frustum_stays_unsupported_on_repeat() {
+    let mut s = SceneRenderer::default();
+    let mut refs = Refs::default();
+    s.set_viewport_size(800, 600);
+    assert!(s.force_full_redraw(&mut refs, None).is_err());
+    assert!(s.force_full_redraw(&mut refs, None).is_err());
+    assert!(s.full_redraw_pending());
 }

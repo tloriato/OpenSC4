@@ -51,8 +51,10 @@ impl Shakes {
         self.last_time
     }
     /// The supplied clock is elapsed time since the current list's restart.
-    /// Return bool requests the embedding's RAW timer restart, not a shake
-    /// outcome. Empty-list starts have start=0 and last_time=0 after restart.
+    /// The embedding must perform the RAW timer restart before supplying now
+    /// for an empty list. The returned bool records that requirement. This is
+    /// the owned list subalgorithm, not a complete native clock-driven Start.
+    /// last_time is zeroed; elapsed start time must not be invented as zero.
     pub fn start(
         &mut self,
         parameters: &Parameters,
@@ -88,7 +90,7 @@ impl Shakes {
         self.nodes.insert(
             0,
             Node {
-                start: if restart { 0.0 } else { now },
+                start: now,
                 phase: 0.0,
                 position,
                 parameters: Parameters {

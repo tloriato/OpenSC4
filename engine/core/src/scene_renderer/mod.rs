@@ -152,6 +152,7 @@ pub struct SceneRenderer {
     draw_counter: i32,
     value_15c: i32,
     full_pending: bool,
+    frustum_incomplete: bool,
     backing_saved: bool,
     flags_160_174: [bool; 2],
     reason: i32,
@@ -191,6 +192,7 @@ impl Default for SceneRenderer {
             draw_counter: 0,
             value_15c: 0,
             full_pending: false,
+            frustum_incomplete: false,
             backing_saved: false,
             flags_160_174: [false; 2],
             reason: 0,
@@ -266,6 +268,16 @@ impl SceneRenderer {
     }
     pub fn viewport_size(&self) -> (i32, i32) {
         self.viewport
+    }
+    pub fn get_gz_clsid(&self) -> u32 {
+        Self::CLSID
+    }
+    pub fn get_view_utilities(&self) -> &ViewUtilities {
+        &self.view_utilities
+    }
+    pub fn get_shake_offsets(&self) -> (f32, f32) {
+        let (x, y) = self.shakes.offsets();
+        (x as f32, y as f32)
     }
     pub fn viewport_rect(&self) -> Rect {
         self.viewport_rect
@@ -448,6 +460,11 @@ impl SceneRenderer {
     ) -> Result<()> {
         self.reason = reason;
         if self.full_pending {
+            if self.frustum_incomplete {
+                return Err(Unsupported::Domain(
+                    "existing view-utilities frustum domain",
+                ));
+            }
             return Ok(());
         }
         self.full_pending = true;
@@ -460,6 +477,7 @@ impl SceneRenderer {
                 camera,
             )
         {
+            self.frustum_incomplete = true;
             return Err(Unsupported::Domain(
                 "existing view-utilities frustum domain",
             ));
