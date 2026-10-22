@@ -14,3 +14,6 @@
 - Constraints: one round; no subagents; no shared ABI/config/default/tools edits; serialization only with already published typed endpoints.
 - Manifest: `C:/Users/tlori/FreeCity4/build-runs/run4-verify-advice-subject4-r1-manifest.json`.
 - No game requests outstanding.
+- Latest review: Clone failure must be a difference/refusal even if both fixtures fail. Final reference counts and controlled fixture creator references are now checked through zero.
+- Expected successful native per-slot counts (3..13): 6,23,22,22,8,21,23,6,23,6,1. These are design counts only, NOT measured native evidence.
+- Save script prepared at build-runs/advice-subject-save.txt. No queue request exists. Exact immutable control profile contents are not in the allowed docs read so far; do not invent them from subsystem enumeration.

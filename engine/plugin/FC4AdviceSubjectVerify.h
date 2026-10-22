@@ -213,7 +213,11 @@ inline void Run() {
     ++v.calls[13];
     const bool nr = n->Clone(&nc), cr = c->Clone(&cc);
     v.Check("Clone return", nr, cr);
-    v.Check("Clone outputs", nr && nc != nullptr, cr && cc != nullptr);
+    v.Check("Clone native success", nr && nc != nullptr, true);
+    v.Check("Clone core success", cr && cc != nullptr, true);
+    if (!nr || nc == nullptr || !cr || cc == nullptr)
+        FC4_LOG("advice-subject-verify: REFUSED Clone native_ok=%u native_out=%p core_ok=%u core_out=%p",
+                nr, static_cast<void*>(nc), cr, static_cast<void*>(cc));
     if (nr && nc != nullptr) FC4_ACQUIRED(nc, "AdviceSubject Clone independent fixture");
     if (nr && nc != nullptr && cr && cc != nullptr) {
         v.Check("Clone native distinct", nc != n, true);
@@ -232,14 +236,19 @@ inline void Run() {
         v.Check("original X independent", Compare::Bits(n->GetLocationX()), 0);
         v.Objects(na, ca); v.Objects(nb, cb);
     }
-    if (nr && nc != nullptr) FC4_RELEASE_CREATED(nc);
-    if (cr && cc != nullptr) cc->Release();
+    if (nr && nc != nullptr) v.Check("native clone final reference", FC4_RELEASE_CREATED(nc), 0);
+    if (cr && cc != nullptr) v.Check("core clone final reference", cc->Release(), 0);
     v.Objects(na, ca); v.Objects(nb, cb);
-    FC4_RELEASE_CREATED(n); c->Release();
+    v.Check("native subject final reference", FC4_RELEASE_CREATED(n), 0);
+    v.Check("core subject final reference", c->Release(), 0);
     fc4_advisors_destroy(h.core);
     v.Objects(na, ca); v.Objects(nb, cb);
     v.Check("native A cleanup", na.refs, 1); v.Check("native B cleanup", nb.refs, 1);
     v.Check("core A cleanup", ca.refs, 1); v.Check("core B cleanup", cb.refs, 1);
+    na.Release(); nb.Release(); ca.Release(); cb.Release(); // creator-owned refs
+    v.Objects(na, ca); v.Objects(nb, cb);
+    v.Check("native A creator cleanup", na.refs, 0); v.Check("native B creator cleanup", nb.refs, 0);
+    v.Check("core A creator cleanup", ca.refs, 0); v.Check("core B creator cleanup", cb.refs, 0);
     v.Check("core subject cleanup", h.created, h.dropped);
     v.Check("ref warnings", static_cast<uint32_t>(RefWarningCount() - warnings), 0);
     for (unsigned slot = 3; slot != 14; ++slot)
