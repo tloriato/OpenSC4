@@ -262,6 +262,7 @@ inline void CompareProductionFronts() {
         v.Check("Clone native shares held object", na.refs, 3);
         v.Check("Clone core shares held object", ca.refs, 3);
         size_t ni = nativeTrace.size(), ci = coreTrace.size();
+        // [abi-ret] advisors.md 12.4: native slot 3 returns AL (bool).
         ++v.calls[3]; v.Check("Clone SetLocation", nc->SetLocation(13.5f, 17.25f), cc->SetLocation(13.5f, 17.25f));
         v.Trace("Clone SetLocation ownership", nativeTrace, ni, coreTrace, ci);
         ni = nativeTrace.size(); ci = coreTrace.size();
@@ -271,6 +272,7 @@ inline void CompareProductionFronts() {
         ++v.calls[12]; v.Check("Clone SetData2", nc->SetData2(43), 43); v.Check("Clone core SetData2", cc->SetData2(43), true);
         v.Trace("Clone SetData2 ownership", nativeTrace, ni, coreTrace, ci);
         ni = nativeTrace.size(); ci = coreTrace.size();
+        // [abi-ret] advisors.md 12.4: native slot 7 returns AL (bool).
         ++v.calls[7]; v.Check("Clone SetObject", nc->SetObject(&nb), cc->SetObject(&cb));
         v.Trace("Clone SetObject ownership", nativeTrace, ni, coreTrace, ci);
         v.State(nc, cc, &nb, &cb); v.State(n, c, &na, &ca);

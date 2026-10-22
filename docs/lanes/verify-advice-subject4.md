@@ -1,29 +1,26 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| verify-advice-subject4: independent native AdviceSubject verification | Codex / `verify-advice-subject4` (engine lane, detached HEAD) | in progress: round 2, private clone transport authorized | Implement actual Rust clone transport, focused ownership test, stable gate, immutable probe controls. |
+| verify-advice-subject4: independent native AdviceSubject verification | Codex / `verify-advice-subject4` (engine lane, detached HEAD) | in progress: transport and focused tests complete; full gate pending | Collect current CTest, then serialized corrected gate and immutable probe controls. |
 
 ## Handoff
-- Round 2 goal: implement actual production clone transport, then independent native subject measurement.
-- Prior report and prototype read; private export/local declarations authorized, ABI tables/version unchanged.
-- Done: private owned Obj::Subject clone transport invokes actual Rust clone_subject; production front rewired. Four private single-field setters preserve Rust returns and ownership effects (no aggregate-set replay).
-- Focused ownership/independence CAPI test added. Opt-in verifier wired; fullword native results logged and clone refusal counted separately.
-- Milestone 93ac8e92: production transport/front and initial focused test. Additional test checks null/wrong type, scalar no-reference effects, fullword fields, clone's one AddRef and replacement AddRef-before-Release.
-- Baseline tests completed, clippy compiling; serial gate helper will wait for baseline PID 29392, run quick then final all, freeze DLL only on success. Logs remain in build-runs; no concurrent builds.
-- Baseline cargo measured 5039 passed/0 failed/0 ignored across 21 result lines; this is NOT a full gate. Clippy still live. Stable focused/full gates pending.
-- Baseline clippy subsequently passed (`Finished dev` in 10m19s); CMake is compiling fc4-core release/i686. No DLL/gate claimed yet. Helper PID 22184 remains waiting and will run serially. Initial native AddRef/Release pair uses refaudit macros.
-- Baseline final: qbuild FAIL; Rust 5039/0/0, clippy PASS, CMake 54/170 edges FAIL (12 undefined FC4_LOG errors in resumed verifier), CTest skipped. Fixed all verifier calls to the actual fc4::Log API. Helper has advanced to quick; final all still follows only successful quick. Baseline is not discarded or called PASS.
-- Focused quick: PASS, 533 CAPI tests/0 failures/0 ignored; actual clone test passed on i686. Build 119/119 edges PASS (tree changed during quick due logger fix). Final source unchanged since 47063b57.
-- First stable all: Rust 5040/0/0 and clippy PASS; CMake verifier FAIL 1/4 edges, CTest skipped. Log contains only successful cached cargo and unchanged ABI generator, no compiler/ninja error. Preserve in build-runs/failed-all-r2; rebuild ONE generated simulator object, then retry full gate (no source changes, no ignored failure). No DLL frozen, no game requests.
-- Code tip 3a2bd237 (20f67574 substantive test/verifier; 93ac8e92 production transport). Helper session 67843; baseline session 79550. The already-running helper loaded its original code before snapshot support was added; do not assume baseline/quick archives exist.
-- Prepared (not queued): advice-r2-{control,probe,current40}.template, immutable DLL destination build-runs/immutable-subject-r2/FreeCity4.dll. Unique labels end 20261022a. Probe-OFF control must pass first; only then matched probe-ON, then literal CURRENT40.
-- Supported script now saves at 2031-12-01 with before/after marks. No supplied persisted reload fixture was found in permitted inputs; reload remains unmeasured. No game request outstanding.
-- Next: collect baseline all (session 79550, live qbuild PID 29392 at inspection), then quick/focused checks and ONE final stable all. No overlap.
-- fmt absolute paths required; check currently reports pre-existing formatting differences (advisors.rs weak handles and tests); no mass format performed.
-- Old log timestamps alone do not establish a live check or PASS; WMI process inspection denied.
-- No game request outstanding. No native measurements yet.
+- Goal: actual production Rust clone transport, then bounded independent native subject measurement.
+- 93ac8e92: private owned Obj::Subject clone calls actual clone_subject; C++ production front rewired, four single-field transports preserve Rust returns/ownership. Public ABI tables/version unchanged; five private exports added.
+- 20f67574/3a2bd237: focused test covers null/wrong type, distinct identity/equal fields, scalar no-ref effects, fullword fields, exactly one clone AddRef, replacement AddRef-before-Release, independent mutation/destruction and balanced final holds.
+- 47063b57: fixed resumed verifier's undefined FC4_LOG calls to actual fc4::Log. Opt-in default OFF; native fullwords logged, clone failures counted, serialization/AD11/AD16/owner promotion withheld.
+- Baseline all FAIL: cargo 5039/0/0, clippy PASS; CMake 54/170, 12 undefined logger errors; CTest skipped. Preserved as failure.
+- Quick PASS: i686 CAPI 533/0/0 including clone test; build 119/119. Tree changed due logger fix during quick; no complete stable gate claimed.
+- First stable all FAIL: cargo 5040/0/0, clippy PASS; cached Ninja progress 1/4 rejected, CTest skipped. Logs archived build-runs/failed-all-r2.
+- Retry all: cargo 5040/0/0, clippy PASS, build 4/4 PASS after rebuilding ONE generated simulator object. CTest still live (PID 27932, parent qbuild 36496, retry helper 37956, terminal session 40624).
+- CTest has already FAILED ret_channel_check: two native clone fixture bool uses lacked review markers. Published advisors 12.4 AL returns now annotated [abi-ret]; no signatures/ABI tables changed. Other tests still running (last 20/68).
+- Next: new retry helper waits for PID 37956, preserves this failed gate in failed-ret-r2, cleans only generated simulator object, runs corrected full all, freezes DLL ONLY on PASS. Do not launch overlaps.
+- No immutable DLL yet. Destination build-runs/immutable-subject-r2/FreeCity4.dll; helper prints gated source/hash. Native measured comparisons remain 0/unverified; no game requests outstanding.
+- Prepared advice-r2-{control,probe,current40}.template. Unique labels vas4-r2-{native-control,native-probe,current40}-20261022a remain UNSUBMITTED. Control OFF first must pass clean/2032/fullsave/shutdown/ref0; then same DLL/settings ON (only label/probe differ); then literal CURRENT40 (40 explicit + 2 defaults).
+- Script advice-subject-save.txt: 2031-12-01 mark/save, 2031-12-02 mark; supported published actions. No permitted supplied persisted reload fixture; reload unmeasured.
+- fmt checked absolute touched paths: remaining 206 diff lines are pre-existing formatting; no added-line diffs or mass format. WMI denied; inspect-checks.py reads process command-line metadata for genuinely live checks.
+- Prior report below is historical; its permanent AD18 refusal and missing-transport state are superseded. AD17/AD18 implementation follow-up appended, no new question IDs.
 - Manifest: `C:/Users/tlori/FreeCity4/build-runs/run4-verify-advice-subject4-r2-manifest.json`.
 
-## Report
+## Prior-round report (historical; superseded by Handoff)
 - Goal: compare independently created native AdviceSubject fixtures against actual production Rust methods, without advisor activation or replacement registration.
 - Done: reserved detached worktree reused; initial handoff a7479a5c. Baseline all invoked (cargo still compiling). Substantive opt-in verifier written before call 30.
 - Next: resolve AD18 before invoking any native comparison prototype. Then collect existing builds (do not launch another concurrent build), run a final stable all gate, and complete the required own opt-in and immutable clock24/current40 controls through 2032/ref0 with normal save/shutdown and supported reload.
