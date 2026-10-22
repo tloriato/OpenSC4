@@ -1,8 +1,80 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| verify-advice-subject4: independent native AdviceSubject verification | Codex / `verify-advice-subject4` (engine lane, detached HEAD) | in progress: full gate/OFF PASS; actual ON has 36/321 differences | Record final WIP; CURRENT40 withheld after failed native comparison. |
+| verify-advice-subject4: independent native AdviceSubject verification | Codex / `verify-advice-subject4` (engine lane, detached HEAD) | WIP: corrected full gate PASS; OFF lifecycle PASS; native ON FAIL (36/321 differences) | Coordinator reviews AD19-AD21 and retained evidence; CURRENT40 withheld; no further lane round reserved. |
 
-## Handoff
+## Final report (logical round 3/3)
+
+The native comparison is **not exact**. The actual supported public subject factory, QI and Clone succeeded; this is not the earlier AD18 transport refusal or a zero-comparison pass. The matched ON run performed 321 checks: 285 equal, 36 different. Every difference is filed under AD19-AD21. The ordinary same-name merge-queue entry is **WIP**, not ready. No fourth round, extra matrix, renamed lane, implementation reservation, or provider/default promotion is proposed.
+
+This final round changed only this report, two unique run records, and appended questions. Engine sources remain the previously committed production transport/verifier: private subject Clone calls actual Rust `AdviceSubject::clone_subject`, returning an owned `Obj::Subject`; the production C++ Clone uses that transport. Four private field transports preserve actual Rust setter results. Five additive C exports mean **ABI=true** for this lane. Public ABI tables/version, shared config/maps/defaults/providers and generated ABI entries were not edited. Source milestones are preserved below; final native evidence is in `ec2739af`, after gate/artifact reconciliation `4dce3ca6` and OFF record `4dfddefc`.
+
+### Gate, source and artifact
+
+- Corrected existing `qbuild all` PASS: Rust **5040 passed / 0 failed / 0 ignored**, summed over 21 result lines; clippy PASS; native build **4/4**; CTest **68/68**, total429.50s. Actual corrected return-channel104.62s and ABI-conformance137.26s are confirmed in raw logs. No new all was launched for documentation-only commits.
+- Gated source HEAD `b1463f3b4ba9af586cc4bbc28348b9f19097426a`; `HEAD:engine` equals `2993f562:engine`, tree **6a31aef7dd6bbcc2361c9ed2fdf96a15cc57a4c1**. Tracked engine was clean before/after artifact reconciliation and both runs. Subsequent own commits are documentation/questions only.
+- Actual process creation/parent/command metadata ruled out live attributable checker/compiler/output work before freezing symbols. All checker command lines were readable; the only lane-related processes were orchestration and this audit shell. No old terminal/session handle was treated as live. WMI denial and the successful metadata alternative are recorded below.
+- Exact outer gate start/terminal exit timestamp is unavailable; no invented exact time or retained exit line is claimed. Raw test log finished22:34:43.475464Z; link22:34:49.903834Z; CTest records22:35 to22:42Z with final log mtime22:42:11.021649Z. DLL creation22:42:12.556Z follows PASS and is reachable in the retained helper only after `qbuild all` returned0. Before/after committed source trees agree; helper/log hashes are below.
+- Immutable `build-runs/immutable-subject-r2/FreeCity4.dll`: **b3eb4974e01da2a7f47c67a95abf3ec31bd076b887f919b91ce324c5230e8a36**. Existing DLL never overwritten. Matching PDB copied once from `engine/build-x86/FreeCity4.pdb`: **e69e7331466b74dcfa42bc83b65ccd5fbac7558f27ffdca5b21d0424584cf1e7**. DLL RSDS GUID/age matches PDB stream1; both files rehashed unchanged after each game. No build or artifact replacement occurred while either request was queued/running.
+- Historical failures remain failures: undefined-logger compile failure; cached native1/4 rejection; actual CTest67/68 return-channel failure. The latter was two unchecked native SetLocation/SetObject AL calls, addressed by published `[abi-ret]` annotations in2993f562. This was not a flaky game, and the baseline is not described as green.
+
+### Actual unique game runs
+
+Both used the same immutable DLL/PDB, Konradshohe, turbo1, seconds900, hard timeout1050, end2032-01-01, refaudit1, popup_dialogs0, autotest_end quit and the unchanged full-save script. Only label and advice_subject_verify differed. Normalized settings SHA256 **357158bcb5a09cf7adfce5d8436782fa174231d61940d54c582bb8cd8df9b6e0**; script SHA256 **e1f13846cf9d890c763586104abee9439fad72ffca8676e483633d67bbefc0d7**. Both actual provider sets were **{simulator}**; budget was disabled and original. Explicit enable was empty. The log's generic validator warned unknown `advice_subject_verify` once per run; the321 actual ON comparisons establish that the verifier's direct opt-in read worked.
+
+| Unique label / run record | Actual result | Save and lifecycle |
+|---|---|---|
+| `vas4-r3-native-control-20261023a` / [255](../runs/vas4-r3-native-control-20261023a-255.md) | OFF: harness clean; subject lines0; queue7s/wall64s, real43.188s; reached2032-01-01, final2032-01-15 | Full SaveCity ok1,11016ms on2031-12-12; before/after marks and both shutdown hooks |
+| `vas4-r3-native-probe-20261023a` / [256](../runs/vas4-r3-native-probe-20261023a-256.md) | ON: harness clean but native comparison FAIL36/321; queue4s/wall62s, real42.500s; reached2032-01-01, final2032-01-14 | Full SaveCity ok1,11032ms on2031-12-06; before/after marks and both shutdown hooks |
+
+Both runs reported **foreign_exceptions=0, watchdog_stalls=0, rtc=0, overruns=0, ref_warnings=0**; Rust panics/structured exceptions/incomplete shadows0. Each actual end-date message, SaveCity result, after-save mark, PostAppShutdown and PostSystemServiceShutdown was read from its own raw log. Harness clean does not override native differences. Per-run request/log/verdict hashes are in the run records and reconciliation notes below. Results and original requests remain under own `build-runs/game-results` and `game-queue/done`.
+
+### Measured subject boundary
+
+Only raw independent test inputs and primitive city dimensions128x128 were shared. Native outputs never seeded core fields or answers. Native and Rust fixtures were distinct; native creation used typed public `GetClassObject(0x6A26D049,0x6A26D050)` with no alternate endpoint, advisor-system activation, registration or global substitution. Factory/QI/Clone actually succeeded. Refusals0, fallbacks0; the verifier reported undefined_returns0, while AD19/AD20 still leave return canonicality/default compatibility unresolved.
+
+The log measured **161 native calls/results across slots3-13**, independently of the historical prototype counts:
+
+| Slot / method | Native calls/results | Actual comparisons |
+|---|---:|---|
+| 3 SetLocation, AL | 6/6 | Five base plus one clone return logged33 versus Rust1 (AD19); finite locations agree |
+| 4 GetLocationX, x87 | 23/23 | Float bits agree, including0,40500000,43000000,41580000 |
+| 5 GetLocationZ, x87 | 22/22 | Float bits agree, including0,40F00000,43000000,418A0000 |
+| 6 HasLocation, AL | 22/22 | Defaultfalse and subsequenttrue agree |
+| 7 SetObject, AL | 8/8 | Returntrue agrees; event-vector differences remain AD21 |
+| 8 GetObjectA, pointer | 21/21 | Correct independent identity; borrowed ref-count checks8/8 per side unchanged |
+| 9 GetData1, fullword | 23/23 | Defaults, explicit fullwords, clone and original independence agree |
+| 10 SetData1, fullword | 6/6 | Native assigned word preserved; Rust returns true as deliberately specified |
+| 11 GetData2, fullword | 23/23 | Initial word differs (AD20); explicit assigned words/clone/original independence agree |
+| 12 SetData2, fullword | 6/6 | Native assigned word preserved; Rust returns true as deliberately specified |
+| 13 Clone, AL | 1/1 | Both succeed, distinct identities, initially equal assigned fields; actual production Rust clone used |
+
+Finite inputs covered interior3.25/7.5, negative bounds,128-cell upper clamps, mixed lower/upper bounds, zero, and independent clone13.5/17.25. Native EAX scalar results were never coerced to bool: both setters returned0,1,12345600,80000000,FFFFFFFF, plus clone42/43; Rust setters returned1. The native location result33 is the logged promotion of the typed AL return, not a full-EAX claim or a normalized true.
+
+| Raw difference group | Count | Question |
+|---|---:|---|
+| Base SetLocation return33 versus1 | 5 | AD19 |
+| Clone SetLocation return33 versus1 | 1 | AD19 |
+| Initial GetData2=00094ABE versus0 | 6 | AD20 |
+| Explicit default data2=00094ABE versus0 | 1 | AD20 |
+| SetObject transition-vector equalityfalse versustrue | 3 | AD21 |
+| Clone SetObject transition-vector equalityfalse versustrue | 1 | AD21 |
+| Cumulative object-event-vector equalityfalse versustrue | 19 | AD21 |
+
+These seven raw groups account for all36 differences. AD19-AD21 were appended without rewriting AD17/AD18 historical entries. The generated index still suggested AD17; existing AD17/18 were honored and19 was the next actual free subject ID. Index regeneration belongs to the coordinator; forbidden tools/shared indexes were not edited.
+
+### Ownership evidence and limits
+
+Two held fixture objects per implementation were distinct and survived diagnostic zero transitions so ordering failures could be recorded. Native/production ref counts matched in all23 comparisons, as did all23 zero-transition comparisons. Same-pointer transitions with only the subject's hold remained live. Clone identities were distinct, initially equal in fields, shared the corresponding held object with count rising2 to3, and later clone-only location/data/object changes left the originals' location/data/object unchanged. Borrowed GetObject calls did not change held counts. Clone scalar mutation vector comparisons agreed, as did their float/fullword values. Both created subjects were dropped; subject/clone final Release returned0; held objects ended at0 with each zero-transition count1, after all creator holds were released. Verifier and whole-run reference warnings were0.
+
+Complete event vectors were compared in memory across both held objects, but several failed and **the individual raw event arrays were not logged**. Consequently native exact clone AddRef event count and native replacement/same/null event order are not established merely by net count agreement; Rust's focused test verifies its exactly-one clone hold and AddRef-before-Release contract. AD21 records this evidentiary limit. No native ordering was inferred, no production reorder was made to fit results, and full ownership-trace compatibility remains unverified. This alone prevents promotion to READY.
+
+CURRENT40 remains **unsubmitted/unmeasured** because matched ON did not pass. Its old template is retained; no actual provider set or assumed42 additions are claimed. Existing vas4-r2 templates were never submitted and remain intact. There are exactly two unique actual run labels this round; lifecycle launches add no new algorithms or unique native fixture coverage beyond one subject/clone pair and two held objects per implementation. No request is outstanding.
+
+Serialization/typed stream/reference endpoints, nonfinite locations, failed-QI output semantics, AD11/AD16, advisor-family completeness and owner/default/replaced promotion remain withheld. Reload is explicitly unmeasured because no supplied documented persisted reload fixture exists. No executable/slot/Documents lookup or guessed reload action occurred. No normal-speed replay was justified: the measurements do not establish a turbo-only difference.
+
+Coordinator review of the three questions and this WIP is the remaining action; this final round makes no further implementation reservation. All historical failures and unsubmitted templates remain available. The final queue entry names the actual clean committed detached HEAD; shared refs/queue/main were not changed.
+
+## Gate/artifact reconciliation notes (chronological snapshots; final status above)
 - Final round 3/3: reconcile completed gate, then bounded independent native/production Rust subject measurement; no further family round or promotion.
 - Current source HEAD b1463f3b4ba9af586cc4bbc28348b9f19097426a; tracked engine clean. HEAD:engine = 2993f562:engine = 6a31aef7dd6bbcc2361c9ed2fdf96a15cc57a4c1. No engine changes this round.
 - Process audit 2026-10-22T23:07:45.820240Z: 112 checker/shell processes inspected by actual creation/parent/command metadata; no unreadable command lines. Only lane orchestration service and audit shell attributable to this lane; no live checker/compiler/output worker. WMI denied, NtQueryInformationProcess metadata succeeded. No old terminal/session handle used.
