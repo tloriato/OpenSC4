@@ -163,12 +163,7 @@ pub unsafe extern "C" fn fc4_renderprops_get(
 /// Owner live; same bit encoding as get. Bool accepts only 0/1; all other bits preserved.
 /// Invalid indices are rejected (adapter safety extension, not native behavior).
 #[no_mangle]
-pub unsafe extern "C" fn fc4_renderprops_set(
-    owner: *const fc4_renderprops,
-    kind: u32,
-    index: i32,
-    bits: u32,
-) -> i32 {
+pub unsafe extern "C" fn fc4_renderprops_set(owner: *const fc4_renderprops, kind: u32, index: i32, bits: u32) -> i32 {
     let Some(owner) = owner.as_ref() else {
         return 0;
     };

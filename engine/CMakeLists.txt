@@ -950,3 +950,8 @@ if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 4)
     target_compile_options(fc4_port_props_test PRIVATE /W3 /permissive- /utf-8 /EHsc)
     add_test(NAME port_props_test COMMAND fc4_port_props_test)
 endif()
+
+# glue-render-properties4: actual C++/Rust callback ABI, byte lengths and owner lifetime.
+add_executable(fc4_render_properties_abi_test tests/render_properties_abi_test.cpp)
+target_link_libraries(fc4_render_properties_abi_test PRIVATE fc4_capi)
+add_test(NAME render_properties_abi_test COMMAND fc4_render_properties_abi_test)
