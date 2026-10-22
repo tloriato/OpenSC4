@@ -3,6 +3,7 @@
 #pragma once
 
 #include "FC4Config.h"
+#include "FC4AdviceSubjectNative.h"
 #include "FC4Log.h"
 #include "FC4PropCityCommon.h"
 #include "FC4RefAudit.h"
@@ -17,23 +18,6 @@
 #include <vector>
 
 namespace fc4::subjectverify {
-
-// The SDK has bool data returns and omits Clone. This independent declaration
-// follows the published 14-slot table, including EAX integer return channels.
-class Native : public cIGZUnknown {
-public:
-    virtual bool SetLocation(float x, float z) = 0;
-    virtual float GetLocationX() = 0;
-    virtual float GetLocationZ() = 0;
-    virtual bool HasLocation() = 0;
-    virtual bool SetObject(cIGZUnknown* object) = 0;
-    virtual cIGZUnknown* GetObjectA() = 0;
-    virtual uint32_t GetData1() = 0;
-    virtual uint32_t SetData1(uint32_t value) = 0;
-    virtual uint32_t GetData2() = 0;
-    virtual uint32_t SetData2(uint32_t value) = 0;
-    virtual bool Clone(Native** out) = 0;
-};
 
 // A stack fixture keeps its storage even at zero so a bad release ordering is
 // recorded without causing use-after-free. The creator owns its initial ref.
@@ -108,7 +92,8 @@ struct Compare {
         ++calls[6]; Check("HasLocation", n->HasLocation(), c->HasLocation());
         ++calls[8];
         const uint32_t nr = no ? no->refs : 0, cr = co ? co->refs : 0;
-        Check("GetObjectA identity", n->GetObjectA() == no, c->GetObjectA() == co);
+        Check("GetObjectA native identity", n->GetObjectA() == no, true);
+        Check("GetObjectA core identity", c->GetObjectA() == co, true);
         if (no) Check("GetObjectA borrowed/native", no->refs, nr);
         if (co) Check("GetObjectA borrowed/core", co->refs, cr);
         ++calls[9]; Check("GetData1", n->GetData1(), c->GetData1());
@@ -186,6 +171,7 @@ inline void Run() {
     }
     FC4_LOG("advice-subject-verify: factory established class=%08X cells=%u,%u independent=1", clsid, h.x, h.z);
     v.State(n, c, nullptr, nullptr);
+    ++v.calls[6]; ++v.calls[4]; ++v.calls[5]; ++v.calls[9]; ++v.calls[11];
     v.Check("default HasLocation", n->HasLocation(), false);
     v.Check("default X", Compare::Bits(n->GetLocationX()), 0);
     v.Check("default Z", Compare::Bits(n->GetLocationZ()), 0);
@@ -233,11 +219,14 @@ inline void Run() {
         v.Check("Clone native distinct", nc != n, true);
         v.Check("Clone core distinct", cc != c, true);
         v.State(nc, cc, &na, &ca); v.Objects(na, ca);
+        v.Check("Clone native shares held object", na.refs, 3);
+        v.Check("Clone core shares held object", ca.refs, 3);
         ++v.calls[3]; v.Check("Clone SetLocation", nc->SetLocation(13.5f, 17.25f), cc->SetLocation(13.5f, 17.25f));
         ++v.calls[10]; v.Check("Clone SetData1", nc->SetData1(42), 42); v.Check("Clone core SetData1", cc->SetData1(42), true);
         ++v.calls[12]; v.Check("Clone SetData2", nc->SetData2(43), 43); v.Check("Clone core SetData2", cc->SetData2(43), true);
         ++v.calls[7]; v.Check("Clone SetObject", nc->SetObject(&nb), cc->SetObject(&cb));
         v.State(nc, cc, &nb, &cb); v.State(n, c, &na, &ca);
+        ++v.calls[9]; ++v.calls[11]; ++v.calls[4];
         v.Check("original data1 independent", n->GetData1(), 0xFFFFFFFFu);
         v.Check("original data2 independent", n->GetData2(), 0xFFFFFFFFu);
         v.Check("original X independent", Compare::Bits(n->GetLocationX()), 0);
@@ -257,5 +246,7 @@ inline void Run() {
         FC4_LOG("advice-subject-verify: slot=%u native_comparisons=%u", slot, v.calls[slot]);
     FC4_LOG("advice-subject-verify: checks=%u differences=%u created=%u dropped=%u ref_warnings=%ld serialization=withheld",
             v.checks, v.differences, h.created, h.dropped, RefWarningCount() - warnings);
+    FC4_LOG("advice-subject-verify: unsupported=serialization/no-independent-typed-stream; direct-Rust-clone_subject; "
+            "direct-Rust-setter-return-values; nonfinite-locations; failed-QI-output-semantics");
 }
 } // namespace fc4::subjectverify

@@ -22,6 +22,7 @@
 // order", and SDK order for the interfaces without overloads.
 
 #include "FC4Interfaces.h"
+#include "FC4AdviceSubjectNative.h"
 #include "game_abi.h"
 
 #include "cISC4DepartmentBudget.h"
@@ -46,6 +47,38 @@ struct Expect {
     bool floatResult;  // returns in ST0 (checked, then popped); otherwise nothing may be left on the x87 stack
     const char* name;
 };
+
+struct AdviceSubjectNativeProbe final : fc4::subjectverify::Native {
+    P(0, bool, QueryInterface, (uint32_t, void**), );
+    P(1, uint32_t, AddRef, (), );
+    P(2, uint32_t, Release, (), );
+    P(3, bool, SetLocation, (float, float), );
+    P(4, float, GetLocationX, (), );
+    P(5, float, GetLocationZ, (), );
+    P(6, bool, HasLocation, (), );
+    P(7, bool, SetObject, (cIGZUnknown*), );
+    P(8, cIGZUnknown*, GetObjectA, (), );
+    P(9, uint32_t, GetData1, (), );
+    uint32_t SetData1(uint32_t word) override { g_hit = 10; return word; }
+    P(11, uint32_t, GetData2, (), );
+    uint32_t SetData2(uint32_t word) override { g_hit = 12; return word; }
+    P(13, bool, Clone, (fc4::subjectverify::Native**), );
+};
+
+void AdviceSubjectIntegerTransport() {
+    AdviceSubjectNativeProbe probe;
+    for (int slot : {10, 12}) {
+        for (uint32_t word : {0u, 0x12345600u, 0x80000000u, 0xFFFFFFFFu}) {
+            g_hit = -1;
+            const auto result = fc4test::CallSlot(&probe, slot, {word});
+            if (g_hit != slot || result.eax != word || result.espDelta != 0 || result.x87Pushed != 0) {
+                std::fprintf(stderr, "AdviceSubject slot %d integer transport failed for %08X\n", slot, word);
+                ++g_failures;
+            }
+            for (int i = 0; i < result.x87Pushed; ++i) fc4test::PopX87();
+        }
+    }
+}
 
 template <size_t N>
 void Check(const char* iface, void* probe, const Expect (&table)[N]) {
@@ -727,6 +760,16 @@ int main() {
     Check("cISC4LineItem", static_cast<cISC4LineItem*>(&line), kLineItem);
     OccMgrProbe occMgr;
     Check("cISC4OccupantManager", static_cast<cFC4ISC4OccupantManager*>(&occMgr), kOccMgr);
+    AdviceSubjectNativeProbe subject;
+    const Expect subjectSlots[] = {
+        {0, 2, false, "QueryInterface"}, {1, 0, false, "AddRef"}, {2, 0, false, "Release"},
+        {3, 2, false, "SetLocation"}, {4, 0, true, "GetLocationX"}, {5, 0, true, "GetLocationZ"},
+        {6, 0, false, "HasLocation"}, {7, 1, false, "SetObject"}, {8, 0, false, "GetObjectA"},
+        {9, 0, false, "GetData1"}, {10, 1, false, "SetData1"}, {11, 0, false, "GetData2"},
+        {12, 1, false, "SetData2"}, {13, 1, false, "Clone"}
+    };
+    Check("cISC4AdviceSubject native", &subject, subjectSlots);
+    AdviceSubjectIntegerTransport();
     if (g_failures == 0) std::printf("vtable layout test: all checks passed\n");
     return g_failures == 0 ? 0 : 1;
 }
