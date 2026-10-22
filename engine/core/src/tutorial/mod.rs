@@ -160,10 +160,8 @@ pub trait TutorialHost {
     fn release(&self, token: u64);
 
     // ---- the window (§4.2, §4.4) ----
-    /// A new tutorial window (`cSC4TutorialUIWinProc`) with **one**
-    /// reference: the creation count of §4.2's "create one (100 bytes)".
-    /// `startTutorial` then takes a second one with
-    /// [`TutorialHost::add_ref`], so the system holds two (TU5).
+    /// A new tutorial window (`cSC4TutorialUIWinProc`) with count **zero**
+    /// (TU9). `startTutorial` takes both owner references explicitly.
     fn create_window(&self) -> u64;
     /// Initialises a new window.
     fn init_window(&self, window: u64);

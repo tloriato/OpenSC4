@@ -7,8 +7,9 @@
 //! The tutorial system component (§1–§4).
 
 use std::any::Any;
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 use std::rc::Rc;
+use std::sync::{Mutex, MutexGuard};
 
 use crate::stream::{InStream, OutStream, SaveObject};
 
@@ -31,13 +32,28 @@ pub fn query_interface(iid: u32) -> bool {
 /// The window teardown of `endTutorial` and `Shutdown` (§4.2, TU5): close
 /// it, release it, then clear +0x40 and release it again — the two
 /// references `startTutorial` took.
-fn drop_window(s: &RefCell<TutorialState>, host: &dyn TutorialHost) {
+fn drop_window(s: &StateLock, host: &dyn TutorialHost) {
     let Some(w) = s.borrow_mut().window.take() else {
         return;
     };
     host.close_window(w);
     host.release(w);
     host.release(w);
+}
+
+// Native window callbacks temporarily leave the plugin's CoreLock. Getters
+// can run on the game's other thread during that interval (lessons §5.1).
+// Never retain either guard across a host callback.
+struct StateLock(Mutex<TutorialState>);
+
+impl StateLock {
+    fn borrow(&self) -> MutexGuard<'_, TutorialState> {
+        self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn borrow_mut(&self) -> MutexGuard<'_, TutorialState> {
+        self.borrow()
+    }
 }
 
 /// Every field of §2.
@@ -62,7 +78,7 @@ pub struct TutorialState {
     pub start_tried: bool,
     /// +0x30: the shared Lua context (one reference held).
     pub lua_context: Option<u64>,
-    /// +0x40: the tutorial window (one reference held).
+    /// +0x40: the tutorial window (two owner references held).
     pub window: Option<u64>,
 }
 
@@ -88,7 +104,7 @@ impl Default for TutorialState {
 pub struct TutorialSystem {
     host: Rc<dyn TutorialHost>,
     token: Cell<u64>,
-    s: RefCell<TutorialState>,
+    s: StateLock,
 }
 
 impl TutorialSystem {
@@ -97,7 +113,7 @@ impl TutorialSystem {
         Rc::new(TutorialSystem {
             host,
             token: Cell::new(token),
-            s: RefCell::new(TutorialState::default()),
+            s: StateLock(Mutex::new(TutorialState::default())),
         })
     }
 
@@ -193,8 +209,11 @@ impl TutorialSystem {
         if self.s.borrow().window.is_none() {
             let w = self.host.create_window();
             self.host.add_ref(w);
-            self.host.init_window(w);
             self.s.borrow_mut().window = Some(w);
+            self.host.add_ref(w);
+            // TU9: Init reads the live owner through the game's singleton;
+            // publish the window and both references before it can reenter.
+            self.host.init_window(w);
         }
         let guid = {
             let mut s = self.s.borrow_mut();

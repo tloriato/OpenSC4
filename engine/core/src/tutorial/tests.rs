@@ -33,6 +33,7 @@ pub(crate) struct Game {
     pub click: Cell<bool>,
     pub reset_answer: Cell<i32>,
     pub registry_al: Cell<bool>,
+    pub reenter_init: RefCell<Option<std::rc::Weak<TutorialSystem>>>,
 }
 
 impl Game {
@@ -80,11 +81,16 @@ impl TutorialHost for Game {
     }
     fn create_window(&self) -> u64 {
         self.ev("create_window".into());
-        *self.refs.borrow_mut().entry(WINDOW).or_default() += 1; // the creation count
         WINDOW
     }
     fn init_window(&self, w: u64) {
         self.ev(format!("init_window {w:X}"));
+        if let Some(t) = self.reenter_init.borrow().as_ref().and_then(|t| t.upgrade()) {
+            assert_eq!(t.snapshot().window, Some(w));
+            assert_eq!(self.refs(w), 2);
+            t.increment_task_number();
+            assert_eq!(t.task_number(), 1);
+        }
     }
     fn close_window(&self, w: u64) {
         self.ev(format!("close_window {w:X}"));
@@ -146,6 +152,18 @@ fn record(t: &TutorialSystem) -> Vec<u8> {
 
 fn read(t: &TutorialSystem, bytes: &[u8]) -> bool {
     t.read(&mut ByteReader::new(bytes))
+}
+
+#[test]
+fn init_reentry_sees_owned_window_and_updates_step() {
+    let g = Game::new();
+    let t = system(&g);
+    *g.reenter_init.borrow_mut() = Some(Rc::downgrade(&t));
+    t.start_tutorial();
+    assert_eq!(t.task_number(), 1);
+    assert_eq!(g.refs(WINDOW), 2);
+    t.shutdown();
+    assert_eq!(g.refs(WINDOW), 0);
 }
 
 #[test]
