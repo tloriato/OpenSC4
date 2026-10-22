@@ -41,3 +41,23 @@
   [No `rng` enable key, invented registration, vtable/constructor hook, private-field patch or native-operation
   forwarding replacement is installed. Existing defaults, maps/tools and RNG-owning subsystem behavior stay
   unchanged; same-name simulation/renderer generators are outside this request.]
+
+<!-- from: verify-save-records-native4 (2026-10-22) -->
+- **SV2 - sections 2.1, 2.7 and 3.3-3.5; save-records sections 5 and 10, isolated native record verification:**
+  What published supported route acquires an independently owned `cISC4DBSegment` with its original
+  `cISC4COMSerializer`, opens an immutable copied city fixture read-only, and feeds independently supplied
+  raw record bytes and raw resource/class/object identifiers to the original SC4 record readers? The public
+  SDK declares `cISC4DBSegment::OpenIStream`/`CloseIStream`, `GetCOMSerializer` (opaque forward declaration)
+  and `cISC4DBSegmentIStream::Open`, but supplies no SC4 segment class factory ID or acquisition service,
+  no typed COM-serializer interface, and no complete isolated-instance lifecycle. Section 2.7 describes
+  the private constructor and serializer lifetime, not a supported construction/calling contract; the
+  reconciled vtable rows describe calls on an existing object, not how to obtain one. Please specify the
+  factory/service or fully typed supported-image endpoint, required initialization and read-only open
+  sequence, raw-byte/identifier injection, serializer registration/resolution prerequisites, ownership
+  and exact close/release order on success, missing record, bad version, corrupt length/checksum,
+  truncation and refused open. Include an owned output-record route if native roundtrip serialization
+  is supported, without writing the live city or immutable source fixture. Explicitly state if no such
+  route is supported. [Native verification blocked: do not guess private construction/storage, obtain
+  answers from a live city's serializer, equate a generic packed segment or DB-record file adapter with
+  the SC4 serializer or `cRZFile`, seed Rust from native parsed values, or count portable byte fixtures
+  as an original-native shadow. No native endpoint, fixture comparisons or game-control runs claimed.]
