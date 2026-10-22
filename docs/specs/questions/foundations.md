@@ -41,3 +41,18 @@
   [No `rng` enable key, invented registration, vtable/constructor hook, private-field patch or native-operation
   forwarding replacement is installed. Existing defaults, maps/tools and RNG-owning subsystem behavior stay
   unchanged; same-name simulation/renderer generators are outside this request.]
+
+<!-- from: verify-rng-native4 independent native verification (2026-10-22) -->
+- **RN6 - sections 6.1-6.3 and 18.3, independent read-only native draw capture:**
+  If the owned typed native construction/method/lifetime route requested in RN4 cannot be published,
+  can a supported read-only capture be published instead, with independently proven initial seed/state
+  inputs for each exact `cRZRandom` / `cRZRandomSuper` instance? It must identify the generator and its
+  lifetime, starting LCG/multiplicative state or all MT words/index, Gaussian cache state, actual clock
+  inputs for sentinel/zero fallback, ordered method arguments and draws (including intervening consumers),
+  and main-thread x87 precision at each float-sensitive operation. Inputs must be established independently
+  of captured outputs; no live reseeding, private constructor/vtable/layout, or inverse inference of a seed
+  from draws. Section 6.3's derived session seeds are FreeCity4 choices, not proof of native initial state;
+  section 6.2 says RNG state is not saved. Neither the opaque SDK advisor handle nor algorithm addresses
+  establish such a capture. [Blocked together with RN4: zero native comparisons; no native/shadow/default/
+  replacement credit. Preserve Gaussian retry/log compatibility choices and all future mismatches/refusals
+  separately; do not substitute a verifier algorithm or original draws for production-computed answers.]
