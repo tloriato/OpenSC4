@@ -15,6 +15,9 @@
 - No outstanding request; no new questions; no defaults/map/ABI version changes; no subagents/branch changes.
 - Manifest: `C:/Users/tlori/FreeCity4/build-runs/run4-glue-tutorial-complete4-r2-manifest.json`.
 - Earlier report below is supporting prior-round evidence, not shipped-fixture validation.
+- e920474c: native harness UI/init probes and binding teardown log; full gate PASS4240/clippy0/ctest67/67.
+- Ours persist1022c: automatic GetItem found1/active1; native construction before first query; NEXT task1; save ok1; binding restored1. Trace matches original. Run clean2032 but ref_warning1: correctly freed our constructed window, classified as borrowed in ReleaseCb. Fixed callback/destructor to RELEASE_CREATED (two existing acquired refs, no lifetime change); rerun required.
+- Captured active original and ours snapshots under main fixtures/glue-tutorial-complete4, hashes c8eb1347 and b343d366; source shipped hash preserved. Original reload/UI1022d outstanding.
 
 ## Report (2026-10-22, one guarded round)
 

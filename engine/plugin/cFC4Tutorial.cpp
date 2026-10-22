@@ -108,7 +108,10 @@ void AddRefCb(void* u, uint64_t token) {
 }
 void ReleaseCb(void* u, uint64_t token) {
     fc4::CoreLock::Unlocked unlocked(Self(u)->Lock());
-    if (cIGZUnknown* p = fc4::FromToken(token)) FC4_RELEASE(p);
+    // The tutorial host's release callback is used only by window teardown.
+    // TU9: we allocated/constructed this native window at refcount0, then took
+    // both owner references with AddRefCb. Its last release is ours to free.
+    if (cIGZUnknown* p = fc4::FromToken(token)) FC4_RELEASE_CREATED(p);
 }
 #include "cFC4TutorialNative.inl"
 // §4.2 (TU2, answered): endTutorial calls the 3D view, when present, slot 60
@@ -209,7 +212,7 @@ cFC4TutorialSystem::~cFC4TutorialSystem() {
     // TU4: no implicit Shutdown; drop one window reference and the retained
     // Lua context. Normal city teardown already called Shutdown.
     const auto state = State();
-    if (auto* window = fc4::FromToken(state.window)) FC4_RELEASE(window);
+    if (auto* window = fc4::FromToken(state.window)) FC4_RELEASE_CREATED(window);
     if (auto* lua = fc4::FromToken(state.lua_context)) FC4_RELEASE(lua);
     fc4_tutorial_destroy(core_);
     core_ = nullptr;
