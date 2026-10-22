@@ -16,3 +16,14 @@ Spec: [network-rules.md](network-rules.md) §14. RE-side follow-ups; nothing her
 - **NR7:** the constraint layout's codes 1–8 as `InsertIntersectionConstraints` (`0x00644710`) applies them: which
   vertex heights each code makes equal and which slope limits it sets (network-rules.md §10.3; network-geometry.md
   §9.4 step 4). [not specified]
+
+<!-- from: verify-netrules-native4 endpoint qualification, recovery round 2 (2026-10-22) -->
+- **NR16:** §2.4 explicitly provides no outside rule/solver entry point. Is there a publishable typed binding for
+  an independently owned original `cSC4TileRule` / `cSC4TileEvaluator` and local solve fixture, including its
+  construction, rule/resource loading, input/output cell ownership, primitive foreign-service dependencies,
+  allocator/destructor pairing and cleanup on failure? Object sizes and method addresses alone do not provide
+  that lifecycle contract, and no corresponding binding was found in `docs/abi/` or the public SDK. A global
+  network manager, path/constraint provider or live tool is not an independently owned rule/solver endpoint.
+  [qualification parked under §2.4; no guessed layouts/constructors, global-owner promotion, live mutation,
+  verifier clone or original-output seeding; NR6/NR7 and Pipe/Subway/platform exclusions remain in force;
+  transport 27/27 does not constitute a solver comparison]
