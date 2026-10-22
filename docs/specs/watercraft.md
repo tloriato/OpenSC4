@@ -95,10 +95,35 @@ not traced *[summary]*.
 
 `Init` (`0x0056DE40`), once: the automaton's `Init`, the drive parameters, and six effects from the city's effect
 manager, in this order: `SMLmushroomcloud`, `boat_grounding`, `boat_splash`, `tugropethrow`, `tugropeconnection`,
-`waterski` (`+0xDB0`–`+0xDC4`). It sets four flags, among them `0x2000`, `0x20000` and 4, registers the boat for
+`waterski` (`+0xDB0`–`+0xDC4`). It sets four flags, `0x8000`, `0x2000`, `0x20000` and 4, registers the boat for
 message `0xAC400A31` (§7), clears the tow, the stations, the travel points and the timers, copies the position and the
 orientation into the current and previous position and heading (normalising the headings), and enables the active
 sound (slot 77, `EnableActiveSound(true)`).
+
+The initialized test is slot 5 on the interface at `this+4`. If already initialized, return true without any
+owner work. Otherwise the base Init (`0x005101D0`) return is **not tested**; continue with parameter loading.
+Each of the six existing effect pointers is cleared and Released before its replacement is requested through
+effect-manager slot 7, with name and output-pointer arguments. No creation return is tested, no rollback occurs,
+and the method returns true even if an output remains null. This is not a promise that later effect users accept
+every null pointer. Evidence: `0x0056DE49–0x0056DE69`, `0x0056DEFE–0x0056E02D`, return `0x0056E330`.
+
+All four flag writes pass true, in the order above (`0x0056E02D–0x0056E062`). Clearing timers includes **both**
+lifetime limit and elapsed (`+0x2B4/+0x2B8`), still/backwards time, crash time and `+0x2C4`; idle budget is cleared
+later, after copying/normalizing the headings. Init clears `+0x2CC` as well as being-towed, collision-sunk,
+docking/queue, neighbour-route and tow-armed bytes. Thus restoring a lifetime limit before Init does not preserve
+it. Native stores: `0x0056E0F3–0x0056E177`, `0x0056E2CC`.
+
+### 3.1 Serialization boundary and query interface
+
+`Write(stream)` writes the owner version word 2 through stream slot 7, then calls base Write `0x0050AC00` with
+the same stream, returning its result. It neither tests the version-write return nor appends boat fields.
+`Read(stream)` reads one word through stream slot 7; only exactly 2 calls base Read `0x0050DFD0`. Every other word
+returns false immediately, without a base read. The stream-read return is not separately tested. Short-read
+behavior therefore belongs to the stream contract; no successful default version is synthesized here.
+Evidence: `0x00566EEA–0x00566EFD`, `0x00566F0A–0x00566F2F` (word comparison at `0x00566F14`).
+
+`QueryInterface(iid,out)` (`0x00566F30`) recognizes `0x096E75F5`, returns the complete-object pointer, AddRefs it,
+and returns true; other IDs delegate to base QueryInterface. It does not validate a null output pointer.
 
 `Shutdown` (`0x0056D0E0`), once: a towed boat is sent to `SLOW_REMOVE` (73) and released; the tug is released; a
 dock request at A or B gives back its waiting spot and berth (`cSC4WatercraftManager::DoneDocking`); the message
@@ -269,6 +294,69 @@ The group must have an AEMS sound set (group `+0x64`, or its parent's); otherwis
   tow (`+0x2D8`) and plays `tugropethrow` at the boat; one that tows ends the tow.
 - The speed tween is reset when |speed| changes; then the automaton's own command translation.
 
+#### 6.2.1 Input magnitude to target speed (`0x00567080`)
+
+This address is an unnamed native helper, **not** a linear throttle multiplier. It takes the drive state's signed
+command at `+0x28` by pointer and returns an x87 floating-point value; it does not change the command. For finite
+inputs and ordinary tuning (`p30<0<p31`, `p6<0<p7`), define the binary32 constants `c=0.9100000262260437`
+(`0x00B0A14C`) and `h=1.5707963705062866` (`0x00A9DA50`). The cached constants are binary32 stores:
+`n=round32(-c*0.5)`, `T=round32(tan(c*h))`, `A=round32(atan(n*h))`.
+
+1. Clamp the command to `[p30,p31]`, yielding `u`.
+2. For `u>0`, compute `q=(u*c)/p31`; otherwise `q=(u*n)/p30`.
+3. Multiply `q` by `h`; forward gear (2) uses `tan(q*h)`, all other gears use `atan(q*h)`, yielding `r`.
+4. For `r>0`, compute `(r*p7)/T`; otherwise `(r*p6)/A`. Clamp that result to `[p6,p7]` and return it.
+
+Products and divisions follow the displayed order on the x87 stack; only the caches and actual float stores force
+binary32 rounding. Do not replace these constants with mathematical π/2 or rearrange the scale divisions.
+Native evidence: cache construction `0x0056708A–0x005670EA`; command clamp/normalization
+`0x005670EE–0x0056714C`; tangent/arctangent and speed clamp `0x0056714C–0x005671C8`.
+Zero denominators, nonfinite tuning and transcendental bit-for-bit emulation remain outside the finite-input
+contract; this helper contains no explicit protection for them.
+
+The outer translator selects gear **before** calling this helper: forward input `>=p33` wins over reverse input;
+otherwise reverse input `>=p32` becomes the negative command; otherwise gear and command become zero. An exactly
+zero command skips speed adjustment in this method. Consequently the default forward threshold 0 permits forward
+gear with zero command. The no-input `-1` sentinels are used by the separate drive tick, not as a magic range check
+inside this magnitude helper (`0x0056E679–0x0056E6B1`).
+
+With an opposite-sign target and nonzero current speed, braking approaches that **target**, using
+`b=round32(round32(dt*p10)*p0)`. A positive speed becomes `max(target,speed-b)`; a negative speed becomes
+`min(target,speed+b)`. The opposite input channel is reset to its threshold, and execution skips the normal
+acceleration branch. There is no split of the tick at zero and no separate remaining-dt acceleration; a single
+braking step can cross zero. Positive-speed branch: `0x0056E749–0x0056E785`; negative-speed branch:
+`0x0056E78A–0x0056E7BE`. For example, speed `0.002`, target `-0.02`, `dt=100`, `p10=0.001`, `p0=0.1`
+produces approximately `-0.008`, rather than stopping at zero.
+
+#### 6.2.2 Straight movement and publication (`0x0056C430`, `0x00568230`)
+
+`Movement_PositionNew` takes a **pointer to float dt**; unnamed helper `0x00568230` takes dt by value, a transform
+output and a position output. The outer method gets the existing transform through slot 12, copies current
+position into a candidate, clamps Turn to `[p8,p9]` and Speed to `[p6,p7]`, and writes both clamped values back.
+For finite inputs, Turn zero and Speed nonzero select this complete straight-translation path:
+
+- Normalize the horizontal vector: `L=sqrt(heading.x²+heading.z²)`, direction
+  `(heading.x/L,0,heading.z/L)`. The heading's y component does not enter this norm.
+- Compute distance in the order `(p4*Speed)*dt` on the x87 stack. Multiply each direction component by that
+  distance and store each displacement as binary32, then add to current position and store the candidate.
+- Write the candidate into the transform's translation; set its translation-dirty bit and increment its
+  generation byte. This helper performs no terrain/water-height query and does not rewrite heading.
+
+Evidence: complete helper `0x00568230–0x005682E8`, norm through `0x00568269`, distance through `0x0056827B`,
+displacement stores through `0x00568296`, position stores through `0x005682C5`. Thus p4 (default 0.2) scales
+translation. Zero horizontal heading length has no fallback; do not invent zero-displacement success.
+
+The outer method copies old current position to previous position, then candidate to current position. If either
+clamped Speed or Turn is nonzero it calls orientation/height helper `0x00569E70`. Then, in order: slot 75 with the
+transform; copy current position/heading into base fields `+0x40/+0x58`; slot 100 `(true,true)`; slot 104; slot 107.
+Even zero-Speed, zero-Turn performs this publication, but skips `0x00569E70`; it also queries slot 57 with state 16
+and ignores that result. Evidence: `0x0056C4C4–0x0056C5D6`, `0x0056C74A–0x0056C84A`.
+
+This covers straight translation and outer publication; the orientation/height and turning helper internals
+remain open. Independent vector before the height helper: heading `(3,4,0)`, position `(10,20,30)`, Speed 0.25,
+p4 0.2, dt 100 gives approximately `(15,20,30)`. Heading `(0,5,4)` gives approximately `(10,20,35)`. Zero dt leaves
+the candidate unchanged but still publishes and calls the height helper when Speed is nonzero.
+
 ### 6.3 Towing
 
 A tug's armed tow is used by message `0xAC400A31` (§7). A towed boat (state 77, `DoFollowingTick`, `0x005694B0`)
@@ -300,9 +388,22 @@ speed, cell, current position and current heading.
 
 ## 10. Open questions
 
-See [questions/watercraft.md](questions/watercraft.md) (WC1–WC2).
+See [questions/watercraft.md](questions/watercraft.md). WC3–WC7 include residuals beyond the traced paths below;
+neither a method inventory nor one complete arithmetic subpath establishes whole-owner coverage.
 
 ## 11. Conformance tests
+
+Additional independent vectors for the traced lifecycle/input paths:
+
+- Already-initialized Init: no parameter load, effect request, flag write or timer clear; return true.
+- Base Init false plus one failed effect request: still issue all six requests in order and all four flag writes;
+  return true. No synthetic release of a never-acquired effect and no rollback.
+- Pre-Init lifetime `(limit,elapsed)=(1234,567)`: both become zero. Versions 1, 3 and 65535 consume just the owner
+  word and reject; version 2 alone reaches base Read, whose false return must propagate.
+- Magnitude helper, defaults: neutral zero command returns zero; forward command 3000 reaches `p7`; reverse command
+  −2000 reaches `p6`, within float/transcendental tolerance. Half inputs are **not** half the speed: forward 1500 is
+  approximately 0.03705 and reverse −1000 approximately −0.05531. Evaluate from the formula and constants, not from
+  the implementation under test. Crossing-zero braking uses the worked example in §6.2.1.
 
 1. A boat group without drive parameters gets entry 21 = 8000 and entry 36 = 300; one that gives entry 9 = 3 and
    entry 8 = 0 gets entry 8 = −3.
