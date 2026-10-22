@@ -84,10 +84,10 @@ struct Compare {
     uint32_t checks = 0, differences = 0, refusals = 0;
     void Check(const char* what, uint32_t a, uint32_t b) {
         ++checks;
-        FC4_LOG("advice-subject-verify: result %s native_or_actual=%08X core_or_expected=%08X", what, a, b);
+        Log("advice-subject-verify: result %s native_or_actual=%08X core_or_expected=%08X", what, a, b);
         if (a == b) return;
         ++differences;
-        FC4_LOG("advice-subject-verify: DIFF %s native=%08X core=%08X", what, a, b);
+        Log("advice-subject-verify: DIFF %s native=%08X core=%08X", what, a, b);
     }
     static uint32_t Bits(float value) {
         uint32_t bits; std::memcpy(&bits, &value, sizeof(bits)); return bits;
@@ -135,7 +135,7 @@ inline void CompareProductionFronts() {
     // do not probe private constructors or another factory on refusal.
     if (!GZCOM() || !GZCOM()->GetClassObject(kFC4_CLSID_cSC4AdviceSubject,
             kFC4_IID_cISC4AdviceSubject, reinterpret_cast<void**>(&n)) || n == nullptr) {
-        FC4_LOG("advice-subject-verify: REFUSED factory CLSID=6A26D049 IID=6A26D050; native_calls=0 differences=0 refusals=1 undefined_returns=0 unverified=1");
+        Log("advice-subject-verify: REFUSED factory CLSID=6A26D049 IID=6A26D050; native_calls=0 differences=0 refusals=1 undefined_returns=0 unverified=1");
         return; // Do not infer failure-output ownership or try another endpoint.
     }
     FC4_ACQUIRED(n, "AdviceSubject CreateInstance independent fixture");
@@ -146,7 +146,7 @@ inline void CompareProductionFronts() {
     v.Check("QI Serializable", serialOK && serialOut != nullptr, true);
     if (!serialOK || serialOut == nullptr) {
         FC4_RELEASE_CREATED(n);
-        FC4_LOG("advice-subject-verify: REFUSED required Serializable ownership/identity");
+        Log("advice-subject-verify: REFUSED required Serializable ownership/identity");
         return;
     }
     auto* serial = static_cast<cIGZSerializable*>(serialOut);
@@ -156,7 +156,7 @@ inline void CompareProductionFronts() {
     FC4_RELEASE(serial);
     if (clsid != kFC4_CLSID_cSC4AdviceSubject) {
         FC4_RELEASE_CREATED(n);
-        FC4_LOG("advice-subject-verify: REFUSED native class identity");
+        Log("advice-subject-verify: REFUSED native class identity");
         return;
     }
     for (uint32_t iid : {1u, kFC4_IID_cISC4AdviceSubject}) {
@@ -165,7 +165,7 @@ inline void CompareProductionFronts() {
         v.Check("QI supported", ok && out != nullptr, true);
         if (!ok || out == nullptr) {
             FC4_RELEASE_CREATED(n);
-            FC4_LOG("advice-subject-verify: REFUSED required QI IID=%08X refusals=1 unverified=1", iid);
+            Log("advice-subject-verify: REFUSED required QI IID=%08X refusals=1 unverified=1", iid);
             return;
         }
         if (ok && out != nullptr) {
@@ -184,10 +184,10 @@ inline void CompareProductionFronts() {
     if (c == nullptr) {
         FC4_RELEASE_CREATED(n);
         if (h.core) fc4_advisors_destroy(h.core);
-        FC4_LOG("advice-subject-verify: REFUSED core fixture");
+        Log("advice-subject-verify: REFUSED core fixture");
         return;
     }
-    FC4_LOG("advice-subject-verify: factory established class=%08X cells=%u,%u independent=1", clsid, h.x, h.z);
+    Log("advice-subject-verify: factory established class=%08X cells=%u,%u independent=1", clsid, h.x, h.z);
     v.Check("initial AddRef count", FC4_ADDREF(n), c->AddRef());
     v.Check("initial Release count", FC4_RELEASE(n), c->Release());
     for (uint32_t iid : {1u, kFC4_IID_cISC4AdviceSubject, GZIID_cIGZSerializable}) {
@@ -251,7 +251,7 @@ inline void CompareProductionFronts() {
     v.Check("Clone core success", cr && cc != nullptr, true);
     if (!nr || nc == nullptr || !cr || cc == nullptr) {
         ++v.refusals;
-        FC4_LOG("advice-subject-verify: REFUSED Clone native_ok=%u native_out=%p core_ok=%u core_out=%p",
+        Log("advice-subject-verify: REFUSED Clone native_ok=%u native_out=%p core_ok=%u core_out=%p",
                 nr, static_cast<void*>(nc), cr, static_cast<void*>(cc));
     }
     if (nr && nc != nullptr) FC4_ACQUIRED(nc, "AdviceSubject Clone independent fixture");
@@ -296,10 +296,10 @@ inline void CompareProductionFronts() {
     v.Check("core subject cleanup", h.created, h.dropped);
     v.Check("ref warnings", static_cast<uint32_t>(RefWarningCount() - warnings), 0);
     for (unsigned slot = 3; slot != 14; ++slot)
-        FC4_LOG("advice-subject-verify: slot=%u native_calls=%u native_results=%u", slot, v.calls[slot], v.calls[slot]);
-    FC4_LOG("advice-subject-verify: checks=%u differences=%u refusals=%u undefined_returns=0 created=%u dropped=%u ref_warnings=%ld serialization=withheld",
+        Log("advice-subject-verify: slot=%u native_calls=%u native_results=%u", slot, v.calls[slot], v.calls[slot]);
+    Log("advice-subject-verify: checks=%u differences=%u refusals=%u undefined_returns=0 created=%u dropped=%u ref_warnings=%ld serialization=withheld",
             v.checks, v.differences, v.refusals, h.created, h.dropped, RefWarningCount() - warnings);
-    FC4_LOG("advice-subject-verify: unsupported=serialization/no-independent-typed-stream; "
+    Log("advice-subject-verify: unsupported=serialization/no-independent-typed-stream; "
             "nonfinite-locations; failed-QI-output-semantics; advisor-owner/default/replacement-promotion; AD11; AD16");
 }
 
