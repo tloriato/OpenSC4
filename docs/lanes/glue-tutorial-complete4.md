@@ -10,7 +10,8 @@
 - Done a504c48a: TU9 constructor ref0, two owner refs, synchronized state, publish before Init and reentry test.
 - Done (next commit): version-gated TU6/TU9 native boundaries; singleton binding/conditional restoration; unlock native calls; native window slots; TU7 cheat/TU8 filter; CAPI save-preparation export (ABI=true); start/cheat harness actions.
 - Done 80570fae: native boundaries and harness actions committed. Quick retry built successfully; Rust fmt check passed all six touched files. Initial fake-ref/include failures fixed.
-- Next: stable full gate, real-game original/ours constructed probe, genuine tutorial fixture/reopen, and candidate regression. Gate must complete before any source edits.
+- Full gate bcea299b: 4240 Rust tests, clippy0, CMake PASS; ctest66/67, only ret_channel_check missing two harness annotations. Added contract-citing AL annotations; rerun all next, then game.
+- Next: stable full gate, original/ours constructed probe, genuine tutorial fixture/reopen, candidate regression. No game request outstanding.
 - Fixture unresolved: queue documents only FC4 Test region; native tutorial-city reopen requires a persisted shipped tutorial fixture, not constructed-only ordinary-city actions.
 - Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-glue-tutorial-complete4-r1-manifest.json.
 - No game request outstanding. No subagents. One round only.

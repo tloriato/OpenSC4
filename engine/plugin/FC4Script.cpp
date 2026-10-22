@@ -328,6 +328,7 @@ void TutorialStep(void* p) {
     const harness::ScriptAction& a = *c.a;
     c.ret = -1;  // no return value (query, task, next)
     switch (a.kind) {
+        // [abi-ret] AL: registry SetActive changed-state result (tutorial.md §4.2.1, TU6).
         case harness::kTutorialStart: c.ret = c.t->startTutorial() ? 1 : 0; break;
         case harness::kTutorialCheat: {
             cIGZMessageTarget* handler = nullptr;
@@ -337,6 +338,7 @@ void TutorialStep(void* p) {
                 cGZMessage msg(0x230E27AC);
                 msg.dwData1 = 0x6A382BAF;
                 msg.dwData2 = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(static_cast<cIGZString*>(&line)));
+                // [abi-ret] AL true on every exit of this cheat handler (tutorial.md §4.3.1, TU7).
                 c.ret = handler->DoMessage(msg) ? 1 : 0;
                 FC4_RELEASE(handler);
             }
