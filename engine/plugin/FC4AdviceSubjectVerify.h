@@ -23,6 +23,7 @@ namespace fc4::subjectverify {
 // recorded without causing use-after-free. The creator owns its initial ref.
 class Object final : public cIGZUnknown {
 public:
+    Object(std::vector<int>& trace, int id) : trace_(trace), id_(id) {}
     uint32_t refs = 1, zero = 0;
     std::vector<int> events;
     bool QueryInterface(uint32_t iid, void** out) override {
@@ -31,13 +32,17 @@ public:
         AddRef();
         return true;
     }
-    uint32_t AddRef() override { events.push_back(1); return ++refs; }
+    uint32_t AddRef() override { events.push_back(1); trace_.push_back(id_); return ++refs; }
     uint32_t Release() override {
         events.push_back(-1);
+        trace_.push_back(-id_);
         if (refs == 0) { ++zero; return 0; }
         if (--refs == 0) ++zero;
         return refs;
     }
+private:
+    std::vector<int>& trace_;
+    int id_;
 };
 
 struct Host {
@@ -103,6 +108,11 @@ struct Compare {
         Check("object refs", n.refs, c.refs);
         Check("object zero transitions", n.zero, c.zero);
         Check("object AddRef/Release order", n.events == c.events, true);
+    }
+    void Trace(const char* what, const std::vector<int>& n, size_t ni,
+               const std::vector<int>& c, size_t ci) {
+        Check(what, std::vector<int>(n.begin() + ni, n.end()) ==
+                    std::vector<int>(c.begin() + ci, c.end()), true);
     }
 };
 
@@ -193,9 +203,12 @@ inline void Run() {
         v.Check("SetData2 replacement true", c->SetData2(word), true);
         v.State(n, c, nullptr, nullptr);
     }
-    Object na, nb, ca, cb;
+    std::vector<int> nativeTrace, coreTrace;
+    Object na(nativeTrace, 1), nb(nativeTrace, 2), ca(coreTrace, 1), cb(coreTrace, 2);
     auto setObject = [&](Object* no, Object* co) {
+        const size_t ni = nativeTrace.size(), ci = coreTrace.size();
         ++v.calls[7]; v.Check("SetObject return", n->SetObject(no), c->SetObject(co));
+        v.Trace("SetObject cross-object ownership order", nativeTrace, ni, coreTrace, ci);
         v.State(n, c, no, co); v.Objects(na, ca); v.Objects(nb, cb);
     };
     setObject(nullptr, nullptr);
@@ -225,10 +238,18 @@ inline void Run() {
         v.State(nc, cc, &na, &ca); v.Objects(na, ca);
         v.Check("Clone native shares held object", na.refs, 3);
         v.Check("Clone core shares held object", ca.refs, 3);
+        size_t ni = nativeTrace.size(), ci = coreTrace.size();
         ++v.calls[3]; v.Check("Clone SetLocation", nc->SetLocation(13.5f, 17.25f), cc->SetLocation(13.5f, 17.25f));
+        v.Trace("Clone SetLocation ownership", nativeTrace, ni, coreTrace, ci);
+        ni = nativeTrace.size(); ci = coreTrace.size();
         ++v.calls[10]; v.Check("Clone SetData1", nc->SetData1(42), 42); v.Check("Clone core SetData1", cc->SetData1(42), true);
+        v.Trace("Clone SetData1 ownership", nativeTrace, ni, coreTrace, ci);
+        ni = nativeTrace.size(); ci = coreTrace.size();
         ++v.calls[12]; v.Check("Clone SetData2", nc->SetData2(43), 43); v.Check("Clone core SetData2", cc->SetData2(43), true);
+        v.Trace("Clone SetData2 ownership", nativeTrace, ni, coreTrace, ci);
+        ni = nativeTrace.size(); ci = coreTrace.size();
         ++v.calls[7]; v.Check("Clone SetObject", nc->SetObject(&nb), cc->SetObject(&cb));
+        v.Trace("Clone SetObject ownership", nativeTrace, ni, coreTrace, ci);
         v.State(nc, cc, &nb, &cb); v.State(n, c, &na, &ca);
         ++v.calls[9]; ++v.calls[11]; ++v.calls[4];
         v.Check("original data1 independent", n->GetData1(), 0xFFFFFFFFu);
