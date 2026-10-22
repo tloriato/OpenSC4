@@ -269,7 +269,7 @@ generated index: the questions live one file per spec, so read only the file for
 | renderer-gdrivers-director-inventory | 2 | 0 | GI3 | questions/renderer-gdrivers-director-inventory.md |
 | residential | 0 | 17 | RS18 | - |
 | residential-education-health | 0 | 46 | AQ12, EH15, RG29 | - |
-| simgrid | 1 | 0 | SG2 | questions/simgrid.md |
+| simgrid | 2 | 0 | SG3 | questions/simgrid.md |
 | snapshots | 2 | 0 | SN3 | questions/snapshots.md |
 | span-render-1555 | 2 | 5 | SR1556 | questions/span-render-1555.md |
 | span-render-4444 | 3 | 4 | SP8 | questions/span-render-4444.md |
@@ -300,4 +300,4 @@ generated index: the questions live one file per spec, so read only the file for
 | win-grid | 2 | 2 | WG5 | questions/win-grid.md |
 | zone-tool | 1 | 0 | ZT2 | questions/zone-tool.md |
 | zones | 2 | 56 | ZG43, ZQ17 | questions/zones.md |
-| **total** | **388** | **1225** | | |
+| **total** | **389** | **1225** | | |
