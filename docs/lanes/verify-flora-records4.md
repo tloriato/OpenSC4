@@ -13,6 +13,9 @@
 - Formatting corrected in touched C ABI file; fmt requires absolute paths (relative engine/... paths fail).
 - Done: 31a7a71b formatting milestone; corrected signature width to repo rustfmt configuration afterward.
 - Final gate runner build-runs/final-gate-flora-r3.py checks fmt then runs all once and freezes passing DLL; JSON completion evidence in flora-r3-final-gate.json.
+- Done: 29f66555 final source; fmt absolute paths passed, exit0/files2. Final all running, blocked on build-directory lock behind baseline/quick; do not relaunch it.
+- Note: flora-r3-final-gate.json contains old {fmt:1} until the current runner finishes; require its all key before accepting completion.
+- Probe accounting algorithms means runtime production Rust query comparisons, not distinct algorithm implementations (10 query selectors).
 - Next: focused quick/fmt, review measured differences, stable final all then immutable-DLL game controls.
 - FQ18 added for failed-QI output/null-address policy and multi-bit flag semantics; no guessed equivalence.
 - Need final stable all, immutable DLL, unique coordinator guarded2032/save/reload/probe-off runs.
