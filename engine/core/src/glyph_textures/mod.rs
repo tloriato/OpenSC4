@@ -934,10 +934,12 @@ impl<P: TextureServices> GlyphTextureManager<P> {
         if message == RESTORE_TEXTURES && !self.deleted {
             self.clear_cache();
             if self.services.binding_factory_exists() {
-                for (_, id) in &self.glyph_map {
+                for (key, id) in &self.glyph_map {
                     let info = self.glyphs.get_mut(id).expect("live glyph map reference");
                     drop(info.binding.take()); // Must precede lookup and re-render.
-                    let font = self.services.lookup_font(info.key.font_id);
+                                               // Font identity belongs to the map key, not glyph-info's
+                                               // stored character/size/UV payload (§§1.1, 2).
+                    let font = self.services.lookup_font(key.font_id);
                     // The renderer gets the actual cleared slot, regardless of
                     // lookup/success. Ignore metric outputs and success status.
                     self.services.render_text(

@@ -817,3 +817,21 @@ fn metric_truncation_observes_x87_subtraction_rounding_not_f64_or_exact_real() {
     // The rounded f64 sum may be just outside the valid signed conversion range.
     assert_eq!(narrow_metric(2_147_483_648.0, 0.0000001), 65535);
 }
+
+#[test]
+fn restore_uses_each_map_keys_font_identity_for_its_stored_pointer() {
+    let mut m = manager();
+    let g = m.get_glyph_texture(key(b"A", 7)).unwrap();
+    // Private insertion copies the pointer without changing its payload or
+    // acquiring it. Supply the separate map reference exactly as the public
+    // caller does, so two nodes may safely refer to the same glyph object.
+    assert_eq!(m.insert_unique(key(b"A", 8), g), (g, 1));
+    m.add_ref_glyph(g);
+    let metadata = m.glyph(g).unwrap().uv();
+    m.services.log.lock().unwrap().clear();
+    m.do_message(RESTORE_TEXTURES);
+    let lookups: Vec<_> = log(&m).into_iter().filter(|s| s.starts_with("font-lookup:")).collect();
+    assert_eq!(lookups, ["font-lookup:7", "font-lookup:8"]);
+    assert_eq!(m.glyph(g).unwrap().uv(), metadata);
+    assert_eq!(m.glyph(g).unwrap().binding().unwrap().first_texture(), 3);
+}
