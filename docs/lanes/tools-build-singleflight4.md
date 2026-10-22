@@ -9,6 +9,9 @@
 - Inspected helper: direct Popen.communicate drains no DEVNULL descendants; Listener.accept authenticates without deadline; venv peer differs from Popen PID.
 - Implemented suspended-launch Windows Job containment, job publication/recovery, strict venv redirector authorization and bounded authenticated accept/close; validation ongoing.
 - Venv original intended/copied/inherited/stale/forged token regression passed 1 test (2.034 s), log r2-venv-delegation-01.log.
+- Repair plus original ownership/gate tests passed 54 tests in 84.377 s (r2-ownership-focused-03.log); run records dirty source and exact helper hash, not final-source validation.
+- Crash tests now close observer Job handles before crashing: missing kernel evidence is uncertainty, not drainage. Explicit fixture recovery waits retained process handles then archives metadata; never unlinks lock inode.
+- Linux subreaper fallback retained (not executed here); final Windows handshake/creation-time refinements need fresh focused validation.
 - Supplied venv currently prints No module named pytest; local-target pip attempt found no matching distribution (r2-pytest-dependency-01.log). Full pytest still required, not substituted.
 - Next: inspect r2-descendants-01.log/json, repair actual failures; run original ownership set and provided-venv full pytest when available.
 - Required interpreter: C:/Users/tlori/FreeCity4/build-runs/pytest-venv/Scripts/python.exe.

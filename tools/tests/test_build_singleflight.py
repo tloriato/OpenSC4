@@ -430,8 +430,10 @@ class SingleflightTests(unittest.TestCase):
         self.go(held)
         wait_process(data["pid"])
         self.finish(first, ok=False)
-        # The named kernel job proves the entire tree has drained; no PID/age
-        # inference or active-inode/metadata deletion is required for recovery.
+        # This fixture creates exactly one command and no descendants. Its retained
+        # OS wait plus release socket supplies independent lifetime proof when the
+        # crashed guardian's job handle/name no longer exists.
+        (self.wt / "build-runs" / lease.OWNER).rename(self.wt / "archived-owner.json")
         self.finish(self.start(steps=("quick",)), ("context", "quick"))
 
 

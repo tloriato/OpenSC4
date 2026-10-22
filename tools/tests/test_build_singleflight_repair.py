@@ -66,9 +66,18 @@ class RepairTests(unittest.TestCase):
             held, _ = self.event("timeout-held")
             self.assertEqual(job.k.WaitForSingleObject(parent_handle, 5000), 0)
             # Parent was terminated by its own real command deadline, not by test cleanup.
-            self.go(held)
+            held.close()
+            self.connections.remove(held)
         else:
             self.assertEqual(job.k.WaitForSingleObject(parent_handle, 5000), 0)
+        # Retain PROCESS handles, never an observer JOB handle across a crash.
+        # Such an observer would accidentally keep the production evidence alive.
+        members = []
+        for pid in job.pids():
+            member, birth, executable = job.identity(pid)
+            members.append((pid, member, birth, executable))
+            self.addCleanup(job.k.CloseHandle, member)
+        job.close()
         if crash == "wrapper":
             first.kill()
         elif crash == "guardian":
@@ -76,6 +85,9 @@ class RepairTests(unittest.TestCase):
             base.wait_process(self.owner()["guardian_pid"])
         files = self.sentinels()
         self.assertEqual(job.k.WaitForSingleObject(handle, 0), 258)
+        evidence = {"test": self.id(), "mode": mode, "capture": capture, "depth": depth, "crash": crash,
+                    "owner": self.owner(), "writer_pid": data["pid"], "writer_created": created,
+                    "writer_image": image, "direct_pid": parent["pid"], "writer_alive_at_contender": True}
         if crash == "guardian":
             self.assertIn("ownership uncertain", self.finish(self.start(steps=("quick",)), ok=False))
         else:
@@ -95,19 +107,69 @@ class RepairTests(unittest.TestCase):
         self.assertEqual(output.read_bytes(), b"owned output\n")
         self.go(done)
         self.assertEqual(job.k.WaitForSingleObject(handle, 5000), 0)
+        for pid, member, birth, executable in members:
+            self.assertEqual(job.k.WaitForSingleObject(member, 5000), 0, (pid, birth, executable))
+        evidence["writer_exited_after_release"] = True
         if not expire:
             text = self.finish(first, ok=mode == "normal" and crash is None)
             if mode == "timeout":
                 self.assertIn("timed out", text)
+        if expire or crash == "guardian":
+            self.assertIn("ownership uncertain", self.finish(self.start(steps=("quick",)), ok=False))
+            # The owned fixture cannot spawn after its writer event. Every live
+            # member was retained, then signalled exited, before explicit archive.
+            (self.wt / "build-runs" / lease.OWNER).rename(self.wt / "archived-owner.json")
         self.finish(self.start(steps=("quick",)), ("context", "quick"))
         self.assertEqual(self.owner()["status"], "released")
+        evidence["recovery_status"] = self.owner()["status"]
+        with (base.ROOT / "build-runs" / f"r2-process-evidence-{os.getpid()}.jsonl").open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(evidence) + "\n")
         output.unlink()
 
-    def test_direct_exit_abrupt_nonzero_timeout_file_and_capture(self):
-        for mode in ("normal", "abrupt", "nonzero", "timeout"):
-            for capture in (False, True):
-                with self.subTest(mode=mode, capture=capture):
-                    self.tree_case(mode, capture)
+    def test_normal_file(self):
+        self.tree_case("normal", False)
+
+    def test_normal_capture(self):
+        self.tree_case("normal", True)
+
+    def test_abrupt_file(self):
+        self.tree_case("abrupt", False)
+
+    def test_abrupt_capture(self):
+        self.tree_case("abrupt", True)
+
+    def test_nonzero_file(self):
+        self.tree_case("nonzero", False)
+
+    def test_nonzero_capture(self):
+        self.tree_case("nonzero", True)
+
+    def test_timeout_file(self):
+        self.tree_case("timeout", False)
+
+    def test_timeout_capture(self):
+        self.tree_case("timeout", True)
+
+    def test_global_and_supplied_venv_launch_and_peer_identity(self):
+        for exe in (sys._base_executable, "C:/Users/tlori/FreeCity4/build-runs/pytest-venv/Scripts/python.exe"):
+            with self.subTest(executable=exe):
+                self.assertTrue(Path(exe).is_file())
+                env = dict(self.env, FC4_TEST_DOUBLE_JOIN="1")
+                first = subprocess.Popen([exe, str(base.DRIVER), "qbuild", "--wt", str(self.wt), "quick"],
+                                         env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                self.children.append(first)
+                held, data = self.event("context")
+                identity = self.owner()["delegations"][-1]
+                self.assertEqual(identity["peer_pid"], int(data["wrapper"]))
+                if Path(exe).resolve() == Path(sys._base_executable).resolve():
+                    self.assertEqual(identity["peer_pid"], identity["launch_pid"])
+                else:
+                    self.assertNotEqual(identity["peer_pid"], identity["launch_pid"])
+                self.assertTrue((self.wt / "second-branch-rejected").is_file())
+                self.go(held)
+                text = self.finish(first, ("quick",))
+                with (base.ROOT / "build-runs" / f"r2-peer-evidence-{os.getpid()}.jsonl").open("a", encoding="utf-8") as stream:
+                    stream.write(json.dumps({"executable": exe, "identity": identity, "stdout_stderr": text}) + "\n")
 
     def test_multigeneration_early_exit(self):
         self.tree_case("normal", True, depth=3)
@@ -122,7 +184,19 @@ class RepairTests(unittest.TestCase):
         self.tree_case("normal", True, expire=True)
 
     def test_halfopen_malformed_abandoned_auth_does_not_block_real_join_or_close(self):
-        first = self.start(steps=("quick",), env={"FC4_TEST_PRE_JOIN": "1"})
+        self.halfopen_case("normal")
+
+    def test_halfopen_cleanup_with_delegate_exception(self):
+        self.halfopen_case("exception")
+
+    def test_halfopen_cleanup_after_parent_crash(self):
+        self.halfopen_case("parent-crash")
+
+    def halfopen_case(self, mode):
+        env = {"FC4_TEST_PRE_JOIN": "1"}
+        if mode == "exception":
+            env["FC4_TEST_CONTEXT_ERROR"] = "1"
+        first = self.start(steps=("quick",), env=env)
         held, data = self.event("before-join")
         invite = json.loads(data["invite"])
         peer = Client(invite["address"], authkey=None)
@@ -136,9 +210,13 @@ class RepairTests(unittest.TestCase):
         started = time.monotonic()
         self.go(held)
         held, _ = self.event("context")
+        guardian = self.owner()["guardian_pid"]
+        if mode == "parent-crash":
+            first.kill()
         self.busy(steps=("quick",))
         self.go(held)
-        self.finish(first, ("quick",))
+        self.finish(first, () if mode == "exception" else ("quick",), ok=mode == "normal")
+        base.wait_process(guardian)
         self.assertLess(time.monotonic() - started, 10)
         self.assertEqual(self.owner()["status"], "released")
 

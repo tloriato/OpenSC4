@@ -1,7 +1,8 @@
 """One nonblocking build/check lease per real worktree, shared by qbuild and fc4verify.
 
-The guardian owns the OS lock (Windows locks are NOT inherited). It also parents
-and waits for commands, so a wrapper crash cannot release a running build's lease.
+The guardian owns the OS lock (Windows locks are NOT inherited). Kernel Jobs or
+Linux subreaper adoption account for command descendants, even after parent exit.
+Lost containment evidence fails closed and requires independent whole-tree proof.
 Only an explicitly spawned delegate, verified by OS pipe/socket peer PID, may join.
 The parent RPC is synchronous: there is exactly one active command/delegate branch.
 This is lifetime supervision, not a job queue: contenders are always rejected.
@@ -38,8 +39,8 @@ class _WinJob:
     """Kernel-enforced descendant membership, including children whose parent exited.
 
     No breakaway or kill-on-close limit: never kill a compiler to obtain ownership.
-    A named job survives a guardian crash while its associated processes remain.
-    Its unpredictable name is published BEFORE launching any work.
+    Its unpredictable name is published BEFORE launching any work. A lost job
+    handle/name is uncertainty, never evidence that its former members exited.
     """
     def __init__(self, name, existing=False):
         import ctypes as c
@@ -73,7 +74,7 @@ class _WinJob:
         if not self.handle:
             err = c.get_last_error()
             if existing and err == 2:
-                return  # kernel destroyed the job after ALL associated processes exited
+                return  # absence is NOT evidence of drainage after guardian failure
             raise c.WinError(err)
 
     def pids(self):
@@ -91,6 +92,13 @@ class _WinJob:
                 raise c.WinError(c.get_last_error())
             size *= 2
 
+    def created(self, handle):
+        c = self.c
+        times = [c.c_ulonglong() for _ in range(4)]
+        if not self.k.GetProcessTimes(handle, *(c.byref(t) for t in times)):
+            raise c.WinError(c.get_last_error())
+        return times[0].value
+
     def identity(self, pid):
         c, w = self.c, self.w
         handle = self.k.OpenProcess(0x100000 | 0x1000, False, pid)
@@ -99,13 +107,11 @@ class _WinJob:
         try:
             if self.k.WaitForSingleObject(handle, 0) != 258:
                 raise LeaseError(f"process {pid} already exited")
-            times = [c.c_ulonglong() for _ in range(4)]
-            if not self.k.GetProcessTimes(handle, *(c.byref(t) for t in times)):
-                raise c.WinError(c.get_last_error())
+            created = self.created(handle)
             image, length = c.create_unicode_buffer(32768), w.DWORD(32768)
             if not self.k.QueryFullProcessImageNameW(handle, 0, image, c.byref(length)):
                 raise c.WinError(c.get_last_error())
-            return handle, times[0].value, os.path.normcase(image.value)
+            return handle, created, os.path.normcase(image.value)
         except BaseException:
             self.k.CloseHandle(handle)
             raise
@@ -185,7 +191,7 @@ class _WinJob:
             self.handle = None
 
 
-def _bounded_recv(conn, maximum=4096):
+def _bounded_recv(conn, maximum=4096, deadline=None):
     """Deadline includes partial frames, not merely readiness of the first byte."""
     result = []
     done = threading.Event()
@@ -198,7 +204,8 @@ def _bounded_recv(conn, maximum=4096):
             done.set()
     worker = threading.Thread(target=receive, daemon=True)
     worker.start()
-    if not done.wait(AUTH_SECONDS):
+    remaining = AUTH_SECONDS if deadline is None else max(0, deadline - time.monotonic())
+    if not done.wait(remaining):
         if os.name == "nt":
             import ctypes
             from ctypes import wintypes
@@ -218,12 +225,53 @@ def _bounded_recv(conn, maximum=4096):
 class _AuthConnection:
     def __init__(self, conn):
         self.conn = conn
+        self.deadline = time.monotonic() + AUTH_SECONDS
 
     def recv_bytes(self, maxlength=None):
-        return _bounded_recv(self.conn, maxlength or 4096)
+        return _bounded_recv(self.conn, maxlength or 4096, self.deadline)
 
     def send_bytes(self, data):
         self.conn.send_bytes(data)
+
+
+class _LinuxTree:
+    """Subreaper adoption follows ancestry across exit, double-fork and setsid.
+
+    At the outer RPC boundary all direct Popen/delegate handlers have drained;
+    waitpid then accounts for ALL remaining adopted descendants without a process
+    snapshot, PID probing, or signalling them. A guardian crash loses this proof
+    and requires independent recovery evidence, just as a vanished Windows Job.
+    """
+    def __init__(self, nested):
+        import ctypes
+        if not sys.platform.startswith("linux"):
+            raise LeaseError("build/check: host lacks whole-command Job/subreaper containment")
+        libc = ctypes.CDLL(None, use_errno=True)
+        if libc.prctl(36, 1, 0, 0, 0):  # PR_SET_CHILD_SUBREAPER, before any command launches
+            raise LeaseError("build/check: cannot establish kernel descendant adoption")
+        self.nested = nested
+        self.name = "linux-subreaper:" + str(os.getpid())
+
+    def launch(self, cmd, kw):
+        return subprocess.Popen(cmd, **kw)
+
+    def drain(self, seconds):
+        if self.nested:
+            return True  # outer delegate is still live; outer boundary performs adoption drain
+        deadline = time.monotonic() + seconds
+        while True:
+            try:
+                pid, _ = os.waitpid(-1, os.WNOHANG)
+            except ChildProcessError:
+                return True  # kernel ECHILD proves no descendants remain
+            if pid:
+                continue
+            if time.monotonic() >= deadline:
+                return False
+            threading.Event().wait(0.025)
+
+    def close(self):
+        pass
 
 
 class LeaseError(RuntimeError):
@@ -369,6 +417,7 @@ class _Delegation:
         self.child = child  # Windows process handle / POSIX waitpid identity, not PID existence
         self.pid = child.pid
         self.job = job
+        self.launch_created = job.created(int(child._handle)) if os.name == "nt" else None
         self.redirector = (os.name == "nt" and sys.prefix != sys.base_prefix
                            and isinstance(cmd, (list, tuple))
                            and os.path.normcase(str(Path(cmd[0]).resolve())) == os.path.normcase(sys.executable))
@@ -406,13 +455,13 @@ class _Delegation:
         parent_handle, parent_time, image = self.job.identity(self.pid)
         try:
             handle, created, peer_image = self.job.identity(peer)
-            if (image != os.path.normcase(sys.executable)
+            if (parent_time != self.launch_created or image != os.path.normcase(sys.executable)
                     or peer_image != os.path.normcase(sys._base_executable)
                     or created < parent_time or self.job.parent(peer) != self.pid):
                 self.job.k.CloseHandle(handle)
                 return False
             self.peer_handle = handle
-            return True
+            return self.child.poll() is None and self.job.k.WaitForSingleObject(handle, 0) == 258
         finally:
             self.job.k.CloseHandle(parent_handle)
 
@@ -432,6 +481,10 @@ class _Delegation:
                     _conn_send(conn, {"error": "build/check: delegation rejected (wrong live child/worktree/invocation)"})
                     return
                 self.claimed = admitted = True
+                with _publication:
+                    self.info.setdefault("delegations", []).append({"launch_pid": self.pid, "peer_pid": peer,
+                                                                  "guardian_pid": os.getpid()})
+                    _publish(self.wt / "build-runs" / OWNER, self.info)
                 _conn_send(conn, {"owner": self.info, "launch_pid": self.pid, "peer_pid": peer})
             self.auth_slots.release()
             self.handle(conn)
@@ -454,7 +507,7 @@ class _Delegation:
                     if request.get("delegate"):
                         _conn_send(conn, {"error": "build/check: a delegated child cannot create another branch"})
                     else:
-                        _conn_send(conn, _execute(request, self.wt, self.info))
+                        _conn_send(conn, _execute(request, self.wt, self.info, nested=True))
                 except (EOFError, OSError):
                     return
 
@@ -481,7 +534,7 @@ class _Delegation:
             raise LeaseError("build/check: delegation cleanup incomplete; ownership uncertain; inspect owner jobs")
 
 
-def _execute(request, wt, info):
+def _execute(request, wt, info, nested=False):
     """Guardian alone creates/waits commands. No inherited Windows lock assumptions."""
     delegation = None
     job = None
@@ -494,11 +547,8 @@ def _execute(request, wt, info):
         if request.get("delegate"):
             delegation = _Delegation(wt, info)
             env[INVITE] = delegation.invite
-        if os.name != "nt":
-            # No portable kernel containment primitive: do not claim a whole-tree
-            # guarantee from a process snapshot or direct-parent wait.
-            raise LeaseError("build/check: whole-command containment requires Windows Jobs on this host")
-        job = _WinJob("Local\\FC4-command-" + secrets.token_hex(24))
+        job = (_WinJob("Local\\FC4-command-" + secrets.token_hex(24)) if os.name == "nt"
+               else _LinuxTree(nested))
         with _publication:
             info.setdefault("jobs", []).append(job.name)
             _publish(wt / "build-runs" / OWNER, info)
@@ -539,6 +589,8 @@ def _execute(request, wt, info):
             detail = str(exc)
             if response and "timeout" in response:
                 detail = f"command timed out after {response['timeout']} seconds; {detail}"
+            elif response and response.get("returncode"):
+                detail = f"command exit={response['returncode']}; {detail}"
             with _publication:
                 info["uncertain"] = detail
                 _publish(wt / "build-runs" / OWNER, info)
@@ -586,6 +638,8 @@ def _guardian():
                             raise ValueError("invalid job identity")
                         job = _WinJob(name, existing=True)
                         try:
+                            if not job.handle:
+                                raise ValueError("job evidence lost; independent whole-tree lifetime proof required")
                             if job.pids():
                                 raise ValueError("owned descendants still live")
                         finally:
@@ -593,7 +647,7 @@ def _guardian():
             except (ValueError, OSError):
                 raise LeaseError("build/check ownership uncertain after guardian failure: " + _owner_text(owner)
                                  + "; contained commands may still be live; let owned work finish and retry; "
-                                 + "legacy/uncontained records require independent lifetime proof before archiving "
+                                 + "lost/legacy containment requires independent whole-tree lifetime proof before manually archiving "
                                  + str(owner) + "; never remove the lock file")
         info = {**request["owner"], "worktree": str(wt), "guardian_pid": os.getpid(),
                 "invocation": secrets.token_hex(16), "started": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -748,7 +802,14 @@ def _connect(invite):
 
     def connect():
         try:
-            conn = Client(invite["address"], authkey=bytes.fromhex(invite["key"]))
+            conn = Client(invite["address"], authkey=None)
+            try:
+                timed = _AuthConnection(conn)
+                answer_challenge(timed, bytes.fromhex(invite["key"]))
+                deliver_challenge(timed, bytes.fromhex(invite["key"]))
+            except BaseException:
+                conn.close()
+                raise
             if abandoned.is_set():
                 conn.close()
             else:
