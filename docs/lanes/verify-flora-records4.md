@@ -6,9 +6,11 @@
 
 - Goal: final occupant-family round; no fourth continuation, static/whole-owner/default promotion.
 - Start c5fa937b; prior round2 report and evidence below retained intact.
-- Baseline qbuild all started before changes; logs build-runs/qbuild-*.
+- Baseline all started before changes; workspace test log complete, clippy compiling; source changed during long build, so not a stable final gate.
 - q.py still fails Bash E_ACCESSDENIED; capped PowerShell used.
-- Done: substantive Rust query/visibility and 25-case native corpus/QI matrix implemented; first code commit includes this handoff.
+- Done: 367e155e substantive Rust query/visibility and 25-case native corpus/QI matrix committed before call30.
+- Done: two focused production tests cover normal cross, visibility preservation, removal precedence, highlight narrowing.
+- Formatting corrected in touched C ABI file; fmt requires absolute paths (relative engine/... paths fail).
 - Next: focused quick/fmt, review measured differences, stable final all then immutable-DLL game controls.
 - FQ18 added for failed-QI output/null-address policy and multi-bit flag semantics; no guessed equivalence.
 - Need final stable all, immutable DLL, unique coordinator guarded2032/save/reload/probe-off runs.
@@ -16,6 +18,7 @@
 - FQ16 static callable and FQ17 partial-state/default/bounds/override gaps remain refused.
 - Source allowed: occupant-manager section13.1 for inherited methods, flora3.4/9.1/11.4, lot-records2.3/11, public SDK.
 - Separate mixed assertions, independent queries, bytes, stream results, QI, references and natural observations.
+- Host compilation heavily contended; quick and baseline all still active, do not start another quick.
 
 ## Preserved round2 report
 
