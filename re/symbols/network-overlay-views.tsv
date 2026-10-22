@@ -1,0 +1,11 @@
+va	name	evidence	mac_x86
+00542ee0	SC4PathInfoView::Init	network-overlay-views.md §1; blended untextured state	
+00542f50	SC4PathInfoView::SC4PathInfoView	network-overlay-views.md §1	
+00542f90	SC4PathInfoView::~SC4PathInfoView (thunk)	network-overlay-views.md descriptive name, no Mac match; §1	
+00542fa0	SC4PathInfoView::~SC4PathInfoView (deleting destructor)	network-overlay-views.md descriptive name, no Mac match; §1	
+00542fc0	SC4PathInfoView::Update	network-overlay-views.md §1; coloured line strips, arrowheads, end bars	
+005633c0	SC4TrainJunctionView::Init	network-overlay-views.md §2; direction table, six arrow pictures, two marker models	
+005637e0	SC4TrainJunctionView::GetArrowBitmapQuad	network-overlay-views.md §2; 12 m in from the entry edge	
+00564a60	SC4TrainJunctionView::GetPathBitmap	network-overlay-views.md §2; c below -0.25, up to 0.25, above	
+00564be0	SC4TrainJunctionView::DrawTrainJunction	network-overlay-views.md §2; 0.8 or 0.5 transparency	
+005657a0	SC4TrainJunctionView::Update	network-overlay-views.md §2; four entry edges per occupant	

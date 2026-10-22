@@ -677,3 +677,8 @@ Questions RM1 to RM12 are in [questions/region-model.md](questions/region-model.
 the region screen and the region view windows (`cSC4WinRegion*`), the new-region and import dialogs, city
 obliteration, the nation's list handling beyond §11, and the sub-view classes that share the `cSC4Region*` row of
 `tools/coverage-map.tsv` (`cSC4RegionSignpostAnimatorWinProc`).
+
+
+## Complementary region analysis
+
+See [region.md](region.md) for the other contributor's independent region analysis. Both analyses and their open RM/RQ questions are retained. Coverage credits exact cSC4Region once; this cross-reference does not promote partial terrain-map/view or location/signpost helper owners. Inferred naming/argument and filesystem observations retain their tags until their questions are independently resolved.

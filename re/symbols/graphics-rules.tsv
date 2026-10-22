@@ -1,0 +1,50 @@
+va	name	evidence	mac_x86
+007c2790	HasBackingStore	graphics-rules.md §2; descriptive name, no Mac match; global 0x00B4E1E4 non-null; the backingStore flag	
+007ce130	GZCOM_cSC4ConfigRuleManagerCLSID	graphics-rules.md §1; returns 0x0A1D8285	
+007ce140	cSC4ConfigRuleManager::QueryInterface	graphics-rules.md §1; slot 0 of 0x00ABB34C; 0x0A1D8284, else the cRZUnknown base	
+007ce1f0	cSC4ConfigRuleManager::ApplyPropertySet	graphics-rules.md §1; descriptive name, no Mac match; render properties slots 9, 10, 11 per list	
+007ce260	cSC4ConfigRuleManager::LogOptions	graphics-rules.md §6; the current and recommended option lines	
+007ce870	cSC4ConfigRuleManager::ApplyOptionGroupSetting	graphics-rules.md §6; slot 6 (group, option); out of range does nothing	
+007ce8d0	cSC4ConfigRuleManager::GetOptionGroupAutoSetting	graphics-rules.md §6; slot 7; 0 out of range	
+007ce900	cSC4ConfigRuleManager::RuleMatchesAll	graphics-rules.md §4.2; descriptive name, no Mac match; flags, atLeast, atMost, stringMatch, stringNotMatch	
+007cea80	cSC4ConfigRuleManager::RuleMatchesAny	graphics-rules.md §4.2; descriptive name, no Mac match; -any: one condition is enough, none never matches	
+007cef40	cSC4ConfigRuleManager::LogConfigInfo	graphics-rules.md §6; name = value with %s, %d, %g	
+007cf780	cSC4ConfigRuleManager::GatherInformation	graphics-rules.md §2; flags, numbers and strings	
+007cfe10	cSC4ConfigRuleManager::ParseConfigFile	graphics-rules.md §3; Graphics Rules.sgr, Graphics Options.sgr, prefsFirstTime, card IDs from cardVersion	
+007d0420	cSC4ConfigRuleManager::LogConfigurationToFile	graphics-rules.md §1; slot 5	
+007d0cc0	cSC4ConfigRuleManager::cSC4ConfigRuleManager	graphics-rules.md §1; vtable 0x00ABB34C	
+007d0da0	cSC4ConfigRuleManager::QueryInterface (thunk)	graphics-rules.md §1; was __ZThn4_N21cSC4ConfigRuleManager14QueryInterfaceEmPPv; this - 4	
+007d0db0	cSC4ConfigRuleManager::~cSC4ConfigRuleManager (thunk)	graphics-rules.md §1; descriptive name; this - 4 to the deleting destructor	
+007d0dc0	cSC4ConfigRuleManager::~cSC4ConfigRuleManager	graphics-rules.md §1; descriptive name; the destructor body	
+007d1030	GZCOM_CreatecSC4ConfigRuleManager	graphics-rules.md §1; allocates and constructs	
+007d1050	cSC4ConfigRuleManager::~cSC4ConfigRuleManager (deleting destructor)	graphics-rules.md §1; descriptive name; 0x007D0DC0 then GlobalHeapFree on bit 0	
+007d10b0	cSC4ConfigRuleManager::ApplyRules	graphics-rules.md §5; depth stack, first matching non-partial sibling wins, option recommendations	
+007d13c0	cSC4ConfigRuleManager::SetFallbackRules	graphics-rules.md §7; standard software, standard hardware, two stages	
+007d1890	cSC4ConfigRuleManager::Init	graphics-rules.md §3; slot 3; gather, parse, fallback on failure	
+007d18e0	cSC4ConfigRuleManager::SetOptionsFromConfiguration	graphics-rules.md §6; slot 4; -writeLog:off, <computerName>-config-log.txt	
+007e3b50	(anonymous_namespace)::cOptionGroupCommand::EndBlock	graphics-rules.md §4.1; was (anonymous_namespace)::cOptionGroupCommand::Parse; slot 6; group := -1	
+007e3b70	(anonymous_namespace)::cOptionGroupCommand::RegisterCommands	graphics-rules.md §4.1; option, property	
+007e3c00	(anonymous_namespace)::cVendorCommand::RegisterCommands	graphics-rules.md §4.4; descriptive name, no Mac match; card	
+007e3c60	(anonymous_namespace)::cRuleCommand::RegisterCommands	graphics-rules.md §4.2; property, option, has, hasNo, stringMatch, stringNotMatch, atLeast, atMost	
+007e3dd0	(anonymous_namespace)::cRuleCommand::EndBlock	graphics-rules.md §4.2; descriptive name; slot 6 of 0x00ABBEA0; depth - 1	
+007e3df0	cSC4RuleParser::RegisterCommands	graphics-rules.md §4; rule, partialRule, optionGroup, vendor	
+007e3ed0	(anonymous_namespace)::cRuleCommand::DoHas	graphics-rules.md §4.2; descriptive name, no Mac match; flag bit set in required and mask	
+007e3f90	(anonymous_namespace)::cRuleCommand::DoHasNo	graphics-rules.md §4.2; descriptive name, no Mac match; flag bit cleared in required, set in mask	
+007e4050	(anonymous_namespace)::AddOptionToSet	graphics-rules.md §4; boolean, then integer, then float by name	
+007e4180	(anonymous_namespace)::cRuleCommand::DoOption	graphics-rules.md §4.2; descriptive name, no Mac match; (group, option) pair	
+007e4250	(anonymous_namespace)::cRuleCommand::DoProperty	graphics-rules.md §4.3; descriptive name, no Mac match; Unknown render property	
+007e4300	(anonymous_namespace)::cRuleCommand::DoAtLeast	graphics-rules.md §4.2; descriptive name, no Mac match; numeric variable >= value	
+007e43b0	(anonymous_namespace)::cRuleCommand::DoAtMost	graphics-rules.md §4.2; descriptive name, no Mac match; numeric variable <= value	
+007e4490	(anonymous_namespace)::cOptionGroupCommand::DoProperty	graphics-rules.md §4.1; descriptive name, no Mac match	
+007e4550	(anonymous_namespace)::cRuleCommand::Parse	graphics-rules.md §4.2; name or predecessor + '>', partialRule or -partial, -any, depth	
+007e4730	(anonymous_namespace)::cVendorCommand::DoCard	graphics-rules.md §4.4; descriptive name, no Mac match; device ID, found flag and name	
+007e4800	(anonymous_namespace)::cVendorCommand::Parse	graphics-rules.md §4.4; descriptive name, no Mac match; slot 5 of 0x00ABBEF8; vendor IDs	
+007e4910	(anonymous_namespace)::cOptionGroupCommand::DoOption	graphics-rules.md §4.1; descriptive name, no Mac match; the option number	
+007e4de0	cSC4RuleParser::cSC4RuleParser	graphics-rules.md §3; descriptive name; vtable 0x00ABBFEC, built by ParseConfigFile	
+007e5030	cSC4RuleParser::~cSC4RuleParser	graphics-rules.md §3; descriptive name; frees the rules, option groups and strings	
+007e5160	(anonymous_namespace)::cRuleCommand::DoStringMatch	graphics-rules.md §4.2; descriptive name, no Mac match; string variable and pattern	
+007e5400	(anonymous_namespace)::cRuleCommand::DoStringNotMatch	graphics-rules.md §4.2; descriptive name, no Mac match	
+007e54c0	(anonymous_namespace)::cOptionGroupCommand::Parse	graphics-rules.md §4.1; was (anonymous_namespace)::cOptionGroupCommand::EndBlock; slot 5 of 0x00ABBEBC; the group number	
+007e5580	cSC4RuleParser::ParseBegin	graphics-rules.md §4; takes the render properties, empties the rules and option groups	
+007e5620	cSC4RuleParser::ParseBegin (thunk)	graphics-rules.md §4; descriptive name; virtual-base adjustment	
+00abbef8	(anonymous_namespace)::cVendorCommand::vftable	graphics-rules.md §4.4; descriptive name, no Mac match; 7 slots	

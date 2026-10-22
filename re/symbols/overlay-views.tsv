@@ -1,0 +1,35 @@
+va	name	evidence	mac_x86
+0053c940	cSC4PathView::Shutdown	overlay-views.md §1	
+0075c9f0	cSTEVertBufExtn::CreateBuffer	overlay-views.md §3	
+0075ca30	cSTEVertBufExtn::CopyTerrainRow	overlay-views.md descriptive name, no Mac match; §3; 32-byte vertices	
+0075ca90	cSTEVertBufExtn::ReleaseVertexBufferExtension	overlay-views.md §3	
+0075cab0	cSTEVertBufExtn::SetIndexBuffer	overlay-views.md §3	
+0075cad0	cSTEVertBufExtn::FlushBuffer	overlay-views.md §3; triangles, count rounded to 3	
+0075cb50	cSTEVertBufExtn::DrawPrimsIndexedUsingVertBuf	overlay-views.md §3; two rows per call	
+0075cd40	cSTEVertBufExtn::GetVertexBufferExtension	overlay-views.md §3; kUseVertexBuffers, format 11	
+007dc1a0	SC4MarkedCellView::SetShouldIgnoreDepthBuffer	overlay-views.md §2	
+007dc1b0	SC4MarkedCellView::SetShouldUseWaterAltitude	overlay-views.md §2	
+007dc1d0	SC4MarkedCellView::SetCellSize	overlay-views.md §2; size and inverse	
+007dc200	SC4MarkedCellView::Init	overlay-views.md §2	
+007dc2c0	SC4MarkedCellView::Shutdown	overlay-views.md §2	
+007dc3a0	SC4MarkedCellView::DrawCells	overlay-views.md §2.1; batches of 1024 vertices	
+007dc9f0	SC4MarkedCellView::Update	overlay-views.md §2; second additive pass	
+007dcb30	SC4MarkedCellView::SetCellColor	overlay-views.md §2	
+007dcc10	SC4MarkedCellView::SC4MarkedCellView	overlay-views.md §2	
+007dcc80	SC4MarkedCellView::~SC4MarkedCellView (thunk)	overlay-views.md descriptive name, no Mac match; §2	
+007dcc90	SC4MarkedCellView::~SC4MarkedCellView (deleting destructor)	overlay-views.md descriptive name, no Mac match; §2	
+007dcd90	cSC4PathView::Init	overlay-views.md §1; two packed states	
+007dce20	cSC4PathView::SetPathTexture	overlay-views.md §1	
+007dce60	cSC4PathView::GetEndOffsets	overlay-views.md descriptive name, no Mac match; §1.1; +- t times the end segment's normal	
+007dcf20	cSC4PathView::GetJointOffsets	overlay-views.md descriptive name, no Mac match; §1.1; along the bisector, fallback below 0.0001	
+007dd0d0	cSC4PathView::DrawArrowhead	overlay-views.md §1.1	
+007dd410	cSC4PathView::DrawPath	overlay-views.md §1.1; one strip of 2n vertices	
+007dd9b0	cSC4PathView::Update	overlay-views.md §1; depth offset 15	
+007ddb30	cSC4PathView::AddPathVertex	overlay-views.md §1; drops near-duplicates	
+007ddbe0	cSC4PathView::ClearPaths	overlay-views.md §1	
+007ddc50	cSC4PathView::NewPath	overlay-views.md §1; ordered by priority	
+007ddd50	cSC4PathView::cSC4PathView	overlay-views.md §1	
+007dddb0	cSC4PathView::~cSC4PathView (thunk)	overlay-views.md descriptive name, no Mac match; §1	
+007dddc0	cSC4PathView::~cSC4PathView (deleting destructor)	overlay-views.md descriptive name, no Mac match; §1; clears the paths	
+008b6de0	cSC4PathView::SetThickness	overlay-views.md §1	
+008ebcd0	cSC4PathView::PathInfo::~PathInfo	overlay-views.md §1	

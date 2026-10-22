@@ -1,0 +1,104 @@
+va	name	evidence	mac_x86
+007dde10	cSC4RenderProperties::GetBoolCount	render-properties.md §2; descriptive name, no Mac match; slot 3; (end - begin) / 0x20	
+007dde20	cSC4RenderProperties::GetIntCount	render-properties.md §2; descriptive name, no Mac match; slot 4; / 0x28	
+007dde40	cSC4RenderProperties::GetFloatCount	render-properties.md §2; descriptive name, no Mac match; slot 5	
+007dde60	cSC4RenderProperties::SetBool	render-properties.md §2; descriptive name, no Mac match; slot 9; no index or range check	
+007dde80	cSC4RenderProperties::SetInt	render-properties.md §2; descriptive name, no Mac match; slot 10	
+007ddea0	cSC4RenderProperties::SetFloat	render-properties.md §2; descriptive name, no Mac match; slot 11	
+007ddec0	cSC4RenderProperties::GetBool	render-properties.md §2; descriptive name, no Mac match; slot 6; byte +0x1C of entry i	
+007ddee0	cSC4RenderProperties::GetInt	render-properties.md §2; descriptive name, no Mac match; slot 7	
+007ddf00	cSC4RenderProperties::GetFloat	render-properties.md §2; descriptive name, no Mac match; slot 8	
+007ddf20	cSC4RenderProperties::GetBoolName	render-properties.md §2; descriptive name, no Mac match; slot 15	
+007ddf40	cSC4RenderProperties::GetIntName	render-properties.md §2; descriptive name, no Mac match; slot 16	
+007ddf60	cSC4RenderProperties::GetFloatName	render-properties.md §2; descriptive name, no Mac match; slot 17	
+007ddf80	cSC4RenderProperties::MakeShortName	render-properties.md §1.3; descriptive name, no Mac match; the capital letters, lower-cased	
+007de1f0	cSC4RenderProperties::FindBool	render-properties.md §2; descriptive name, no Mac match; slot 12; lower-cased, name then short name, -1	
+007de320	cSC4RenderProperties::FindInt	render-properties.md §2; descriptive name, no Mac match; slot 13	
+007de470	cSC4RenderProperties::FindFloat	render-properties.md §2; descriptive name, no Mac match; slot 14	
+007de960	cSC4RenderProperties::~cSC4RenderProperties	render-properties.md §1.1; descriptive name; frees the three tables	
+007de9f0	cSC4RenderProperties::~cSC4RenderProperties (thunk)	render-properties.md §1.1; descriptive name; this - 4; slot 3 of 0x00ABB6A8	
+007deeb0	cSC4RenderProperties::~cSC4RenderProperties (deleting destructor)	render-properties.md §1.1; descriptive name; GlobalHeapFree on bit 0	
+007deed0	cSC4RenderProperties::cProperties::cRegkForceSoftwareDriver::cRegkForceSoftwareDriver	render-properties.md §3; bool 0, default false	
+007defa0	cSC4RenderProperties::cProperties::cRegkRenderDynamicView::cRegkRenderDynamicView	render-properties.md §3; bool 1, default true	
+007df080	cSC4RenderProperties::cProperties::cRegkRenderStaticView::cRegkRenderStaticView	render-properties.md §3; bool 2, default true	
+007df160	cSC4RenderProperties::cProperties::cRegkRenderWaterEffects::cRegkRenderWaterEffects	render-properties.md §3; bool 3, default true	
+007df240	cSC4RenderProperties::cProperties::cRegkRenderCloudsAndFog::cRegkRenderCloudsAndFog	render-properties.md §3; bool 4, default true	
+007df320	cSC4RenderProperties::cProperties::cRegkForcePointSampling::cRegkForcePointSampling	render-properties.md §3; bool 5, default false	
+007df400	cSC4RenderProperties::cProperties::cRegkForceBilinear::cRegkForceBilinear	render-properties.md §3; bool 6, default false	
+007df4e0	cSC4RenderProperties::cProperties::cRegkForceNoAlphaBlend::cRegkForceNoAlphaBlend	render-properties.md §3; bool 7, default false	
+007df5c0	cSC4RenderProperties::cProperties::cRegkForceNoAlphaTest::cRegkForceNoAlphaTest	render-properties.md §3; bool 8, default false	
+007df6a0	cSC4RenderProperties::cProperties::cRegkRenderShadows::cRegkRenderShadows	render-properties.md §3; bool 9, default true	
+007df780	cSC4RenderProperties::cProperties::cRegkRenderDecals::cRegkRenderDecals	render-properties.md §3; bool 10, default true	
+007df860	cSC4RenderProperties::cProperties::cRegkUseSecondStage::cRegkUseSecondStage	render-properties.md §3; bool 11, default true	
+007df940	cSC4RenderProperties::cProperties::cRegkForceDebugTexture::cRegkForceDebugTexture	render-properties.md §3; bool 12, default false	
+007dfa20	cSC4RenderProperties::cProperties::cRegkRenderParticleEffects::cRegkRenderParticleEffects	render-properties.md §3; bool 13, default true	
+007dfb00	cSC4RenderProperties::cProperties::cRegkRenderFloraShadows::cRegkRenderFloraShadows	render-properties.md §3; bool 14, default true	
+007dfbe0	cSC4RenderProperties::cProperties::cRegkRenderTerrain::cRegkRenderTerrain	render-properties.md §3; bool 15, default true	
+007dfcc0	cSC4RenderProperties::cProperties::cRegkShowUpdateRegions::cRegkShowUpdateRegions	render-properties.md §3; bool 16, default false	
+007dfda0	cSC4RenderProperties::cProperties::cRegkUseCursorEffects::cRegkUseCursorEffects	render-properties.md §3; bool 17, default true	
+007dfe80	cSC4RenderProperties::cProperties::cRegkDrawLotTextures::cRegkDrawLotTextures	render-properties.md §3; bool 18, default true	
+007dff60	cSC4RenderProperties::cProperties::cRegkDrawLotFoundations::cRegkDrawLotFoundations	render-properties.md §3; bool 19, default true	
+007e0040	cSC4RenderProperties::cProperties::cRegkDrawLotWalls::cRegkDrawLotWalls	render-properties.md §3; bool 20, default true	
+007e0120	cSC4RenderProperties::cProperties::cRegkForceTextureRepeat::cRegkForceTextureRepeat	render-properties.md §3; bool 21, default false	
+007e0200	cSC4RenderProperties::cProperties::cRegkUseScreenShake::cRegkUseScreenShake	render-properties.md §3; bool 22, default true	
+007e02e0	cSC4RenderProperties::cProperties::cRegkRenderUI::cRegkRenderUI	render-properties.md §3; bool 23, default true	
+007e03c0	cSC4RenderProperties::cProperties::cRegkUseUpdateRectClipping::cRegkUseUpdateRectClipping	render-properties.md §3; bool 24, default true	
+007e04a0	cSC4RenderProperties::cProperties::cRegkUseVertexBuffers::cRegkUseVertexBuffers	render-properties.md §3; bool 25, default true	
+007e0580	cSC4RenderProperties::cProperties::cRegkShowBoundingBoxes::cRegkShowBoundingBoxes	render-properties.md §3; bool 26, default false	
+007e0660	cSC4RenderProperties::cProperties::cRegkUseOverlayCulling::cRegkUseOverlayCulling	render-properties.md §3; bool 27, default true	
+007e0740	cSC4RenderProperties::cProperties::cRegkRenderSnapshot::cRegkRenderSnapshot	render-properties.md §3; bool 28, default false	
+007e0820	cSC4RenderProperties::cProperties::cRegkNoAddSigned::cRegkNoAddSigned	render-properties.md §3; bool 29, default false	
+007e0900	cSC4RenderProperties::cProperties::cRegkNoPartialBackingStoreCopies::cRegkNoPartialBackingStoreCopies	render-properties.md §3; bool 30, default false	
+007e09e0	cSC4RenderProperties::cProperties::cRegkUseScreenFlash::cRegkUseScreenFlash	render-properties.md §3; bool 31, default true	
+007e0ac0	cSC4RenderProperties::cProperties::cRegkRenderAutomata::cRegkRenderAutomata	render-properties.md §3; bool 32, default true	
+007e0ba0	cSC4RenderProperties::cProperties::cRegkPreferOpaque::cRegkPreferOpaque	render-properties.md §3; bool 33, default false	
+007e0c80	cSC4RenderProperties::cProperties::cRegkDisplayAlertBorders::cRegkDisplayAlertBorders	render-properties.md §3; bool 34, default true	
+007e0d60	cSC4RenderProperties::cProperties::cRegkDrawLotOpaqueTextures::cRegkDrawLotOpaqueTextures	render-properties.md §3; bool 35, default true	
+007e0e40	cSC4RenderProperties::cProperties::cRegkUseViewCleanup::cRegkUseViewCleanup	render-properties.md §3; bool 36, default false	
+007e0f20	cSC4RenderProperties::cProperties::cRegkDoAutoZoomAndRotationChanges::cRegkDoAutoZoomAndRotationChanges	render-properties.md §3; bool 37, default true	
+007e1000	cSC4RenderProperties::cProperties::cRegkViewOffsetY::cRegkViewOffsetY	render-properties.md §3; int 0, default 0	
+007e10d0	cSC4RenderProperties::cProperties::cRegkViewOffsetX::cRegkViewOffsetX	render-properties.md §3; int 1, default 0	
+007e11b0	cSC4RenderProperties::cProperties::cRegkTextureBits::cRegkTextureBits	render-properties.md §3; int 2, default 32	
+007e1290	cSC4RenderProperties::cProperties::cRegkLODOffset::cRegkLODOffset	render-properties.md §3; int 3, default 0	
+007e1370	cSC4RenderProperties::cProperties::cRegkShadowDebug::cRegkShadowDebug	render-properties.md §3; int 4, default 0	
+007e1450	cSC4RenderProperties::cProperties::cRegkMaxParticlesTarget::cRegkMaxParticlesTarget	render-properties.md §3; int 5, default 10000	
+007e1530	cSC4RenderProperties::cProperties::cRegkParticleLODOffset::cRegkParticleLODOffset	render-properties.md §3; int 6, default 0	
+007e1610	cSC4RenderProperties::cProperties::cRegkEffectPriorityLevel::cRegkEffectPriorityLevel	render-properties.md §3; int 7, default 5	
+007e16f0	cSC4RenderProperties::cProperties::cRegkBackingStoreMaxZoomAll::cRegkBackingStoreMaxZoomAll	render-properties.md §3; int 8, default 5	
+007e17d0	cSC4RenderProperties::cProperties::cRegkBackingStoreMaxZoomBuildingsProps::cRegkBackingStoreMaxZoomBuildingsProps	render-properties.md §3; int 9, default 5	
+007e18b0	cSC4RenderProperties::cProperties::cRegkBackingStoreMaxZoomTerrain::cRegkBackingStoreMaxZoomTerrain	render-properties.md §3; int 10, default 5	
+007e1990	cSC4RenderProperties::cProperties::cRegkBackingStoreMaxZoomFlora::cRegkBackingStoreMaxZoomFlora	render-properties.md §3; int 11, default 5	
+007e1a70	cSC4RenderProperties::cProperties::cRegkShadowQuality::cRegkShadowQuality	render-properties.md §3; int 12, default 2	
+007e1b50	cSC4RenderProperties::cProperties::cRegkMinVehicleZoom::cRegkMinVehicleZoom	render-properties.md §3; int 13, default 3	
+007e1c30	cSC4RenderProperties::cProperties::cRegkMinPedZoom::cRegkMinPedZoom	render-properties.md §3; int 14, default 4	
+007e1d10	cSC4RenderProperties::cProperties::cRegkCursorType::cRegkCursorType	render-properties.md §3; int 15, default 1	
+007e1df0	cSC4RenderProperties::cProperties::cRegkDepthOffset::cRegkDepthOffset	render-properties.md §3; int 16, default 2	
+007e1ed0	cSC4RenderProperties::cProperties::cRegkDebugTexture::cRegkDebugTexture	render-properties.md §3; int 17, default 0	
+007e1fb0	cSC4RenderProperties::cProperties::cRegkDirtyRectMergeFrames::cRegkDirtyRectMergeFrames	render-properties.md §3; int 18, default 4	
+007e2090	cSC4RenderProperties::cProperties::cRegkSoundDetail::cRegkSoundDetail	render-properties.md §3; int 19, default 2	
+007e2170	cSC4RenderProperties::cProperties::cRegkBuildingVariety::cRegkBuildingVariety	render-properties.md §3; int 20, default 2	
+007e2250	cSC4RenderProperties::cProperties::cRegkBuildingLoaderSpeed::cRegkBuildingLoaderSpeed	render-properties.md §3; int 21, default 1	
+007e2330	cSC4RenderProperties::cProperties::cRegkModelLODOffset::cRegkModelLODOffset	render-properties.md §3; int 22, default 0	
+007e2410	cSC4RenderProperties::cProperties::cRegkStringTextureCacheSize::cRegkStringTextureCacheSize	render-properties.md §3; int 23, default 1024	
+007e24f0	cSC4RenderProperties::cProperties::cRegkParticleEffectsLOD::cRegkParticleEffectsLOD	render-properties.md §3; float 0, default 5.0	
+007e25d0	cSC4RenderProperties::cProperties::cRegkSplatTextureScale::cRegkSplatTextureScale	render-properties.md §3; float 1, default 50.0	
+007e26b0	cSC4RenderProperties::cProperties::cRegkTexBindMaxFree::cRegkTexBindMaxFree	render-properties.md §3; float 2, default 2.0	
+007e2790	cSC4RenderProperties::cProperties::cRegkParticleDensity::cRegkParticleDensity	render-properties.md §3; float 3, default 1.0	
+007e2870	cSC4RenderProperties::cProperties::cRegkParticleDamping::cRegkParticleDamping	render-properties.md §3; float 4, default 0.0	
+007e2950	cSC4RenderProperties::cProperties::cRegkParticleScale::cRegkParticleScale	render-properties.md §3; float 5, default 1.0	
+007e2a30	cSC4RenderProperties::cProperties::cRegkLightingUpdateDelta::cRegkLightingUpdateDelta	render-properties.md §3; float 6, default 0.0001	
+007e2b10	cSC4RenderProperties::cProperties::cRegkShadowModelThreshold::cRegkShadowModelThreshold	render-properties.md §3; float 7, default 12.0	
+007e2bf0	cSC4RenderProperties::cProperties::cRegkDemolishModelThreshold::cRegkDemolishModelThreshold	render-properties.md §3; float 8, default 12.0	
+007e2cd0	cSC4RenderProperties::cProperties::cRegkRenderModelThreshold::cRegkRenderModelThreshold	render-properties.md §3; float 9, default 6.0	
+007e2db0	cSC4RenderProperties::cProperties::cRegkRenderModelThresholdScroll::cRegkRenderModelThresholdScroll	render-properties.md §3; float 10, default 40.0	
+007e2e90	cSC4RenderProperties::cProperties::cRegkParticleSizeThreshold::cRegkParticleSizeThreshold	render-properties.md §3; float 11, default 300.0	
+007e2f70	cSC4RenderProperties::cProperties::cRegkMaxVehiclePct::cRegkMaxVehiclePct	render-properties.md §3; float 12, default 1.0	
+007e3050	cSC4RenderProperties::cProperties::cRegkMaxPedPct::cRegkMaxPedPct	render-properties.md §3; float 13, default 1.0	
+007e3130	cSC4RenderProperties::cProperties::cRegkOpaqueUIAlphaValue::cRegkOpaqueUIAlphaValue	render-properties.md §3; float 14, default 0.55	
+007e3210	cSC4RenderProperties::cProperties::cProperties	render-properties.md §1.3; the 77 registrations in index order per type	
+007e3650	cSC4RenderProperties::cSC4RenderProperties	render-properties.md §1.3; copies the three static tables, strips the k, short name, lower case	
+00abb6a8	cSC4RenderProperties::vftable_1	render-properties.md §1.1; the cRZUnknown at +4: 3 thunks and the deleting destructor	
+00abb6c0	cSC4RenderProperties::vftable	render-properties.md §2; 18 slots	
+00b4e3a4	cSC4RenderProperties::sBoolRegistry (data, vector)	render-properties.md §1.3; boolean entries of 0x20 bytes	
+00b4e3b0	cSC4RenderProperties::sIntRegistry (data, vector)	render-properties.md §1.3; integer entries of 0x28 bytes	
+00b4e3bc	cSC4RenderProperties::sFloatRegistry (data, vector)	render-properties.md §1.3; float entries of 0x28 bytes	

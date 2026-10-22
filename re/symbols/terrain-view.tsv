@@ -1,0 +1,94 @@
+va	name	evidence	mac_x86
+004665c0	cSTETerrainView3D::SetWaterColorUpdateRect	terrain-view.md §9.2; merges two rectangles (min corner, max corner)	
+00751780	cSTESelectedTerrainArea::MarkSelected	terrain-view.md §9.2; descriptive name, no Mac match; the rectangle form (water-ripples.md §2.2)	
+00751bc0	cSTESelectedTerrainArea::cSTESelectedTerrainArea	terrain-view.md §9.3; descriptive name, no Mac match; two hash sets (water-ripples.md §2.1)	
+00751c30	cSTESelectedTerrainArea::~cSTESelectedTerrainArea (deleting destructor, thunk at +4)	terrain-view.md §9.3; descriptive name, no Mac match	
+00751c40	cSTESelectedTerrainArea::~cSTESelectedTerrainArea (deleting destructor)	terrain-view.md §9.3; descriptive name, no Mac match	
+00751c80	cSTETerrainView3D::UpdateTextureCoordinates	terrain-view.md descriptive name, no Mac match; §5.1; f = 0x89A312C0 x 0.01 x 2^zoom, by rotation	
+00751ed0	cSTETerrainView3D::ClearCurrentSelections	terrain-view.md §9.2; slot 9, through the selection +0x6C	
+00751ee0	cSTETerrainView3D::ComputeMinimumVisibleHtAtDrawRows	terrain-view.md §3; the draw frustum's lower plane at each row's ends	
+00751ff0	cSTETerrainView3D::ComputeMinimumVisibleHtAtViewRows	terrain-view.md descriptive name, no Mac match; §3; the view frustum's lower plane	
+00752100	cSTETerrainView3D::DrawTextureLessTerrainSurface	terrain-view.md §4.3; the floor pass, one indexed list per visible row	
+007521c0	cSTETerrainView3D::DrawTextureLessTerrainSurfaceWithVertBufExtension	terrain-view.md §4.3; the same through cSTEVertBufExtn	
+00752240	cSTETerrainView3D::DrawWaterSurface	terrain-view.md §6.3; blend 4/5, depth less, the zoom's water texture	
+007523e0	cSTETerrainView3D::GetGZCLSID	terrain-view.md descriptive name, no Mac match; §9; 0xC9B84E10, slot 5 of the +0x14 table	
+007523f0	cSTETerrainView3D::GetRectFromMessage	terrain-view.md descriptive name, no Mac match; §9.2; the changed rectangle of 0x278E6003 / 0x678E6E3A	
+00752430	cSTETerrainView3D::InitLandVertices	terrain-view.md descriptive name, no Mac match; §2; positions 16 m apart, alpha 0xFF	
+00752520	cSTETerrainView3D::InitWaterVertices	terrain-view.md descriptive name, no Mac match; §2; positions, blue 0xFF, the glare image	
+00752660	cSTETerrainView3D::MarkSelected	terrain-view.md §9.2; slot 8, pass-through	
+00752680	cSTETerrainView3D::MarkSelected	terrain-view.md §9.2; slot 7, the rectangle form 0x00751780	
+007526a0	cSTETerrainView3D::MarkSelected	terrain-view.md §9.2; slot 6, pass-through	
+007526c0	cSTETerrainView3D::MarkSelected	terrain-view.md §9.2; slot 5, pass-through	
+007526e0	cSTETerrainView3D::MarkSelected	terrain-view.md §9.2; slot 4, pass-through	
+00752700	cSTETerrainView3D::Pick	terrain-view.md §9.1; the object-base Pick, interface slot 3 without water	
+00752730	cSTETerrainView3D::QueryInterface	terrain-view.md §9; IIDs 0xC989F960 / 0xC9B84E10 base, 0x452294AA +0x10, 0x6771477D +0x0C, 0xE4FDA3D4 +0x14	
+007527d0	cSTETerrainView3D::Read	terrain-view.md descriptive name, no Mac match; §8.1; save record: version 1 and the display grid byte (terrain.md §13.2)	
+00752820	cSTETerrainView3D::GetDrawRows	terrain-view.md descriptive name, no Mac match; §3; first and last row and the two column tables	
+00752860	cSTETerrainView3D::SetAutomaticCellCursorUpdateStatus	terrain-view.md §9.1; byte +0x30	
+00752870	cSTETerrainView3D::DrawTerrainQuad	terrain-view.md §4.4; slot 14	
+00752940	cSTETerrainView3D::DrawTexturedTerrainQuad	terrain-view.md §4.4; slot 15	
+00752ae0	cSTETerrainView3D::GetDisplayGridFlag	terrain-view.md §8.1; the static 0x00B4C741	
+00752af0	cSTETerrainView3D::SetTriangleIndicesForCell	terrain-view.md §4.2; flags 0x20, 0x40, 0x200, 0x3000	
+00752cd0	cSTETerrainView3D::Write	terrain-view.md descriptive name, no Mac match; §8.1; version 1 and the display grid byte	
+00752e80	cSTETerrainView3D::ComputeDrawRectsForDrawFrustum	terrain-view.md §3; rows from the clipped box, columns from the ground lines	
+00753210	cSTETerrainView3D::ComputeDrawRectsForViewFrustum	terrain-view.md descriptive name, no Mac match; §3; the view-frustum table, on a view change	
+007535a0	cSTETerrainView3D::ComputeHeightBasedCullingInfoForDrawFrustum	terrain-view.md §3; land and water row visibility	
+007539d0	cSTETerrainView3D::ComputeHeightBasedCullingInfoForViewFrustum	terrain-view.md descriptive name, no Mac match; §3	
+00753e00	cSTETerrainView3D::DrawSideCliffs	terrain-view.md §7.1; the two visible edges, three strata, depth offset 1	
+007551c0	cSTETerrainView3D::DrawWaterBox	terrain-view.md §6.3; four edges, depth offsets -1 / -5	
+007558a0	cSTETerrainView3D::GetOverlayManager	terrain-view.md §9; slot 18, base +0x78 + 4 index	
+007558b0	cSTETerrainView3D::ComputeCliffColors	terrain-view.md descriptive name, no Mac match; §7.1; the light of each edge's outward normal	
+00755b60	cSTETerrainView3D::SetEdgeColumnHeights	terrain-view.md descriptive name, no Mac match; §7.1; strata and water-box heights at one edge vertex	
+00755c50	cSTETerrainView3D::ReadPlumbingTuningData	terrain-view.md §1; four colours and 0x297F42B7 from Terrain Properties	
+00755e80	cSTETerrainView3D::SetDisplayGridFlag	terrain-view.md §8.1; slot 21, terrain slot 68 on a change	
+00755ed0	cSTETerrainView3D::MarkTextureSpanRowsDirty	terrain-view.md descriptive name, no Mac match; §4.3; dirty bits for rows a..b	
+00755f30	cSTETerrainView3D::SetLightingUpdateRect	terrain-view.md §9.2; slot 13, +0x31 / +0x34	
+00755fb0	cSTETerrainView3D::SetAllTriangleIndices	terrain-view.md descriptive name, no Mac match; §4.2; every cell	
+00756000	cSTETerrainView3D::AddWaterColorUpdateRect	terrain-view.md descriptive name, no Mac match; §9.2; +0x48 / +0x4C	
+00756080	cSTETerrainView3D::SetWaterGlareStatus	terrain-view.md §9.2; slot 12, +0x49	
+007560f0	cSTETerrainView3D::Shutdown	terrain-view.md §9.3	
+00756350	cSTETerrainView3D::BuildCellQuads	terrain-view.md descriptive name, no Mac match; §7.3; the levelled quads of a row range	
+007566c0	cSTETerrainView3D::HandleRotationChange	terrain-view.md descriptive name, no Mac match; §9.2	
+00756750	cSTETerrainView3D::ComputeDrawFrustumOptimizationInfo	terrain-view.md §3; rects, visible edges, height culling	
+007567c0	cSTETerrainView3D::cSTETerrainView3D	terrain-view.md §2; the constructor (layout in terrain.md §15.5.2)	
+007568e0	cSTETerrainView3D::IsWaterGlareEnabled	terrain-view.md §9.2; slot 11	
+007568f0	cSTETerrainView3D::QueryInterface (thunk at +4)	terrain-view.md descriptive name, no Mac match; §9	
+00756900	cSTETerrainView3D::~cSTETerrainView3D (deleting destructor, thunk at +4)	terrain-view.md descriptive name, no Mac match; §9.3	
+00756910	cSTETerrainView3D::QueryInterface (thunk at +12)	terrain-view.md descriptive name, no Mac match; §9	
+00756920	cSTETerrainView3D::QueryInterface (thunk at +16)	terrain-view.md descriptive name, no Mac match; §9	
+00756930	cSTETerrainView3D::AddRef (thunk at +16)	terrain-view.md descriptive name, no Mac match; §9	
+00756940	cSTETerrainView3D::Release (thunk at +16)	terrain-view.md descriptive name, no Mac match; §9	
+00756950	cSTETerrainView3D::QueryInterface (thunk at +20)	terrain-view.md descriptive name, no Mac match; §9	
+00756960	cSTETerrainView3D::AddRef (thunk at +20)	terrain-view.md descriptive name, no Mac match; §9	
+00756970	cSTETerrainView3D::Release (thunk at +20)	terrain-view.md descriptive name, no Mac match; §9	
+00756980	cSTETerrainView3D::~cSTETerrainView3D	terrain-view.md descriptive name, no Mac match; §9.3; the destructor body	
+007569f0	cSTETerrainView3D::UpdateLandHeights	terrain-view.md descriptive name, no Mac match; §7.2; on 0x278E6003	
+00756b00	cSTETerrainView3D::UpdateWaterHeights	terrain-view.md descriptive name, no Mac match; §6.1; on 0x678E6E3A	
+00756ca0	cSTETerrainView3D::ChangeTerrainType	terrain-view.md §5.1; releases every zoom's terrain textures	
+00756d20	cSTETerrainView3D::SetColorOfWaterSurface	terrain-view.md §6.2; depth ramp x 0x29AB15C2, tint, glare, alpha ramp to 0x29AB15C0	
+007571d0	cSTETerrainView3D::LoadZoomTextures	terrain-view.md descriptive name, no Mac match; §5.1; instance key + 0x100 x zoom, else key	
+007572a0	cSTETerrainView3D::DrawWaterLayers	terrain-view.md §6.3	
+00757300	cSTETerrainView3D::InitializeCityEdgeLayerHeights	terrain-view.md §7.1; FSH 0xCA5CC9C0 / 0xCA5CC9C1, (pixel - 127) x 0.5 + 55 / 65	
+007574d0	cSTETerrainView3D::HandleZoomChange	terrain-view.md descriptive name, no Mac match; §9.2	
+00757540	cSTETerrainView3D::~cSTETerrainView3D (deleting destructor)	terrain-view.md descriptive name, no Mac match; §9.3	
+00757560	cSTETerrainView3D::DoMessage	terrain-view.md descriptive name, no Mac match; §9.2; slot 3 of the message target at +0x10	
+00757650	cSTETerrainView3D::DrawGrid	terrain-view.md descriptive name, no Mac match; §8.1; blended grid texture +0x88, not under kRenderSnapshot	
+00758620	cSTETerrainView3D::RemoveCellLevelling	terrain-view.md §7.3; slot 17	
+00758750	cSTETerrainView3D::FreeStaticBuffers	terrain-view.md descriptive name, no Mac match; §2	
+00758990	cSTETerrainView3D::ReadTuningParameters	terrain-view.md §1; exemplar 0x6534284A / 0x88CD66E9 / 1	
+00758bc0	cSTETerrainView3D::StaticShutdown	terrain-view.md descriptive name, no Mac match; §2	
+00758ea0	cSTETerrainView3D::AllocateStaticBuffers	terrain-view.md descriptive name, no Mac match; §2; vertex arrays, row index lists, edge strips	
+007595a0	cSTETerrainView3D::CacheGeometry	terrain-view.md descriptive name, no Mac match; §2; cell and vertex counts into statics (terrain.md §15.5.4 step 6)	
+00759750	cSTETerrainView3D::LevelCell	terrain-view.md §7.3; slot 16, flags |= 0x60	
+00759a80	cSTETerrainView3D::DrawPlumbingInfo	terrain-view.md §8.2	
+0075a230	cSTETerrainView3D::Pick	terrain-view.md §9.1; slot 3, cell walk of up to 768 steps	
+0075a770	cSTETerrainView3D::HandleCheatCommand	terrain-view.md §9.2; slot 19, level / unlevel	
+0075aba0	cSTETerrainView3D::ComputeTextureSpansForRow	terrain-view.md §4.3; per-key spans, dirty bit per row	
+0075b460	cSTETerrainView3D::DrawTerrainSurfaceRows	terrain-view.md §4.3; per key: bind, vertex alpha := weight, draw spans	
+0075b790	cSTETerrainView3D::DrawTerrainSurfaceRowsWithVertBufExtension	terrain-view.md §4.3	
+0075ba90	cSTETerrainView3D::DrawTexturedTerrainSurface	terrain-view.md §4.3; the textured pass	
+0075bd10	cSTETerrainView3D::DrawTerrainSurface	terrain-view.md §4.3; floor colour then lit colour, blend 4/1	
+0075bee0	cSTETerrainView3D::DrawTerrainLayers	terrain-view.md §4.1	
+0075bfd0	cSTETerrainView3D::Update	terrain-view.md §4.1; kRenderTerrain (boolean 15), depth offset -3, +0x50 selects the pass	
+0075c0c0	cSTETerrainView3D::StaticInit	terrain-view.md §2	
+0075c420	cSTETerrainView3D::Init	terrain-view.md §2; detailed in terrain.md §15.5.4	

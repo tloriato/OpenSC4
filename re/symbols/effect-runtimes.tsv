@@ -1,0 +1,45 @@
+va	name	evidence	mac_x86
+005812c0	cSC4BrushEffect::Start	effects.md §8.3; descriptive name, no Mac match; prev := cur, counters reset	
+00581530	cSC4BrushEffect::Stop	effects.md §8.3; descriptive name, no Mac match; ends the long terrain operation	
+00581560	cSC4BrushEffect::SetTransform	effects.md §8.3; descriptive name, no Mac match; cur := (x, z)	
+00581640	cSC4BrushEffect::Apply	effects.md §8.3; descriptive name, no Mac match; n brush strokes from prev to cur	
+005817f0	cSC4BrushEffect::Update	effects.md §8.3; descriptive name, no Mac match; one-shot or stroke	
+005bc2b0	cSC4GameEffect::SetParameter	effects.md §9.2; descriptive name, no Mac match; slot 6, parameter 13 only	
+005bc310	cSC4GameEffect::cSC4GameEffect	effects.md §9.2; descriptive name, no Mac match; the constructor	
+005bc3b0	cSC4GameEffect::SetTransform	effects.md §9.2; descriptive name, no Mac match; the cell, pending on change	
+005bcbf0	cSC4GameEffect::Burn	effects.md §9.3; descriptive name, no Mac match; IgniteCellRadius then SetCause(4)	
+005bd070	cSC4GameEffect::Start	effects.md §9.2; descriptive name, no Mac match; the pauses by flag	
+005bd0f0	cSC4GameEffect::Demolish	effects.md §9.3; descriptive name, no Mac match	
+005bd340	cSC4GameEffect::Stop	effects.md §9.2; descriptive name, no Mac match; the pauses undone	
+005bd3c0	cSC4GameEffect::Apply	effects.md §9.3; descriptive name, no Mac match; burn, toxic, demolish, ... in order	
+005bd4d0	cSC4GameEffect::Update	effects.md §9.2; descriptive name, no Mac match; single, or once per new cell	
+005e6160	cSC4ModelRegEffects::Update	graphics-formats.md §3.11; descriptive name, no Mac match; slot 5, the record of the current frame	
+005e6b40	cSC4ModelRegEffects::UpdateWithSpeed	graphics-formats.md §3.11; descriptive name, no Mac match; slot 4, also parameter 15	
+005e7660	cSC4ModelRegEffects::StartEffect	graphics-formats.md §3.11; descriptive name, no Mac match; slot 12, by name, case-insensitive	
+005e7750	cSC4ModelRegEffects::StopEffect	graphics-formats.md §3.11; descriptive name, no Mac match; slot 13, by name, case-insensitive	
+005e7a60	cSC4ModelRegEffects::FindEffect	graphics-formats.md §3.11; descriptive name, no Mac match; slot 10, by REGP name	
+005e8320	cSC4ModelRegEffects::InitEffectsList	graphics-formats.md §3.11; slot 16, fx_ names in name order	
+005e8670	cSC4ModelRegEffects::cSC4ModelRegEffects	graphics-formats.md §3.11; descriptive name, no Mac match; the constructor	
+005e8810	cSC4ModelRegEffects::AddEffect	graphics-formats.md §3.11; descriptive name, no Mac match; slot 8, created by name, not started	
+005ebbf0	cSC43DPlaceableObject::GetModelCount	prop-occupant.md §6.1; slot 3	
+005ebc00	cSC43DPlaceableObject::GetModels	prop-occupant.md §6.1; slot 4	
+005ebc50	cSC43DPlaceableObject::IsVisible	prop-occupant.md §6.1; slot 10	
+005ebc60	cSC43DPlaceableObject::ResizeModelInstanceArray	prop-occupant.md §6.1; the array growth	
+005ebcc0	cSC43DPlaceableObject::AddRef	prop-occupant.md §6.1; slot 1	
+005ebcd0	cSC43DPlaceableObject::FinalRelease	prop-occupant.md §6.1; FinalRelease	
+005ebd20	cSC43DPlaceableObject::QueryInterface	prop-occupant.md §6.1; slot 0, IIDs 1 and 0xC6BB5EFA	
+005ebd50	cSC43DPlaceableObject::GetZoomLevelsCreatedFor	prop-occupant.md §6.1; slot 12, bits 2-6	
+005ebd60	cSC43DPlaceableObject::SetZoomLevelsCreatedFor	prop-occupant.md §6.1; slot 13	
+005ebd80	cSC43DPlaceableObject::GetRotationsCreatedFor	prop-occupant.md §6.1; slot 14, bits 7-10	
+005ebd90	cSC43DPlaceableObject::SetRotationsCreatedFor	prop-occupant.md §6.1; slot 15	
+005ebe20	cSC43DPlaceableObject::AddModel	prop-occupant.md §6.1; slot 5	
+005ebe80	cSC43DPlaceableObject::RemoveModel	prop-occupant.md §6.1; slot 6	
+005ebf80	cSC43DPlaceableObject::DoOverlayVisibilityChange	prop-occupant.md §6.1; overlay visibility	
+005ebff0	cSC43DPlaceableObject::AddModelsToRenderer	prop-occupant.md §6.1; adds to the renderer	
+005ec050	cSC43DPlaceableObject::RemoveModelsFromRenderer	prop-occupant.md §6.1; removes from the renderer	
+005ec0a0	cSC43DPlaceableObject::Release	prop-occupant.md §6.1; slot 2	
+005ec0c0	cSC43DPlaceableObject::SetVisibility	prop-occupant.md §6.1; slot 8, flag bit 1	
+005ec110	cSC43DPlaceableObject::SetOverlaysVisible	prop-occupant.md §6.1; slot 9, flag bit 0	
+005ec190	cSC43DPlaceableObject::AddOverlay	prop-occupant.md §6.1; slot 7	
+005ec240	cSC43DPlaceableObject::RemoveAll	prop-occupant.md §6.1; slot 11	
+005ec3b0	cSC43DPlaceableObject::~cSC43DPlaceableObject	prop-occupant.md §6.1; slot 16, destructor	

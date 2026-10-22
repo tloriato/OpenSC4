@@ -1,0 +1,26 @@
+va	name	evidence	mac_x86
+007ab760	cSC4WinRegionScreen::GZOnMouseMove	region-screen.md §4	
+007ab7c0	cSC4WinRegionScreen::ComputeBaseLimits	region-screen.md §3	
+007ab9f0	cSC4WinRegionScreen::DoMessage	region-screen.md §8; window messages	
+007abb80	cSC4WinRegionScreen::SetCitySnapshotsToDefault	region-screen.md §3	
+007abdf0	cSC4WinRegionScreen::ShowPanel	region-screen.md §5 (outline)	
+007abf10	cSC4WinRegionScreen::ReadTunableValues	region-screen.md §1; exemplar 0xAA383BFE	
+007ac110	cSC4WinRegionScreen::RestoreSignposts	region-screen.md §4	
+007ac270	cSC4WinRegionScreen::SetUserPreferencesToCurrentRegion	region-screen.md §7	
+007ac2d0	cSC4WinRegionScreen::SetUserPreferencesToCurrentPosition	region-screen.md §7	
+007acad0	cSC4WinRegionScreen::GZOnMouseDownL	region-screen.md §4; double click plays	
+007acc90	cSC4WinRegionScreen::InitApplicationServices	region-screen.md §2 (outline)	
+007adac0	cSC4WinRegionScreen::LoadRegion	region-screen.md §6.3	
+007adc20	cSC4WinRegionScreen::LaunchRegionalCity	region-screen.md §6.2	
+007ae510	cSC4WinRegionScreen::RecalculateImagesFromCitySnapshots	region-screen.md §3 (outline)	
+007aea00	cSC4WinRegionScreen::GetOrCreateRegionalCity	region-screen.md §6.1	
+007aec00	cSC4WinRegionScreen::UpdatePopulation	region-screen.md §3; text 0xC9E41918	
+007aedd0	cSC4WinRegionScreen::MakeWholeRegion	region-screen.md §5 (outline)	
+007af4b0	cSC4WinRegionScreen::LaunchCity	region-screen.md §6.4	
+007af720	cSC4WinRegionScreen::ProcessCommand	region-screen.md §4, §5	
+007afaa0	cSC4WinRegionScreen::GZOnCommand	region-screen.md §5	
+007b0470	cSC4WinRegionScreen::LoadGUI	region-screen.md §2 (outline)	
+007b0af0	cSC4WinRegionScreen::DoMessage	region-screen.md §8; commands to ProcessCommand	
+007b0f60	cSC4WinRegionScreen::Shutdown	region-screen.md §2 (outline)	
+007b13c0	cSC4WinRegionScreen::PutCitiesInView	region-screen.md §3	
+007b1900	cSC4WinRegionScreen::Init	region-screen.md §2 (outline)	

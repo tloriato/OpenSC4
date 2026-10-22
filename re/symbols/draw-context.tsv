@@ -1,0 +1,51 @@
+va	name	evidence	mac_x86
+007d2750	SC4DrawContext::SetModelViewTransformChanged	draw-context.md §3; +0x138 := 0	
+007d2760	SC4DrawContext::EnableColorMaskFlag	draw-context.md §3; state bit 0, driver slot 15	
+007d27b0	SC4DrawContext::EnableDepthTestFlag	draw-context.md §3; bit 2, capability 1	
+007d2800	SC4DrawContext::EnableDepthMaskFlag	draw-context.md §3; bit 1, driver slot 17	
+007d2850	SC4DrawContext::EnableCullFaceFlag	draw-context.md §3; bit 6, capability 3	
+007d28a0	SC4DrawContext::SetDepthFunc	draw-context.md §3; bits 7-9, driver slot 16	
+007d28f0	SC4DrawContext::SetBlendFunc	draw-context.md §3; bits 13-20, driver slot 21	
+007d2970	SC4DrawContext::SetVertexBuffer	draw-context.md §9.1; InterleavedArrays with stride 0	
+007d2980	SC4DrawContext::SetIndexBuffer	draw-context.md §9.1; index base +0x1FC	
+007d2990	SC4DrawContext::DrawPrims	draw-context.md §9.1; InterleavedArrays then DrawArrays	
+007d29c0	SC4DrawContext::DrawPrimsIndexed	draw-context.md §9.1; DrawElements from the index base	
+007d29f0	SC4DrawContext::DrawPrimsIndexed	draw-context.md §9.1; DrawElements with an index pointer	
+007d2a20	SC4DrawContext::SetTransparency	draw-context.md §3; AlphaMultiplier	
+007d2a30	SC4DrawContext::ResetTransparency	draw-context.md §3; AlphaMultiplier 1.0	
+007d2b50	cSC4PackedRenderState::PackRenderState	draw-context.md §5.1; 14 arguments, -1 clears a field from the mask	
+007d2d20	SC4DrawContext::SetModelTransform	draw-context.md §8; the view transform as a column-major 4x4, +0x138 valid	
+007d2f50	SC4DrawContext::SetAlphaFunc	draw-context.md §3; bits 10-12, reference round(ref x 15) in bits 21-24	
+007d3030	SC4DrawContext::SetTexCombiner	draw-context.md §7; driver slot 62, mode bits := 4	
+007d30b0	SC4DrawContext::SetTexColor	draw-context.md §7; TexEnv slot 27	
+007d3140	SC4DrawContext::SetShade	draw-context.md §8; times the default shade +0x94	
+007d31b0	SC4DrawContext::SetSelfLitShade	draw-context.md §8	
+007d31e0	SC4DrawContext::SetModelShade	draw-context.md §8; lighting manager +0x44 slot 11 GetModelLight	
+007d3290	SC4DrawContext::ResetShade	draw-context.md §8; override flag +0x1F8	
+007d3400	SC4DrawContext::SetModelTransform	draw-context.md §8; descriptive name, no Mac match; the overload with a model transform: view then model, model-view invalid	
+007d3d80	SC4DrawContext::SetCamera	draw-context.md §8; projection then model-view	
+007d3e90	SC4DrawContext::EnableAlphaTestFlag	draw-context.md §3; bit 3, kForceNoAlphaTest (boolean 8)	
+007d3ef0	SC4DrawContext::EnableTextureStateFlag	draw-context.md §3; bits 5 and 28, kUseSecondStage (boolean 11)	
+007d4010	SC4DrawContext::EnableBlendStateFlag	draw-context.md §3; bit 4, kForceNoAlphaBlend (boolean 7)	
+007d4070	SC4DrawContext::SetTexture	draw-context.md §7; driver slot 58	
+007d40b0	SC4DrawContext::SetTexEnvModeForStage	draw-context.md §7; descriptive name, no Mac match; bits 25-27 / 29-31, TexEnv slot 28	
+007d4180	SC4DrawContext::SetTexCoord	draw-context.md §7; TexStageCoord slot 52	
+007d41e0	SC4DrawContext::SetTexWrapModes	draw-context.md §7; TexParameter 2 and 3, kForceTextureRepeat	
+007d4280	SC4DrawContext::SetTexFiltering	draw-context.md §7; TexParameter 0 and 1, kForcePointSampling / kForceBilinear	
+007d4340	SC4DrawContext::SetTexTransform4	draw-context.md §7; coordinate set 16, TexStageMatrix slot 53	
+007d4420	SC4DrawContext::ClearTexTransform	draw-context.md §7	
+007d4480	SC4DrawContext::SetDepthOffset	draw-context.md §8; camera depth bias := kDepthOffset (int 16) x n	
+007d4530	SC4DrawContext::SetRenderState	draw-context.md §5.2; the packed form: (value ^ word) & mask, then the stage-0 defaults	
+007d47e0	SC4DrawContext::SetTexEnvMode	draw-context.md §7.1; Mac name kept; prepares the emulated second-stage pass	
+007d4a80	SC4DrawContext::RenderMesh	draw-context.md §9.1; DrawArrays or DrawElements per group	
+007d4fb0	SC4DrawContext::SetRenderStateHighlight	draw-context.md §5.2; highlight state +0xCC, colour from +0x54, combiner +0xD4	
+007d5030	SC4DrawContext::DrawBoundingBox	draw-context.md §9.3; packed state 0x020A8197 / 0x1E1FE3FF	
+007d5200	SC4DrawContext::SetDefaultRenderState	draw-context.md §5.2; top of the stack +0x1EC or the default +0x88	
+007d5230	SC4DrawContext::SetDefaultRenderStateUnilaterally	draw-context.md §5.2; every stage reset, then the default	
+007d5310	SC4DrawContext::SetRenderState	draw-context.md §6; the material form with the draw flags	
+007d5670	SC4DrawContext::SetRenderStateHighlight	draw-context.md §6; the material form	
+007d5710	SC4DrawContext::RenderModelInstance	draw-context.md §9.2; kShowBoundingBoxes (26), boolean 30 size cull, second pass	
+007d5f10	SC4DrawContext::SC4DrawContext	draw-context.md §1; 0x200 bytes, created by cSC43DRender	
+007d6320	SC4DrawContext::Init	draw-context.md §1.1; driver slot 64, max(stages, 2), highlight colours, packed defaults	
+007fc2d0	SC4DrawContext::DrawPrims	draw-context.md §9.1; DrawArrays	
+007ff0f0	cS3DCamera::SetDepthBias	draw-context.md §8; descriptive name, no Mac match; +0x1A4 := b, +0x17C bumped (camera.md §1.2)	

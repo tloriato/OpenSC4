@@ -1,0 +1,37 @@
+va	name	evidence	mac_x86
+007fb180	cS3DModelInstanceAnimatedSprite::SetView	animated-sprite.md descriptive name, no Mac match; §3; slot 8, zoom and rotation bytes	
+007fb1c0	cS3DModelInstanceAnimatedSprite::GetFrame	animated-sprite.md descriptive name, no Mac match; §3; slot 11, byte +0x9F	
+007fb1e0	cS3DModelInstanceAnimatedSprite::NextFrame	animated-sprite.md descriptive name, no Mac match; §4; without an animation table, by the play mode	
+007fb310	cS3DModelInstanceAnimatedSprite::SetRate	animated-sprite.md descriptive name, no Mac match; §4; slot 14, +0xA0	
+007fb330	cS3DModelInstanceAnimatedSprite::SetPlayMode	animated-sprite.md descriptive name, no Mac match; §4; slot 16, 3 loop, 2 ping-pong	
+007fb340	cS3DModelInstanceAnimatedSprite::SetFade	animated-sprite.md descriptive name, no Mac match; §3; slot 18, flag 2	
+007fb3b0	cS3DModelInstanceAnimatedSprite::SetHighlight	animated-sprite.md descriptive name, no Mac match; §3; slot 19, flag 1	
+007fb410	cS3DModelInstanceAnimatedSprite::SetSelfLit	animated-sprite.md descriptive name, no Mac match; §3; slot 20, flag 4	
+007fc320	cS3DModelInstanceAnimatedSprite::SetZoomResource	animated-sprite.md descriptive name, no Mac match; §2; frame count, N directions, 2pi / N	
+007fc480	cS3DModelInstanceAnimatedSprite::SetPosition	animated-sprite.md descriptive name, no Mac match; §3; slot 1	
+007fc4b0	cS3DModelInstanceAnimatedSprite::SetOrientation	animated-sprite.md descriptive name, no Mac match; §3.1; slot 3, -100 = unset	
+007fcc90	cS3DModelInstanceAnimatedSprite::TransformPoint	animated-sprite.md descriptive name, no Mac match; §3.1; slot 5	
+007fcea0	cS3DModelInstanceAnimatedSprite::SetAnimation	animated-sprite.md descriptive name, no Mac match; §3; slot 9, a sequence of the animation table	
+007fcf00	cS3DModelInstanceAnimatedSprite::SetFrame	animated-sprite.md descriptive name, no Mac match; §3; slot 10	
+007fcf60	cS3DModelInstanceAnimatedSprite::AdvanceFrame	animated-sprite.md descriptive name, no Mac match; §4; slot 13	
+007fcfb0	cS3DModelInstanceAnimatedSprite::Tick	animated-sprite.md descriptive name, no Mac match; §4; slot 15	
+007fd0c0	cS3DModelInstanceAnimatedSprite::Load	animated-sprite.md descriptive name, no Mac match; §2; slot 22, the resource of type 0x29A5D1EC	
+007fd120	cS3DModelInstanceAnimatedSprite::LoadFromResource	animated-sprite.md descriptive name, no Mac match; §2; slot 21, per-zoom records of type 0x69B6F01C	
+007fd2f0	cS3DModelInstanceAnimatedSprite::GetTextureResourceData	animated-sprite.md §4.1; direction bucket round(N((yaw + pi) - base) / 2pi) mod N	
+007fd3d0	cS3DModelInstanceAnimatedSprite::GetTextureData	animated-sprite.md §4.1; frames left to right, then down, in 2^k pages	
+007fd710	cS3DModelInstanceAnimatedSprite::Pick	animated-sprite.md §6; two TrianglePick tests	
+007fd7d0	GetSpriteAnimFromResourceKey	animated-sprite.md §2; the resource manager lookup for type 0x5AD0E817	
+007fdcba	cS3DModelInstanceAnimatedSprite::cS3DModelInstanceAnimatedSprite	animated-sprite.md §1; the constructor body, alpha-tested packed state	
+007fdfc0	cS3DModelInstanceAnimatedSprite::~cS3DModelInstanceAnimatedSprite (deleting destructor, thunk at +8)	animated-sprite.md descriptive name, no Mac match; §1	
+007fe0f0	cS3DModelInstanceAnimatedSprite::GetTransform	animated-sprite.md descriptive name, no Mac match; §3.1	
+007fe190	cS3DModelInstanceAnimatedSprite::SetTransform	animated-sprite.md descriptive name, no Mac match; §3.1	
+007fe230	__ZThn4_N31cS3DModelInstanceAnimatedSprite4PickEP15cSC4PickContext	animated-sprite.md §1; the Pick thunk at +4	
+007fe250	cS3DModelInstanceAnimatedSprite::LookAt	animated-sprite.md descriptive name, no Mac match; §3.1; slot 2	
+007fe390	cS3DModelInstanceAnimatedSprite::GetTextureData	animated-sprite.md §4.1; the frame entry, then its texture data	
+007fe400	cS3DModelInstanceAnimatedSprite::UpdateView	animated-sprite.md §5; corners from frame pixels x metres per pixel along the camera axes	
+007fea90	cS3DModelInstanceAnimatedSprite::Draw	animated-sprite.md §5; zoom 2 or closer, one triangle fan of four vertices	
+007fed50	GetMeshAnimFromResourceKey	animated-sprite.md §2; builds a sprite instance and loads the key (type 0x29A5D1EC)	
+007fede0	GetAnimatedModelFromResourceKey	animated-sprite.md §2; dispatch on the key type 0x29A5D1EC / 0x5AD0E817	
+007fee90	__ZThn4_N31cS3DModelInstanceAnimatedSprite4DrawEP14SC4DrawContextb	animated-sprite.md §1; the Draw thunk at +4	
+007feef0	cS3DModelInstanceAnimatedSprite::~cS3DModelInstanceAnimatedSprite (body)	animated-sprite.md descriptive name, no Mac match; §1; releases the per-zoom resources	
+007fefe0	cS3DModelInstanceAnimatedSprite::~cS3DModelInstanceAnimatedSprite (deleting destructor)	animated-sprite.md descriptive name, no Mac match; §1	

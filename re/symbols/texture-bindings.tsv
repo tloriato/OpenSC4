@@ -1,0 +1,61 @@
+va	name	evidence	mac_x86
+00800bf0	GZCOM_cS3DMaterialManagerCLSID	texture-bindings.md §3; returns 0x9AC0E23D	
+00800c00	cS3DMaterialManager::QueryInterface	texture-bindings.md §3; slot 0 of 0x00ABD3F4; 0xFAC0E21A, else the system service at +4	
+00800c50	cS3DMaterialManager::GetStatsString	texture-bindings.md §3; slot 5; "Nothing to report"	
+00800c70	cS3DMaterialManager::QueryInterface (thunk at +4)	texture-bindings.md §3; descriptive name; this - 4; slot 0 of 0x00ABD3C0	
+00800ca0	cS3DMaterialManager::QueryInterface (thunk at +8)	texture-bindings.md §3; descriptive name; this - 8; slot 0 of 0x00ABD3A8	
+00800cd0	cS3DMaterialManager::~cS3DMaterialManager (thunk)	texture-bindings.md §3; descriptive name; this - 8 to the deleting destructor; slot 3 of 0x00ABD3A8	
+00800ce0	cS3DMaterialManager::~cS3DMaterialManager (deleting destructor)	texture-bindings.md §3; was cS3DMaterialManager::~cS3DMaterialManager; GlobalHeapFree on bit 0	
+00800d20	cS3DMaterial::cS3DMaterial	texture-bindings.md §3; two texture slots: wrap 3, 3, filters 1, 1, slot byte 1, float 1.0	
+00800d70	cS3DMaterialManager::CreateMaterial	texture-bindings.md §3; slot 3; 0x34-byte material, flags | 0x180, slots past T marked 0xFF, count 1	
+00800e30	GZCOM_CreatecS3DMaterialManager	texture-bindings.md §3; was cS3DMaterialManager::cS3DMaterialManager; GlobalHeapAlloc(0x20), service 0x1AC0E11B; registered by the COM director 0x0046059E	
+008090c0	cS3DTextureBinding::cS3DTextureBinding	texture-bindings.md §2; handles, frame count, factory, count 0	
+008090e0	cS3DTextureBinding::Release	texture-bindings.md §2; at a count of 1 with a factory: factory slot 18 FreeBinding	
+00809120	GZCOM_cS3DTextureBindingFactoryCLSID	texture-bindings.md §1.1; returns 0x9AC0E23C	
+00809130	cS3DTextureBindingFactory::QueryInterface	texture-bindings.md §1.1; slot 0 of 0x00ABD8C8; 1, 0xFAC0E219 this; 0x088CEB67 +4; 0x287FB697 +8	
+008091b0	cS3DTextureBindingFactory::AddRef	texture-bindings.md §1.1; slot 1; the system service's at +8	
+008091c0	cS3DTextureBindingFactory::Release	texture-bindings.md §1.1; slot 2; the system service's at +8	
+008091d0	cS3DTextureBindingFactory::Shutdown	texture-bindings.md §1.3; system-service slot 9; FlushAll, releases, unsubscribes 0x8ACAA95F	
+00809260	cS3DTextureBindingFactory::GetStatsString	texture-bindings.md §1.10; slot 17; in use, awaiting reuse, total, MB = bytes * 2^-20	
+008092f0	cS3DTextureBindingFactory::SetGDriver	texture-bindings.md §1.3; slot 3; FlushAll before the swap	
+00809330	cS3DTextureBindingFactory::FindBindingParams	texture-bindings.md §1.4; internal format 0-7 from the image format, alpha bits and bit depth +0x68	
+008093a0	cS3DTextureBindingFactory::Init	texture-bindings.md §1.3; system-service slot 8; resource manager 0x056B906E, graphic system 0xC47B747C, message server 0x04FA845B	
+008094c0	cS3DTextureBindingFactory::GetBinding	texture-bindings.md §1.5; slot 5 (ID): key (0x7AB50E44, 0x1ABE787D, ID) to slot 6	
+008094f0	cS3DTextureBindingFactory::FindBindingDimensions	texture-bindings.md §1.4; descriptive name, no Mac match; powers of two, levels and sizes less the LOD offset +0x6C	
+00809690	cS3DTextureBindingFactory::EraseKeyEntry	texture-bindings.md §1.9; descriptive name, no Mac match; removes one node of the key table; called by SetResGroup	
+00809890	cS3DTextureBindingFactory::~cS3DTextureBindingFactory	texture-bindings.md §1.3; Shutdown, then the tables	
+00809910	cS3DTextureBindingFactory::SetLodOffset	texture-bindings.md §1.9; slot 9; +0x6C	
+00809920	cS3DTextureBindingFactory::QueryInterface (thunk at +4)	texture-bindings.md §1.1; descriptive name; this - 4; slot 0 of 0x00ABD8B8	
+00809930	cS3DTextureBindingFactory::AddRef (thunk at +4)	texture-bindings.md §1.1; descriptive name; this - 4	
+00809940	cS3DTextureBindingFactory::Release (thunk at +4)	texture-bindings.md §1.1; descriptive name; this - 4	
+00809950	cS3DTextureBindingFactory::QueryInterface (thunk at +8)	texture-bindings.md §1.1; descriptive name; this - 8; slot 0 of 0x00ABD884	
+00809960	cS3DTextureBindingFactory::AddRef (thunk at +8)	texture-bindings.md §1.1; descriptive name; this - 8	
+00809970	cS3DTextureBindingFactory::Release (thunk at +8)	texture-bindings.md §1.1; descriptive name; this - 8	
+00809980	cS3DTextureBindingFactory::QueryInterface (thunk at +0xC)	texture-bindings.md §1.1; descriptive name; this - 0xC; slot 0 of 0x00ABD86C	
+00809990	cS3DTextureBindingFactory::AddRef (thunk at +0xC)	texture-bindings.md §1.1; descriptive name; this - 0xC	
+008099a0	cS3DTextureBindingFactory::Release (thunk at +0xC)	texture-bindings.md §1.1; descriptive name; this - 0xC	
+008099b0	cS3DTextureBindingFactory::~cS3DTextureBindingFactory (thunk)	texture-bindings.md §1.1; descriptive name; this - 0xC to the deleting destructor; slot 3 of 0x00ABD86C	
+008099c0	cS3DTextureBindingFactory::QueryInterface (thunk at +0x24)	texture-bindings.md §1.1; descriptive name; this - 0x24; slot 0 of 0x00ABD85C	
+008099d0	cS3DTextureBindingFactory::AddRef (thunk at +0x24)	texture-bindings.md §1.1; descriptive name; this - 0x24	
+008099e0	cS3DTextureBindingFactory::Release (thunk at +0x24)	texture-bindings.md §1.1; descriptive name; this - 0x24	
+008099f0	cS3DTextureBindingFactory::DoMessage	texture-bindings.md §1.8; descriptive name; slot 3 of 0x00ABD85C; kSGLMessage_RestoreTextures 0x8ACAA95F reloads keyed textures	
+00809b00	cS3DTextureBindingFactory::SetResGroup	texture-bindings.md §1.9; slot 12; a new group un-keys every record	
+00809b90	cS3DTextureBindingFactory::SetBindingImageData	texture-bindings.md §1.5; slot 7; driver slot 61 per frame and level	
+00809cd0	cS3DTextureBindingFactory::GetFreeBinding	texture-bindings.md §1.5; oldest matching record of the free pool; drops its key	
+00809e10	cS3DTextureBindingFactory::GetBindingInfo	texture-bindings.md §1.10; slot 8	
+00809eb0	cS3DTextureBindingFactory::DestroyBinding	texture-bindings.md §1.6; key and binding entries, driver slot 36, frees	
+00809ff0	cS3DTextureBindingFactory::~cS3DTextureBindingFactory (deleting destructor)	texture-bindings.md §1.3; was cS3DTextureBindingFactory::~cS3DTextureBindingFactory; GlobalHeapFree on bit 0	
+0080a010	cS3DTextureBindingFactory::FlushAll	texture-bindings.md §1.7; slot 16; destroys every record, in use or not	
+0080a0a0	cS3DTextureBindingFactory::AdjustFreePoolSize	texture-bindings.md §1.6; evicts from the back of the free list above the limit +0x64	
+0080a110	cS3DTextureBindingFactory::CreateNewBinding	texture-bindings.md §1.5; driver slot 60 per frame, slot 50 error check, bytes from the bits-per-texel table	
+0080a320	cS3DTextureBindingFactory::GetBinding	texture-bindings.md §1.5; slot 4 (image info): reuse or create, upload, not keyed	
+0080a380	cS3DTextureBindingFactory::GetBinding	texture-bindings.md §1.5; slot 6 (key): key table on (group, instance), else resource manager slot 4 with IID 0x1AB50C3F	
+0080a4d0	cS3DTextureBindingFactory::FreeBinding	texture-bindings.md §1.6; slot 18; to the front of the free list, then trim	
+0080a580	cS3DTextureBindingFactory::SetFreePoolMax	texture-bindings.md §1.6; slot 14	
+0080a590	cS3DTextureBindingFactory::FlushFreePool	texture-bindings.md §1.6; slot 15; trim with limit 0	
+0080a5b0	cS3DTextureBindingFactory::cS3DTextureBindingFactory	texture-bindings.md §1.2; service 0x1AC0E11A, pool limit 2,000,000, bit depth 32, group 0x1ABE787D	
+0080a680	GZCOM_CreatecS3DTextureBindingFactory	texture-bindings.md §1.1; GlobalHeapAlloc(0x84) then the constructor	
+0080a700	NextPowerOfTwo	texture-bindings.md §1.4; descriptive name, no Mac match; the smallest power of two >= n, 1 for n <= 1; also called at 0x005D7BDB	
+00abd774	cS3DTextureBindingFactory::sBitsPerTexel (data, u32[8])	texture-bindings.md §1.4; 16, 24, 16, 16, 32, 4, 8, 8	
+00abd85c	cS3DTextureBindingFactory::vftable_4	texture-bindings.md §1.1; the message target at +0x24: 3 thunks, DoMessage	
+00abd8b8	cS3DTextureBindingFactory::vftable_1	texture-bindings.md §1.1; the interface 0x088CEB67 at +4: 3 thunks and one more slot	

@@ -1,0 +1,83 @@
+va	name	evidence	mac_x86
+004a74e0	cSC4RegionalCity::QueryInterface	regional-city.md §1; 1, 0x69D2BE1D, 0x452294AA (+4), 0xE4FDA3D4 (+8)	
+004a7580	cSC4RegionalCity::GetTaxRate	regional-city.md descriptive name, no Mac match; §4.2; 7.0 for other types	
+004a7640	cSC4RegionalCity::GetBudget	regional-city.md descriptive name, no Mac match; §3; double	
+004a7650	cSC4RegionalCity::SetBudget	regional-city.md descriptive name, no Mac match; §3; double	
+004a7660	cSC4RegionalCity::GetIncome	regional-city.md descriptive name, no Mac match; §3; double	
+004a7670	cSC4RegionalCity::SetIncome	regional-city.md descriptive name, no Mac match; §3; double	
+004a7680	cSC4RegionalCity::GetCommodityBalance	regional-city.md descriptive name, no Mac match; §5; (produced + imported) - (demanded + exported)	
+004a76e0	cSC4RegionalCity::IsTutorial	regional-city.md descriptive name, no Mac match; §3; GetTutorialGUID() != -1	
+004a7800	cSC4RegionalCity::Release	regional-city.md §1; Shutdown then the deleting destructor	
+004a7830	cSC4RegionalCity::Init	regional-city.md descriptive name, no Mac match; §4.1; five subscriptions	
+004a78a0	cSC4RegionalCity::SetupPreferences	regional-city.md descriptive name, no Mac match; §7.1	
+004a78e0	cSC4RegionalCity::CompareConnectionChanges	regional-city.md descriptive name, no Mac match; §6.2; west, north, east, south, then x, z	
+004a7b40	cSC4RegionalCity::FindConnection	regional-city.md descriptive name, no Mac match; §6.2	
+004a7d10	cSC4RegionalCity::Write	regional-city.md §2; foundations.md §11.2	
+004a8470	cSC4RegionalCity::Shutdown	regional-city.md descriptive name, no Mac match; §4.1	
+004a8500	cSC4RegionalCity::GetPopulation	regional-city.md descriptive name, no Mac match; §4.3; by type	
+004a8530	cSC4RegionalCity::GetExtrapolatedPopulation	regional-city.md descriptive name, no Mac match; §4.3	
+004a8960	cSC4RegionalCity::SetupCity	regional-city.md §7.1	
+004a8a40	cSC4RegionalCity::GetPointsOfInterest	regional-city.md descriptive name, no Mac match; §7.3	
+004a8db0	cSC4RegionalCity::GetAllConnections	regional-city.md §6.2	
+004a8df0	cSC4RegionalCity::ChangeSymmetricConnection	regional-city.md §6.2; pending record with the neighbour cell	
+004a8ec0	cSC4RegionalCity::ExtractLocalDeals	regional-city.md descriptive name, no Mac match; §3; the claiming of foundations.md §11.3	
+004a90d0	cSC4RegionalCity::SetLocalDeals	regional-city.md descriptive name, no Mac match; §3; foundations.md §11.3	
+004a9110	cSC4RegionalCity::UpdateLocalDeals	regional-city.md descriptive name, no Mac match; §3; foundations.md §11.3	
+004a9220	cSC4RegionalCity::TreatAllIncomingConnectionsAsNew	regional-city.md descriptive name, no Mac match; §6.2; adjacent cities' connections, flag 1	
+004a9580	cSC4RegionalCity::MarkConnectionsForRemoval	regional-city.md descriptive name, no Mac match; §6.2; own connections to established cities, flag 0	
+004a9720	cSC4RegionalCity::RepairConnections	regional-city.md descriptive name, no Mac match; §6.1; connection slot 10 with this city	
+004a9820	cSC4RegionalCity::GetAllowableExtrapolation	regional-city.md descriptive name, no Mac match; §4.3; max(potential - extrapolated, 0)	
+004a9860	cSC4RegionalCity::ExtrapolateGrowth	regional-city.md descriptive name, no Mac match; §4.3	
+004a9890	cSC4RegionalCity::ComputePotentialPopulation	regional-city.md descriptive name, no Mac match; §4.3; max(1.1 p, 1000)	
+004a9970	cSC4RegionalCity::ResetExtrapolatedPopulation	regional-city.md descriptive name, no Mac match; §4.3	
+004a99f0	cSC4RegionalCity::SetPosition	regional-city.md descriptive name, no Mac match; §6.1; rearrange shifts the deals	
+004a9ee0	cSC4RegionalCity::GetExported	regional-city.md descriptive name, no Mac match; §5	
+004a9f00	cSC4RegionalCity::SetExported	regional-city.md descriptive name, no Mac match; §5; negative -> 0	
+004a9f40	cSC4RegionalCity::GetImported	regional-city.md descriptive name, no Mac match; §5	
+004a9f60	cSC4RegionalCity::SetImported	regional-city.md descriptive name, no Mac match; §5; negative -> 0	
+004a9fa0	cSC4RegionalCity::GetProduced	regional-city.md descriptive name, no Mac match; §5	
+004a9fc0	cSC4RegionalCity::SetProduced	regional-city.md descriptive name, no Mac match; §5; negative -> 0	
+004aa000	cSC4RegionalCity::GetDemanded	regional-city.md descriptive name, no Mac match; §5	
+004aa020	cSC4RegionalCity::SetDemanded	regional-city.md descriptive name, no Mac match; §5; negative -> 0	
+004aa060	cSC4RegionalCity::GetCostPerUnit	regional-city.md descriptive name, no Mac match; §5	
+004aa080	cSC4RegionalCity::SetCostPerUnit	regional-city.md descriptive name, no Mac match; §5; negative -> 0	
+004aa0c0	cSC4RegionalCity::GetLocalDeals	regional-city.md §3; foundations.md §11.3	
+004aa0e0	cSC4RegionalCity::UpdateImportExport	regional-city.md §5; one deal, foundations.md §11.3	
+004aa200	cSC4RegionalCity::UpdateImportExport	regional-city.md §3; foundations.md §11.3, slot 71	
+004aa4f0	cSC4RegionalCity::UpdateCityCache	regional-city.md §7.1; from the new-city preferences, slot 25	
+004aa6d0	cSC4RegionalCity::CreateSymmetricConnections	regional-city.md §6.2 (outline); posts 0x6AC284F3	
+004ab7f0	cSC4RegionalCity::~cSC4RegionalCity (body)	regional-city.md descriptive name, no Mac match; §1	
+004aba60	cSC4RegionalCity::GetGZCLSID	regional-city.md §1; 0x6A037C24	
+004aba70	cSC4RegionalCity::GetPosition	regional-city.md descriptive name, no Mac match; §3	
+004aba90	cSC4RegionalCity::GetCitySize	regional-city.md descriptive name, no Mac match; §3	
+004abab0	cSC4RegionalCity::SetCitySize	regional-city.md descriptive name, no Mac match; §3	
+004abae0	cSC4RegionalCity::SetCitySerialNumber	regional-city.md descriptive name, no Mac match; §3	
+004abaf0	cSC4RegionalCity::GetOriginalLanguageAndCountry	regional-city.md descriptive name, no Mac match; §3	
+004abb10	cSC4RegionalCity::GetLastLanguageAndCountry	regional-city.md descriptive name, no Mac match; §3	
+004abb30	cSC4RegionalCity::GetCitySaveFilePath	regional-city.md descriptive name, no Mac match; §3	
+004abb50	cSC4RegionalCity::SetCitySaveFilePath	regional-city.md descriptive name, no Mac match; §3	
+004abb60	cSC4RegionalCity::GetCityName	regional-city.md descriptive name, no Mac match; §3	
+004abb80	cSC4RegionalCity::SetCityName	regional-city.md descriptive name, no Mac match; §3	
+004abb90	cSC4RegionalCity::GetMayorName	regional-city.md descriptive name, no Mac match; §3	
+004abbb0	cSC4RegionalCity::SetMayorName	regional-city.md descriptive name, no Mac match; §3	
+004abbc0	cSC4RegionalCity::GetUtilityAdvisorName	regional-city.md descriptive name, no Mac match; §3	
+004abbe0	cSC4RegionalCity::SetUtilityAdvisorName	regional-city.md descriptive name, no Mac match; §3	
+004abbf0	cSC4RegionalCity::GetCityDescription	regional-city.md descriptive name, no Mac match; §3	
+004abc10	cSC4RegionalCity::SetCityDescription	regional-city.md descriptive name, no Mac match; §3	
+004abc20	cSC4RegionalCity::GetBirthDate	regional-city.md descriptive name, no Mac match; §3	
+004abc30	cSC4RegionalCity::SetBirthDate	regional-city.md descriptive name, no Mac match; §3	
+004abc40	cSC4RegionalCity::GetEstablished	regional-city.md descriptive name, no Mac match; §3	
+004abc50	cSC4RegionalCity::SetEstablished	regional-city.md descriptive name, no Mac match; §3	
+004abc60	cSC4RegionalCity::GetWorldPosition	regional-city.md descriptive name, no Mac match; §3	
+004abc80	cSC4RegionalCity::SetWorldPosition	regional-city.md descriptive name, no Mac match; §3	
+004abca0	cSC4RegionalCity::GetWorldBaseElevation	regional-city.md descriptive name, no Mac match; §3	
+004abcb0	cSC4RegionalCity::SetWorldBaseElevation	regional-city.md descriptive name, no Mac match; §3	
+004abcc0	cSC4RegionalCity::GetWorldHemisphere	regional-city.md descriptive name, no Mac match; §3; 1 when the latitude is above 0, else 2	
+004abcf0	cSC4RegionalCity::SetTutorialGUID	regional-city.md descriptive name, no Mac match; §3	
+004abd40	cSC4RegionalCity::DoMessage	regional-city.md §4.1; foundations.md §11.3, §11.6	
+004ac040	cSC4RegionalCity::cSC4RegionalCity	regional-city.md §2; defaults: size 1x1, workforce 0.5, tax 7.0, tutorial -1	
+004ac590	cSC4RegionalCity::~cSC4RegionalCity	regional-city.md descriptive name, no Mac match; §1; deleting, slot 73	
+004ac5b0	cSC4RegionalCity::Read	regional-city.md §2; foundations.md §11.2	
+004ad290	cSC4RegionalCity::UpdateCityCache	regional-city.md descriptive name, no Mac match; §7.2; from a live city, slot 24	
+004ad9a0	GZCOM_CreatecSC4RegionalCity	regional-city.md §1; 0x1A0 bytes	
+005dc070	SC4ReadRegionalCity	regional-city.md §1; record 0xCA027EDB/0xCA027EE1/0	

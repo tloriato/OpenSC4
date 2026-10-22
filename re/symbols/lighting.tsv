@@ -1,0 +1,56 @@
+va	name	evidence	mac_x86
+007d6540	RotateLightingRectToWorld	lighting.md §6; descriptive name, no Mac match; fastcall (stored rect ECX, vertex count z EDX, rotation, vertex count x), result through EAX; called twice by DoMessage	
+007d65e0	cSC4LightingManager::QueryInterface	lighting.md §1.1; slot 0 of 0x00ABB530; IIDs 1, 0x681BD52A, 0x452294AA (this + 4)	
+007d6650	cSC4LightingManager::Release	lighting.md §1.1; slot 2; count +0x0C, deleting destructor at 1 or below	
+007d6690	cImageARGB8::SampleRowLerp	lighting.md §2.1; descriptive name, no Mac match; pixels (floor(Wu), floor(Hv)) and (ceil(Wu), floor(Hv)) lerped, no clamp	
+007d6870	cImageARGB8::FindMinRedComponentValue	lighting.md §1.3; the minimum of pixel byte 2 / 255 (1.0 when empty); called by Init	
+007d68b0	cSC4LightingManager::BendShadowedNormal	lighting.md §5.3; normalize(n + 0x085489D0 * depth * 0.01 * fill light +0x4C)	
+007d6950	cSC4LightingManager::ShadowDepth	lighting.md §5.3; shadow grid +0x198 at (x/16, z/16) minus p.y, no bounds check	
+007d6a00	cSC4LightingManager::HeightAboveLand	lighting.md §5.3; p.y minus terrain grid +0x18C	
+007d6ab0	cSC4LightingManager::SetLightingTint	lighting.md §2.3; slot 7; +0x178..+0x188, then SetTimeOfDay(current)	
+007d6b00	cSC4LightingManager::ResetLightingTint	lighting.md §2.3; slot 8	
+007d6b20	cSC4LightingManager::GetGlobalLight	lighting.md §4.6; slot 10; +0x8C	
+007d6b50	cSC4LightingManager::GetShadowDirection	lighting.md §4.6; slot 13; +0x64, the view-rotated sun	
+007d6b70	cSC4LightingManager::GetShadowParams	lighting.md §5.6; slot 14; properties 0x085489CC, 0x085489CD, 0x085489CB	
+007d6bb0	cSC4LightingManager::GetShadowStrengthFromLocation	lighting.md §5.4; slot 15; 2D (x, z); 0 above 50 m depth, night reduction 0x085489D3	
+007d6cc0	cSC4LightingManager::CalcShadowTerrainRect	lighting.md §5.6; slot 18; box cells extended along the shadow direction over the terrain grid	
+007d73e0	cSC4LightingManager::GetColor	lighting.md §4.1; slot 24 (out): slot 23 for the up normal	
+007d7420	cSC4LightingManager::GetColor	lighting.md §4.1; slot 21 (r&, g&, b&): slot 20 for the up normal	
+007d7460	cSC4LightingManager::GetColor	lighting.md §4.1; slot 23 (out, n): colour map +0xC4 by the view-rotated normal, else ambient 0.05 + key (1, 1, 0.8) + fill (0, 0.1, 0.5)	
+007d7730	cSC4LightingManager::GetColor	lighting.md §4.1; slot 20 (n, r&, g&, b&): slot 23 as bytes	
+007d77c0	cSC4LightingManager::GetColor	lighting.md §4.1; slot 22 (out, n, p): bent normal when shadows are on and the depth is positive	
+007d7840	cSC4LightingManager::GetColor	lighting.md §4.1; slot 19 (p, n, r&, g&, b&): slot 22 as bytes	
+007d7940	cSC4LightingManager::GetTerrainColor	lighting.md §4.5; slot 25; (1 - k^2) * colour, k the fade term	
+007d7ae0	cSC4LightingManager::GetTerrainColorFloor	lighting.md §4.5; slot 26; k^2 * fade colour + colour * (+0x70)	
+007d7bf0	cSC4LightingManager::GetVertexColors	lighting.md §4.4; slot 27; |n'| weighted cached axis colours, bytes B, G, R, 255	
+007d7f00	cSC4LightingManager::GetTerrainVertexColors	lighting.md §4.5; slot 28; 6 bytes per vertex, no fade with shadows off	
+007d8340	cSC4LightingManager::GetTerrainNormalClamped	lighting.md §5.5; (x, z) clamped to the city less 0.001, then terrain slot 27	
+007d83c0	cSC4LightingManager::GetModelColor	lighting.md §4.2; map +0xC8 sampled at a position from +0xC4's size, else slot 23	
+007d8550	cSC4LightingManager::GetModelLight	lighting.md §4.3; slot 11; weights 0x29189BF1-0x29189BF3 by occupant type, network flag 0x40000	
+007d8b20	cSC4LightingManager::GetTerrainLighting	lighting.md §4.5; slot 12; 0.8 * colour + 0.2 * white (0x29189BEE)	
+007d8c80	cSC4LightingManager::CalcShadowProjection	lighting.md §5.6; slot 17; least-squares texture matrix along the shadow direction, determinant >= 0.01	
+007d9820	cSC4LightingManager::SetTimeDependentLightingValues	lighting.md §2.1; day light from map +0xCC or the 8 keys, fade colour and strength, tint	
+007d9df0	cSC4LightingManager::SetTimeOfDay	lighting.md §2.2; slot 6; dawn 0xC9DA96E8, dusk 0xC9DA96E9, fractions 0xC9DA96EA	
+007da0a0	cSC4LightingManager::cSC4LightingManager	lighting.md §1.1; time 12.0, white light, no tint, no shadows	
+007da3e0	cSC4LightingManager::QueryInterface (thunk)	lighting.md §7; was __ZThn4_N19cSC4LightingManager14QueryInterfaceEmPPv; this - 4; slot 0 of the +4 vtable 0x00ABB51C	
+007da3f0	cSC4LightingManager::Release (thunk)	lighting.md §7; was __ZThn4_N19cSC4LightingManager7ReleaseEv; this - 4; slot 2 of 0x00ABB51C	
+007da400	cSC4LightingManager::~cSC4LightingManager	lighting.md §1.3; descriptive name; releases +0x18, +0x14, +0x10, frees the key lists and grids	
+007da490	cSC4LightingManager::GetDecalShadowParams	lighting.md §5.6; slot 16; lighting values overridden by the given property holder	
+007da670	cSC4LightingManager::~cSC4LightingManager (deleting destructor)	lighting.md §1.3; was cSC4LightingManager::~cSC4LightingManager; slot 29; 0x007DA400 then GlobalHeapFree on bit 0	
+007da690	cSC4LightingManager::Shutdown	lighting.md §1.3; slot 4; unsubscribes the seven messages, frees the maps	
+007da7e0	cSC4LightingManager::ReadProperties	lighting.md §1.4; 26 properties, the day-light, fade-strength and fade-colour key lists, the sun direction	
+007dae70	cSC4LightingManager::FindHillShadows	lighting.md §5.2; row sweep of a falling shadow height, drift -sz/sx, drop 16 sy/sx * 0x085489D1	
+007db450	CopyImageToARGB8	lighting.md §1.5; descriptive name, no Mac match; image in EBX (slots 9, 10 size, 21 pixel), map in EDI	
+007db4d0	CreateColorMap	lighting.md §1.5; group 0xA9179251, instance in EAX, through cSLBuffer 0x00602B70	
+007db570	MakeTestPattern	lighting.md §1.5; 64x64, red where x > 32, green where y > 32	
+007db6a0	cSC4LightingManager::Init	lighting.md §1.3; slot 3; exemplar 0x6534284A/0xA9189CF0/1, maps 0x0917660C-0x0917660F, seven subscriptions	
+007db840	cSC4LightingManager::DoZoomAndRotationChange	lighting.md §3; lights, view rotation, fade, grid strides, height copy, sweep, cached axis colours	
+007dbcf0	cSC4LightingManager::DoMessage	lighting.md §6; slot 3 of 0x00ABB51C	
+007f6cc0	RotateVectorByViewRotation	lighting.md §3; descriptive name, no Mac match; cdecl (vec3*, rotation): 1 (-z, x), 2 (-x, -z), 3 (z, -x)	
+0080b9f0	BuildBasisFromDirection	lighting.md §5.6; descriptive name, no Mac match; rows normalize(dz, 0, -dx), d x row0, d; vertical d gives (0,0,1), (1,0,0)	
+009f068a	_CIfmod	lighting.md §4.3; descriptive name; the CRT x87 fmod (dispatch 0x00B18C90, fprem)	
+00b0dce0	cSC4LightingManager::sAmbientColor (data, float[3])	lighting.md §4.1; 0.05, 0.05, 0.05	
+00b0dcec	cSC4LightingManager::sKeyLightDirection (data, float[3])	lighting.md §3; -1, 1, 1 (normalised at use)	
+00b0dcf8	cSC4LightingManager::sFillLightDirection (data, float[3])	lighting.md §3; 1, 0.5, -1 (normalised at use)	
+00b0dd04	cSC4LightingManager::sKeyLightColor (data, float[3])	lighting.md §4.1; 1, 1, 0.8	
+00b0dd10	cSC4LightingManager::sFillLightColor (data, float[3])	lighting.md §4.1; 0, 0.1, 0.5	

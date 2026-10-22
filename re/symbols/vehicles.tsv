@@ -1,0 +1,137 @@
+va	name	evidence	mac_x86
+00504e70	cSC4Vehicle::~cSC4Vehicle	vehicles.md §3	
+00524160	cSC4Bus::Write	vehicles.md §1; automata.md §6.4	
+00524180	cSC4Bus::DoStopAtStationTick	vehicles.md §8	
+005243b0	cSC4Bus::GetGZCLSID	vehicles.md §1; automata.md §6.4	
+0052f130	cSC4EmergencyVehicle::Init	vehicles.md §7.1	
+0052f380	cSC4EmergencyVehicle::Shutdown	vehicles.md §7.1	
+0052f490	cSC4EmergencyVehicle::DoStateTick	vehicles.md §7.1	
+0052f780	cSC4EmergencyVehicle::HandlePlayerDriveCommand	vehicles.md §7.1	
+0052f870	cSC4EmergencyVehicle::ValidateNetworkOccupant	vehicles.md §7.1	
+0052f910	cSC4EmergencyVehicle::SendPathBlockedMessage	vehicles.md §7.1	
+0052fa60	cSC4EmergencyVehicle::Write	vehicles.md §1; automata.md §6.4	
+0052fae0	cSC4EmergencyVehicle::Read	vehicles.md §1; automata.md §6.4	
+0052fd50	cSC4EmergencyVehicle::DoEnRouteTick	vehicles.md §7.1	
+0052fe50	cSC4EmergencyVehicle::DoRepathingTick	vehicles.md §7.1	
+0052ff60	cSC4EmergencyVehicle::SetDispatchState	vehicles.md §7.1	
+00532240	cSC4Vehicle::GetGZCLSID	vehicles.md §1; automata.md §6.4	
+00532290	cSC4EmergencyVehicle::GetDebugExtraText	vehicles.md §7.1	
+00532660	cSC4EmergencyVehicle::AppendRouteToNearbyRoad	vehicles.md §7.1	
+005329b0	cSC4EmergencyVehicle::HandleDispatched	vehicles.md §7.1	
+00532ae0	cSC4FireTruck::GetToxicSpillCount	vehicles.md §7.2	
+00532c40	cSC4FireTruck::CreateFireCrew	vehicles.md §7.2	
+00532d30	cSC4FireTruck::ReleaseFireCrew	vehicles.md §7.2	
+00532d80	cSC4FireTruck::HandlePlayerDriveCommand	vehicles.md §7.2	
+00532e90	cSC4FireTruck::GetStreamTargetPoint	vehicles.md §7.2	
+00532ee0	cSC4FireTruck::Write	vehicles.md §1; automata.md §6.4	
+00532f20	cSC4FireTruck::Read	vehicles.md §1; automata.md §6.4	
+00533090	cSC4FireTruck::TranslatePlayerDriveCommands	vehicles.md §7.2	
+00533410	cSC4FireTruck::GetFireCount	vehicles.md §7.2	
+005335f0	cSC4FireTruck::DoHandlingEventTick	vehicles.md §7.2	
+005336c0	cSC4FireTruck::SetDispatchState	vehicles.md §7.2	
+005338e0	cSC4FireTruck::GetGZCLSID	vehicles.md §1; automata.md §6.4	
+00533930	cSC4FireTruck::~cSC4FireTruck	vehicles.md §7.2	
+005339b0	cSC4GetawayVan::PostInit	vehicles.md §8	
+00533b00	cSC4GetawayVan::Write	vehicles.md §1; automata.md §6.4	
+00533b40	cSC4GetawayVan::Read	vehicles.md §1; automata.md §6.4	
+00533bf0	cSC4GetawayVan::GetGZCLSID	vehicles.md §1; automata.md §6.4	
+00543b40	cSC4PatrolCar::DoStateTick	vehicles.md §7.3	
+00543c70	cSC4PatrolCar::CreateRiotPolice	vehicles.md §7.3	
+00543d60	cSC4PatrolCar::ReleaseRiotPolice	vehicles.md §7.3	
+00543db0	cSC4PatrolCar::Write	vehicles.md §1; automata.md §6.4	
+00543df0	cSC4PatrolCar::Read	vehicles.md §1; automata.md §6.4	
+00543f60	cSC4PatrolCar::SetDispatchState	vehicles.md §7.3	
+00544060	cSC4PatrolCar::DoArrestTick	vehicles.md §7.3	
+00544280	cSC4PatrolCar::GetGZCLSID	vehicles.md §1; automata.md §6.4	
+005442d0	cSC4PatrolCar::~cSC4PatrolCar	vehicles.md §7.3	
+00546db0	cSC4RiotPolice::Write	vehicles.md §1; automata.md §6.4	
+00546e20	cSC4RiotPolice::Read	vehicles.md §1; automata.md §6.4	
+00546ef0	cSC4RiotPolice::Shutdown	vehicles.md §7.3	
+00546f30	cSC4RiotPolice::SetupRiotPolice	vehicles.md §7.3	
+00547530	cSC4RiotPolice::DoAnimationTick	vehicles.md §7.3	
+00547630	cSC4RiotPolice::Init	vehicles.md §7.3	
+00547800	cSC4RiotPolice::cSC4RiotPolice	vehicles.md §7.3	
+00547880	cSC4RiotPolice::GetGZCLSID	vehicles.md §1; automata.md §6.4	
+005478e0	cSC4RiotPolice::~cSC4RiotPolice	vehicles.md §7.3	
+0054a780	cSC4Tank::HandleEnterState	vehicles.md §6	
+0054a850	cSC4Tank::Shutdown	vehicles.md §6	
+0054a8e0	cSC4Tank::Read	vehicles.md §1; automata.md §6.4	
+0054aa30	cSC4Tank::Write	vehicles.md §1; automata.md §6.4	
+0054aae0	cSC4Tank::DoPlayerDriveTick	vehicles.md §6	
+0054b030	cSC4Tank::TranslatePlayerDriveCommands	vehicles.md §6	
+0054c880	cSC4Tank::Init	vehicles.md §6	
+0054caa0	cSC4Tank::GetDebugExtraText	vehicles.md §6	
+0054ce30	cSC4Tank::GetGZCLSID	vehicles.md §1; automata.md §6.4	
+0054ce90	cSC4Tank::~cSC4Tank	vehicles.md §6	
+0054cec0	cSC4Tank::~cSC4Tank	vehicles.md §6	
+0054d790	cSC4TrafficAutomaton::Init	vehicles.md §2	
+0054d7f0	cSC4TrafficAutomaton::QueryInterface	vehicles.md §2	
+0054e050	cSC4TrafficAutomaton::DoAnimationTick	vehicles.md §2	
+0054e1a0	cSC4TrafficAutomaton::UpdateCollision	vehicles.md §2	
+0054e3d0	cSC4TrafficAutomaton::DoStopAtStationTick	vehicles.md §2	
+0054fc30	cSC4TrafficAutomaton::FindLeaderInTile	vehicles.md §2	
+00550090	cSC4TrafficAutomaton::DoStateTick	vehicles.md §2	
+00550190	cSC4TrafficAutomaton::DoStraightLineTick	vehicles.md §2	
+00551c20	cSC4TrafficAutomaton::FindLeader	vehicles.md §2	
+00551de0	cSC4TrafficAutomaton::Write	vehicles.md §1; automata.md §6.4	
+005535d0	cSC4TrafficAutomaton::HandleExitState	vehicles.md §2	
+00553cf0	cSC4TrafficAutomaton::GetDebugExtraText	vehicles.md §2	
+005544d0	cSC4TrafficAutomaton::cSC4TrafficAutomaton	vehicles.md §2	
+00554640	cSC4TrafficAutomaton::ClearLookaheadDeque	vehicles.md §2	
+005546e0	cSC4TrafficAutomaton::HandleEnterState	vehicles.md §2	
+00554ab0	cSC4TrafficAutomaton::BeginRoute	vehicles.md §2	
+00554d20	cSC4TrafficAutomaton::Read	vehicles.md §1; automata.md §6.4	
+00554ea0	cSC4TrafficAutomaton::FindBestNeighborConnection	vehicles.md §2	
+005552f0	cSC4TrafficAutomaton::~cSC4TrafficAutomaton	vehicles.md §2	
+00555310	cSC4TrafficAutomaton::Shutdown	vehicles.md §2	
+005559d0	cSC4TrafficAutomaton::SetRouteInfo	vehicles.md §2	
+00555a30	cSC4TrailerVehicle::Init	vehicles.md §4	
+00555a60	cSC4TrailerVehicle::QueryInterface	vehicles.md §4	
+00555b10	cSC4TrailerVehicle::SetAutomataGroup	vehicles.md §4	
+005560d0	cSC4TrailerVehicle::FindPointOnPathSegment	vehicles.md §4	
+005562a0	cSC4TrailerVehicle::Write	vehicles.md §1; automata.md §6.4	
+005563c0	cSC4TrailerVehicle::Shutdown	vehicles.md §4	
+00556c30	cSC4TrailerVehicle::Read	vehicles.md §1; automata.md §6.4	
+00556e50	cSC4TrailerVehicle::GetGZCLSID	vehicles.md §1; automata.md §6.4	
+00556f20	cSC4TrailerVehicle::~cSC4TrailerVehicle	vehicles.md §4	
+00556f80	cSC4TrainCar::Init	vehicles.md §5	
+00557010	cSC4Bus::Read	vehicles.md §1; automata.md §6.4	
+00557040	cSC4TrainCar::QueryInterface	vehicles.md §5	
+00557220	cSC4Train::QueryInterface	vehicles.md §5	
+00557680	cSC4Train::PlayerDriveCheckForDerail	vehicles.md §5	
+00557930	cSC4Train::Write	vehicles.md §1; automata.md §6.4	
+005579e0	cSC4Vehicle::operator.delete	vehicles.md §3	
+00557a20	cSC4Train::Init	vehicles.md §5	
+00557bf0	cSC4Train::DoAnimationTick	vehicles.md §5	
+005588d0	cSC4Train::StartTrip	vehicles.md §5	
+00558e00	cSC4Train::HandleCollision	vehicles.md §5	
+005591a0	cSC4Train::DoPlayerDriveTick	vehicles.md §5	
+00559e70	cSC4Train::Shutdown	vehicles.md §5	
+0055aad0	cSC4Train::Read	vehicles.md §1; automata.md §6.4	
+0055b2c0	cSC4Bus::~cSC4Bus	vehicles.md §8	
+0055b390	cSC4Train::GetGZCLSID	vehicles.md §1; automata.md §6.4	
+0055b660	cSC4Vehicle::QueryInterface	vehicles.md §3	
+0055b6d0	cSC4Vehicle::HandleEnterState	vehicles.md §3	
+0055b750	cSC4Vehicle::SkipTown	vehicles.md §3	
+0055b9b0	cSC4Vehicle::Init	vehicles.md §3	
+0055ba20	cSC4Vehicle::DoAnimationTick	vehicles.md §3	
+0055bcf0	cSC4Vehicle::Read	vehicles.md §1; automata.md §6.4	
+0055c030	cSC4Vehicle::PlayerDriveGetNetwork	vehicles.md §3	
+0055c600	cSC4Vehicle::TranslatePlayerDriveCommands	vehicles.md §3	
+0055c8c0	cSC4Vehicle::HandleCollision	vehicles.md §3	
+0055ca90	cSC4Vehicle::DoStateTick	vehicles.md §3	
+0055caf0	cSC4Vehicle::DoPathTick	vehicles.md §3	
+0055dd50	cSC4Vehicle::UpdateMotionBlur	vehicles.md §3	
+0055e1f0	cSC4Vehicle::DoPlummetTick	vehicles.md §3	
+0055e550	cSC4Vehicle::DoPullOverTick	vehicles.md §3	
+0055ea20	cSC4Vehicle::PlayerDriveUpdateSpeed	vehicles.md §3	
+0055ed10	cSC4Vehicle::DoPlayerDriveOffRoadTick	vehicles.md §3	
+0055f3f0	cSC4Vehicle::UpdateAfterDamage	vehicles.md §3	
+0055f640	cSC4Vehicle::Write	vehicles.md §1; automata.md §6.4	
+0055f7b0	cSC4Vehicle::ResolveCollision	vehicles.md §3	
+0055f930	cSC4Vehicle::ChooseNewPlayerDriveDestination	vehicles.md §3	
+005602f0	cSC4Vehicle::Shutdown	vehicles.md §3	
+005603f0	cSC4Vehicle::DoPlayerDriveTick	vehicles.md §3	
+005620e0	cSC4Vehicle::DoCollisionCheck	vehicles.md §3	
+00562a90	cSC4Vehicle::~cSC4Vehicle	vehicles.md §3	
+00562ac0	cSC4Vehicle::GetDebugExtraText	vehicles.md §3	

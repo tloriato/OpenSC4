@@ -1,0 +1,20 @@
+va	name	evidence	mac_x86
+004b8830	cSC4ViewInputControlDemolish::OnKeyDown	bulldozer-tool.md §3; Escape	
+004b8880	cSC4DemolishFilter::IsOccupantIncluded	bulldozer-tool.md descriptive name, no Mac match; §1.1; flora, building, pole, network, signpost	
+004b8980	cSC4ViewInputControlDemolish::DoCellPick	bulldozer-tool.md §2	
+004b8a00	cSC4ViewInputControlDemolish::PickDemolishableOccupant	bulldozer-tool.md §2; signpost flag +0x94	
+004b8ab0	cSC4ViewInputControlDemolish::Init	bulldozer-tool.md §1; id 0x46DDB5F1, marked-cell view	
+004b8d10	cSC4ViewInputControlDemolish::DoLotPick	bulldozer-tool.md §2	
+004b8ed0	cSC4ViewInputControlDemolish::ClearSelectedRegion	bulldozer-tool.md §4	
+004b8f30	cSC4ViewInputControlDemolish::Shutdown	bulldozer-tool.md §1	
+004b9020	cSC4ViewInputControlDemolish::OnMouseExit	bulldozer-tool.md §3	
+004b9040	cSC4ViewInputControlDemolish::EndInput	bulldozer-tool.md §3	
+004b91c0	cSC4ViewInputControlDemolish::~cSC4ViewInputControlDemolish	bulldozer-tool.md §1	
+004b91e0	cSC4ViewInputControlDemolish::~cSC4ViewInputControlDemolish (body)	bulldozer-tool.md descriptive name, no Mac match; §1	
+004b9250	SC4MarkedCellView::AddRegionCells	bulldozer-tool.md descriptive name, no Mac match; §4; appends the region's set cells	
+004b93b0	cSC4ViewInputControlDemolish::UpdateSelectedRegion	bulldozer-tool.md §4; whole multi-cell lots	
+004b9ae0	cSC4ViewInputControlDemolish::OnMouseDownL	bulldozer-tool.md §3; press sound always	
+004b9b70	cSC4ViewInputControlDemolish::OnMouseMove	bulldozer-tool.md §3	
+004b9c50	cSC4ViewInputControlDemolish::OnMouseUpL	bulldozer-tool.md §3; charge the previewed cost, then demolish	
+007dc2f0	SC4MarkedCellView::SetOutlineColor	bulldozer-tool.md descriptive name, no Mac match; §4; packs the colour and turns the outline on	
+007dcd00	SC4MarkedCellView::ClearCells	bulldozer-tool.md descriptive name, no Mac match; §4	

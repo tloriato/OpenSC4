@@ -1,0 +1,34 @@
+va	name	evidence	mac_x86
+007505c0	cSTESelectedTerrainArea::Shutdown	water-ripples.md §2; descriptive name	
+00750600	cSTESelectedTerrainArea::InitRenderState	water-ripples.md §2.3; four packed render states by kPreferOpaque	
+00750aa0	cSTESelectedTerrainArea::Init	water-ripples.md §2.1; terrain, cell counts, texture binding factory	
+00750ca0	cSTESelectedTerrainArea::ClearCurrentSelections	water-ripples.md §2.2; both tables	
+00750cf0	cSTESelectedTerrainArea::DrawTexturedSelections	water-ripples.md §2.3	
+00750fc0	cSTESelectedTerrainArea::DrawUntexturedSelections	water-ripples.md §2.3	
+007514f0	cSTESelectedTerrainArea::Update	water-ripples.md §2.3; depth offset 4	
+007515e0	cSTESelectedTerrainArea::AddUntexturedSelection	water-ripples.md §2.1; vertex index to colour	
+00751650	cSTESelectedTerrainArea::AddTexturedSelection	water-ripples.md §2.1; removes the cell from the plain table	
+007516d0	cSTESelectedTerrainArea::MarkSelected	water-ripples.md §2.2; (cell list, colour, clear)	
+00751910	cSTESelectedTerrainArea::MarkSelected	water-ripples.md §2.2; (cell, colour, clear)	
+007519a0	cSTESelectedTerrainArea::MarkSelected	water-ripples.md §2.2; textured, palette 0x00AB4238, mode 2	
+00751a70	cSTESelectedTerrainArea::MarkSelected	water-ripples.md §2.2; textured, packed colour, mode 3 with kNoAddSigned to mode 1, alpha 0.5	
+0075fb40	cSTEWaterRipple::IntersectsRipple	water-ripples.md §1.5; rectangle against a strip's box and its segment boxes	
+0075fbb0	cSTEWaterRipple::Shutdown	water-ripples.md §1; descriptive name	
+0075fc40	cSTEWaterRipple::ComputeSplinePoints	water-ripples.md §1.3; uniform cubic B-spline, outer P + (D + w sin phi) N, inner P - d N, phi += 0.1	
+0075fe70	cSTEWaterRipple::DrawRipple	water-ripples.md §1.4; frustum test, frame texture, one triangle strip	
+0075fee0	cSTEWaterRipple::PrepareRippleForDisplay	water-ripples.md §1.3; random frame and period, even count, end fades	
+00760060	cSTEWaterRipple::ReadTuningParameters	water-ripples.md §1.1; exemplar 0x6534284A/0x88CD66E9/2, properties 0x491C9C00-0x491C9C0D	
+00760330	cSTEWaterRipple::Init	water-ripples.md §1; city size, terrain, water level + 0x491C9C03, animation tick and messages 0x278E6003, 0x89171496	
+007606b0	cSTEWaterRipple::RemoveLastRipple	water-ripples.md §1.3; descriptive name, no Mac match; a strip shorter than 8 vertices	
+007607f0	cSTEWaterRipple::IntersectsRipples	water-ripples.md §1.5; removes the strips a rectangle touches	
+00760e10	cSTEWaterRipple::DoOnTerrainEdit	water-ripples.md §1.5; area sum past 0x491C9C0C, dirty rectangle over 400 cells	
+00760ee0	cSTEWaterRipple::StartNewRipple	water-ripples.md §1.3; the ripple FSH 0x7AB50E44/0x891B0E1A/0xE9A44A88, strips under 8 vertices reused	
+00761140	cSTEWaterRipple::CreateRipplesForShore	water-ripples.md §1.3; spacing, 0x491C9C0B turn limit, 0.2 m edge margin, 1000 pairs	
+00761790	cSTEWaterRipple::cSTEWaterRipple	water-ripples.md §1; descriptive name	
+00761a00	cSTEWaterRipple::AddShore	water-ripples.md §1.2; descriptive name, no Mac match; vertex indices to metres	
+00761b70	cSTEWaterRipple::DetectShores	water-ripples.md §1.2; vertex flag 0x10 set and 0x01 clear, more than 0x491C9C01 points	
+00761cf0	cSTEWaterRipple::CreateRipples	water-ripples.md §1.3; per-zoom alphas and wobble	
+00761e70	cSTEWaterRipple::DoAnimationTick	water-ripples.md §1.5; frame clocks, edit counter + 250, rebuild after 2,000,000	
+00761f80	cSTEWaterRipple::DoMessage	water-ripples.md §1.5; 0x278E6003, 0x86AD10EE, 0x89171496	
+00761ff0	cSTEWaterRipple::Update	water-ripples.md §1.4; kRenderWaterEffects (boolean 3), zoom change rebuild	
+00ab4238	cSTESelectedTerrainArea::sColorPalette (data, float[4][5])	water-ripples.md §2.2; red, green, blue, (0.4, 0.3, 0), black	

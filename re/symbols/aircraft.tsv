@@ -1,0 +1,81 @@
+va	name	evidence	mac_x86
+004fa770	cSC4Aircraft::Init	aircraft.md §2	
+004fa790	cSC4Aircraft::Shutdown	aircraft.md §2	
+004fa7a0	cSC4Aircraft::QueryInterface	aircraft.md §2	
+004fa7d0	cSC4Aircraft::HandleEnterState	aircraft.md §2	
+004fa830	cSC4Aircraft::HandleExitState	aircraft.md §2	
+004fb060	cSC4Aircraft::Write	aircraft.md §1; automata.md §6.4	
+004fb080	cSC4Aircraft::Read	aircraft.md §1; automata.md §6.4	
+004fb0b0	cSC4Aircraft::GetAltitude	aircraft.md §2	
+004fb180	cSC4Aircraft::ClipToWorld	aircraft.md §2	
+004fb380	cSC4Aircraft::DoPlayerDriveTick	aircraft.md §2	
+004fc910	cSC4Airplane::LoadDriveParameters	aircraft.md §3	
+004fcca0	cSC4Airplane::LoadPlayerDriveParameters	aircraft.md §3	
+004fcef0	cSC4Airplane::SetAirplaneState	aircraft.md §3	
+004fd280	cSC4Airplane::GetGZCLSID	aircraft.md §1; automata.md §6.4	
+004fd2c0	cSC4Airplane::Shutdown	aircraft.md §3	
+004fd380	cSC4Airplane::Write	aircraft.md §1; automata.md §6.4	
+004fd3c0	cSC4Airplane::Read	aircraft.md §1; automata.md §6.4	
+004fd640	cSC4Airplane::HandleEnterState	aircraft.md §3	
+004fd700	cSC4Airplane::HandleExitState	aircraft.md §3	
+004fd750	cSC4Airplane::GetBaseAltitude	aircraft.md §3	
+004fd790	cSC4Airplane::EvaluateClearance	aircraft.md §3	
+004fd8a0	cSC4Airplane::AI_ApproachAltitude	aircraft.md §3	
+004fdcf0	cSC4Airplane::AI_Stop	aircraft.md §3	
+004fdfd0	cSC4Airplane::~cSC4Airplane	aircraft.md §3	
+004fe850	cSC4Airplane::CalculateForces	aircraft.md §3	
+005000b0	cSC4Airplane::PickApproachBox	aircraft.md §3	
+005004a0	cSC4Airplane::AI_TurnToVector	aircraft.md §3	
+00500680	cSC4Airplane::AI_FollowRay	aircraft.md §3	
+00500980	cSC4Airplane::AI_Taxi	aircraft.md §3	
+00500d50	cSC4Airplane::AI_FollowVectorAndTurn	aircraft.md §3	
+00501080	cSC4Airplane::TranslatePlayerDriveCommands	aircraft.md §3	
+005017c0	cSC4Airplane::Init	aircraft.md §3	
+00501c30	cSC4Airplane::DetectCollisions	aircraft.md §3	
+00502520	cSC4Airplane::PickRunwayDirection	aircraft.md §3	
+00502850	cSC4Airplane::AI_TakeOff	aircraft.md §3	
+00502bc0	cSC4Airplane::AI_GotoDestination	aircraft.md §3	
+00503030	cSC4Airplane::AI_Land	aircraft.md §3	
+00503b50	cSC4Airplane::FindFireNearLocation	aircraft.md §3	
+00503cb0	cSC4Airplane::UpdatePhysics	aircraft.md §3	
+00504590	cSC4Airplane::AI_PursueGoal	aircraft.md §3	
+00504980	cSC4Airplane::DoAnimationTick	aircraft.md §3	
+00504af0	cSC4Airplane::DoPlayerDriveTick	aircraft.md §3	
+00533c30	cSC4Helicopter::GetModelResourceInstance	aircraft.md §4	
+00533dc0	cSC4Helicopter::SetHelicopterState	aircraft.md §4	
+005340a0	cSC4Helicopter::LoadDriveParameters	aircraft.md §4	
+00534270	cSC4Helicopter::OnPlayerTakeOver	aircraft.md §4	
+005343c0	cSC4Helicopter::Write	aircraft.md §1; automata.md §6.4	
+00534400	cSC4Helicopter::Read	aircraft.md §1; automata.md §6.4	
+005346d0	cSC4Helicopter::CalculateEnginePower	aircraft.md §4	
+005348c0	cSC4Helicopter::MoveYReal	aircraft.md §4	
+00534f70	cSC4Helicopter::AI_ControlReset	aircraft.md §4	
+005353c0	cSC4Helicopter::AI_ControlHover	aircraft.md §4	
+00535480	cSC4Helicopter::HandleEnterState	aircraft.md §4	
+005354f0	cSC4Helicopter::HandleExitState	aircraft.md §4	
+00535760	cSC4Helicopter::RespondToCrimeScene	aircraft.md §4	
+00535d80	cSC4Helicopter::PhysicsInit	aircraft.md §4	
+005368b0	cSC4Helicopter::AI_ControlMoveXZ	aircraft.md §4	
+00537130	cSC4Helicopter::AI_ControlLiftOverBuildings	aircraft.md §4	
+00537b80	cSC4Helicopter::UpdateSpotlight	aircraft.md §4	
+005385c0	cSC4Helicopter::InitInstance	aircraft.md §4	
+00538860	cSC4Helicopter::YawPitchRollSlideReal	aircraft.md §4	
+00539000	cSC4Helicopter::MoveXZReal	aircraft.md §4	
+00539660	cSC4Helicopter::Shutdown	aircraft.md §4	
+005397c0	cSC4Helicopter::NextFrame	aircraft.md §4	
+005399d0	cSC4Helicopter::TranslatePlayerDriveCommands	aircraft.md §4	
+0053a360	cSC4Helicopter::SetDispatchState	aircraft.md §4	
+0053a410	cSC4Helicopter::Init	aircraft.md §4	
+0053ac50	cSC4Helicopter::DetectCollisions	aircraft.md §4	
+0053b4e0	cSC4Helicopter::UpdatePhysics	aircraft.md §4	
+0053baa0	cSC4Helicopter::DoPlayerDriveTick	aircraft.md §4	
+0053bba0	cSC4Helicopter::AI_PursueGoal	aircraft.md §4	
+0053c5e0	cSC4Helicopter::DoAnimationTick	aircraft.md §4	
+0053c830	cSC4Helicopter::GetGZCLSID	aircraft.md §1; automata.md §6.4	
+0053c8c0	cSC4Helicopter::~cSC4Helicopter	aircraft.md §4	
+006ac710	cSC4FirePlaneDispatchSource::GetDispatchesAtStation	aircraft.md §5	
+006ac860	cSC4PoliceHelicopterDispatchSource::Shutdown	aircraft.md §5	
+006acbb0	cSC4FirePlaneDispatchSource::DoOccupantInserted	aircraft.md §5	
+006df770	cSC4PoliceHelicopterDispatchSource::GetDispatchesAtStation	aircraft.md §5	
+006dfaf0	cSC4PoliceHelicopterDispatchSource::FinalRelease	aircraft.md §5	
+006dfd20	cSC4PoliceHelicopterDispatchSource::DoOccupantInserted	aircraft.md §5	

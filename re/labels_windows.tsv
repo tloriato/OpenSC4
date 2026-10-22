@@ -58,6 +58,7 @@ va	name	slots	note
 00a8652c	cSC424HourClock::vftable_3	13	paired with Mac __ZTV15cSC424HourClock#3, 8 agreeing slots
 00a86560	cSC424HourClock::vftable_2	6	paired with Mac __ZTV15cSC424HourClock#2, 6 agreeing slots
 00a86588	cSC424HourClock::vftable	30	paired with Mac __ZTV15cSC424HourClock#0, 26 agreeing slots
+00a86690	cSC4AnimationCoordinator::vftable	0	animation-coordinator.md §1; descriptive name; 5 slots
 00a866ec	cSC4AnimationTickManager::vftable_4	6	paired with Mac __ZTV24cSC4AnimationTickManager#4, 4 agreeing slots
 00a86704	cSC4AnimationTickManager::vftable_3	13	paired with Mac __ZTV24cSC4AnimationTickManager#3, 6 agreeing slots
 00a86760	cSC4AnimationTickManager::vftable	17	paired with Mac __ZTV24cSC4AnimationTickManager#0, 15 agreeing slots
@@ -298,6 +299,9 @@ va	name	slots	note
 00aa2898	cSC4FoundationOccupant::vftable_3	25	paired with Mac __ZTV22cSC4FoundationOccupant#3, 19 agreeing slots
 00aa28fc	cSC4FoundationOccupant::vftable_2	6	paired with Mac __ZTV22cSC4FoundationOccupant#2, 4 agreeing slots
 00aa2918	cSC4FoundationOccupant::vftable_1	34	paired with Mac __ZTV22cSC4FoundationOccupant#1, 24 agreeing slots
+00aa2a3c	cSC4GlyphTextureInfo::vftable	0	glyph-textures.md §2; 9 slots
+00aa2a60	cSC4StringTextureInfo::vftable	0	glyph-textures.md §3; descriptive name, no Mac match; 6 slots
+00aa2a78	cSC4GlyphTextureManager::vftable_3	0	glyph-textures.md §1.1; the message target at +0x20: 3 thunks, DoMessage
 00aa2a88	cSC4GlyphTextureManager::vftable_2	6	paired with Mac __ZTV23cSC4GlyphTextureManager#2, 4 agreeing slots
 00aa2aa0	cSC4GlyphTextureManager::vftable_1	13	paired with Mac __ZTV23cSC4GlyphTextureManager#1, 7 agreeing slots
 00aa2ad4	cSC4GlyphTextureManager::vftable	6	paired with Mac __ZTV23cSC4GlyphTextureManager#0, 5 agreeing slots
@@ -512,6 +516,7 @@ va	name	slots	note
 00ab3b00	cSTESurfaceWater::vftable	15	paired with Mac __ZTV16cSTESurfaceWater#0, 13 agreeing slots
 00ab3cf0	cSTETerrain::vftable_2	6	paired with Mac __ZTV11cSTETerrain#2, 5 agreeing slots
 00ab3d18	cSTETerrain::vftable	98	paired with Mac __ZTV11cSTETerrain#0, 89 agreeing slots
+00ab4238	cSTESelectedTerrainArea::sColorPalette	0	water-ripples.md §2.2; red, green, blue, (0.4, 0.3, 0), black
 00ab4410	cSTETerrainView3D::vftable_2	22	paired with Mac __ZTV17cSTETerrainView3D#2, 20 agreeing slots
 00ab4480	cSTETerrainView3D::vftable	5	paired with Mac __ZTV17cSTETerrainView3D#0, 3 agreeing slots
 00ab46a0	cGZWinKnob::vftable_1	151	paired with Mac __ZTV10cGZWinKnob#1, 123 agreeing slots
@@ -574,21 +579,31 @@ va	name	slots	note
 00aba770	cWinBMPView::vftable	156	paired with Mac __ZTV11cWinBMPView#0, 130 agreeing slots
 00abab38	cSC43DRender::vftable_2	6	paired with Mac __ZTV12cSC43DRender#2, 5 agreeing slots
 00abab60	cSC43DRender::vftable	76	paired with Mac __ZTV12cSC43DRender#0, 67 agreeing slots
+00abaccc	cSC4CameraControl::sZoomPitch	0	camera.md §2.2; 30, 35, 40, 45, 45 degrees in radians
+00abace0	cSC4CameraControl::sZoomCellPixels	0	camera.md §2.2; 8, 16, 32, 73, 146
+00abad18	cSC4CameraControl::vftable	0	camera.md §2.1; 7 slots: QueryInterface, AddRef, Release, Write, Read, GetGZCLSID, deleting destructor
 00abb34c	cSC4ConfigRuleManager::vftable	8	paired with Mac __ZTV21cSC4ConfigRuleManager#0, 6 agreeing slots
 00abb51c	cSC4LightingManager::vftable_1	4	paired with Mac __ZTV19cSC4LightingManager#1, 3 agreeing slots
 00abb530	cSC4LightingManager::vftable	30	paired with Mac __ZTV19cSC4LightingManager#0, 29 agreeing slots
+00abb6a8	cSC4RenderProperties::vftable_1	0	render-properties.md §1.1; the cRZUnknown at +4: 3 thunks and the deleting destructor
+00abb6c0	cSC4RenderProperties::vftable	0	render-properties.md §2; 18 slots
 00abbea0	_GLOBAL__N__AspyrBuild_depot_SC4RH_RH_Merge_SC4000_SC4000App_source_SC4RuleParser.cpp_00000000_1AEDF898::cRuleCommand::vftable	7	paired with Mac __ZTVN103_GLOBAL__N__AspyrBuild_depot_SC4RH_RH_Merge_SC4000_SC4000App_source_SC4RuleParser.cpp_00000000_1AEDF89812cRuleCommandE#0, 2 agreeing slots
 00abbebc	_GLOBAL__N__AspyrBuild_depot_SC4RH_RH_Merge_SC4000_SC4000App_source_SC4RuleParser.cpp_00000000_1AEDF898::cOptionGroupCommand::vftable	7	paired with Mac __ZTVN103_GLOBAL__N__AspyrBuild_depot_SC4RH_RH_Merge_SC4000_SC4000App_source_SC4RuleParser.cpp_00000000_1AEDF89819cOptionGroupCommandE#0, 4 agreeing slots
+00abbef8	(anonymous_namespace)::cVendorCommand::vftable	0	graphics-rules.md §4.4; descriptive name, no Mac match; 7 slots
 00abcb60	cSC4ToolTipManager::vftable	6	paired with Mac __ZTV18cSC4ToolTipManager#0, 4 agreeing slots
 00abcbc0	cSC4View3DWin::vftable_3	151	paired with Mac __ZTV13cSC4View3DWin#3, 133 agreeing slots
 00abce40	cSC4View3DWin::vftable	61	paired with Mac __ZTV13cSC4View3DWin#0, 55 agreeing slots
+00abd2c4	cS3DCamera::vftable	0	camera.md §1.1; 4 slots
 00abd324	cS3DFSHTextureFactory::vftable	12	paired with Mac __ZTV21cS3DFSHTextureFactory#0, 9 agreeing slots
 00abd3a8	cS3DMaterialManager::vftable_2	6	paired with Mac __ZTV19cS3DMaterialManager#2, 3 agreeing slots
 00abd3c0	cS3DMaterialManager::vftable_1	13	paired with Mac __ZTV19cS3DMaterialManager#1, 3 agreeing slots
 00abd3f4	cS3DMaterialManager::vftable	8	paired with Mac __ZTV19cS3DMaterialManager#0, 3 agreeing slots
 00abd714	cS3DResSpriteAnimFactory::vftable	12	paired with Mac __ZTV24cS3DResSpriteAnimFactory#0, 8 agreeing slots
+00abd774	cS3DTextureBindingFactory::sBitsPerTexel	0	texture-bindings.md §1.4; 16, 24, 16, 16, 32, 4, 8, 8
+00abd85c	cS3DTextureBindingFactory::vftable_4	0	texture-bindings.md §1.1; the message target at +0x24: 3 thunks, DoMessage
 00abd86c	cS3DTextureBindingFactory::vftable_3	6	paired with Mac __ZTV25cS3DTextureBindingFactory#3, 5 agreeing slots
 00abd884	cS3DTextureBindingFactory::vftable_2	13	paired with Mac __ZTV25cS3DTextureBindingFactory#2, 7 agreeing slots
+00abd8b8	cS3DTextureBindingFactory::vftable_1	0	texture-bindings.md §1.1; the interface 0x088CEB67 at +4: 3 thunks and one more slot
 00abd8c8	cS3DTextureBindingFactory::vftable	19	paired with Mac __ZTV25cS3DTextureBindingFactory#0, 14 agreeing slots
 00abdd38	cSC4OrdinanceFreeClinics::vftable	32	paired with Mac __ZTV24cSC4OrdinanceFreeClinics#0, 20 agreeing slots
 00abdf78	cSC4OrdinanceLandfillGasRecovery::vftable	32	paired with Mac __ZTV32cSC4OrdinanceLandfillGasRecovery#0, 22 agreeing slots
@@ -890,6 +905,11 @@ va	name	slots	note
 00b0c960	cSC4SubwayOccupant::sCornerPoints	0	underground-occupants.md §3.6; read by StaticInit
 00b0cdb8	cSC4SubwayOccupant::sPool	0	underground-occupants.md §1; vtable 0x00AAA578
 00b0cdc8	cSC4SubwayOccupant::sModelDescriptor	0	underground-occupants.md §1; returned by main slot 101
+00b0dce0	cSC4LightingManager::sAmbientColor	0	lighting.md §4.1; 0.05, 0.05, 0.05
+00b0dcec	cSC4LightingManager::sKeyLightDirection	0	lighting.md §3; -1, 1, 1 (normalised at use)
+00b0dcf8	cSC4LightingManager::sFillLightDirection	0	lighting.md §3; 1, 0.5, -1 (normalised at use)
+00b0dd04	cSC4LightingManager::sKeyLightColor	0	lighting.md §4.1; 1, 1, 0.8
+00b0dd10	cSC4LightingManager::sFillLightColor	0	lighting.md §4.1; 0, 0.1, 0.5
 00b13420	cRZTimer::sCounterFrequency	0	timers.md §1.5; QueryPerformanceFrequency, written by MeasureFrequencies 0x0088FED4
 00b13428	cRZTimer::sCycleFrequency	0	timers.md §1.5; the CPU cycle rate C, written by MeasureFrequencies 0x0088FECC
 00b16998	cRZDirectory::sSelfName	0	paths.md §3.3; points at '.' (0x00AA1B74)
@@ -905,6 +925,9 @@ va	name	slots	note
 00b467f8	cSC4SubwayOccupant::sDiagonalRatios	0	underground-occupants.md §3.6
 00b46810	cSC4SubwayOccupant::sDiagonalRatios2	0	underground-occupants.md §3.6
 00b46820	cSC4SubwayOccupant::sStaticInitDone	0	underground-occupants.md §3.6
+00b4e3a4	cSC4RenderProperties::sBoolRegistry	0	render-properties.md §1.3; boolean entries of 0x20 bytes
+00b4e3b0	cSC4RenderProperties::sIntRegistry	0	render-properties.md §1.3; integer entries of 0x28 bytes
+00b4e3bc	cSC4RenderProperties::sFloatRegistry	0	render-properties.md §1.3; float entries of 0x28 bytes
 00b54358	cRZTimer::sCounterOverhead	0	timers.md §1.3; the minimum of 8 back-to-back QueryPerformanceCounter differences; subtracted per interval (all units)
 00b54360	cRZTimer::sCounterFactors	0	timers.md §1.2; ns, us, ms, s, min per counter tick (1e9, 1e6, 1e3, 1, 0.016666668 over F)
 00b54374	cRZTimer::sCounterReciprocals	0	timers.md §1.3; 1 / sCounterFactors, read by SetElapsedTime

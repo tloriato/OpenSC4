@@ -1,0 +1,41 @@
+va	name	evidence	mac_x86
+005d7b50	cSC4GlyphTextureManager::Release	glyph-textures.md §1.1; slot 2 of 0x00AA2AD4; count +0x24, deleting destructor at 0	
+005d7b70	cSC4GlyphTextureManager::QueryInterface	glyph-textures.md §1.1; slot 0; answers only 0x0B54C519	
+005d7b90	cSC4GlyphTextureManager::CalcStringTextureSize	glyph-textures.md §1.4; descriptive name, no Mac match; P(width + 2) x P(height + 2) from font slots 48 and 37	
+005d7c00	cSC4GlyphTextureManager::CompareGlyphKeys	glyph-textures.md §1.3; descriptive name, no Mac match; string slot 12 (case flag 1), then the font ID +0x14	
+005d7c40	cSC4GlyphTextureInfo::SetManager	glyph-textures.md §2; descriptive name, no Mac match; counted pointer +0x38	
+005d7c70	cSC4GlyphTextureInfo::GetUVRect	glyph-textures.md §2; descriptive name, no Mac match; slot 6 of 0x00AA2A3C; +0x20..+0x2C	
+005d7c90	cSC4StringTextureInfo::Release	glyph-textures.md §3; descriptive name, no Mac match; slot 2 of 0x00AA2A60; kept at 1 when a manager is set	
+005d7d50	cSC4GlyphTextureManager::Init	glyph-textures.md §1.2; system-service slot 8; budget kStringTextureCacheSize * 1024, subscribes 0x8ACAA95F	
+005d7e20	cSC4GlyphTextureManager::OnTick	glyph-textures.md §1.5; system-service slot 10; every 50 ms, target B - 0.1 L above 1.1 L, second-chance sweep	
+005d7f00	cSC4GlyphTextureManager::GetStringTexture	glyph-textures.md §1.4; descriptive name, no Mac match; cache hit to the back, else nS3D::CreateTextureFromText and w * h * 4 bytes	
+005d8020	cSC4StringTextureInfo::GetTexture	glyph-textures.md §3; descriptive name, no Mac match; slot 4; through the manager +0x0C	
+005d8030	cSC4GlyphTextureInfo::cSC4GlyphTextureInfo	glyph-textures.md §2; 0x3C bytes, vtable 0x00AA2A3C	
+005d8080	cSC4GlyphTextureInfo::GetString	glyph-textures.md §2; descriptive name, no Mac match; slot 3; string slot 13 with the character	
+005d80a0	cSC4GlyphTextureInfo::GetTextureSize	glyph-textures.md §2; descriptive name, no Mac match; slot 4; +0x18, +0x1A	
+005d80c0	cSC4GlyphTextureInfo::GetGlyphSize	glyph-textures.md §2; descriptive name, no Mac match; slot 5; +0x1C, +0x1E	
+005d80e0	cSC4StringTextureInfo::cSC4StringTextureInfo	glyph-textures.md §3; descriptive name, no Mac match; 0x28 bytes, vtable 0x00AA2A60	
+005d8130	cSC4StringTextureInfo::GetTextureSize	glyph-textures.md §3; descriptive name, no Mac match; slot 3; +0x04, +0x06	
+005d8150	cSC4GlyphTextureManager::GetCachedStringTexture	glyph-textures.md §1.4; slot 5 (font ID, text, out); no render	
+005d8240	cSC4GlyphTextureInfo::~cSC4GlyphTextureInfo (deleting destructor)	glyph-textures.md §2; descriptive name; slot 8; releases the manager and the binding	
+005d8290	cSC4StringTextureInfo::~cSC4StringTextureInfo (deleting destructor)	glyph-textures.md §3; descriptive name, no Mac match; slot 5; releases the font, the text and the manager	
+005d8330	cSC4GlyphTextureManager::DoMessage	glyph-textures.md §1.6; slot 3 of 0x00AA2A78; 0x8ACAA95F empties the string cache and re-renders the glyphs	
+005d8570	cSC4GlyphTextureManager::StringToGlyphTextureArray	glyph-textures.md §1.3; slot 4 (key, text, out vector); slot 3 per character	
+005d8800	cSC4GlyphTextureManager::RemoveGlyph	glyph-textures.md §2; descriptive name, no Mac match; erases the map entry of a glyph, then releases it	
+005d8870	cSC4GlyphTextureInfo::Release	glyph-textures.md §2; descriptive name; slot 2; at 1 with a manager, RemoveGlyph	
+005d8900	cSC4GlyphTextureManager::~cSC4GlyphTextureManager	glyph-textures.md §1.1; descriptive name; the destructor body run by 0x005D8D40	
+005d8980	cSC4GlyphTextureManager::QueryInterface (thunk at +4)	glyph-textures.md §1.1; descriptive name; this - 4; slot 0 of 0x00AA2AA0	
+005d8990	cSC4GlyphTextureManager::Release (thunk at +4)	glyph-textures.md §1.1; descriptive name; this - 4	
+005d89a0	cSC4GlyphTextureManager::QueryInterface (thunk at +8)	glyph-textures.md §1.1; descriptive name; this - 8; slot 0 of 0x00AA2A88	
+005d89b0	cSC4GlyphTextureManager::Release (thunk at +8)	glyph-textures.md §1.1; descriptive name; this - 8	
+005d89c0	cSC4GlyphTextureManager::~cSC4GlyphTextureManager (thunk)	glyph-textures.md §1.1; descriptive name; this - 8 to the deleting destructor; slot 3 of 0x00AA2A88	
+005d89d0	cSC4GlyphTextureManager::QueryInterface (thunk at +0x20)	glyph-textures.md §1.1; descriptive name; this - 0x20; slot 0 of 0x00AA2A78	
+005d89e0	cSC4GlyphTextureManager::AddRef (thunk at +0x20)	glyph-textures.md §1.1; descriptive name; this - 0x20	
+005d89f0	cSC4GlyphTextureManager::Release (thunk at +0x20)	glyph-textures.md §1.1; descriptive name; this - 0x20	
+005d8a00	cSC4GlyphTextureManager::Shutdown	glyph-textures.md §1.2; system-service slot 9; releases the glyph map, unsubscribes	
+005d8ca0	cSC4GlyphTextureManager::cSC4GlyphTextureManager	glyph-textures.md §1.1; service 0xABEB5E37, priority 0xFFE17B80, budget 0x100000; built by cSC4App::Init 0x0044C854	
+005d8d40	cSC4GlyphTextureManager::~cSC4GlyphTextureManager (deleting destructor)	glyph-textures.md §1.1; was cSC4GlyphTextureManager::~cSC4GlyphTextureManager; 0x005D8900 then GlobalHeapFree on bit 0	
+005d9120	cSC4GlyphTextureManager::GetGlyphTexture	glyph-textures.md §1.3; slot 3 (key, out); map hit, else RZ::WCM slot 5 font and nS3D::CreateTextureFromText	
+00aa2a3c	cSC4GlyphTextureInfo::vftable	glyph-textures.md §2; 9 slots	
+00aa2a60	cSC4StringTextureInfo::vftable	glyph-textures.md §3; descriptive name, no Mac match; 6 slots	
+00aa2a78	cSC4GlyphTextureManager::vftable_3	glyph-textures.md §1.1; the message target at +0x20: 3 thunks, DoMessage	

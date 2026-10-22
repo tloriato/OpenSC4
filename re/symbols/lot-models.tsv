@@ -1,0 +1,51 @@
+va	name	evidence	mac_x86
+005d5300	cSC4FoundationModel::~cSC4FoundationModel (body)	lot-models.md descriptive name, no Mac match; §2; releases the side and top bindings	
+005d5530	cSC4FoundationModel::GetWorldBounds	lot-models.md §1	
+005d5570	cSC4FoundationModel::GetSortValue	lot-models.md §1; texture ID | 0x2AB6, else 0xE9862AB6	
+005d55c0	cSC4FoundationModel::SetupVertices	lot-models.md §2; four sides and a top, lit per face normal	
+005d5a90	cSC4FoundationModel::AdjustHeightToTerrain	lot-models.md §2; base := top - 16 n	
+005d5c70	cSC4FoundationModel::SetupTextures	lot-models.md descriptive name, no Mac match; §2; fallbacks 0x69F20000 + zoom and 0x0912220F + zoom	
+005d5d50	cSC4FoundationModel::GetWorldBounds (virtual thunk)	lot-models.md descriptive name, no Mac match; §1	
+005d5d60	cSC4FoundationModel::GetSortValue (virtual thunk)	lot-models.md descriptive name, no Mac match; §1	
+005d5d70	cSC4FoundationModel::cSC4FoundationModel	lot-models.md §2	
+005d5e90	cSC4FoundationModel::DoZoomChange	lot-models.md descriptive name, no Mac match; §2; the draw state made once	
+005d5f60	cSC4FoundationModel::~cSC4FoundationModel (deleting destructor)	lot-models.md descriptive name, no Mac match; §1; back to the pool	
+005d5fc0	cSC4FoundationModel::Draw	lot-models.md §2; two visible sides then the top, type 6 with four vertices	
+005d6120	cSC4FoundationModel::Draw (virtual thunk)	lot-models.md descriptive name, no Mac match; §2	
+005deab0	cSC4CellTextureModel::~cSC4CellTextureModel (body)	lot-models.md descriptive name, no Mac match; §4	
+005deb00	cSC4CellTextureModel::QueryInterface	lot-models.md §1; IID 0xA9E2831D	
+005dec00	__ZThn4_N20cSC4CellTextureModel14QueryInterfaceEmPPv	lot-models.md §1; thunk	
+005dee30	cSC4CellTextureModel::GetWorldBounds	lot-models.md descriptive name, no Mac match; §4	
+005dee70	cSC4CellTextureModel::GetSortValue	lot-models.md descriptive name, no Mac match; §1; the texture ID	
+005deea0	cSC4CellTextureModel::SetupTextureCorners	lot-models.md descriptive name, no Mac match; §4; orientation and mirror	
+005df020	cSC4CellTextureModel::SetupTexture	lot-models.md descriptive name, no Mac match; §4; group 0x0986135E, key + zoom, else key	
+005df100	cSC4CellTextureModel::Init	lot-models.md §4; three draw states and the combiner record	
+005df1c0	cSC4CellTextureModel::GetWorldBounds (virtual thunk)	lot-models.md descriptive name, no Mac match; §4	
+005df1d0	cSC4CellTextureModel::GetSortValue (virtual thunk)	lot-models.md descriptive name, no Mac match; §1	
+005df880	cSC4CellTextureModel::cSC4CellTextureModel	lot-models.md §4	
+005df9a0	cSC4CellTextureModel::SetTexture	lot-models.md descriptive name, no Mac match; §4; the record, then texture and corners	
+005df9e0	cSC4CellTextureModel::SetupVertices	lot-models.md descriptive name, no Mac match; §4; flat lot or terrain corners	
+005dfd40	cSC4CellTextureModel::DoZoomChange	lot-models.md descriptive name, no Mac match; §4	
+005e01a0	cSC4CellTextureModel::~cSC4CellTextureModel (deleting destructor)	lot-models.md descriptive name, no Mac match; §1; back to the pool	
+005e0200	cSC4CellTextureModel::Draw	lot-models.md §4; opaque, alpha or tinted; own strip or terrain view slot 15	
+005e0540	__ZThn4_N20cSC4CellTextureModel4DrawEP14SC4DrawContextb	lot-models.md §4; thunk	
+005e1200	cSC4LotRetainingWallModel::QueryInterface (body)	lot-models.md descriptive name, no Mac match; §1; IID 0xA9E2831E, else the basic interfaces	
+005e1240	cSC4LotRetainingWallModel::IsNeighbouringLotFlat	lot-models.md descriptive name, no Mac match; §3	
+005e1400	cSC4LotRetainingWallModel::AreBoundsDifferent	lot-models.md descriptive name, no Mac match; §3; per coordinate, tolerance 0.0001	
+005e14c0	cSC4LotRetainingWallModel::GetWorldBounds	lot-models.md §1	
+005e14f0	cSC4LotRetainingWallModel::GetSortValue	lot-models.md §1; texture ID | 0x2A86, else 0xC9862A86	
+005e1520	cSC4LotRetainingWallModel::SetupVerticesFromBBoxAndWallEdge	lot-models.md §3; the cell range along side 0-3	
+005e1620	cSC4LotRetainingWallModel::SetupTextures	lot-models.md §3; fallback 0x695C00C6 + zoom	
+005e1710	cSC4LotRetainingWallModel::DoZoomChange	lot-models.md §3	
+005e17c0	cSC4LotRetainingWallModel::cSC4LotRetainingWallModel	lot-models.md §3	
+005e1940	cSC4LotRetainingWallModel::QueryInterface	lot-models.md §1	
+005e1950	cSC4LotRetainingWallModel::AddRef	lot-models.md §1	
+005e1960	cSC4LotRetainingWallModel::Release	lot-models.md §1	
+005e1a40	__ZThn4_N25cSC4LotRetainingWallModel14GetWorldBoundsER15cS3DBoundingBox	lot-models.md §1; thunk	
+005e1a50	__ZThn4_NK25cSC4LotRetainingWallModel12GetSortValueERm	lot-models.md §1; thunk	
+005e1a60	cSC4LotRetainingWallModel::~cSC4LotRetainingWallModel (body)	lot-models.md descriptive name, no Mac match; §3	
+005e1ad0	cSC4LotRetainingWallModel::~cSC4LotRetainingWallModel (deleting destructor)	lot-models.md descriptive name, no Mac match; §1; back to the pool	
+005e1bc0	cSC4LotRetainingWallModel::SetupVertices	lot-models.md §3; segments between the lot level and the terrain	
+005e2780	cSC4LotRetainingWallModel::Init	lot-models.md §3	
+005e27c0	cSC4LotRetainingWallModel::Draw	lot-models.md §3; facing test +0x6A, one triangle list	
+005e28b0	__ZThn4_N25cSC4LotRetainingWallModel4DrawEP14SC4DrawContextb	lot-models.md §3; thunk	

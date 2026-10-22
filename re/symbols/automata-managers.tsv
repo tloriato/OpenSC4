@@ -1,0 +1,132 @@
+va	name	evidence	mac_x86
+004fb5b0	cSC4AircraftManager::Write	automata-managers.md §4; automata.md §5.2	
+004fbb40	cSC4AircraftManager::cSC4AircraftManager	automata-managers.md §1, §4	
+004fbe70	cSC4AircraftManager::Read	automata-managers.md §4; automata.md §5.2	
+004fcfe0	cSC4Airplane::cSC4Airplane	automata-managers.md §1	
+00504be0	cSC4Ambulance::GetDispatchRadius	automata-managers.md §5	
+00504f30	cSC4Ambulance::cSC4Ambulance	automata-managers.md §1	
+00505030	cSC4EmergencyVehicle::GetCallNumber	automata-managers.md §5	
+00505040	cSC4EmergencyVehicle::SetCallNumber	automata-managers.md §5	
+00505350	cSC4AutomataManager::HandleViewChange	automata-managers.md §2.2	
+00506cd0	cSC4AutomataManager::UpdateViewRect	automata-managers.md §2.2	
+00506d50	cSC4AutomataManager::HandleOccupantInserted	automata-managers.md §2.2	
+005073d0	cSC4AutomataManager::PlaceAutomatonInternal	automata-managers.md §2.2	
+00507430	cSC4AutomataManager::RemoveAutomatonInternal	automata-managers.md §2.2; automata.md §7	
+00507b00	cSC4AutomataManager::FindExemplarData	automata-managers.md §2.2	
+00507b80	cSC4AutomataManager::PostAutomataMessage	automata-managers.md §2.2	
+0050a520	cSC4AutomataManager::UpdateZoom	automata-managers.md §2.2	
+0050a5d0	cSC4AutomataManager::UpdateVisibility	automata-managers.md §2.2	
+0050c7e0	cSC4AutomataManager::HandleOccupantRemoved	automata-managers.md §2.2	
+0050c8b0	cSC4AutomataManager::GetClockValue	automata-managers.md §2.2	
+0050f690	cSC4AutomataManager::TrackOccupantGroups	automata-managers.md §2.2	
+0050f930	cSC4AutomataManager::SeedGroupCounts	automata-managers.md §2.2; automata.md §7	
+00511990	cSC4AutomataManager::RemoveAllAutomata	automata-managers.md §2.2	
+005125e0	cSC4AutomataManager::cSC4AutomataManager	automata-managers.md §1, §4	
+00512780	cSC4AutomataManager::~cSC4AutomataManager	automata-managers.md §4	
+00514520	cSC4AutomataManager::ReloadExemplarData	automata-managers.md §2.2	
+005145a0	cSC4AutomataCOMDirector::CreateSC4VehicleManager	automata-managers.md §1	
+005145d0	cSC4AutomataCOMDirector::CreateSC4PedestrianManager	automata-managers.md §1	
+00514600	cSC4AutomataCOMDirector::CreateSC4AircraftManager	automata-managers.md §1	
+00514630	cSC4AutomataCOMDirector::CreateSC4WatercraftManager	automata-managers.md §1	
+00514660	cSC4AutomataCOMDirector::CreateSC4FireTruck	automata-managers.md §1	
+00514680	cSC4AutomataCOMDirector::CreateSC4PatrolCar	automata-managers.md §1	
+005146a0	cSC4AutomataCOMDirector::CreateSC4GetawayVan	automata-managers.md §1	
+005146c0	cSC4AutomataCOMDirector::CreateSC4Bus	automata-managers.md §1	
+005146e0	cSC4AutomataCOMDirector::CreateSC4CarjackedVehicle	automata-managers.md §1	
+00514700	cSC4AutomataCOMDirector::CreateSC4Tank	automata-managers.md §1	
+00514720	cSC4AutomataCOMDirector::CreateSC4MayorLimo	automata-managers.md §1	
+00514740	cSC4AutomataCOMDirector::CreateSC4Ambulance	automata-managers.md §1	
+00514760	cSC4AutomataCOMDirector::CreateSC4MassTransitTrain	automata-managers.md §1	
+005147c0	cSC4AutomataCOMDirector::CreateSC4Aircraft	automata-managers.md §1	
+005147e0	cSC4AutomataCOMDirector::CreateSC4Helicopter	automata-managers.md §1	
+00514800	cSC4AutomataCOMDirector::CreateSC4Airplane	automata-managers.md §1	
+00514820	cSC4AutomataCOMDirector::CreateSC4Watercraft	automata-managers.md §1	
+00514840	cSC4AutomataCOMDirector::CreateSC4AutomataControllerManager	automata-managers.md §1	
+00514860	cSC4AutomataCOMDirector::CreateSC4AutomataAttractor	automata-managers.md §1	
+00514880	cSC4AutomataCOMDirector::CreateSC4AutomataGenerator	automata-managers.md §1	
+005148a0	cSC4AutomataCOMDirector::CreateSC4AutomataScriptSystem	automata-managers.md §1	
+005148e0	cSC4AutomataCOMDirector::CreateSC4Vehicle	automata-managers.md §1	
+00514910	cSC4AutomataCOMDirector::CreateSC4TrainCar	automata-managers.md §1	
+00514940	cSC4AutomataCOMDirector::CreateSC4Train	automata-managers.md §1	
+00514970	cSC4AutomataCOMDirector::CreateSC4TrailerVehicle	automata-managers.md §1	
+005149a0	cSC4AutomataCOMDirector::CreateSC4Pedestrian	automata-managers.md §1	
+005149d0	cSC4AutomataCOMDirector::CreateSC4PedestrianOneShot	automata-managers.md §1	
+00524360	cSC4Bus::cSC4Bus	automata-managers.md §1	
+005244c0	cSC4CarjackedVehicle::cSC4CarjackedVehicle	automata-managers.md §1	
+0052f1b0	cSC4EmergencyVehicle::DoPlayerDriveTick	automata-managers.md §5	
+0052f1c0	cSC4EmergencyVehicle::HandleExitState	automata-managers.md §5	
+0052f210	cSC4EmergencyVehicle::HandleArrival	automata-managers.md §5; dispatch.md	
+0052f3f0	cSC4EmergencyVehicle::DoAnimationTick	automata-managers.md §5	
+0052f570	cSC4EmergencyVehicle::DoTeleportTick	automata-managers.md §5; automata.md §6.5	
+0052f730	cSC4EmergencyVehicle::RefreshBehavior	automata-managers.md §5; automata.md §11	
+0052f7c0	cSC4EmergencyVehicle::HandleEnterState	automata-managers.md §5	
+0052f9a0	cSC4EmergencyVehicle::IsAtTarget	automata-managers.md §5	
+005304b0	cSC4EmergencyVehicle::CanFollow	automata-managers.md §5	
+00530af0	cSC4EmergencyVehicle::SetPullOverRequest	automata-managers.md §5	
+00532190	cSC4EmergencyVehicle::cSC4EmergencyVehicle	automata-managers.md §1	
+00532bf0	cSC4FireTruck::GetDispatchRadius	automata-managers.md §5	
+00532e60	cSC4FireTruck::HandleExitState	automata-managers.md §5	
+00532fb0	cSC4FireTruck::Shutdown	automata-managers.md §5	
+00533060	cSC4FireTruck::EndHandling	automata-managers.md §5	
+005337e0	cSC4FireTruck::cSC4FireTruck	automata-managers.md §1	
+00533ba0	cSC4GetawayVan::cSC4GetawayVan	automata-managers.md §1	
+0053cbb0	cSC4MassTransitTrain::cSC4MassTransitTrain	automata-managers.md §1	
+0053cec0	cSC4MayorLimo::cSC4MayorLimo	automata-managers.md §1	
+00543b80	cSC4PatrolCar::HandleExitState	automata-managers.md §5	
+00543bc0	cSC4PatrolCar::GetDispatchRadius	automata-managers.md §5	
+00543c10	cSC4PatrolCar::DoHandlingEventTick	automata-managers.md §5	
+00543e80	cSC4PatrolCar::HandleEnterState	automata-managers.md §5	
+00543ec0	cSC4PatrolCar::Shutdown	automata-managers.md §5	
+00543f10	cSC4PatrolCar::EndHandling	automata-managers.md §5	
+00544240	cSC4PatrolCar::cSC4PatrolCar	automata-managers.md §1	
+00544440	cSC4PedestrianManager::GetLayerSpawnCurve	automata-managers.md §2.3	
+00544460	cSC4PedestrianManager::GetLayerSpawnScale	automata-managers.md §2.3	
+00544480	cSC4PedestrianManager::GetTrafficFactor	automata-managers.md §2.3	
+00545500	cSC4PedestrianManager::cSC4PedestrianManager	automata-managers.md §1, §4	
+00546860	cSC4PedestrianOneShot::cSC4PedestrianOneShot	automata-managers.md §1	
+0054cd90	cSC4Tank::cSC4Tank	automata-managers.md §1	
+0054d260	cSC4TrafficAutomataManager::CanMoveToNeighbour	automata-managers.md §2.3	
+0054d300	cSC4TrafficAutomataManager::GetDispatchNetworkType	automata-managers.md §2.3	
+0054d3c0	cSC4TrafficAutomataManager::GetLayerTrafficType	automata-managers.md §2.3	
+0054d420	cSC4TrafficAutomataManager::GetLayerGroup	automata-managers.md §2.3	
+0054d4a0	cSC4TrafficAutomataManager::GetSpecialLayerCounts	automata-managers.md §2.3	
+0054d560	cSC4TrafficAutomataManager::GetLayerSpawnCurve	automata-managers.md §2.3	
+0054d5c0	cSC4TrafficAutomataManager::GetLayerSpawnScale	automata-managers.md §2.3	
+0054d630	cSC4TrafficAutomataManager::GetTrafficFactor	automata-managers.md §2.3	
+0054d6c0	cSC4TrafficAutomataManager::GetAutomatonTrafficType	automata-managers.md §2.3	
+0054da00	cSC4TrafficAutomaton::SlowDown	automata-managers.md §5; vehicles.md §2	
+0054ddb0	cSC4TrafficAutomataManager::GetLayerTrafficCounts	automata-managers.md §2.3	
+0054df40	cSC4TrafficAutomataManager::GetLayerDemand	automata-managers.md §2.3	
+0054dfb0	cSC4TrafficAutomataManager::IsAutomatonOnscreen	automata-managers.md §2.2	
+0054ea80	cSC4TrafficAutomaton::GetDirectionTo	automata-managers.md §5	
+0054f8a0	cSC4TrafficAutomataManager::CreateDispatchAutomaton	automata-managers.md §2.3	
+0054fbc0	cSC4TrafficAutomataManager::RefreshRoutesOnOccupant	automata-managers.md §2.3	
+005516c0	cSC4TrafficAutomataManager::HandleOccupantRemoved	automata-managers.md §2.2, §3.3	
+00551a50	cSC4TrafficAutomataManager::PopulateTileLanes	automata-managers.md §2.3, §3.2	
+00551fc0	cSC4TrafficEffectManager::Clear	automata-managers.md §3.4	
+00552000	cSC4TrafficAutomataManager::PopulateVisibleArea	automata-managers.md §2.3, §3.2; automata.md §5.1	
+00552450	cSC4TrafficAutomataManager::CanEnterNextRouteCell	automata-managers.md §2.3	
+00552a20	cSC4TrafficEffectManager::DetachAll	automata-managers.md §3.4	
+00552a80	cSC4TrafficAutomataManager::WriteIncidents	automata-managers.md §2.1; automata.md §5.1	
+00552bd0	cSC4TrafficEffectManager::Update	automata-managers.md §3.4	
+00552de0	cSC4TrafficAutomataManager::ProcessDispatchRequests	automata-managers.md §2.3, §3.3	
+00553300	cSC4TrafficAutomataManager::DoAnimationTick	automata-managers.md §2.2	
+00553370	cSC4TrafficAutomataManager::PopulateCrimeLayer	automata-managers.md §2.3; crime.md	
+00553570	cSC4TrafficAutomataManager::Write	automata-managers.md §2.1; automata.md §5.1	
+00553860	cSC4TrafficAutomataManager::~cSC4TrafficAutomataManager	automata-managers.md §2.2	
+005538d0	cSC4TrafficAutomataManager::QueueDispatchRequest	automata-managers.md §2.3, §3.3	
+005539a0	cSC4TrafficAutomataManager::CollectLayerAutomata	automata-managers.md §2.3	
+00553e90	cSC4TrafficAutomataManager::ReadIncidents	automata-managers.md §2.1; automata.md §5.1	
+00554360	cSC4TrafficAutomataManager::cSC4TrafficAutomataManager	automata-managers.md §1, §4	
+00554410	cSC4TrafficAutomataManager::Read	automata-managers.md §2.1; automata.md §5.1	
+005554e0	cSC4TrafficAutomataManager::PopulateTile	automata-managers.md §2.3, §3.2	
+00556db0	cSC4TrailerVehicle::cSC4TrailerVehicle	automata-managers.md §1	
+005572d0	cSC4TrainCar::DoCollideTick	automata-managers.md §5	
+0055b150	cSC4TrainCar::cSC4TrainCar	automata-managers.md §1	
+0055b2f0	cSC4Train::cSC4Train	automata-managers.md §1	
+0055b440	cSC4VehicleManager::GetLayerSpawnCurve	automata-managers.md §2.3	
+0055b460	cSC4VehicleManager::GetLayerSpawnScale	automata-managers.md §2.3	
+0055b690	cSC4Vehicle::PickLateralOffset	automata-managers.md §5	
+0055df50	cSC4Vehicle::GetSpeedModifier	automata-managers.md §5; automata.md §11	
+0055fb50	cSC4VehicleManager::cSC4VehicleManager	automata-managers.md §1, §4	
+00574860	cSC4WatercraftManager::cSC4WatercraftManager	automata-managers.md §1, §4	

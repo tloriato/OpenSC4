@@ -1,0 +1,23 @@
+va	name	evidence	mac_x86
+004da5a0	cSC4ViewInputControlZone::Shutdown	zone-tool.md §2	
+004da680	cSC4ViewInputControlZone::FindCellInList	zone-tool.md descriptive name, no Mac match; §2.1	
+004da6c0	cSC4ViewInputControlZone::Init	zone-tool.md §1	
+004da7a0	cSC4ViewInputControlZone::PlaceZone	zone-tool.md §4; tutorial rectangle	
+004da850	cSC4ViewInputControlZone::FindCellInList (wrapper)	zone-tool.md descriptive name, no Mac match; §2.1	
+004da880	cSC4ViewInputControlZone::TestCell	zone-tool.md §2.1; within 7 cells	
+004da9b0	cSC4ViewInputControlZone::OnMouseExit	zone-tool.md §2	
+004daa20	cSC4ViewInputControlZone::FloodFillRegion	zone-tool.md §2.1; breadth-first, four neighbours	
+004dad40	cSC4ViewInputControlZone::ClearHighlights	zone-tool.md §3	
+004dae80	cSC4ViewInputControlZone::cSC4ViewInputControlZone	zone-tool.md §1; id 0xA766C101, cursor table 0x00A92C40	
+004daf70	cSC4ViewInputControlZone::~cSC4ViewInputControlZone	zone-tool.md §1; deleting destructor	
+004daf90	cSC4ViewInputControlZone::~cSC4ViewInputControlZone	zone-tool.md §1	
+004db020	cSC4ViewInputControlZone::EndInput	zone-tool.md §2	
+004db0d0	cSC4ViewInputControlZone::GetFailureReasonString	zone-tool.md §3; errors 1-5	
+004db240	cSC4ViewInputControlZone::ComputeAndMarkSelectedArea	zone-tool.md §3; dry-run PlaceZone	
+004db8b0	cSC4ViewInputControlZone::OnKeyDown	zone-tool.md §2; Escape	
+004db920	cSC4ViewInputControlZone::OnKeyUp	zone-tool.md §2	
+004db980	cSC4ViewInputControlZone::OnMouseDownL	zone-tool.md §2; SetOptions(Alt, not Shift, Ctrl)	
+004dbaf0	cSC4ViewInputControlZone::OnMouseUpL	zone-tool.md §2	
+004dbd40	cSC4ViewInputControlZone::DoCursorUpdate	zone-tool.md §2.1; hold over 750	
+004dbe40	cSC4ViewInputControlZone::OnMouseMove	zone-tool.md §2; button up ends the input	
+004dc110	cSC4ViewInputControlZone::DoMessage	zone-tool.md §2.1; ticks and 0x277A9364	

@@ -1,0 +1,5 @@
+| Lane | Agent/worktree | State at stop | Next steps |
+|---|---|---|---|
+| coordinator-pr67-review4: outside stacked PR6/PR7 spec review | coordinator / coordinator-pr67-review4 | ready after structural/metadata/security review; current main retained; tools97PASS; two native boundary gaps filled; uncertain library attribution deferred asCT3; no engine/runtime/ABI changes | preserve open questions; implement complete owners by byte priority after provider limit clears |
+
+PR7 includes PR6 by ancestry; retain both original histories. No existing core/shadow/replace status is downgraded. The removed generic dispatch-source fallback is restored. The current library exclusion boundary is preserved, and TerrainScrubber credit is withheld pendingCT3. Public overlay slot20 and pedestrian Init slot158 contracts now have exact anchors and conformance cases; no engine implementation was written during this analysis review. Security scope and limits are recorded in docs/reviews/pr5-7-2026-10-22.md.

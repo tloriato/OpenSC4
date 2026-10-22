@@ -1,0 +1,41 @@
+va	name	evidence	mac_x86
+007f6550	MinOfFourFloats	view-utilities.md §6; descriptive name, no Mac match; starts from FLT_MAX (0x00ABCFC0)	
+007f65b0	MaxOfFourFloats	view-utilities.md §6; descriptive name, no Mac match; starts from -FLT_MAX (0x00ABCFBC)	
+007f6620	SC4ViewUtilities::ClipPositionToCity2D	view-utilities.md §4.2; descriptive name, no Mac match; [0, +0x20 - 1] x [0, +0x24 - 1]	
+007f6690	SC4ViewUtilities::ViewportUnitsToWorldUnits	view-utilities.md §2.1; v * +0x150	
+007f66a0	SC4ViewUtilities::GetZoomAndRotation	view-utilities.md §2.1; +0x0C, +0x10	
+007f66c0	SC4ViewUtilities::ProjectPointFromViewCoordinatesToViewportCoordinates	view-utilities.md §4; scales +0x458..+0x460	
+007f6710	SC4ViewUtilities::ProjectPointToFixedViewCoordinates	view-utilities.md §4; yaw then pitch rotation, no translation	
+007f6770	SC4ViewUtilities::IsBoundingBoxInViewFrustum	view-utilities.md §3.4; ground lines +0x208 / +0x218, planes +0x180 / +0x190, no near or far	
+007f6910	SC4ViewUtilities::IsBoundingBoxInDrawFrustum	view-utilities.md §3.4; draw lines +0x3BC / +0x3CC, planes +0x334 / +0x344	
+007f6ab0	SC4ViewUtilities::GetRayIntersectionWithGroundPlane	view-utilities.md §4.1; t = -o.y / d.y	
+007f6af0	SC4ViewUtilities::TrianglePick	view-utilities.md §7; nearest distance at pick +0x28	
+007f6b50	SC4ViewUtilities::RayIntersectsGroundPlane	view-utilities.md §4.1; plane (0, 1, 0, 0) via SC4GeometryUtilities::RayIntersectsPlane	
+007f6ba0	SC4ViewUtilities::GetCityCornerPosition	view-utilities.md §4.2; corner x rotation table, corner 2 rotation 1 uses +0x20 for z	
+007f6cb0	SC4ViewUtilities::GetObjectYRotationAngle	view-utilities.md §2.1; -rotation * pi/2	
+007f6d10	SC4ViewUtilities::GetVectorForEdge	view-utilities.md §4.2; edge mod 4	
+007f6d70	SC4ViewUtilities::RoundDownToNearestBlockBoundary	view-utilities.md §4.2; _ftol2 truncation first	
+007f6db0	SC4ViewUtilities::RoundUpToNearestBlockBoundary	view-utilities.md §4.2; _ftol2 truncation first	
+007f6df0	SC4ViewUtilities::SC4ViewUtilities	view-utilities.md §1; 0x470 bytes, created by cSC43DRender 0x007C9B10	
+007f7710	SC4ViewUtilities::ClipWorldPositionToCityPosition	view-utilities.md §4.2; x and z through 0x007F6620	
+007f7750	SC4ViewUtilities::GetVisibleEdges	view-utilities.md §4.2; (rotation + 1) mod 4, (rotation + 2) mod 4	
+007f7780	SC4ViewUtilities::GetCameraViewAnglesForRotation	view-utilities.md §2.1; tables 0x00ABCFC4 / 0x00ABCFD8, atan(tan p / cos yawOffset)	
+007f77d0	SC4ViewUtilities::ProjectPointToViewCoordinates	view-utilities.md §4	
+007f7850	SC4ViewUtilities::ProjectPointToViewportCoordinates	view-utilities.md §4	
+007f78a0	SC4ViewUtilities::ProjectPointToViewportZ	view-utilities.md §4	
+007f78e0	SC4ViewUtilities::ProjectPointToViewportCoordinates2D	view-utilities.md §4; z left in view coordinates	
+007f7920	SC4ViewUtilities::UnProjectPointFromViewCoordinatesToWorldCoordinates	view-utilities.md §4	
+007f79b0	SC4ViewUtilities::UnProjectPointFromViewportCoordinatesToWorldCoordinates	view-utilities.md §4; inverse scales +0x464..+0x46C	
+007f7a40	SC4ViewUtilities::ProjectBoundingBoxToViewportRectangle	view-utilities.md §4; corner picks by rotation, round(v - 0.5) / round(v)	
+007f7e50	SC4ViewUtilities::IsPointInViewFrustum	view-utilities.md §3.4; view box test	
+007f7f60	SC4ViewUtilities::GetFrustumAABBCityClipped	view-utilities.md §3.3; ClipPolygonToPolygon2D against the city square	
+007f8300	SC4ViewUtilities::GetCityWidthFromOrthoView	view-utilities.md §2.1; width * (cos a + sin a)	
+007f8390	SC4ViewUtilities::ProjectPointFromViewportCoordinatesToFixedViewCoordinates	view-utilities.md §4	
+007f83f0	SC4ViewUtilities::UpdateCameraPosition	view-utilities.md §2; basis, corners, box, planes, ground lines	
+007f9080	SC4ViewUtilities::ViewportPositionToRay	view-utilities.md §4.1; cS3DCamera::GetEyeRay, direction normalised	
+007f9160	SC4ViewUtilities::GetViewportPointIntersectionWithGroundPlane	view-utilities.md §4.1; ray result unchecked	
+007f91c0	SC4ViewUtilities::MeshPick	view-utilities.md §7; descriptive name, no Mac match; triangle walk 0x0080B320 / 0x0080B3B0, transform kinds 0-6	
+007f9a40	SC4ViewUtilities::ModelPick	view-utilities.md §7; descriptive name, no Mac match; model slots 3 and 5, instance slot 9; called by 0x00801720	
+007f9b40	SC4ViewUtilities::GetGroundPlaneVisibleAreaRectangle	view-utilities.md §6; inner and outer rectangles, 64 m rounding, cache +0x444	
+007f9ea0	SC4ViewUtilities::GetViewportRectGroundCorners	view-utilities.md §4.1; descriptive name, no Mac match; four GetViewportPointIntersectionWithGroundPlane calls	
+007f9f50	SC4ViewUtilities::BuildDrawFrustumDataFromViewportRect	view-utilities.md §5; flag +0x228, rectangle +0x22C	

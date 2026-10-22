@@ -1,0 +1,39 @@
+va	name	evidence	mac_x86
+005d6580	SC4GeometryUtilities::RayIntersectsBoundingBox	geometry-utilities.md §4.1; the largest candidate distance, closed bounds	
+005d68b0	SC4GeometryUtilities::PointInRectangle2D	geometry-utilities.md §4.6; half-open	
+005d6d80	SC4GeometryUtilities::BoundingBoxesIntersect	geometry-utilities.md §4.6; strict on x, y, z, optional overlap box	
+005d6ea0	SC4GeometryUtilities::GetNormalToTriangle	geometry-utilities.md §3; (c - b) x (a - b), not normalised	
+005d6f50	SC4GeometryUtilities::PointAndVectorToPlaneEquation	geometry-utilities.md §3; (n, -p.n)	
+005d6f90	SC4GeometryUtilities::LengthOfLineSquared	geometry-utilities.md §2	
+005d6fc0	SC4GeometryUtilities::LengthOfLineSquared2D	geometry-utilities.md §2	
+005d6ff0	SC4GeometryUtilities::RayIntersectsTriangle	geometry-utilities.md §4.2; |det| < 0.01 misses, t not tested	
+005d71f0	SC4GeometryUtilities::PointDistanceToRay	geometry-utilities.md §2.1; distance to the whole line	
+005d7290	SC4GeometryUtilities::PointDistanceToRectangle	geometry-utilities.md §2.2	
+005d7360	SC4GeometryUtilities::RayIntersectsPlane	geometry-utilities.md §4.3	
+005d7420	SC4GeometryUtilities::RaysIntersect2D	geometry-utilities.md §4.4; without an output it compares the directions	
+005d74d0	SC4GeometryUtilities::LinesIntersect2D	geometry-utilities.md §4.5; both parameters within [0, 1]	
+005d75d0	SC4GeometryUtilities::TwiceTriangleArea	geometry-utilities.md descriptive name, no Mac match; §2; |(p - a) x (b - a)|	
+005d7660	SC4GeometryUtilities::LengthOfLine	geometry-utilities.md §2	
+005d76a0	SC4GeometryUtilities::LengthOfLine2D	geometry-utilities.md §2	
+005d76d0	SC4GeometryUtilities::ScaleVector2D	geometry-utilities.md §5; unchanged when |v| <= 0.01	
+005d77a0	SC4GeometryUtilities::RotatePoint2D	geometry-utilities.md §5; about a centre	
+005d7800	SC4GeometryUtilities::ClipPolygonToEdge2D	geometry-utilities.md §5.1; Sutherland-Hodgman, inside on the right	
+005d79d0	SC4GeometryUtilities::ClipPolygonToPolygon2D	geometry-utilities.md §5.2; through a 40-point scratch polygon	
+00800f10	cS3DMeshBuilder::SetNormal	geometry-utilities.md descriptive name, no Mac match; §6.1	
+00800f30	cS3DMeshBuilder::SetColour (rgb)	geometry-utilities.md descriptive name, no Mac match; §6.1; alpha 1	
+00800f60	cS3DMeshBuilder::SetColour (rgba)	geometry-utilities.md descriptive name, no Mac match; §6.1	
+00800f80	cS3DMeshBuilder::SetLightDirection	geometry-utilities.md descriptive name, no Mac match; §6.1	
+00800fa0	nS3D::GetBoxCorners	geometry-utilities.md descriptive name, no Mac match; §6.2; corner i = (bit 0 x, bit 1 y, bit 2 z)	
+00801040	cS3DVertexArray::UpdateBounds	geometry-utilities.md descriptive name, no Mac match; §6.1; min and max over the vertices	
+00801140	cS3DMeshBuilder::Mesh	geometry-utilities.md §6.1; bounds when changed	
+00801200	cS3DMeshBuilder::BeginPrimitive	geometry-utilities.md descriptive name, no Mac match; §6.1; (type, first vertex, 0), standard format 1	
+008012f0	cS3DMeshBuilder::cS3DMeshBuilder	geometry-utilities.md descriptive name, no Mac match; §6.1; all fields zero	
+00801380	cS3DMeshBuilder::AddVertex	geometry-utilities.md descriptive name, no Mac match; §6.1; colour x (0.3 + 0.7 L.n), bytes wrap	
+008014d0	nS3D::AddBoxMesh	geometry-utilities.md §6.2; six lit quads, 24 vertices	
+00801660	cS3DMeshBuilder::Reset	geometry-utilities.md descriptive name, no Mac match; §6.1; no vertices, no primitives	
+0080a720	nS3D::GetTextureFormatForPixelCode	geometry-utilities.md descriptive name, no Mac match; §6.4; (3, 14 / 10 / 13 / 1)	
+0080a7c0	nS3D::CreateTextureFromSurface	geometry-utilities.md descriptive name, no Mac match; §6.4; plain BGRA upload, factory slot 4	
+0080a910	nS3D::CreateCompressedTextureFromSurface	geometry-utilities.md descriptive name, no Mac match; §6.4; DXT3, white, 4-bit alpha	
+0080ab90	nS3D::CreateTextureFromText	geometry-utilities.md §6.4; W x H powers of two >= size + 2, cleared border	
+0080b680	nS3D::RandomDirection2	geometry-utilities.md §6.3; two draws, the rejection loop never repeats	
+0080b730	nS3D::RandomDirection3	geometry-utilities.md §6.3; rejection in the unit ball	

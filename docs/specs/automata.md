@@ -1071,7 +1071,7 @@ string table (re-integrate1).
 
 | Field (Win / Mac) | Name | Behaviour |
 |---|---|---|
-| `+0x2BC` / `+0x2CC` | **`idleElapsedMs`** | zeroed once in `Init` (`cSC4Watercraft::Init` `0x0056DE40`, `MOV [ESI+0x2BC],0` at `0x0056E2A0`); only touched in `DoStateTick` case 7: `+= dt`, and `> 60000.0` (`0x00A9DA40`) → `SetState(0x49 SLOW_REMOVE, 0, −1.0, 0,0,0,0)` (slot 51, `0x0057339C`). **A full scan of every watercraft function (41 functions) finds no other writer** — it is never re-zeroed on leaving `IDLE`, so it is **cumulative over the boat's life**: 60 s total in `IDLE` slow-removes the boat. Intentional-looking lifetime-based despawning, not a missed reset (AT15 answered) |
+| `+0x2BC` / `+0x2CC` | **`idleElapsedMs`** | zeroed once in `Init` (`cSC4Watercraft::Init` `0x0056DE40`, `MOV [ESI+0x2BC],0` at `0x0056E2A0`); `DoStateTick` case 7: `+= dt`, and `> 60000.0` (`0x00A9DA40`) → `PushState(0x49 SLOW_REMOVE, 0, −1.0, 0,0,0,0)` (slot 52, `+0xD0`, `0x0057339C`). **Corrected 2026-10-21 (re-boatsped):** there is a second writer, `cSC4Watercraft::DoAnimationTick` (`0x00572D14`–`0x00572D54`), which adds its second time argument when the byte `+0x2CC` is set and pushes `0x49` above 60000.0 on every tick; watercraft.md §5.1. It is never re-zeroed, so it is **cumulative over the boat's life**: 60 s total in `IDLE` (or of animation ticks with `+0x2CC`) slow-removes the boat (AT15) |
 | `+0x2C0` / `+0x2D0` | **`crashElapsedMs`** | zeroed on entering 70/71, `+= dt` there; compared against the crash duration `+0x398` / `+0x3A8` to drive the sink/heel ramp |
 
 `FUN_00570270` is **`cSC4Watercraft::DoCrashSequenceTick(float)`** (Windows `0x00570270`, Mac `0x00384d56`).
@@ -1744,9 +1744,10 @@ entry names:
   states 70/71 (all 41 watercraft functions scanned); the beached or sunk boat sits in its final state
   until flag-1 removal, `HandleOccupantRemoved` (`0x00574520`), or a new `SetState`. §6.6.
 - ~~**Q15 (AT15).** Is the idle budget's never being re-zeroed intentional?~~ **ANSWERED 2026-10-20
-  (re-answers33; AT15). MATCHES** the lifetime reading: a full scan of every watercraft function finds
-  exactly two writers — `Init` (`0x0056DE40`, `MOV [ESI+0x2BC],0` at `0x0056E2A0`) and `DoStateTick`
-  case 7's `+= dt` — so 60 s **total** in `IDLE` over the boat's life slow-removes it. §6.6.
+  (re-answers33; AT15). MATCHES** the lifetime reading: `Init` (`0x0056DE40`, `MOV [ESI+0x2BC],0` at
+  `0x0056E2A0`) zeroes it and `DoStateTick` case 7 adds to it, so 60 s **total** in `IDLE` over the boat's
+  life slow-removes it. §6.6. *Corrected 2026-10-21 (re-boatsped):* `DoAnimationTick` (`0x00572D14`) is a
+  third writer when `+0x2CC` is set (watercraft.md §5.1); it does not reset it either.
 - ~~**Q16 (AT16).** Is `Crash_SetStateInternal`'s slot-59 read a "don't re-crash" guard?~~ **ANSWERED
   2026-10-20 (re-answers33; AT16). DIFFERS**: the slot-59 read (`GetTopStateType`, `vtable+0xEC`) is the
   **player-drive test** — the crash states are pushed only when the top state is `0x10` PLAYER_DRIVE; any

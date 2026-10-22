@@ -77,20 +77,21 @@ cSC4ResponseCurve	foundations	simulation	foundations.md	core/src/curve.rs	-	-
 cSC4DisasterLayer	disasters	simulation	disasters.md	core/src/disasters	disasters_shadow	-
 cSC4DisasterManager*	disasters	simulation	disasters.md	core/src/disasters	disasters_shadow	-
 cSC4DisasterInstance*	disasters	simulation	disasters.md	core/src/disasters	disasters_shadow	-
-cSC4FireOccupant	disasters	simulation	disasters.md	core/src/disasters	-	-
+cSC4FireOccupant	disasters	simulation	disasters.md, fire-flames.md	core/src/disasters	-	-
+cSC4Flame	fire flames	renderer	fire-flames.md	-	-	-
 cSC4ToxicOccupant	disasters	simulation	disasters.md	core/src/disasters	-	-
-cSC4AutomataManager	automata (managers, records)	simulation	automata.md	core/src/automata	-	-
+cSC4AutomataManager	automata (managers, records)	simulation	automata.md, automata-support.md, automata-managers.md	core/src/automata	-	-
 cSC4AutomataControllerManager	automata (managers, records)	simulation	automata.md	core/src/automata	-	automata
 cSC4AutomataScriptSystem	automata (managers, records)	simulation	automata.md	core/src/automata	-	automata
 cSC4OccupantGroupTemplate	automata groups	simulation	occupant-groups.md	-	-	-
 tKeyEffect	automata groups	simulation	occupant-groups.md	-	-	-
 cSC4AutomataController	automata (managers, records)	simulation	automata.md	core/src/automata	-	-
 cSC4Automaton	automata (managers, records)	simulation	automata.md	core/src/automata	-	-
-cSC4VehicleManager	automata (managers, records)	simulation	automata.md	core/src/automata	-	automata
-cSC4PedestrianManager	automata (managers, records)	simulation	automata.md	core/src/automata	-	automata
-cSC4AircraftManager	automata (managers, records)	simulation	automata.md	core/src/automata	-	automata
-cSC4WatercraftManager	automata (managers, records)	simulation	automata.md	core/src/automata	-	automata
-cSC4TrafficAutomataManager	automata (managers, records)	simulation	automata.md	core/src/automata	-	-
+cSC4VehicleManager	automata (managers, records)	simulation	automata.md, automata-managers.md	core/src/automata	-	automata
+cSC4PedestrianManager	automata (managers, records)	simulation	automata.md, automata-managers.md	core/src/automata	-	automata
+cSC4AircraftManager	automata (managers, records)	simulation	automata.md, automata-managers.md	core/src/automata	-	automata
+cSC4WatercraftManager	automata (managers, records)	simulation	automata.md, watercraft.md, automata-managers.md	core/src/automata	-	automata
+cSC4TrafficAutomataManager	automata (managers, records)	simulation	automata.md, automata-managers.md	core/src/automata	-	-
 cSC4OccupantManager	occupant manager	simulation	occupant-manager.md	core/src/occupant_manager	occmgr_shadow	occmgr
 cSC4NetworkManager	network manager	simulation	network-manager.md	core/src/network_manager	netmgr_shadow	netmgr
 cSC4NetworkLotManager	network manager	simulation	network-manager.md	core/src/network_manager	netmgr_shadow	netlot
@@ -166,36 +167,46 @@ cSC4AutoSaveRecord	city and save file	simulation	-	-	-	-
 fn:operator>>	city and save file	simulation	-	-	-	-
 fn:operator<<	city and save file	simulation	-	-	-	-
 # ---- simulation: no spec yet
-cSC4Aircraft	automata (vehicles, animation)	simulation	-	-	-	-
-cSC4Airplane	automata (vehicles, animation)	simulation	-	-	-	-
-cSC4Helicopter	automata (vehicles, animation)	simulation	-	-	-	-
-cSC4Watercraft	automata (vehicles, animation)	simulation	-	-	-	-
-cSC4Vehicle	automata (vehicles, animation)	simulation	-	-	-	-
-cSC4Train	automata (vehicles, animation)	simulation	-	-	-	-
-cSC4Pedestrian	automata (vehicles, animation)	simulation	-	-	-	-
-cSC4TrafficAutomaton	automata (vehicles, animation)	simulation	-	-	-	-
-cSC4EmergencyVehicle	automata (vehicles, animation)	simulation	-	-	-	-
-cSC4FireTruck	automata (vehicles, animation)	simulation	-	-	-	-
-cSC4PatrolCar	automata (vehicles, animation)	simulation	-	-	-	-
-cSC4Tank	automata (vehicles, animation)	simulation	-	-	-	-
-cSC4SimFireCrew	automata (vehicles, animation)	simulation	-	-	-	-
-cSC4RiotPolice	automata (vehicles, animation)	simulation	-	-	-	-
-cSC4TrailerVehicle	automata (vehicles, animation)	simulation	-	-	-	-
-cSC4Bus	automata (vehicles, animation)	simulation	-	-	-	-
-cSC4GetawayVan	automata (vehicles, animation)	simulation	-	-	-	-
+cSC4Aircraft	automata (vehicles, animation)	simulation	aircraft.md, automata.md	-	-	-
+cSC4Airplane	automata (vehicles, animation)	simulation	aircraft.md, automata.md, automata-managers.md	-	-	-
+cSC4Helicopter	automata (vehicles, animation)	simulation	aircraft.md, automata.md	-	-	-
+cSC4Watercraft	automata (vehicles, animation)	simulation	watercraft.md, automata.md	-	-	-
+cSC4Vehicle	automata (vehicles, animation)	simulation	vehicles.md, automata.md, dispatch.md, automata-managers.md	-	-	-
+cSC4TrainCar	automata (vehicles, animation)	simulation	vehicles.md, automata.md, automata-managers.md	-	-	-
+cSC4Train	automata (vehicles, animation)	simulation	vehicles.md, automata.md, dispatch.md, automata-managers.md	-	-	-
+cSC4PedestrianOneShot	automata (vehicles, animation)	simulation	pedestrians.md, automata-managers.md	-	-	-
+cSC4Pedestrian	automata (vehicles, animation)	simulation	pedestrians.md, automata.md	-	-	-
+cSC4TrafficAutomaton	automata (vehicles, animation)	simulation	vehicles.md, automata.md, dispatch.md, automata-managers.md	-	-	-
+cSC4EmergencyVehicle	automata (vehicles, animation)	simulation	vehicles.md, automata.md, dispatch.md, automata-managers.md	-	-	-
+cSC4FireTruck	automata (vehicles, animation)	simulation	vehicles.md, automata.md, dispatch.md, automata-managers.md	-	-	-
+cSC4PatrolCar	automata (vehicles, animation)	simulation	vehicles.md, automata.md, dispatch.md, automata-managers.md	-	-	-
+cSC4Tank	automata (vehicles, animation)	simulation	vehicles.md, automata.md, dispatch.md, automata-managers.md	-	-	-
+cSC4SimFireCrew	automata (vehicles, animation)	simulation	pedestrians.md, vehicles.md	-	-	-
+cSC4TrafficEffectManager	automata (vehicles, animation)	simulation	pedestrians.md, vehicles.md, automata-managers.md	-	-	-
+cSC4RiotPolice	automata (vehicles, animation)	simulation	vehicles.md, automata.md, dispatch.md	-	-	-
+cSC4TrailerVehicle	automata (vehicles, animation)	simulation	vehicles.md, automata.md, dispatch.md, automata-managers.md	-	-	-
+cSC4Bus	automata (vehicles, animation)	simulation	vehicles.md, automata.md, dispatch.md, automata-managers.md	-	-	-
+cSC4GetawayVan	automata (vehicles, animation)	simulation	vehicles.md, automata.md, dispatch.md, automata-managers.md	-	-	-
 # the generator (class 0x4A1628C5) and attractor (0x6A1628BA) controller records of automata.md §3.5, specified as
 # records (Write / Read addresses and fields) and implemented by core/src/automata (controller.rs). Only these two of
 # the vehicle-side classes are specified: automata.md §0 says the short form covers the records and the hooks, not
 # movement, path following or animation, so the rest of this block keeps spec -
+cSC4CarjackedVehicle	automata (vehicles, animation)	simulation	automata-managers.md, vehicles.md	-	-	-
+cSC4MayorLimo	automata (vehicles, animation)	simulation	automata-managers.md, vehicles.md	-	-	-
+cSC4Ambulance	automata (vehicles, animation)	simulation	automata-managers.md, vehicles.md	-	-	-
+cSC4MassTransitTrain	automata (vehicles, animation)	simulation	automata-managers.md, vehicles.md	-	-	-
 cSC4AutomataGenerator	automata (vehicles, animation)	simulation	automata.md	core/src/automata	-	-
 cSC4AutomataAttractor	automata (vehicles, animation)	simulation	automata.md	core/src/automata	-	-
-cSC4AttractorDescription	automata (vehicles, animation)	simulation	-	-	-	-
-cSC4ControllerGrid	automata (vehicles, animation)	simulation	-	-	-	-
-cSC4PropOccupantAutomataController	automata (vehicles, animation)	simulation	-	-	-	-
-tControllerQInfo	automata (vehicles, animation)	simulation	-	-	-	-
+cSC4AutomataTuningParams	automata (vehicles, animation)	simulation	automata-support.md	-	-	-
+cSC4AttractorDescription	automata (vehicles, animation)	simulation	automata-support.md	-	-	-
+cSC4ControllerGrid	automata (vehicles, animation)	simulation	automata-support.md	-	-	-
+cSC4PropOccupantAutomataController	automata (vehicles, animation)	simulation	automata-support.md, prop-occupant.md	-	-	-
+tControllerQInfo	automata (vehicles, animation)	simulation	automata.md	-	-	-
 cSC4NetworkToolUI	city tools and input	ui	-	-	-	-
 cSC4NetworkPreview	city tools and input	ui	-	-	-	-
 cSC4NetworkLayout*View	3D scene and models	renderer	-	-	-	-
+cSC4FirePlaneDispatchSource	automata (vehicles, animation)	simulation	aircraft.md	-	-	-
+cSC4PoliceHelicopterDispatchSource	automata (vehicles, animation)	simulation	aircraft.md	-	-	-
 cSC4*DispatchSource	automata (vehicles, animation)	simulation	-	-	-	-
 cSC4Network*Occupant*	network occupants	simulation	network-occupants.md	-	-	-
 cSC4UndergroundOccupant	network occupants	simulation	network-occupants.md	-	-	-
@@ -215,6 +226,8 @@ cSC4NetworkTypeInfo	network occupants	simulation	network-occupants.md	-	-	-
 cSC4NetworkRoutines	network occupants	simulation	network-occupants.md	-	-	-
 cSC4Network*	network occupants	simulation	network-occupants.md	-	-	-
 cSC4ConstructionOccupant	occupants and props	simulation	lot-records.md	-	-	-
+cSC4PropOccupant	occupants and props	simulation	prop-occupant.md, lot-records.md	-	-	-
+cSC4PropOccupantVisualEffect	occupants and props	simulation	prop-occupant.md, lot-records.md	-	-	-
 cSC4PropOccupant*	occupants and props	simulation	prop-occupant.md, lot-records.md	-	-	-
 cSC4SignpostOccupant	occupants and props	simulation	lot-records.md	-	-	-
 cSC4TextDecalOccupant	occupants and props	simulation	lot-records.md	-	-	-
@@ -228,9 +241,14 @@ cSC4TutorialTask	tutorial	simulation	-	core/src/tutorial	-	-
 cSC4AnimationTickManager	other simulation	simulation	-	-	-	-
 # ---- region
 cSC4Nation	region	region	nation.md	-	-	-
-cSC4RegionalCity	region	region	-	-	-	-
-cSC4Region	region	region	region-model.md	-	-	-
+cSC4RegionalCity	region	region	regional-city.md, foundations.md	-	-	-
+fn:GZCOM_CreatecSC4RegionalCity	region	region	regional-city.md	-	-	-
+fn:SC4ReadRegionalCity	region	region	regional-city.md, region.md, foundations.md	-	-	-
+fn:SC4WriteRegionalCity	region	region	region.md	-	-	-
+fn:SC4CreateCitySerialNumber	region	region	region.md	-	-	-
+cSC4Region	region	region	region-model.md, region.md	-	-	-
 cSC4Region*	region	region	-	-	-	-
+cSC4WinRegionScreen	region	region	region-screen.md	-	-	-
 cSC4WinRegion*	region	region	-	-	-	-
 cSC4NewRegionDialog	region	region	-	-	-	-
 cSC4ImportCityDialog	region	region	-	-	-	-
@@ -303,31 +321,77 @@ nSGLDX7*	3D driver (DirectX 7)	renderer	-	-	-	-
 nRZSimGL*	3D driver (DirectX 7)	renderer	-	-	-	-
 cGZBufferSimGLCache	3D driver (DirectX 7)	renderer	-	-	-	-
 cSC4GDriversCOMDirector	3D driver (DirectX 7)	renderer	-	-	-	-
+cS3DCamera	camera and projection	renderer	camera.md	-	-	-
+fn:GZCOM_CreatecS3DCamera	camera and projection	renderer	camera.md	-	-	-
+fn:GZCOM_CreatecSC4CameraControl	camera and projection	renderer	camera.md	-	-	-
+fn:IntersectWithGroundPlane	camera and projection	renderer	camera.md	-	-	-
+cS3DTextureBindingFactory	textures and materials	renderer	texture-bindings.md	-	-	-
+cS3DTextureBinding	textures and materials	renderer	texture-bindings.md	-	-	-
+cS3DMaterialManager	textures and materials	renderer	texture-bindings.md	-	-	-
+cS3DMaterial	textures and materials	renderer	texture-bindings.md	-	-	-
+fn:GZCOM_CreatecS3DTextureBindingFactory	textures and materials	renderer	texture-bindings.md	-	-	-
+fn:GZCOM_cS3DTextureBindingFactoryCLSID	textures and materials	renderer	texture-bindings.md	-	-	-
+fn:GZCOM_CreatecS3DMaterialManager	textures and materials	renderer	texture-bindings.md	-	-	-
+fn:GZCOM_cS3DMaterialManagerCLSID	textures and materials	renderer	texture-bindings.md	-	-	-
+fn:NextPowerOfTwo	textures and materials	renderer	texture-bindings.md	-	-	-
+cS3DModelInstanceAnimatedSprite	animated sprites	renderer	animated-sprite.md	-	-	-
+fn:GetAnimatedModelFromResourceKey	animated sprites	renderer	animated-sprite.md	-	-	-
+fn:GetMeshAnimFromResourceKey	animated sprites	renderer	animated-sprite.md	-	-	-
+fn:GetSpriteAnimFromResourceKey	animated sprites	renderer	animated-sprite.md	-	-	-
+cS3DMeshBuilder	geometry utilities	renderer	geometry-utilities.md	-	-	-
+cS3DModelInstanceBasic	model instances	renderer	model-instances.md	-	-	-
+cS3DModelInstance	model instances	renderer	model-instances.md	-	-	-
+cS3DModelInstanceAnimated	model instances	renderer	model-instances.md	-	-	-
+cS3DModelProcessor	model instances	renderer	model-instances.md	-	-	-
+cS3DResSpriteAnim*	model instances	renderer	model-instances.md	-	-	-
+cS3DTransform	model instances	renderer	model-instances.md	-	-	-
 cS3D*	3D scene and models	renderer	-	-	-	-
-nS3D*	3D scene and models	renderer	-	-	-	-
+nS3D*	geometry utilities	renderer	geometry-utilities.md	-	-	-
+cSC43DPlaceableObject	occupants and props	simulation	prop-occupant.md	-	-	-
 cSC43D*	3D scene and models	renderer	-	-	-	-
 cSC4View3DWin	3D scene and models	renderer	-	-	-	-
-cSC4CameraControl	3D scene and models	renderer	-	-	-	-
-cSC4LightingManager	3D scene and models	renderer	-	-	-	-
-cSC4RenderProperties*	3D scene and models	renderer	-	-	-	-
+cSC4CameraControl	camera and projection	renderer	camera.md	-	-	-
+cSC4LightingManager	lighting and shadows	renderer	lighting.md	-	-	-
+cImageARGB8	lighting and shadows	renderer	lighting.md	-	-	-
+fn:RotateLightingRectToWorld	lighting and shadows	renderer	lighting.md	-	-	-
+fn:BuildBasisFromDirection	lighting and shadows	renderer	lighting.md	-	-	-
+cSC4RenderProperties*	render properties	renderer	render-properties.md	-	-	-
+cSC4ModelRegEffects	model effects	renderer	graphics-formats.md	-	-	-
 cSC4Model*	3D scene and models	renderer	-	-	-	-
-cSC4ConfigRuleManager	3D scene and models	renderer	-	-	-	-
-cSC4CellTextureModel	3D scene and models	renderer	-	-	-	-
-cSC4FoundationModel	3D scene and models	renderer	-	-	-	-
-cSC4LotRetainingWallModel	3D scene and models	renderer	-	-	-	-
-cSC4AnimationCoordinator	3D scene and models	renderer	-	-	-	-
-cSC4GlyphTextureManager	3D scene and models	renderer	-	-	-	-
-cSTETerrainView3D	3D scene and models	renderer	terrain.md	core/src/terrain	terrain_shadow	-
-cSTEOverlayManager	3D scene and models	renderer	-	-	-	-
-cSTEWaterRipple	3D scene and models	renderer	-	-	-	-
-cSTEVertBufExtn	3D scene and models	renderer	-	-	-	-
-cSTESelectedTerrainArea	3D scene and models	renderer	-	-	-	-
-SC4ViewUtilities	3D scene and models	renderer	-	-	-	-
-SC4GeometryUtilities	3D scene and models	renderer	-	-	-	-
+cSC4ConfigRuleManager	graphics rules	renderer	graphics-rules.md	-	-	-
+cSC4RuleParser	graphics rules	renderer	graphics-rules.md	-	-	-
+(anonymous_namespace)::cRuleCommand	graphics rules	renderer	graphics-rules.md	-	-	-
+(anonymous_namespace)::cOptionGroupCommand	graphics rules	renderer	graphics-rules.md	-	-	-
+(anonymous_namespace)::cVendorCommand	graphics rules	renderer	graphics-rules.md	-	-	-
+(anonymous_namespace)::AddOptionToSet	graphics rules	renderer	graphics-rules.md	-	-	-
+_GLOBAL__N_*SC4RuleParser.cpp*	graphics rules	renderer	graphics-rules.md	-	-	-
+fn:GZCOM_CreatecSC4ConfigRuleManager	graphics rules	renderer	graphics-rules.md	-	-	-
+fn:GZCOM_cSC4ConfigRuleManagerCLSID	graphics rules	renderer	graphics-rules.md	-	-	-
+cSC4CellTextureModel	lot models	renderer	lot-models.md	-	-	-
+cSC4FoundationModel	lot models	renderer	lot-models.md	-	-	-
+cSC4LotRetainingWallModel	lot models	renderer	lot-models.md	-	-	-
+cSC4AnimationCoordinator	animation coordinator	renderer	animation-coordinator.md	-	-	-
+cSC4GlyphTextureManager	glyph and string textures	renderer	glyph-textures.md	-	-	-
+cSC4GlyphTextureInfo	glyph and string textures	renderer	glyph-textures.md	-	-	-
+cSC4StringTextureInfo	glyph and string textures	renderer	glyph-textures.md	-	-	-
+cSTETerrainView3D	3D scene and models	renderer	terrain.md, terrain-view.md	core/src/terrain	terrain_shadow	-
+cSTEOverlayManager	terrain overlays	renderer	overlay-manager.md	-	-	-
+cSTEWaterRipple	terrain ripples and selection	renderer	water-ripples.md	-	-	-
+cSTEVertBufExtn	overlay views	renderer	terrain-view.md, overlay-views.md	-	-	-
+cSTESelectedTerrainArea	terrain ripples and selection	renderer	water-ripples.md	-	-	-
+SC4ViewUtilities	view utilities	renderer	view-utilities.md	-	-	-
+fn:MinOfFourFloats	view utilities	renderer	view-utilities.md	-	-	-
+fn:MaxOfFourFloats	view utilities	renderer	view-utilities.md	-	-	-
+SC4GeometryUtilities	geometry utilities	renderer	geometry-utilities.md	-	-	-
+SC4MarkedCellView	overlay views	renderer	overlay-views.md	-	-	-
+SC4PathInfoView	overlay views	renderer	network-overlay-views.md	-	-	-
+SC4TrainJunctionView	overlay views	renderer	network-overlay-views.md	-	-	-
 SC4*View	3D scene and models	renderer	-	-	-	-
+cSC4PathView	overlay views	renderer	overlay-views.md	-	-	-
+cSC4PathView::PathInfo	overlay views	renderer	overlay-views.md	-	-	-
 cSC4PathView*	3D scene and models	renderer	-	-	-	-
 cSC4DispatchVehicleView	3D scene and models	renderer	-	-	-	-
-fn:GetPointsOnModel	3D scene and models	renderer	-	-	-	-
+fn:GetPointsOnModel	fire flames	renderer	fire-flames.md	-	-	-
 cSC4EffectsManager	effects	renderer	effects.md	core/src/effects	-	-
 cSC4EffectsResource	effects	renderer	effects.md	core/src/effects	-	-
 cSC4EffectsParser	effects	renderer	effects.md	-	-	-
@@ -339,6 +403,8 @@ EffectsBootstrap	effects	renderer	effects.md	-	-	-
 (anonymous_namespace)::c*Command	effects	renderer	effects.md	-	-	-
 cSC4EffectsParticle	effects (particles, decals, visuals)	renderer	particles.md	-	-	-
 cSC4ParticlesDescription	effects (particles, decals, visuals)	renderer	particles.md	-	-	-
+cSC4BrushEffect	effects	renderer	effects.md	-	-	-
+cSC4GameEffect	effects	renderer	effects.md	-	-	-
 cSC4*Effect	effects (particles, decals, visuals)	renderer	-	-	-	-
 cSC4*Particle*	effects (particles, decals, visuals)	renderer	-	-	-	-
 cSCParticle*	effects (particles, decals, visuals)	renderer	-	-	-	-
@@ -368,18 +434,41 @@ cRZSpanList	2D drawing and fonts	renderer	-	-	-	-
 cRZRGBColorConverter	2D drawing and fonts	renderer	-	-	-	-
 cGZGimexFactory	2D drawing and fonts	renderer	-	-	-	-
 cWinBMPView	2D drawing and fonts	renderer	-	-	-	-
-SC4DrawContext	2D drawing and fonts	renderer	-	-	-	-
+SC4DrawContext	3D draw context	renderer	draw-context.md	-	-	-
+cSC4PackedRenderState	3D draw context	renderer	draw-context.md	-	-	-
 fn:*Blt*	2D drawing and fonts	renderer	-	-	-	-
 fn:RZDraw*	2D drawing and fonts	renderer	-	-	-	-
 fn:Draw*	2D drawing and fonts	renderer	-	-	-	-
 # ---- ui
 cSC4ViewInputControl	city tools and input	ui	city-tools-input.md	-	-	-
+cSC4ViewInputControlCityScroll	city tools and input	ui	view-input-controls.md	-	-	-
+cSC4ViewInputControlLevelTerrain	city tools and input	ui	view-input-controls.md	-	-	-
+cSC4ViewInputControlLabelTool	city tools and input	ui	view-input-controls.md	-	-	-
+cSC4ViewInputControlSignTool	city tools and input	ui	view-input-controls.md	-	-	-
+cSC4ViewInputControlSignLabelDemolish	city tools and input	ui	view-input-controls.md	-	-	-
+cSC4LabelFilter	city tools and input	ui	view-input-controls.md	-	-	-
+cSC4SignFilter	city tools and input	ui	view-input-controls.md	-	-	-
+cSC4SignOrLabelFilter	city tools and input	ui	view-input-controls.md	-	-	-
+cSC4ViewInputControlFlora	city tools and input	ui	city-tools.md	-	-	-
+cSC4ViewInputControlTorch	city tools and input	ui	city-tools.md	-	-	-
+# TerrainScrubber owner credit awaits CT3: mislabeled 0x008AE57B / library-boundary attribution.
+cSC4ViewInputControlTerrainScrubber	city tools and input	ui	-	-	-	-
+cSC4ViewInputControlCitySituations	city tools and input	ui	city-tools.md	-	-	-
+cSC4ViewInputControlZone	city tools and input	ui	zone-tool.md	-	-	-
+cSC4ViewInputControlDemolish	city tools and input	ui	bulldozer-tool.md	-	-	-
+cSC4DemolishFilter	city tools and input	ui	bulldozer-tool.md	-	-	-
+cSC4ViewInputControlPlayerDrive	city tools and input	ui	drive-tool.md	-	-	-
 cSC4ViewInputControl*	city tools and input	ui	-	-	-	-
 cSC4MySimInputControl*	city tools and input	ui	-	-	-	-
 cSC4MyStreetSimInputControl	city tools and input	ui	-	-	-	-
 cSC4SubBudgetWindow	windows and panels	ui	budget-window.md	-	-	-
 cSC4BudgetUI*	windows and panels	ui	-	-	-	-
+cSC4WinSnapshotAlbum	windows and panels	ui	snapshots.md	-	-	-
+cSC4WinSnapshotTaker	windows and panels	ui	snapshots.md	-	-	-
+cSC4MySimWinProc	windows and panels	ui	mysim-windows.md, mysims.md	-	-	-
+cSC4PickSimWinProc	windows and panels	ui	mysim-windows.md, mysims.md	-	-	-
 cSC4*WinProc	windows and panels	ui	-	-	-	-
+cSC4WinMapView	windows and panels	ui	map-view.md	-	-	-
 cSC4Win*	windows and panels	ui	-	-	-	-
 cSC4*Dialog	windows and panels	ui	-	-	-	-
 cSC4TiledScrollingCanvas	windows and panels	ui	-	-	-	-
@@ -420,6 +509,7 @@ fn:convertStringToFloatValue	resource and exemplar editor	ui	-	-	-	-
 # ---- framework
 cSC4App	application	framework	-	-	-	-
 cWinSC4App	application	framework	-	-	-	-
+cSC4AutomataCOMDirector	application	framework	automata-managers.md	-	-	-
 cSC4*COMDirector	application	framework	-	-	-	-
 cGZ*COMDirector	application	framework	-	-	-	-
 cSC4Preferences	application	framework	-	-	-	-

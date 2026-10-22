@@ -1400,8 +1400,8 @@ handler acts only on the record that `cISC4App::GetRegionalCity()` (slot 36) ret
 1. `forced := (data3 ≠ 0)` and `established := city.GetEstablished()` (city slot 22). data1 and data2 are read
    and ignored.
 2. If the city is not established, `forced` is true or `moved` is set:
-   - existing connections are marked for removal (`0x004A8570`);
-   - when `moved` is set, `0x004A9580` also runs;
+   - the pending connection changes are dropped (`0x004A8570`);
+   - when `moved` is set, the city's own connections are marked for removal (`0x004A9580`, regional-city.md §6.2);
    - incoming connections are treated as new (`0x004A9220`).
 3. `CreateSymmetricConnections`, which posts ConnectionsReady.
 4. `moved := false`.

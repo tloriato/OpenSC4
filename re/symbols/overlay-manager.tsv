@@ -1,0 +1,67 @@
+va	name	evidence	mac_x86
+00735260	cSTEOverlayManager::QueryInterface	overlay-manager.md §1; IID 0x895D6544, else the cRZUnknown at +0x08	
+007352a0	cSTEOverlayManager::GetStatsString	overlay-manager.md descriptive name, no Mac match; §3; slot 27, %d decals, %d shadows	
+00735480	cSTEOverlayManager::AddShadowByQuality	overlay-manager.md descriptive name, no Mac match; §3; slot 10, -1 when kShadowQuality is 0	
+007354e0	cSTEOverlayManager::ComputeCellRect	overlay-manager.md descriptive name, no Mac match; §3; cell scale and margin	
+007356d0	cSTEOverlayManager::DrawShadowRect	overlay-manager.md descriptive name, no Mac match; §4.3	
+00735720	cSTEOverlayManager::DrawRect	overlay-manager.md §4.2; by the water flag, the dynamic flag and the vertex-buffer extension	
+00736150	cSTEOverlayManager::AddDecalByKey	overlay-manager.md descriptive name, no Mac match; §3; slot 5, binding factory slot 6	
+007361b0	cSTEOverlayManager::AddDecalByKey2	overlay-manager.md descriptive name, no Mac match; §3; slot 6, binding factory slot 5	
+00736490	cSTEOverlayManager::GetPlacement	overlay-manager.md descriptive name, no Mac match; §3; slot 14	
+00736580	cSTEOverlayManager::GetOverlayField	overlay-manager.md descriptive name, no Mac match; §3; slot 22	
+007365e0	cSTEOverlayManager::GetAlpha	overlay-manager.md descriptive name, no Mac match; §3; slot 23	
+00736640	cSTEOverlayManager::GetColor	overlay-manager.md descriptive name, no Mac match; §3; slot 24	
+007366c0	cSTEOverlayManager::GetDrawState	overlay-manager.md descriptive name, no Mac match; §3; slot 25	
+00736720	cSTEOverlayManager::IsShown	overlay-manager.md descriptive name, no Mac match; §3; slot 26	
+00736790	cSTEOverlayManager::DrawDecals	overlay-manager.md §4.2; depth offset 2, flags 0x11 (0x91 under kRenderSnapshot)	
+00736bf0	cSTEOverlayManager::DrawShadows	overlay-manager.md §4.3; the full form with a second stage	
+00737870	cSTEOverlayManager::DrawShadowsRough	overlay-manager.md §4.3; kShadowQuality < 3 or no second stage	
+00737d40	cSTEOverlayManager::MarkChanged	overlay-manager.md descriptive name, no Mac match; §2.2	
+00737e50	cSTEOverlayManager::SetShown	overlay-manager.md descriptive name, no Mac match; §3; slot 16, flag bit 0	
+00737f00	cSTEOverlayManager::SetAlpha	overlay-manager.md descriptive name, no Mac match; §3; slot 17, +0x9C, redraw step 0x00AB39A0	
+00738010	cSTEOverlayManager::SetColor	overlay-manager.md descriptive name, no Mac match; §3; slot 18, +0xA0	
+007380c0	cSTEOverlayManager::SetDrawState	overlay-manager.md descriptive name, no Mac match; §3; slot 19, +0x08	
+00738160	cSTEOverlayManager::SetTextureScale	overlay-manager.md descriptive name, no Mac match; §3; slot 21, flag bit 5	
+00738230	cSTEOverlayManager::AddToCellIndex	overlay-manager.md descriptive name, no Mac match; §2.2	
+007382e0	cSTEOverlayManager::RemoveFromCellIndex	overlay-manager.md descriptive name, no Mac match; §2.2	
+00738390	cSTEOverlayManager::CollectVisibleOverlays	overlay-manager.md descriptive name, no Mac match; §4; the cell index over the view's draw rows, one frame stamp	
+007388c0	cSTEOverlayManager::Remove	overlay-manager.md descriptive name, no Mac match; §3; slot 15, groups part by part	
+00738a50	cSTEOverlayManager::Draw	overlay-manager.md descriptive name, no Mac match; §4; inverse model-view, decals and shadows	
+007393b0	cSTEOverlayManager::UpdatePartRect	overlay-manager.md descriptive name, no Mac match; §3.1; re-places one part in the cell index	
+00739490	cSTEOverlayManager::Draw (thunk at +4)	overlay-manager.md descriptive name, no Mac match; §1; slot 3 of the draw interface 0x00AB39D0	
+007394b0	cSTEOverlayManager::SplitDiscIntoParts	overlay-manager.md descriptive name, no Mac match; §3.1; eight rectangles along the circle	
+00739ec0	cSTEOverlayManager::AllocHandle	overlay-manager.md descriptive name, no Mac match; §2.1; the 0x30 table	
+00739fc0	cSTEOverlayManager::AllocGroup	overlay-manager.md descriptive name, no Mac match; §2.1; eight part indices	
+0073a1b0	cSTEOverlayManager::PlaceOverlay	overlay-manager.md descriptive name, no Mac match; §3; placement record to cell rectangle and matrix	
+0073ac90	cSTEOverlayManager::Shutdown	overlay-manager.md descriptive name, no Mac match; §1; unsubscribes 0xC9F775BB, empties both tables	
+0073ad80	cSTEOverlayManager::SetPosition	overlay-manager.md descriptive name, no Mac match; §3; slot 12	
+0073ade0	cSTEOverlayManager::SetPlacement	overlay-manager.md descriptive name, no Mac match; §3; slot 13, nine floats	
+0073aec0	cSTEOverlayManager::AllocOverlay	overlay-manager.md descriptive name, no Mac match; §2.1; the 0xB4 table and its free list	
+0073af80	cSTEOverlayManager::AddOverlay	overlay-manager.md descriptive name, no Mac match; §3; the add core of slots 3 and 4	
+0073b170	cSTEOverlayManager::AddRoundDecal	overlay-manager.md descriptive name, no Mac match; §3.1; slot 7, a group of eight parts	
+0073b3b0	cSTEOverlayManager::AddShadow	overlay-manager.md descriptive name, no Mac match; §3; slot 9	
+0073b8a0	cSTEOverlayManager::AddOverlayForRect	overlay-manager.md descriptive name, no Mac match; §3; slot 8's core, flags 0x12	
+0073ba10	cSTEOverlayManager::InitDrawStates	overlay-manager.md §4.1; five packed states	
+0073bc20	cSTEOverlayManager::cSTEOverlayManager	overlay-manager.md descriptive name, no Mac match; §1; 0xFC bytes, four vtables	
+0073bda0	cSTEOverlayManager::QueryInterface (thunk at +4)	overlay-manager.md descriptive name, no Mac match; §1	
+0073bdb0	cSTEOverlayManager::QueryInterface (thunk at +8)	overlay-manager.md descriptive name, no Mac match; §1	
+0073bdc0	cSTEOverlayManager::~cSTEOverlayManager (thunk at +8)	overlay-manager.md descriptive name, no Mac match; §1	
+0073bdd0	cSTEOverlayManager::QueryInterface (thunk at +16)	overlay-manager.md descriptive name, no Mac match; §1	
+0073bde0	cSTEOverlayManager::AddRef (thunk at +16)	overlay-manager.md descriptive name, no Mac match; §1	
+0073bdf0	cSTEOverlayManager::Release (thunk at +16)	overlay-manager.md descriptive name, no Mac match; §1	
+0073be00	cSTEOverlayManager::~cSTEOverlayManager (body)	overlay-manager.md descriptive name, no Mac match; §1; the destructor body	
+0073bf10	cSTEOverlayManager::AddDecalFromBinding	overlay-manager.md descriptive name, no Mac match; §3; slot 4	
+0073c0b0	cSTEOverlayManager::AddDecal	overlay-manager.md descriptive name, no Mac match; §3; slot 3, from a texture source object	
+0073c0d0	cSTEOverlayManager::AddModelShadow	overlay-manager.md descriptive name, no Mac match; §3; slot 11	
+0073c980	cSTEOverlayManager::~cSTEOverlayManager	overlay-manager.md §1	
+0073c9a0	cSTEOverlayManager::AddCityDecal	overlay-manager.md descriptive name, no Mac match; §3; slot 8, the whole city	
+0073cb10	cSTEOverlayManager::BuildCellIndex	overlay-manager.md descriptive name, no Mac match; §2.2; one bucket per cell	
+0073cb60	cSTEOverlayManager::Init	overlay-manager.md §1; (view, dynamic +0x15, water +0x16)	
+007541c0	cSTETerrainView3D::DrawOverlayLandRect	overlay-manager.md descriptive name, no Mac match; §4.2; static manager, no vertex-buffer extension	
+007543c0	cSTETerrainView3D::DrawOverlayLandRectDynamic	overlay-manager.md descriptive name, no Mac match; §4.2	
+007545c0	cSTETerrainView3D::DrawOverlayLandRectWithVertBufExtension	overlay-manager.md descriptive name, no Mac match; §4.2	
+00754910	cSTETerrainView3D::DrawOverlayLandRectDynamicWithVertBufExtension	overlay-manager.md descriptive name, no Mac match; §4.2	
+00754c60	cSTETerrainView3D::DrawShadowLandRect	overlay-manager.md descriptive name, no Mac match; §4.3	
+00754f10	cSTETerrainView3D::DrawShadowLandRectDynamic	overlay-manager.md descriptive name, no Mac match; §4.3	
+00755560	cSTETerrainView3D::DrawOverlayWaterRect	overlay-manager.md descriptive name, no Mac match; §4.2	
+00755700	cSTETerrainView3D::DrawOverlayWaterRectDynamic	overlay-manager.md descriptive name, no Mac match; §4.2	

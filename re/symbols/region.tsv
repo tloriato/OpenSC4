@@ -1,0 +1,37 @@
+va	name	evidence	mac_x86
+004a44e0	cSC4Region::QueryInterface	region.md §1; 1, 0x89D2BE26	
+004a4510	cSC4Region::SetName	region.md §1; slot 4	
+004a4520	cSC4Region::SetDirectoryName	region.md §1; slot 6	
+004a4570	cSC4Region::Release	region.md §1; Shutdown then the deleting destructor	
+004a45a0	cSC4Region::GetBoundingRect	region.md §7; tile corners only	
+004a4930	cSC4Region::GetCity	region.md §5	
+004a4970	cSC4Region::IsCityAreaOccupied	region.md descriptive name, no Mac match; §4; any cell of the city's rectangle in the map	
+004a4b50	cSC4Region::RemoveCity	region.md §5; frees the holder	
+004a4c20	cSC4Region::GetCityLocations	region.md §7	
+004a4c30	cSC4Region::~cSC4Region (body)	region.md descriptive name, no Mac match; §1	
+004a4ca0	cSC4Region::GetBaseTerrainHeight	region.md §7; table 0x00B217B0	
+004a4cb0	cSC4Region::SetBaseTerrainType	region.md §7	
+004a4cc0	cSC4Region::GetWaterPrefs	region.md §7	
+004a4ce0	cSC4Region::GetAllCities	region.md §5; each city once, address order	
+004a4f00	cSC4Region::InsertCity	region.md §5; one holder for all cells	
+004a5030	cSC4Region::ReloadCity	region.md §5; neighbors.md §14.1	
+004a5120	cSC4Region::DeleteCity	region.md §5; deletes the file	
+004a51c0	cSC4Region::MoveOverflowCitiesToDownloadDirectory	region.md §4	
+004a53e0	cSC4Region::~cSC4Region	region.md §1; deleting, slot 25	
+004a5400	cSC4Region::ResetTutorialCity	region.md §6; record 0x6A5B7BF5/0x6A5B7B57/id	
+004a5640	cSC4Region::ReadCityLocations	region.md descriptive name, no Mac match; §3; red 1, green 2, blue 4	
+004a58d0	cSC4Region::LoadCitiesFromDirectory	region.md §4; *.sc4	
+004a5b30	cSC4Region::cSC4Region	region.md §1; water 60, 100	
+004a5be0	cSC4Region::Shutdown	region.md §2; writes region.ini back	
+004a6330	cSC4Region::LoadCities	region.md §4; exact tile match	
+004a65a0	cSC4Region::Delete	region.md §6	
+004a67b0	cSC4Region::CreateRegion	region.md §6; random built-in config.bmp	
+004a6ac0	cSC4Region::CreateStarterRegion	region.md §6	
+004a6b00	cSC4Region::LoadCityLocations	region.md §3; config.bmp or the built-in layout	
+004a6c80	cSC4Region::Init	region.md §4	
+004a6cd0	cSC4Region::LoadConfig	region.md §2; region.ini [Regional Settings]	
+004a7200	cSC4Region::MoveCity	region.md §6; rename, rewrite the record, Init again	
+005dbd40	SC4CreateCitySerialNumber	region.md §8	
+005dc220	SC4ReadRegionalCity	region.md §8; from a path, save version 62-65	
+005dc2e0	SC4WriteRegionalCity	region.md §8; to a path, save version 62-65	
+006d4790	cSC4Region::GetDirectoryName	region.md §1; slot 5	

@@ -1,0 +1,78 @@
+va	name	evidence	mac_x86
+004b7dc0	cSC4ViewInputControlCityScroll::cSC4ViewInputControlCityScroll	view-input-controls.md §2.2; thresholds 12 and 80	
+004b7e00	cSC4ViewInputControlCityScroll::Shutdown	view-input-controls.md §2.4	
+004b7e70	cSC4ViewInputControlCityScroll::EndInput	view-input-controls.md §2.4	
+004b7ec0	cSC4ViewInputControlCityScroll::OnMouseUpR	view-input-controls.md §2.3; EndInput, true	
+004b7ef0	cSC4ViewInputControlCityScroll::OnMouseMove	view-input-controls.md §2.3; nine cursors, SetScrolling(on, angle, speed)	
+004b8220	cSC4ViewInputControlCityScroll::ReadTunableValues	view-input-controls.md §2.2; properties 0xE90F5DE4, 0xA90F5DEC	
+004b82a0	cSC4ViewInputControlCityScroll::Init	view-input-controls.md §2.2	
+004b82f0	cSC4ViewInputControlCityScroll::SetMouseScroll	view-input-controls.md §2.2; anchor picture window 0x48E945B4	
+004bc980	cSC4ViewInputControlLabelTool::Init	view-input-controls.md §4.1	
+004bc9b0	cSC4LabelFilter::IsOccupantIncluded	view-input-controls.md descriptive name, no Mac match; §4.1; props answering 0x2B3B7D86	
+004bca10	cSC4ViewInputControlLabelTool::DoMessage	view-input-controls.md §4.5; OK, Cancel, Enter	
+004bcb00	cSC4ViewInputControlLabelTool::FindRoadCenterAndOrientation	view-input-controls.md §4.4; offsets of 4 m	
+004bcdc0	cSC4ViewInputControlLabelTool::GetDecalOccupantAt	view-input-controls.md §4.1	
+004bce80	cSC4ViewInputControlLabelTool::SetSelection	view-input-controls.md §4.1; alpha 0.7 and 0.5	
+004bcee0	cSC4ViewInputControlLabelTool::FindAvenueCenterAndOrientation	view-input-controls.md §4.4; offsets of 8 m	
+004bd230	cSC4ViewInputControlLabelTool::cSC4ViewInputControlLabelTool	view-input-controls.md descriptive name, no Mac match; §4.1	
+004bd2a0	cSC4ViewInputControlLabelTool::QueryInterface (thunk at +0x28)	view-input-controls.md descriptive name, no Mac match; §4.5	
+004bd2b0	cSC4ViewInputControlLabelTool::~cSC4ViewInputControlLabelTool	view-input-controls.md §4.1	
+004bd2e0	cSC4ViewInputControlLabelTool::Shutdown	view-input-controls.md §4.5	
+004bd320	cSC4ViewInputControlLabelTool::UpdateTextDecal	view-input-controls.md §4.3; colour, height, snapping	
+004bd4b0	cSC4ViewInputControlLabelTool::OnKeyDown	view-input-controls.md §4.5; Delete, Home, End	
+004bd5a0	cSC4ViewInputControlLabelTool::OnMouseMove	view-input-controls.md §4.2	
+004bd6b0	cSC4ViewInputControlLabelTool::DoEditLabelUI	view-input-controls.md §4.5; UI script 0x6B704690	
+004bd890	cSC4ViewInputControlLabelTool::OnMouseDownL	view-input-controls.md §4.2	
+004bda40	cSC4ViewInputControlLabelTool::OnMouseUpL	view-input-controls.md §4.2	
+004bdb00	cSC4ViewInputControlLevelTerrain::ComputeAndMarkSelectedArea	view-input-controls.md §3; MarkSelected(rect, 2, true)	
+004bdb50	cSC4ViewInputControlLevelTerrain::LevelTerrain	view-input-controls.md §3; SetAltitude(rect, h, true, true)	
+004bdc00	cSC4ViewInputControlLevelTerrain::Shutdown	view-input-controls.md §3	
+004bdc60	cSC4ViewInputControlLevelTerrain::cSC4ViewInputControlLevelTerrain	view-input-controls.md §3	
+004bdc90	cSC4ViewInputControlLevelTerrain::Init	view-input-controls.md §3	
+004bdce0	cSC4ViewInputControlLevelTerrain::OnMouseDownL	view-input-controls.md §3; true even on a miss	
+004bdd80	cSC4ViewInputControlLevelTerrain::OnMouseUpL	view-input-controls.md §3	
+004bde30	cSC4ViewInputControlLevelTerrain::OnMouseMove	view-input-controls.md §3	
+004d7680	cSC4SignOrLabelFilter::IsOccupantIncluded	view-input-controls.md §6; prop types 0xAB72FBB3, 0xCB79919B	
+004d76f0	cSC4ViewInputControlSignLabelDemolish::cSC4ViewInputControlSignLabelDemolish	view-input-controls.md descriptive name, no Mac match; §6	
+004d7710	cSC4ViewInputControlSignLabelDemolish::Init	view-input-controls.md §6	
+004d7790	cSC4ViewInputControlSignLabelDemolish::Shutdown	view-input-controls.md §6	
+004d77c0	cSC4ViewInputControlSignLabelDemolish::OnMouseUpL	view-input-controls.md §6; sound 0x8A5EC047	
+004d7820	cSC4ViewInputControlSignLabelDemolish::PickSignOrLabel	view-input-controls.md §6	
+004d7950	cSC4ViewInputControlSignLabelDemolish::SetSelection	view-input-controls.md §6	
+004d7aa0	cSC4ViewInputControlSignLabelDemolish::~cSC4ViewInputControlSignLabelDemolish	view-input-controls.md §6	
+004d7ac0	cSC4ViewInputControlSignLabelDemolish::OnMouseMove	view-input-controls.md §6	
+004d7af0	cSC4ViewInputControlSignTool::QueryInterface	view-input-controls.md §5.4; 0xE98B2F57 gives +0x28	
+004d7be0	cSC4ViewInputControlSignTool::Init	view-input-controls.md §5.1	
+004d7cc0	cSC4SignFilter::IsOccupantIncluded	view-input-controls.md descriptive name, no Mac match; §5.1; props answering 0x4B44FBE2	
+004d7d20	cSC4ViewInputControlSignTool::GetGroundOrSeaHeight	view-input-controls.md descriptive name, no Mac match; §5.2; max(altitude, sea level)	
+004d7d70	cSC4ViewInputControlSignTool::DoMessage	view-input-controls.md descriptive name, no Mac match; §5.4; message 0x0BE10A20	
+004d7f00	cSC4ViewInputControlSignTool::cSC4ViewInputControlSignTool	view-input-controls.md descriptive name, no Mac match; §5.1	
+004d7fb0	__ZThn40_N28cSC4ViewInputControlSignTool14QueryInterfaceEmPPv	view-input-controls.md §5.4	
+004d7fc0	cSC4ViewInputControlSignTool::SetSelection	view-input-controls.md §5.1; an empty sign is removed	
+004d80a0	cSC4ViewInputControlSignTool::~cSC4ViewInputControlSignTool	view-input-controls.md §5.4	
+004d80c0	cSC4ViewInputControlSignTool::~cSC4ViewInputControlSignTool (body)	view-input-controls.md descriptive name, no Mac match; §5.4	
+004d8130	cSC4ViewInputControlSignTool::Shutdown	view-input-controls.md §5.4	
+004d81d0	cSC4ViewInputControlSignTool::OnMouseDownL	view-input-controls.md §5.2	
+004d84b0	cSC4ViewInputControlSignTool::OnMouseMove	view-input-controls.md §5.2	
+004d8670	cSC4ViewInputControlSignTool::AppendText	view-input-controls.md §5.3; glyph limit	
+004d8730	cSC4ViewInputControlSignTool::OnMouseUpL	view-input-controls.md §5.2	
+004d8830	cSC4ViewInputControlSignTool::OnCharacter	view-input-controls.md §5.3; multi-byte input	
+004d89d0	cSC4ViewInputControlSignTool::OnKeyDown	view-input-controls.md §5.3; Escape, Ctrl+V, Delete	
+004da180	cSC4ViewInputControlSignLabelDemolish::~cSC4ViewInputControlSignLabelDemolish (body)	view-input-controls.md descriptive name, no Mac match; §6	
+00505be0	cSC4ViewInputControl::IsKeyToBePassed	city-tools-input.md §2; true	
+005fafc0	cSC4ViewInputControl::~cSC4ViewInputControl	city-tools-input.md §2	
+005fafd0	cSC4ViewInputControl::Shutdown	city-tools-input.md §2; the window pointer is kept	
+005fb020	cSC4ViewInputControl::SetCursor	city-tools-input.md §2; slot 9, by cursor	
+005fb070	cSC4ViewInputControl::SetCursor	city-tools-input.md §2; slot 8, by cursor id	
+005fb0b0	cSC4ViewInputControl::SetWindow	city-tools-input.md §2; slot 10, not held	
+005fb0c0	cSC4ViewInputControl::EndInput	city-tools-input.md §2; slot 27, RemoveCurrentViewInputControl(false)	
+005fb100	cSC4ViewInputControl::QueryInterface	city-tools-input.md §2; IIDs 1 and 0xC6BB8345	
+005fb130	cSC4ViewInputControl::SetCapture	city-tools-input.md §2; window manager slot 29	
+005fb150	cSC4ViewInputControl::ReleaseCapture	city-tools-input.md §2; window manager slot 30	
+005fb170	cSC4ViewInputControl::AmCapturing	city-tools-input.md §2; slot 25	
+005fb190	cSC4ViewInputControl::IsOnTop	city-tools-input.md §2; the city view's current control	
+005fb1b0	cSC4ViewInputControl::~cSC4ViewInputControl	city-tools-input.md §2; slot 26, deleting destructor	
+005fb1d0	cSC4ViewInputControl::Init	city-tools-input.md §2	
+005fb260	cSC4ViewInputControl::PlayResultSound	city-tools-input.md §2; slot 28, sound event 1	
+005fb320	cSC4ViewInputControl::cSC4ViewInputControl	city-tools-input.md §2	
+00648ef0	cSC4ViewInputControl::OnMouseExit	city-tools-input.md §2; false	

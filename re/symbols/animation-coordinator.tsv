@@ -1,0 +1,15 @@
+va	name	evidence	mac_x86
+00445fa0	cSC4AnimationCoordinator::IsAnimatable	animation-coordinator.md §1.2; descriptive name, no Mac match; model classes 0xEA123BE1 / 0xAA123BF9, no 0x4A70D491	
+00446000	cSC4AnimationCoordinator::IsShownAnimatable	animation-coordinator.md §1.2; descriptive name, no Mac match; occupant flag 4 as well	
+00446070	cSC4AnimationCoordinator::GetOccupantBlock	animation-coordinator.md §2; descriptive name, no Mac match; position / 256 m, clamped	
+00446150	cSC4AnimationCoordinator::StartOrStopAnimation	animation-coordinator.md §2; descriptive name, no Mac match; animation tick manager slots 5 and 6, flag 0x20	
+00446290	cSC4AnimationCoordinator::OccupantMayAnimate	animation-coordinator.md §2; descriptive name, no Mac match; properties 0xEA5393ED (power) and 0x8A5F88E3	
+00446890	cSC4AnimationCoordinator::SetOccupantAnimation	animation-coordinator.md §2; block sets, the four conditions, flag 0x20	
+004469b0	cSC4AnimationCoordinator::GetChangedBlocks	animation-coordinator.md §3; descriptive name, no Mac match; blocks in either rectangle but not both	
+00446eb0	cSC4AnimationCoordinator::DoMessage	animation-coordinator.md §3; descriptive name; slot 3 of 0x00A86690	
+00447750	cSC4AnimationCoordinator::cSC4AnimationCoordinator	animation-coordinator.md §1; descriptive name; 0x5C bytes, zoom 4, minimum zoom 2, enabled	
+00447900	cSC4AnimationCoordinator::Shutdown	animation-coordinator.md §1.1	
+00447a00	cSC4AnimationCoordinator::~cSC4AnimationCoordinator	animation-coordinator.md §1; descriptive name; the destructor body	
+00447b00	cSC4AnimationCoordinator::~cSC4AnimationCoordinator (deleting destructor)	animation-coordinator.md §1; descriptive name; slot 4	
+00447b20	cSC4AnimationCoordinator::Init	animation-coordinator.md §1.1; filters, services, five subscriptions, block grid of cells / 16	
+00a86690	cSC4AnimationCoordinator::vftable	animation-coordinator.md §1; descriptive name; 5 slots	

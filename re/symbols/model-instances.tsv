@@ -1,0 +1,89 @@
+va	name	evidence	mac_x86
+005d5420	cS3DModelInstanceBasic::AddRef	model-instances.md §1; slot 1, the foundation model's thunk to the basic slot	
+005d5430	cS3DModelInstanceBasic::Release	model-instances.md §1; slot 2, the foundation model's thunk to the basic slot	
+005d5440	cS3DModelInstanceBasic::GetOwner	model-instances.md §1; slot 3, the foundation model's thunk to the basic slot	
+005d5450	cS3DModelInstanceBasic::SetOwner	model-instances.md §1; slot 4, the foundation model's thunk to the basic slot	
+005d5460	cS3DModelInstanceBasic::GetCustomData	model-instances.md §1; slot 5, the foundation model's thunk to the basic slot	
+005d5470	cS3DModelInstanceBasic::SetCustomData	model-instances.md §1; slot 6, the foundation model's thunk to the basic slot	
+005d5480	cS3DModelInstanceBasic::GetBounds	model-instances.md §1; slot 7, the foundation model's thunk to the basic slot	
+005d5490	cS3DModelInstanceBasic::GetTransform	model-instances.md §1; slot 9, the identity	
+005d54a0	cS3DModelInstanceBasic::SetTransform	model-instances.md §1; slot 10, ignored	
+005d54b0	cS3DModelInstanceBasic::GetProperties	model-instances.md §1; slot 13, the foundation model's thunk to the basic slot	
+005d54c0	cS3DModelInstanceBasic::SetProperties	model-instances.md §1; slot 14, the foundation model's thunk to the basic slot	
+005d54d0	cS3DModelInstanceBasic::GetDrawAttributes	model-instances.md §1; slot 15, the foundation model's thunk to the basic slot	
+005d54e0	cS3DModelInstanceBasic::SetDrawAttributes	model-instances.md §1; slot 16, the foundation model's thunk to the basic slot	
+005d54f0	cS3DModelInstanceBasic::GetResModel	model-instances.md §1; slot 18, null	
+007faf90	cS3DModelInstanceAnimated::GetFrame	model-instances.md descriptive name, no Mac match; §3; slot 11	
+007fafc0	cS3DModelInstanceAnimated::SetAnimMode	model-instances.md descriptive name, no Mac match; §3; slot 16, graphics-formats.md 3.9	
+007fc150	cS3DModelInstanceAnimated::GetFrameCount	model-instances.md descriptive name, no Mac match; §3; slot 12	
+007fc170	cS3DModelInstanceAnimated::SetSpeed	model-instances.md descriptive name, no Mac match; §3; slot 14, graphics-formats.md 3.9	
+007fc1c0	cS3DModelInstanceAnimated::Advance	model-instances.md descriptive name, no Mac match; §3; slot 15, graphics-formats.md 3.9	
+007fc2e0	cS3DModelInstanceAnimated::BuildFrame	model-instances.md descriptive name, no Mac match; §3; model slot 8 unless current	
+007fd870	cS3DModelInstanceAnimated::cS3DModelInstanceAnimated	model-instances.md descriptive name, no Mac match; §3; playback in graphics-formats.md 3.9	
+007fda90	cS3DModelInstanceAnimated::SetAnimation	model-instances.md descriptive name, no Mac match; §3; slot 9, the sub-range table	
+007fdaf0	cS3DModelInstanceAnimated::SetFrame	model-instances.md descriptive name, no Mac match; §3; slot 10, graphics-formats.md 3.9	
+007fdb80	cS3DModelInstanceAnimated::Step	model-instances.md descriptive name, no Mac match; §3; slot 13, graphics-formats.md 3.9	
+008016b0	cS3DModelInstance::Release (mesh container)	model-instances.md descriptive name, no Mac match; §2	
+008016d0	cS3DModelInstance::QueryInterface (mesh container)	model-instances.md descriptive name, no Mac match; §2; IIDs 1 and 0x26A68448	
+00801700	cS3DModelInstance::GetCustomData	model-instances.md descriptive name, no Mac match; §2; slot 5	
+00801710	cS3DModelInstance::SetCustomData	model-instances.md descriptive name, no Mac match; §2; slot 6	
+00801720	cS3DModelInstance::Pick	model-instances.md descriptive name, no Mac match; §2; slot 11, view-utilities 7	
+00801750	cS3DModelInstance::Draw	model-instances.md §2; slot 12, RenderModelInstance	
+00801790	cS3DModelInstance::GetProperties	model-instances.md descriptive name, no Mac match; §2; slot 13, 16 bits	
+008017a0	cS3DModelInstance::SetProperties	model-instances.md descriptive name, no Mac match; §2; slot 14	
+008017b0	cS3DModelInstance::QueryInterface	model-instances.md descriptive name, no Mac match; §2; 0x26A68449 the basic part, 1 and 0x26A68448 the container	
+00801850	cS3DModelInstanceBasic::GetOwner (body)	model-instances.md descriptive name, no Mac match; §1	
+00801860	cS3DModelInstanceBasic::SetOwner (body)	model-instances.md descriptive name, no Mac match; §1; counted	
+00801890	cS3DModelInstanceBasic::GetCustomData (body)	model-instances.md descriptive name, no Mac match; §1	
+008018a0	cS3DModelInstanceBasic::SetCustomData (body)	model-instances.md descriptive name, no Mac match; §1	
+008018b0	cS3DModelInstanceBasic::GetBounds (body)	model-instances.md descriptive name, no Mac match; §1; the most-derived slot 8	
+008018d0	cS3DModelInstanceBasic::Draw	model-instances.md descriptive name, no Mac match; §1; slot 12, nothing	
+008018e0	cS3DModelInstanceBasic::GetProperties (body)	model-instances.md descriptive name, no Mac match; §1	
+008018f0	cS3DModelInstanceBasic::SetProperties (body)	model-instances.md descriptive name, no Mac match; §1	
+00801900	cS3DModelInstanceBasic::AddRef (body)	model-instances.md descriptive name, no Mac match; §1; 16-bit count	
+00801910	cS3DModelInstanceBasic::Release (body)	model-instances.md descriptive name, no Mac match; §1; the last release deletes	
+00801940	cS3DModelInstanceBasic::QueryInterface	model-instances.md §1; IIDs 1 and 0x26A68449	
+00801ad0	cS3DModelInstance::GetMeshCount	model-instances.md descriptive name, no Mac match; §2; container slot 3	
+00801af0	cS3DModelInstance::GetMesh	model-instances.md descriptive name, no Mac match; §2; container slots 4 and 5	
+00801b00	cS3DModelInstance::operator.new	model-instances.md §2; 0xA4-byte pool	
+00801b40	cS3DModelInstance::GetOwner	model-instances.md descriptive name, no Mac match; §2; slot 3	
+00801b50	cS3DModelInstance::SetOwner	model-instances.md descriptive name, no Mac match; §2; slot 4, counted	
+00801b80	cS3DModelInstance::GetTransform	model-instances.md descriptive name, no Mac match; §2; slot 9, 56 bytes	
+00801be0	cS3DModelInstance::SetTransform	model-instances.md descriptive name, no Mac match; §2; slot 10, bumps the change counter	
+00801c40	cS3DModelInstance::SetModel	model-instances.md descriptive name, no Mac match; §2; first-material translucency	
+00801cd0	cS3DModelInstance::UpdateBounds	model-instances.md descriptive name, no Mac match; §2	
+00801cf0	cS3DModelInstanceBasic::cS3DModelInstanceBasic	model-instances.md §1; the virtual base	
+00801dc0	cS3DTransform::MakeIdentity	model-instances.md §1; only when the dirty byte is set	
+00801e10	cS3DModelInstanceBasic::GetDrawAttributes (body)	model-instances.md descriptive name, no Mac match; §1; 20 bytes	
+00801e50	cS3DModelInstanceBasic::SetDrawAttributes (body)	model-instances.md descriptive name, no Mac match; §1	
+00801ec0	cS3DModelInstance::GetMaterial	model-instances.md descriptive name, no Mac match; §2; container slots 6 and 7, 52-byte records	
+00801f00	cS3DModelInstance::GetDrawAttributes	model-instances.md descriptive name, no Mac match; §2; slot 15	
+00801f40	cS3DModelInstance::SetDrawAttributes	model-instances.md descriptive name, no Mac match; §2; slot 16	
+00801f80	cS3DModelInstance::GetSortValue	model-instances.md descriptive name, no Mac match; §2; slot 17, the first material's first texture ID	
+00801fc0	cS3DModelInstance::GetBounds	model-instances.md descriptive name, no Mac match; §2; slot 7, refreshed from the model	
+00802010	cS3DModelInstance::GetWorldBounds	model-instances.md descriptive name, no Mac match; §2; slot 8, transformed	
+008020f0	cS3DModelInstance::operator.delete	model-instances.md descriptive name, no Mac match; §2; the 0xA4-byte pool	
+00802620	cS3DModelInstance::~cS3DModelInstance (body)	model-instances.md descriptive name, no Mac match; §2	
+00802920	cS3DModelInstance::~cS3DModelInstance (mesh container, deleting)	model-instances.md descriptive name, no Mac match; §2	
+00802950	cS3DModelInstance::cS3DModelInstance	model-instances.md §2	
+00802b00	cS3DModelInstance::~cS3DModelInstance (deleting destructor)	model-instances.md descriptive name, no Mac match; §2; back to the pool	
+00802b30	cS3DModelProcessor::ReleaseModel	model-instances.md §4	
+00802db0	cS3DModelProcessor::SortMeshes	model-instances.md §4; by box centre . direction, largest first	
+00803060	cS3DModelProcessor::cS3DModelProcessor	model-instances.md §4; target format 10	
+008030a0	cS3DModelProcessor::~cS3DModelProcessor	model-instances.md §4; restores the original vertex blocks	
+00803370	cS3DModelProcessor::CreateVertexNormals	model-instances.md §4; sum of Newell normals / sum of their lengths	
+008038d0	cS3DModelProcessor::SetModel	model-instances.md §4; format 2 only, single-frame only	
+00803e10	cS3DModelProcessor::LightModel	model-instances.md §4; lighting manager GetVertexColors	
+008085c0	cS3DResSpriteAnim::QueryInterface	model-instances.md descriptive name, no Mac match; §6; IID 0x29A5D1EC	
+00808630	cS3DResSpriteAnimTable::QueryInterface	model-instances.md §6; IID 0x69B6F01C	
+00808660	cS3DResSpriteAnimFactory::ReadAnim	model-instances.md §6.1; five keys, the zoom sharing and scales	
+00808920	cS3DResSpriteAnimFactory::ReadTable	model-instances.md §6.2; size 32 + 8 n	
+008089c0	__ZThn4_N22cS3DResSpriteAnimTable14QueryInterfaceEmPPv	model-instances.md §6; thunk	
+00808a00	cS3DResSpriteAnim::~cS3DResSpriteAnim (deleting destructor)	model-instances.md descriptive name, no Mac match; §6	
+00808a30	cS3DResSpriteAnim::CreateModelInstance	model-instances.md descriptive name, no Mac match; §6; a sprite instance loaded from the resource	
+00808ad0	cS3DResSpriteAnimTable::~cS3DResSpriteAnimTable (deleting destructor)	model-instances.md descriptive name, no Mac match; §6; frees the block	
+00808b20	cS3DResSpriteAnimFactory::SerialRead	model-instances.md §6; by type 0x09ADCD75 / 0x29A5D1EC	
+00808b70	cS3DResSpriteAnimFactory::~cS3DResSpriteAnimFactory	model-instances.md §6	
+00808ba0	cS3DResSpriteAnimTable::cS3DResSpriteAnimTable	model-instances.md descriptive name, no Mac match; §6	
+00808bd0	cS3DResSpriteAnimFactory::CreateInstance	model-instances.md descriptive name, no Mac match; §6; type 0x29A5D1EC or 0x09ADCD75	
+0080b490	cS3DModelProcessor::GetTriangleNormal	model-instances.md descriptive name, no Mac match; §4; Newell's formula, length twice the area	

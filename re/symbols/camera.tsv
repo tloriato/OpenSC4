@@ -1,0 +1,70 @@
+va	name	evidence	mac_x86
+007624e0	cSC4CameraControl::GetCustomMagnification	camera.md §2.6; +0xF0	
+007cb940	cSC4CameraControl::QueryInterface	camera.md §2.1; descriptive name; slot 0 of 0x00ABAD18; IIDs 1, 0xC9C628EC and 0xE4FDA3D4	
+007cb970	cSC4CameraControl::DetachFromCamera	camera.md §2.6; descriptive name, no Mac match; releases +0xC; callers 0x007AC3F0, 0x007F15C2	
+007cb990	cSC4CameraControl::GetViewportSize	camera.md §2.6; +0x12C, +0x130	
+007cb9b0	cSC4CameraControl::SetViewportSize	camera.md §2.6; also cS3DCamera::SetViewport	
+007cb9f0	cSC4CameraControl::GetDistancesToClipPlanes	camera.md §2.6; near +0x124, far +0x128	
+007cba10	cSC4CameraControl::GetRotationCorner	camera.md §2.3; descriptive name, no Mac match; rotation 0-3 -> (0,0,0), (W,0,0), (W,0,H), (0,0,H) from +0x158 / +0x15C	
+007cba90	IntersectWithGroundPlane	camera.md §2.4; fastcall (direction, origin), result through ESI; false when |dir.y| < 0.0001 or t < 0	
+007cbb10	cSC4CameraControl::Write	camera.md §2.8; descriptive name; slot 3; u16 1, the view target +0x44, six u32 +0x100..+0x114	
+007cbba0	cSC4CameraControl::Read	camera.md §2.8; descriptive name; slot 4; version 1 only, sets +5	
+007cbc40	cSC4CameraControl::GetVirtualZoom	camera.md §2.6; zoom +0x108, +1 above magnification 1.5 (0x00ABA6B8)	
+007cbc60	cSC4CameraControl::SetViewTargetVelocity	camera.md §2.6; stored when no component is a NaN	
+007cbce0	cSC4CameraControl::ConvertWorldPointToCameraPlanePoint	camera.md §2.4; view rows 0 and 1 times the view scale, relative to +0x10	
+007cbd70	cSC4CameraControl::ConvertCameraPlanePointToWorldPoint	camera.md §2.4; the inverse	
+007cbe40	cSC4CameraControl::UpdateCameraZoomAndRotationParams	camera.md §2.2; cell pixels 0x00ABACE0 (8, 16, 32, 73, 146), pitch 0x00ABACCC (30, 35, 40, 45, 45 deg), yaw (r + 1) pi/2 - pi/4, near 0.95, far 1.5	
+007cc000	cSC4CameraControl::SendViewZRChange1Message	camera.md §2.7; descriptive name, no Mac match; kind 2 only: 0xA6B79600 with the previous and new (zoom, rotation)	
+007cc0b0	cSC4CameraControl::SendPostViewChangeMessage	camera.md §2.7; kinds 0 (PostViewInit), 2 (zoom/rotation), 3 (target), 4 (PostViewRefresh)	
+007cc200	std::copy (8-byte elements)	camera.md §2.5; descriptive name; an unrolled copy of 2-float points, used to empty the bounds vector	
+007cc290	cSC4CameraControl::UpdateCameraPositionParams	camera.md §2.3; eye := target + k o, look-at, pixel snapping of the rotation corner (1.5*2^23 rounding, 0x00ABACF8)	
+007cc5b0	cSC4CameraControl::SendPostViewInitMessage	camera.md §2.7; descriptive name, no Mac match; 0xA6B79620	
+007cc650	cSC4CameraControl::ClampScrollToBounds	camera.md §2.5; cut at the first crossed edge, slide along it, at most one step per edge	
+007cc990	cSC4CameraControl::cSC4CameraControl	camera.md §2.1; scroll steps 100..6.25 at +0xB8, yaw -pi/4, pitch pi/6, distance 8192, viewport 800x600, city 4096x4096	
+007ccbf0	cSC4CameraControl::GetGZCLSID	camera.md §2.1; descriptive name; slot 5; returns 0xC9C628EC	
+007ccc00	GZCOM_CreatecSC4CameraControl	camera.md §2.1; GlobalHeapAlloc(0x160) then the constructor	
+007ccc20	cSC4CameraControl::~cSC4CameraControl (deleting destructor)	camera.md §2.1; descriptive name; slot 6; frees the bounds vector +0x14C, then the object on flag bit 0	
+007ccc60	cSC4CameraControl::UpdateScrollBounds	camera.md §2.5; six camera-plane points from the city corners, widened by 500 m (0x00ABAC98) and raised by o.y * 0.48 / row1.y - half the viewport	
+007cd000	cSC4CameraControl::ClampTargetToScrollBounds	camera.md §2.5; re-intersects the ground plane when the target moved by 0.0001 or more	
+007cd200	cSC4CameraControl::AttachToCamera	camera.md §2.6; counted camera +0xC, viewport, then the updates and PostViewInit when initialised	
+007cd330	cSC4CameraControl::ScrollByViewportAngle	camera.md §2.6; step +0xB8[zoom], clamp, terrain view slot 3 ray cast, else the ground plane	
+007cd540	cSC4CameraControl::SetRotation	camera.md §2.6; descriptive name, no Mac match; 0-3; messages as SetZoomAndRotation	
+007cd6e0	cSC4CameraControl::SetCustomMagnification	camera.md §2.6; was cSC4CameraControl::UpdateCameraPosition; stores +0xF0 when it differs and the old value is in (0, 1000)	
+007cd810	cSC4CameraControl::SetViewTarget	camera.md §2.6; descriptive name, no Mac match; each component finite and within +-100000 (0x00ABAC9C, 0x00ABACA8)	
+007cda20	cSC4CameraControl::SetCameraPositionTweakAdd	camera.md §2.6; +0xB0, +0xB4	
+007cdaa0	cSC4CameraControl::SetCitySize	camera.md §2.6; +0x158, +0x15C; empties and rebuilds the bounds	
+007cdb20	cSC4CameraControl::Init	camera.md §2.6; once; loaded zoom/rotation or the given target	
+007cdc50	cSC4CameraControl::SetZoom	camera.md §2.6; 4 < z < 5 gives magnification pow(2, z - 4) (0x009EFC60) at zoom 4	
+007cde60	cSC4CameraControl::SetZoomAndRotation	camera.md §2.6; zoom 0-4 and rotation 0-3; ViewZRChange1, CameraUpdated, ViewZRChange2, ViewZRChange3	
+007ff010	cS3DCamera::GetGZCLSID	camera.md §1.2; descriptive name; returns 0xE9C6262A; called by the COM director 0x0046029D	
+007ff020	cS3DCamera::Release	camera.md §1.2; descriptive name; slot 2 of 0x00ABD2C4; slot 3 with 1 at a count of 1 or less	
+007ff040	cS3DCamera::QueryInterface	camera.md §1.2; descriptive name; slot 0; IIDs 1 and 0xE9C6262A	
+007ff070	cS3DCamera::SetDepthSize	camera.md §1.2; +0x10, projection counter +0x17C += 1	
+007ff080	cS3DCamera::SetSubview	camera.md §1.2; +0x18..+0x24, in use +0x14, counter += 1	
+007ff0e0	cS3DCamera::LocalXform	camera.md §1.2; returns the local transform +0x28	
+007ff110	cS3DCamera::GetProjectionType	camera.md §1.2; +0x180 (2 perspective)	
+007ff130	cS3DCamera::~cS3DCamera (deleting destructor)	camera.md §1.2; descriptive name; slot 3; GlobalHeapFree on flag bit 0	
+007ff150	cS3DCamera::SetViewport	camera.md §1.2; viewport and full subview, counter += 2	
+007ff190	cS3DCamera::ResetXforms	camera.md §1.2; descriptive name, no Mac match; flagged local (+0x28) and view (+0x60) transforms become the identity	
+007ff230	cS3DCamera::GetPosition	camera.md §1.2; +0x50..+0x58	
+007ff250	cS3DCamera::SetPosition	camera.md §1.2; descriptive name, no Mac match; +0x50..+0x58, flag 1, counter += 1	
+007ff280	cS3DCamera::GetLookAt	camera.md §1.2; the target remembered by SetLookAt (+0x160)	
+007ff2c0	cS3DCamera::SetPixelOffset	camera.md §1.2; descriptive name, no Mac match; +0x19C, +0x1A0; projection counter += 1	
+007ff2e0	cS3DCamera::SetOrtho	camera.md §1.2; (l, r, b, t, n, f) into +0x18C, +0x190, +0x198, +0x194, +0x184, +0x188; type 1	
+007ff340	cS3DCamera::GetViewVolume	camera.md §1.2; the box shifted by the pixel offset	
+007ff3c0	cS3DCamera::GetViewState	camera.md §1.2; the local transform counter	
+007ff3d0	cS3DCamera::UpdateViewXform	camera.md §1.3; was operator*; view transform := inverse of the local one (transposed rotation, -R^T p, 1/s)	
+007ff580	cS3DCamera::_UpdateProjection	camera.md §1.4; the glOrtho / glFrustum matrix at +0x9C with the pixel offset (-2 per pixel, 0x00ABD2D4) and the subview, plus its inverse at +0x11C	
+007ff930	cS3DCamera::cS3DCamera	camera.md §1.1; descriptive name; vtable 0x00ABD2C4, viewport 100x100, depth 65536, identity transforms; 5 call sites	
+007ffd60	cS3DCamera::SetLookAt	camera.md §1.3; descriptive name, no Mac match; back = normalize(pos - target), right = normalize(up x back), up = back x right	
+007ffed0	cS3DCamera::ViewXform	camera.md §1.2; rebuilds the view transform when its counter differs	
+007ffef0	cS3DCamera::ProjectionMatrix	camera.md §1.4; rebuilds the matrix when the counters differ	
+007fff10	cS3DCamera::Project	camera.md §1.5; false when |w| < 0.0001 (0x00ABD2BC); y down inside the subview	
+00800120	cS3DCamera::UnProject	camera.md §1.5; the inverse matrix, then the inverse view transform	
+00800320	GZCOM_CreatecS3DCamera	camera.md §1.2; descriptive name; GlobalHeapAlloc(0x1A8) then the constructor 0x007FF930	
+00800340	cS3DCamera::GetEyeRay	camera.md §1.6; orthographic: from one far distance behind the unprojected point; perspective: from the position	
+009efc60	_CIpow	camera.md §2.6; descriptive name; the CRT x87 pow (SSE2 path __CIpow_pentium4 0x009F9B80)	
+00abaccc	cSC4CameraControl::sZoomPitch (data, float[5])	camera.md §2.2; 30, 35, 40, 45, 45 degrees in radians	
+00abace0	cSC4CameraControl::sZoomCellPixels (data, int[5])	camera.md §2.2; 8, 16, 32, 73, 146	
+00abad18	cSC4CameraControl::vftable	camera.md §2.1; 7 slots: QueryInterface, AddRef, Release, Write, Read, GetGZCLSID, deleting destructor	
+00abd2c4	cS3DCamera::vftable	camera.md §1.1; 4 slots	

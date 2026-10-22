@@ -1,0 +1,27 @@
+va	name	evidence	mac_x86
+0079de70	cSC4WinMapView::ShowLargeWindow	map-view.md §1	
+0079e050	cSC4WinMapView::ShowSmallWindow	map-view.md descriptive name, no Mac match; §3.2; 0xA32CACD4, 0x0A32CAC3	
+0079e400	cSC4WinMapView::Init	map-view.md §1	
+0079e540	SC4DoButtonExclusion	map-view.md §3.2	
+0079fb20	cSC4WinMapView::UnhookUpdateMessages	map-view.md §3.1, §7	
+0079fef0	(anonymous_namespace)::BlockMapByLot<std::vector<std::vector<unsigned_char,std::allocator<unsigned_char>>,std::allocator<std::vector<unsigned_char,std::allocator<unsigned_char>>>>,std::vector<std::vector<unsigned_char,std::allocator<unsigned_char>>,std::allocator<std::vector<unsigned_char,std::allocator<unsigned_char>>>>>	map-view.md §4.3 (outline)	
+007a04f0	cSC4WinMapView::DisplayLegend	map-view.md §6	
+007a0f30	cSC4WinMapView::OnViewModeButtonSelected	map-view.md §3.2	
+007a0fa0	cSC4WinMapView::SelectDesirabilityView	map-view.md descriptive name, no Mac match; §3.2; buttons 0x6001-0x600C	
+007a0fe0	cSC4WinMapView::SelectTrafficVolumeView	map-view.md descriptive name, no Mac match; §3.2; buttons 0x8003-0x800C	
+007a1220	cSC4WinMapView::AddHighlightedOccupant	map-view.md descriptive name, no Mac match; §5; occupant and coverage radius	
+007a1390	cSC4WinMapView::CompareHighlights	map-view.md descriptive name, no Mac match; §5; true when the set changed	
+007a17b0	cSC4WinMapView::HookUpdateMessages	map-view.md §7	
+007a1a00	cSC4WinMapView::UpdateHighlights	map-view.md §5	
+007a2380	cSC4WinMapView::DisplayStandardUint8Grid	map-view.md §4.2, §4.3	
+007a2740	cSC4WinMapView::DisplayStandardSint8Grid	map-view.md §4.2	
+007a2ae0	cSC4WinMapView::DisplayStandardUint16Grid	map-view.md descriptive name, no Mac match; §4.2	
+007a2c70	cSC4WinMapView::DisplayStandardSint16Grid	map-view.md descriptive name, no Mac match; §4.2	
+007a2e00	cSC4WinMapView::DisplayStandardFloatGrid	map-view.md descriptive name, no Mac match; §4.2	
+007a2f60	cSC4WinMapView::Update	map-view.md §4.1	
+007a49b0	cSC4WinMapView::SetDataView	map-view.md §3.1; exemplar 0x6534284A/0x690F693F/0x4A0B6800+n	
+007a54d0	cSC4WinMapView::DoMessage	map-view.md §7; dirty flag and the redraw throttle	
+007a5610	cSC4WinMapView::ResetDataView	map-view.md §3.3	
+007a56e0	cSC4WinMapView::DoMessage	map-view.md §3.2; the window's buttons	
+007a6290	cSC4WinMapView::ShowWindow	map-view.md §1	
+007a64d0	cSC4WinMapView::HideWindow	map-view.md §1	

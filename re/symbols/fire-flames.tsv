@@ -1,0 +1,9 @@
+va	name	evidence	mac_x86
+004700a0	cSC4Flame::Read	fire-flames.md §1; version 2+, transform from version 3	
+00470ca0	cSC4Flame::UpdateTransform	fire-flames.md §1; yaw side x 90 taken as radians	
+004710d0	cSC4Flame::Update	fire-flames.md §1; fire_N / wfire_N by stage	
+00471170	cSC4FireOccupant::Init	fire-flames.md §4; group 0x5005, every flame updated	
+00471cf0	GetPointsOnModel	fire-flames.md §2; area-weighted points 1 m out along the normal, clock seed	
+00472380	cSC4FireOccupant::CreateFlames	fire-flames.md §3; on the model, else T + S + 1 on the box	
+00472790	cSC4FireOccupant::ViewUpdate	fire-flames.md §4; model flames placed afresh	
+004728b0	cSC4FireOccupant::SetStage	fire-flames.md §4	

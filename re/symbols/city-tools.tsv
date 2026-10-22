@@ -1,0 +1,53 @@
+va	name	evidence	mac_x86
+004b84b0	cSC4ViewInputControlCitySituations::Init	city-tools.md §4	
+004b8550	cSC4ViewInputControlCitySituations::Shutdown	city-tools.md §4	
+004b85b0	cSC4ViewInputControlCitySituations::DoMessage	city-tools.md §4	
+004b8620	cSC4ViewInputControlCitySituations::OnMouseMove	city-tools.md §4; lock and state 3	
+004b8690	cSC4ViewInputControlCitySituations::cSC4ViewInputControlCitySituations	city-tools.md §4	
+004b86d0	cSC4ViewInputControlCitySituations::~cSC4ViewInputControlCitySituations	city-tools.md §4	
+004b86f0	cSC4ViewInputControlCitySituations::~cSC4ViewInputControlCitySituations (body)	city-tools.md descriptive name, no Mac match; §4	
+004b8720	cSC4ViewInputControlCitySituations::OnMouseDownL	city-tools.md §4; view level 1, state 2	
+004b8790	cSC4ViewInputControlCitySituations::OnMouseUpL	city-tools.md §4; InitiateSituationForOccupant	
+004bb900	cSC4ViewInputControlFlora::cSC4ViewInputControlFlora	city-tools.md §1	
+004bb940	cSC4ViewInputControlFlora::Shutdown	city-tools.md §1	
+004bb980	cSC4ViewInputControlFlora::OnMouseUpL	city-tools.md §1	
+004bba20	cSC4ViewInputControlFlora::Init	city-tools.md §1; price from the static data +0x160	
+004bbaa0	_IsWaterTerrain	city-tools.md §1; vertex (x / 16, z / 16)	
+004bbaf0	cSC4ViewInputControlFlora::OnMouseDownL	city-tools.md §1; funds of at least the price	
+004bbc80	cSC4ViewInputControlFlora::OnMouseMove	city-tools.md §1; out-of-money byte +0x48	
+004d8ac0	cSC4ViewInputControlTerrainScrubber::ApplyModifierKeys	city-tools.md descriptive name, no Mac match; §3.2; Ctrl pair, Shift pair	
+004d8b20	cSC4ViewInputControlTerrainScrubber::RecordBrushApplication	city-tools.md §3.3; texture batches of N + 1	
+004d8b70	cSC4ViewInputControlTerrainScrubber::ClearTuningFlag	city-tools.md descriptive name, no Mac match; §3.1; static-data callback	
+004d8bc0	cSC4ViewInputControlTerrainScrubber::ReadTuningParameters	city-tools.md §3.1; properties 0x69DB8D00-05	
+004d8cb0	cSC4ViewInputControlTerrainScrubber::SetCursorAnchor	city-tools.md §3.2	
+004d8d10	cSC4ViewInputControlTerrainScrubber::GetCursorPositionInWorld	city-tools.md §3.2	
+004d8dd0	cSC4ViewInputControlTerrainScrubber::Shutdown	city-tools.md §3.4	
+004d8f50	cSC4ViewInputControlTerrainScrubber::SetCursorEchoState	city-tools.md §3.4	
+004d9080	cSC4ViewInputControlTerrainScrubber::Init	city-tools.md §3.1	
+004d9160	cSC4ViewInputControlTerrainScrubber::SetCursorEchoPos	city-tools.md descriptive name, no Mac match; §3.4; the auto name sat on FreeType code at 0x008AE57B	
+004d9430	cSC4ViewInputControlTerrainScrubber::cSC4ViewInputControlTerrainScrubber	city-tools.md §3.1	
+004d9560	cSC4ViewInputControlTerrainScrubber::~cSC4ViewInputControlTerrainScrubber	city-tools.md §3.4	
+004d95d0	cSC4ViewInputControlTerrainScrubber::OnKeyDown	city-tools.md §3.4; Shift+F1-F10, Shift+1-0	
+004d96e0	cSC4ViewInputControlTerrainScrubber::OnKeyUp	city-tools.md §3.4	
+004d9720	cSC4ViewInputControlTerrainScrubber::OnMouseExit	city-tools.md §3.4	
+004d9740	cSC4ViewInputControlTerrainScrubber::ProcessDelayedActions	city-tools.md §3.3; ramp min(2, k s), ceil charge	
+004d9950	cSC4ViewInputControlTerrainScrubber::~cSC4ViewInputControlTerrainScrubber	city-tools.md §3.4; deleting destructor	
+004d9970	cSC4ViewInputControlTerrainScrubber::OnMouseUpL	city-tools.md §3.2	
+004d9a30	cSC4ViewInputControlTerrainScrubber::PushDelayedAction	city-tools.md §3.3	
+004d9ac0	cSC4ViewInputControlTerrainScrubber::DoMessage	city-tools.md §3.2; third tick repeats the last point	
+004d9b90	cSC4ViewInputControlTerrainScrubber::OnMouseDownL	city-tools.md §3.2	
+004d9d80	cSC4ViewInputControlTerrainScrubber::OnMouseMove	city-tools.md §3.2; one per animation tick	
+00565570	cSC4ViewInputControlCitySituations::QueryInterface (thunk at +0x28)	city-tools.md descriptive name, no Mac match; §4	
+00580510	cSC4ViewInputControlTorch::DoMessage	city-tools.md descriptive name, no Mac match; §2; animation tick 0x86AD10EE	
+00580550	cSC4ViewInputControlTorch::SendTorchToolAudioMessage	city-tools.md §2	
+005805c0	cSC4ViewInputControlTorch::cSC4ViewInputControlTorch	city-tools.md §2	
+00580630	cSC4ViewInputControlTorch::~cSC4ViewInputControlTorch	city-tools.md §2	
+00580660	cSC4ViewInputControlTorch::Init	city-tools.md §2; fire manager 0x621CDA33	
+005806d0	cSC4ViewInputControlTorch::ActivateTorch	city-tools.md §2; torch_active, torch_inactive	
+00580760	cSC4ViewInputControlTorch::UpdateTorchEffect	city-tools.md §2	
+005807f0	cSC4ViewInputControlTorch::ShutdownTorchEffect	city-tools.md §2	
+00580840	cSC4ViewInputControlTorch::Shutdown	city-tools.md §2	
+005808b0	cSC4ViewInputControlTorch::OnMouseDownL	city-tools.md §2; IgniteCell(cell, false, true, 0)	
+005809d0	cSC4ViewInputControlTorch::OnMouseUpL	city-tools.md §2	
+00580a30	cSC4ViewInputControlTorch::OnMouseMove	city-tools.md §2; modifier bit 4 activates	
+00580b00	cSC4ViewInputControlTorch::OnMouseExit	city-tools.md §2	

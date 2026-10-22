@@ -1,0 +1,33 @@
+va	name	evidence	mac_x86
+00562e20	cSC4ViewInputControlPlayerDrive::DoWinProcMessage	drive-tool.md §6; dashboard buttons to commands	
+00562ed0	cSC4ViewInputControlPlayerDrive::IsDriveAutoValid	drive-tool.md §5; no flags 0x8000000 and 1	
+00562f00	cSC4ViewInputControlPlayerDrive::PauseEverything	drive-tool.md §3	
+00562fd0	cSC4ViewInputControlPlayerDrive::StopTracking	drive-tool.md §4	
+005630c0	cSC4ViewInputControlPlayerDrive::PickNetworkOccupant	drive-tool.md §2; IID 0xA821EF94	
+00563140	cSC4ViewInputControlPlayerDrive::PickAutomaton	drive-tool.md §2; renderer Pick, IID 0xA9B40F05	
+005631c0	cSC4ViewInputControlPlayerDrive::OnMouseMove	drive-tool.md §2	
+00563310	cSC4ViewInputControlPlayerDrive::AutomatonRemoved	drive-tool.md §4	
+00563330	cSC4ViewInputControlPlayerDrive::HideUI	drive-tool.md descriptive name, no Mac match; §6; removes the two dashboard windows	
+00563730	SC4TrainJunctionView::Shutdown	drive-tool.md descriptive name, no Mac match; §1; releases the pictures and models	
+00563970	cSC4ViewInputControlPlayerDrive::Shutdown	drive-tool.md §1 (outline)	
+00563d40	cSC4ViewInputControlPlayerDrive::HandleDriveCommandKeyDown	drive-tool.md §5	
+00564060	cSC4ViewInputControlPlayerDrive::HandleDriveCommandKeyUp	drive-tool.md §5	
+00564300	cSC4ViewInputControlPlayerDrive::OnMouseUpL	drive-tool.md §5; command 7 off	
+00564390	cSC4ViewInputControlPlayerDrive::OnMouseDownR	drive-tool.md §5; command 8 on	
+005643f0	cSC4ViewInputControlPlayerDrive::OnMouseUpR	drive-tool.md §5; command 8 off	
+00564450	cSC4ViewInputControlPlayerDrive::EnterChoosingMode	drive-tool.md §2; pauses the simulator and the managers	
+005644e0	cSC4ViewInputControlPlayerDrive::SendCallbackMessage	drive-tool.md §7; message 0x0BB324BD	
+00564570	cSC4ViewInputControlPlayerDrive::ShowUI	drive-tool.md §6 (outline)	
+005649d0	SC4TrainJunctionView::SC4TrainJunctionView	drive-tool.md descriptive name, no Mac match; §1; network-overlay-views.md §2	
+005650e0	cSC4ViewInputControlPlayerDrive::EndInput	drive-tool.md §4	
+00565160	cSC4ViewInputControlPlayerDrive::EnterDrivingMode	drive-tool.md §3	
+00565480	cSC4ViewInputControlPlayerDrive::cSC4ViewInputControlPlayerDrive	drive-tool.md §1; id 0x2B709676	
+005655d0	cSC4ViewInputControlPlayerDrive::OnMouseDownL	drive-tool.md §2	
+00565910	cSC4ViewInputControlPlayerDrive::~cSC4ViewInputControlPlayerDrive	drive-tool.md §1	
+00565a10	cSC4ViewInputControlPlayerDrive::Init	drive-tool.md §1	
+00565fa0	cSC4ViewInputControlPlayerDrive::AddCallbackTarget	drive-tool.md §7	
+00566000	cSC4ViewInputControlPlayerDrive::Update	drive-tool.md §6 (outline); the gauges	
+00566890	cSC4ViewInputControlPlayerDrive::DoMessage	drive-tool.md §7	
+00566a70	cSC4ViewInputControlPlayerDrive::HandleKeyEffects	drive-tool.md §5	
+00566c60	cSC4ViewInputControlPlayerDrive::OnKeyDown	drive-tool.md §4, §5; Escape ends the input	
+00566cf0	cSC4ViewInputControlPlayerDrive::OnKeyUp	drive-tool.md §5	
