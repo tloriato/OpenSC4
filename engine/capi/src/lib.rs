@@ -1116,3 +1116,4 @@ mod disaster_layer_tests;
 mod span1555_tests;
 // glue-span8888-impl4: the cSpanRender8888 bridge (span-render-8888.md §1.1-§9).
 pub mod span_render8888;
+pub mod flora_occupant;

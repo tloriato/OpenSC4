@@ -12729,4 +12729,23 @@ bool fc4_automata_aircraft_lifecycle(fc4_automata_manager* manager, uint32_t ope
 }
 #endif
 
+/* Occupant-only flora native verification; no static-record operations. */
+typedef struct fc4_flora_occupant_input {
+    uint32_t flora_type, birth, seeding;
+    int32_t state;
+    uint32_t orientation, lot_tag;
+    float position[3];
+    uint8_t flags, highlight;
+    uint16_t removal;
+    uint8_t cells[4];
+} fc4_flora_occupant_input;
+#ifdef __cplusplus
+extern "C" {
+#endif
+size_t fc4_flora_occupant_encode(const fc4_flora_occupant_input*, uint8_t*, size_t);
+bool fc4_flora_occupant_decode(const uint8_t*, size_t, fc4_flora_occupant_input*);
+#ifdef __cplusplus
+}
+#endif
+
 #endif /* FC4_H */

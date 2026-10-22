@@ -7,9 +7,11 @@
 - Goal: owned native factory versus independent Rust occupant; full specified queries/mutations/serialization/lifetime; read-only natural snapshots.
 - Prior round d5c82b44 parked static-record FQ16; excluded this round, no static getter calls or static coverage credit.
 - Start HEAD d5c82b44 detached; no branch/ref changes. Prior report below is historical.
-- Baseline qbuild all invoked; inspect outcome before further builds.
+- Baseline all: workspace tests and clippy passed, CMake/ctest 68/68 passed (logs build-runs/qbuild-*, fc4verify-*).
 - q.py cannot start Bash (E_ACCESSDENIED); use capped local PowerShell commands.
-- Next: inspect published occupant contract and existing harness; commit code by tool call 30.
+- Done: a25cef82 independent Rust occupant codec committed before call 30; FQ17 partial-state/override question appended.
+- Next: finish focused build of typed C ABI and owned native factory probe; unique game controls and stable full gate.
+- Probe opt-in flora_occupant_verify=1; enable simulator, keep flora_shadow=0 (avoids static-record getters entirely).
 - No game request outstanding. New labels unique; wait without qwait.
 
 ## Result

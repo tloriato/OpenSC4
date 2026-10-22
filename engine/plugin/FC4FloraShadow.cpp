@@ -27,6 +27,7 @@
 #include "SC4List.h"
 #include "cGZPersistResourceKey.h"
 #include "cIGZApp.h"
+#include "cIGZCOM.h"
 #include "cIGZFrameWork.h"
 #include "cIGZMessage2.h"
 #include "cIGZMessageTarget2.h"
@@ -170,6 +171,8 @@ private:
     std::vector<const void*> ids_;
     bool good_ = true;
 };
+
+#include "FC4FloraOccupantProbe.inc"
 
 CaptureStream g_before;
 CaptureStream g_after;
@@ -571,6 +574,9 @@ void FloraShadowStartup(bool simulatorReplaced, bool floraReplaced) {
 bool FloraShadowDeliver(cIGZMessageTarget2* target, const char* agentName, cIGZMessage2* msg, uint32_t type,
                         int64_t data1, bool* finished) {
     if (type != kMsgSimNewMonth || target == nullptr || msg == nullptr || finished == nullptr) return false;
+    if (!g_testMode && SettingInt("flora_occupant_verify", "FC4_FLORA_OCCUPANT_VERIFY", 0) != 0 &&
+        agentName != nullptr && strcmp(agentName, kAgentName) == 0)
+        FloraOccupantProbe(CurrentCity(), data1);
     if (!g_testMode) ReadSettings();  // once a month (FreeCity4.ini may change between city loads)
     if (!g_testMode && !g_enabled) return false;
     // Cheap rejection for every other agent: the original registers by name (AddAgent).
