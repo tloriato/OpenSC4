@@ -39,11 +39,15 @@ class RepairTests(unittest.TestCase):
         with conn.makefile("rb") as stream:
             return conn, json.loads(stream.readline())
 
-    def tree_case(self, mode, capture, depth=0, crash=None, expire=False):
+    def tree_case(self, mode, capture, depth=0, crash=None, expire=False, delegated=False):
         output = self.wt / "owned-output.bin"
-        env = {"FC4_TEST_TREE_STAGE": "tree" if capture else "test", "FC4_TEST_TREE_MODE": mode,
+        env = {"FC4_TEST_TREE_STAGE": "quick" if delegated else "tree" if capture else "test", "FC4_TEST_TREE_MODE": mode,
                "FC4_TEST_DEPTH": str(depth), "FC4_TEST_WRITER_PATH": str(output)}
-        first = self.start("tree-capture" if capture else "qbuild", () if capture else ("test",), env=env)
+        first = self.start("tree-capture" if capture else "qbuild",
+                           ("quick",) if delegated else () if capture else ("test",), env=env)
+        if delegated:
+            context, _ = self.event("context")
+            self.go(context)
         held, _ = self.event(env["FC4_TEST_TREE_STAGE"])
         self.go(held)
         events = {}
@@ -80,6 +84,8 @@ class RepairTests(unittest.TestCase):
         job.close()
         if crash == "wrapper":
             first.kill()
+        elif crash == "delegate":
+            os.kill(self.owner()["delegations"][-1]["peer_pid"], base.signal.SIGTERM)
         elif crash == "guardian":
             os.kill(self.owner()["guardian_pid"], base.signal.SIGTERM)
             base.wait_process(self.owner()["guardian_pid"])
@@ -180,6 +186,9 @@ class RepairTests(unittest.TestCase):
     def test_wrapper_crash_with_live_descendant(self):
         self.tree_case("abrupt", False, crash="wrapper")
 
+    def test_delegate_crash_with_live_descendant(self):
+        self.tree_case("normal", False, crash="delegate", delegated=True)
+
     def test_bounded_failclosed_then_kernel_proven_recovery(self):
         self.tree_case("normal", True, expire=True)
 
@@ -191,6 +200,34 @@ class RepairTests(unittest.TestCase):
 
     def test_halfopen_cleanup_after_parent_crash(self):
         self.halfopen_case("parent-crash")
+
+    def test_halfopen_guardian_crash_keeps_uncertainty_and_child_cleanup_bounded(self):
+        first = self.start(steps=("quick",), env={"FC4_TEST_PRE_JOIN": "1"})
+        held, data = self.event("before-join")
+        invite = json.loads(data["invite"])
+        peer = Client(invite["address"], authkey=None)
+        self.addCleanup(peer.close)
+        job = lease._WinJob(self.owner()["jobs"][-1], existing=True)
+        handles = []
+        try:
+            for pid in job.pids():
+                handle, created, image = job.identity(pid)
+                handles.append((handle, created, image))
+                self.addCleanup(job.k.CloseHandle, handle)
+        finally:
+            job.close()
+        started = time.monotonic()
+        os.kill(invite["guardian_pid"], base.signal.SIGTERM)
+        base.wait_process(invite["guardian_pid"])
+        self.assertIn("ownership uncertain", self.finish(self.start(steps=("quick",)), ok=False))
+        self.go(held)
+        self.finish(first, ok=False)
+        for handle, created, image in handles:
+            self.assertEqual(job.k.WaitForSingleObject(handle, 5000), 0, (created, image))
+        self.assertLess(time.monotonic() - started, 10)
+        self.assertEqual(self.owner()["status"], "active")
+        (self.wt / "build-runs" / lease.OWNER).rename(self.wt / "archived-owner.json")
+        self.finish(self.start(steps=("quick",)), ("context", "quick"))
 
     def halfopen_case(self, mode):
         env = {"FC4_TEST_PRE_JOIN": "1"}
