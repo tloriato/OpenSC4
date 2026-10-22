@@ -4,10 +4,12 @@
 
 ## Handoff
 - Goal: verify the existing persistent production director/registry/list/pool modules against safely acquired original endpoints only.
-- Done: reused reserved detached worktree; clean initial status and no commits above main. Filed GD2 after SDK/ABI acquisition review, within the first 15 tool calls.
+- Done: 6a1b6597 records GD2 after SDK/ABI acquisition review, within the first 15 tool calls. Reserved detached worktree initially clean, with no commits above main.
 - Boundaries: no native graphics factories, driver callbacks, application registry mutation, RE, tools, ABI edits, subagents or branch changes.
 - Existing open questions: GD1 (193-bucket boundary), GI1 (matrix/construction), GI2 (pool storage/deallocation).
 - Finding: SDK library enumeration/GetDirector do not publish a route to the built-in child or ownership/lifetime rules; director interface exposes no child enumeration/ID lookup. ABI slots identify methods, not an acquisition path.
 - Next: finish baseline qbuild.py all, record its actual result, commit blocked report and wip queue; do not implement a guessed native binding.
-- Baseline qbuild.py all running (exec session 16465). No game requests submitted.
+- Baseline qbuild.py all: workspace tests passed; clippy completed successfully (48.67s). CMake build/full ctest pending (exec session 16465). Logs: build-runs/qbuild-{test,clippy}.log and fc4verify-{configure,build}.log.
+- No game requests submitted, production changes, ABI changes, native comparisons or replacement claims. Existing portable paper-vector tests are not native verification evidence.
+- Do not regenerate QUESTIONS.md: task forbids tools/ execution and edits outside the question file under docs/specs/. Coordinator can regenerate its index.
 - Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-verify-gdrivers-native4-r1-manifest.json.
