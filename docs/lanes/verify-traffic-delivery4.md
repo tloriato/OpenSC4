@@ -13,5 +13,8 @@
 - Proved witness: provider volumes changed across a suspended search can yield different trip-length bits from an atomic boundary replay, even with the same route. Quick gate PASS (2372 core tests); this is a possible mechanism, not proved train73 causality.
 - TS68 appended to `docs/specs/questions/traffic-simulator.md`: missing safe native continuation/provider read-event observation contract. Native offset reads/hooks stopped pending that answer.
 - Plugin diagnostic wording now distinguishes uncaptured RNG state from unreadable state and names native search/provider capture0; no algorithm, comparison, budget, resync or ABI changes.
-- Next: quick build updated diagnostic wording, fmt check, unique own diagnostic game shadow through2032, final fullgate. Do not infer recovery from a clean rerun.
-- No game request outstanding. Causal confidence: high for replay limitation, unproved for train73; expect WIP until TS68 answered and actual native sequence captured.
+- Done: diagnostic milestone committed `2c5dc0fa`; fmt absolute-path check PASS. Fullgate: workspace4239/0, clippy0 diagnostics, build4/4, ctest67/67; wrapper noted tree changed because TS68 prose was corrected during run, so repeat on stable committed tree.
+- TS68 now correctly acknowledges section1 already publishes concrete/interface bases and TS66 publishes RNG layout. Missing facts are owned pathfinder continuations and native provider-read capture. No reason to invent that base contract.
+- Outstanding game: `traffic-delivery4-diag-2032-20261022-a`, turbo through2032, thirty logged train73 shadow-on keys, only simulator replacement. Submitted once; `qwait.py` running in session77507 (no --fresh). DLL SHA256 `4438abb17c8703e4d35417d0e78c853110b5b6077c5ef87715a7bdd9a6c6f673`.
+- Next: repeat fullgate on stable tree; wait for this unique diagnostic verdict, count exact/diff/resync honestly, report WIP. Do not infer recovery from a clean rerun.
+- Causal confidence: high for replay limitation, unproved for train73; TS68 and actual native sequence remain blockers. No functional correction or coverage promotion.
