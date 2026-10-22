@@ -1,140 +1,197 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+//! Independent expectations from graphics-formats §3.11, not captured outputs.
 use super::*;
+use std::collections::VecDeque;
 use std::sync::Mutex;
 
 #[derive(Clone, Debug, PartialEq)]
 enum Event {
+    Acquire(u32),
+    InstanceRelease(u32),
+    StorageDrop(u32),
     Create(String),
-    Start(usize, bool, u32),
-    Stop(usize, bool),
-    Transform(usize, Transform, u8),
-    Parameter(usize, u32, f32),
+    Started(usize),
+    Start(usize, u32),
+    Stop(usize, u32),
     Release(usize),
-    ModelReleased,
+    WrapperDrop(usize),
+    InstanceTransform,
+    AnimationQuery,
+    Frame,
+    AnimationRelease,
+    Transform(usize, Transform),
+    Parameter(usize, u32, Vector3, u32),
 }
-
 type Log = Arc<Mutex<Vec<Event>>>;
+fn push(log: &Log, event: Event) {
+    log.lock().unwrap().push(event);
+}
 
 struct Effect {
     id: usize,
     log: Log,
+    state: Arc<Mutex<bool>>,
 }
-
 impl VisualEffect for Effect {
-    fn start(&mut self, control: bool, extra: u32) {
-        self.log.lock().unwrap().push(Event::Start(self.id, control, extra));
+    fn is_started(&self) -> bool {
+        push(&self.log, Event::Started(self.id));
+        *self.state.lock().unwrap()
     }
-
-    fn stop(&mut self, control: bool) {
-        self.log.lock().unwrap().push(Event::Stop(self.id, control));
+    fn start(&mut self, control: u32) {
+        push(&self.log, Event::Start(self.id, control));
+        *self.state.lock().unwrap() = true;
     }
-
-    fn set_transform(&mut self, transform: Transform, flags: u8) {
-        self.log
-            .lock()
-            .unwrap()
-            .push(Event::Transform(self.id, transform, flags));
+    fn stop(&mut self, control: u32) {
+        push(&self.log, Event::Stop(self.id, control));
+        // Published deferred stop remains started; there is no owner mirror.
+        if control != 0 {
+            *self.state.lock().unwrap() = false;
+        }
     }
-
-    fn set_parameter(&mut self, parameter: u32, value: f32) {
-        self.log
-            .lock()
-            .unwrap()
-            .push(Event::Parameter(self.id, parameter, value));
+    fn set_transform(&mut self, transform: Transform) {
+        push(&self.log, Event::Transform(self.id, transform));
+    }
+    fn set_parameter(&mut self, id: u32, value: Vector3, count: u32) {
+        push(&self.log, Event::Parameter(self.id, id, value, count));
+    }
+    fn release(self: Box<Self>) {
+        push(&self.log, Event::Release(self.id));
     }
 }
-
 impl Drop for Effect {
     fn drop(&mut self) {
-        self.log.lock().unwrap().push(Event::Release(self.id));
+        push(&self.log, Event::WrapperDrop(self.id));
     }
 }
 
 struct Factory {
     log: Log,
-    fail: bool,
-    next: usize,
+    states: Vec<Arc<Mutex<bool>>>,
+    results: VecDeque<(bool, bool)>, // success and nonnull output, separately
+    available: bool,
 }
-
 impl Factory {
     fn new() -> Self {
         Self {
             log: Arc::default(),
-            fail: false,
-            next: 0,
+            states: vec![],
+            results: VecDeque::new(),
+            available: true,
         }
     }
-
     fn take(&self) -> Vec<Event> {
         std::mem::take(&mut *self.log.lock().unwrap())
     }
+    fn set_started(&self, id: usize, value: bool) {
+        *self.states[id].lock().unwrap() = value;
+    }
 }
-
 impl EffectFactory for Factory {
-    fn create(&mut self, name: &str) -> Option<Box<dyn VisualEffect>> {
-        self.log.lock().unwrap().push(Event::Create(name.to_owned()));
-        if self.fail || name == "missing" {
-            return None;
-        }
-        let id = self.next;
-        self.next += 1;
-        Some(Box::new(Effect {
-            id,
-            log: Arc::clone(&self.log),
-        }))
+    fn available(&self) -> bool {
+        self.available
+    }
+    fn create(&mut self, name: &str) -> Creation {
+        push(&self.log, Event::Create(name.to_owned()));
+        let (success, nonnull) = self.results.pop_front().unwrap_or((true, true));
+        let effect = nonnull.then(|| {
+            let state = Arc::new(Mutex::new(false));
+            let id = self.states.len();
+            self.states.push(Arc::clone(&state));
+            Box::new(Effect {
+                id,
+                log: Arc::clone(&self.log),
+                state,
+            }) as Box<dyn VisualEffect>
+        });
+        Creation { success, effect }
     }
 }
 
 struct Instance {
-    regions: Regions,
-    frame: Mutex<InstanceFrame>,
+    id: u32,
+    regions: Option<Regions>,
+    transform: Mutex<Transform>,
+    frame: Mutex<Option<u16>>,
     log: Log,
 }
-
-impl ModelInstance for Instance {
-    fn regions(&self) -> &Regions {
-        &self.regions
+struct Frame {
+    value: u16,
+    log: Log,
+}
+impl Animation for Frame {
+    fn current_frame(&self) -> u16 {
+        push(&self.log, Event::Frame);
+        self.value
     }
-
-    fn frame(&self) -> InstanceFrame {
-        *self.frame.lock().unwrap()
+    fn release(self: Box<Self>) {
+        push(&self.log, Event::AnimationRelease);
     }
 }
-
+impl ModelInstance for Instance {
+    fn acquire(&self) {
+        push(&self.log, Event::Acquire(self.id));
+    }
+    fn release(&self) {
+        push(&self.log, Event::InstanceRelease(self.id));
+    }
+    fn regions(&self) -> Option<&Regions> {
+        self.regions.as_ref()
+    }
+    fn transform(&self) -> Transform {
+        push(&self.log, Event::InstanceTransform);
+        *self.transform.lock().unwrap()
+    }
+    fn acquire_animation(&self) -> Option<Box<dyn Animation>> {
+        push(&self.log, Event::AnimationQuery);
+        self.frame.lock().unwrap().map(|value| {
+            Box::new(Frame {
+                value,
+                log: Arc::clone(&self.log),
+            }) as Box<dyn Animation>
+        })
+    }
+}
 impl Drop for Instance {
     fn drop(&mut self) {
-        self.log.lock().unwrap().push(Event::ModelReleased);
+        push(&self.log, Event::StorageDrop(self.id));
     }
 }
 
-const IDENTITY_RECORD: [f32; 7] = [1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 1.0];
-
-fn instance(regions: Regions, log: &Log) -> Arc<Instance> {
+const RECORD: [f32; 7] = [1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 1.0];
+fn instance(id: u32, regions: Option<Regions>, log: &Log) -> Arc<Instance> {
     Arc::new(Instance {
+        id,
         regions,
-        frame: Mutex::new(InstanceFrame {
-            transform: Transform {
-                translation: [100.0, 0.0, 200.0],
-                ..Transform::IDENTITY
-            },
-            animated_frame: Some(0),
+        transform: Mutex::new(Transform {
+            flags: 0x80,
+            version: 7,
+            translation: [100.0, 0.0, 200.0],
+            ..Transform::IDENTITY
         }),
+        frame: Mutex::new(None),
         log: Arc::clone(log),
     })
 }
-
-fn close(actual: f32, expected: f32) {
-    assert!((actual - expected).abs() <= 1e-6, "{actual} != {expected}");
+fn regions(keys: &[&str]) -> Option<Regions> {
+    Some(keys.iter().map(|&key| (key.to_owned(), vec![RECORD])).collect())
 }
-
+fn records(values: Vec<[f32; 7]>) -> Option<RecordVector> {
+    Some(RecordVector::shared(Arc::new(values)))
+}
+fn add(owner: &mut ModelRegEffects, factory: &mut Factory, key: &str, name: &str) {
+    owner.add_effect(key, name, None, factory);
+}
+fn close(actual: f32, expected: f32) {
+    assert!((actual - expected).abs() < 1e-6, "{actual} != {expected}");
+}
 fn rotation(actual: Rotation, expected: Rotation) {
-    for (actual, expected) in actual.into_iter().flatten().zip(expected.into_iter().flatten()) {
-        close(actual, expected);
+    for (a, e) in actual.into_iter().flatten().zip(expected.into_iter().flatten()) {
+        close(a, e);
     }
 }
 
 #[test]
-fn vector48_names_and_edge_cases() {
+fn vector48_names_and_literal_prefix() {
     for (key, expected) in [
         ("fx_00_planeprop", Some("planeprop")),
         ("fx_00_rotor", Some("rotor")),
@@ -151,373 +208,412 @@ fn vector48_names_and_edge_cases() {
         ("fx_0_", Some("")),
         ("fx_a_b", Some("a_b")),
         ("fx_\u{0661}_b", Some("\u{0661}_b")),
-        ("FX_00_rotor", None), // Parser, not owner, owns lower-casing.
+        ("FX_00_rotor", None),
     ] {
-        assert_eq!(effect_name(key), expected, "{key}");
+        assert_eq!(effect_name(key), expected);
     }
 }
 
 #[test]
-fn name_sorted_creation_failed_entry_and_stopped_initial_state() {
+fn attachment_same_null_and_explicit_init_shutdown_reference_order() {
     let mut factory = Factory::new();
-    let model = instance(
-        [
-            ("fx_01_a", "a"),
-            ("fx_00_b", "b"),
-            ("fx_02_missing", "missing"),
-            ("regpoint01", "ignored"),
-        ]
-        .into_iter()
-        .map(|(key, _)| (key.to_owned(), vec![IDENTITY_RECORD]))
-        .collect(),
-        &factory.log,
-    );
     let mut owner = ModelRegEffects::new();
-    owner.attach(Some(model), &mut factory);
-    assert_eq!(
-        factory.take(),
-        [
-            Event::Create("b".into()),
-            Event::Create("a".into()),
-            Event::Create("missing".into())
-        ]
-    );
-    assert_eq!(
-        owner.entries().map(EffectEntry::key).collect::<Vec<_>>(),
-        ["fx_00_b", "fx_01_a"]
-    );
-    assert!(owner.entries().all(|entry| !entry.started()));
-    assert_eq!(owner.update(), UpdateReport::default());
+    owner.attach(None);
+    assert!(owner.init(&mut factory));
     assert!(factory.take().is_empty());
-}
-
-#[test]
-fn vector49_axis_angle_normalisation_and_zero_axis_choice() {
-    let mut factory = Factory::new();
-    let model = instance(
-        [(
-            "fx_00_rotor".into(),
-            vec![
-                [1.0, 2.0, 3.0, 0.0, 0.0, 2.0, std::f32::consts::FRAC_PI_2],
-                IDENTITY_RECORD,
-            ],
-        )]
-        .into(),
-        &factory.log,
-    );
-    let mut owner = ModelRegEffects::new();
-    owner.attach(Some(model.clone()), &mut factory);
-    owner.start_all(false, 0);
-    factory.take();
-    assert_eq!(owner.update().transformed, 1);
-    let Event::Transform(0, actual, flags) = factory.take()[0] else {
-        panic!("missing transform")
-    };
-    assert_eq!(flags, 5);
-    assert_eq!(actual.translation, [101.0, 2.0, 203.0]);
-    rotation(actual.rotation, [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
-    model.frame.lock().unwrap().animated_frame = Some(1);
-    owner.update();
-    let Event::Transform(_, zero, _) = factory.take()[0] else {
-        panic!("missing transform")
-    };
-    assert_eq!(zero.translation, [101.0, 2.0, 203.0]);
-    assert_eq!(zero.rotation, Transform::IDENTITY.rotation);
-}
-
-#[test]
-fn noncommuting_model_local_and_effect_placement_are_in_correct_order() {
-    // Independent geometry: model +90° about X, local +90° about Z.
-    // Combined basis columns become +Z, -X, -Y. Reverse multiplication differs.
-    let model = Transform {
-        rotation: [[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]],
-        translation: [10.0, 20.0, 30.0],
-        scale: 2.0,
-    };
-    let local = Transform::from_record([1.0, 2.0, 3.0, 0.0, 0.0, 7.0, std::f32::consts::FRAC_PI_2]);
-    let world = model.compose(local);
-    assert_eq!(world.translation, [12.0, 14.0, 34.0]);
-    rotation(world.rotation, [[0.0, -1.0, 0.0], [0.0, 0.0, -1.0], [1.0, 0.0, 0.0]]);
-    close(world.scale, 2.0);
-    // Independent outer placement +90° about Y with scale 3.
-    let placement = Transform {
-        rotation: [[0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]],
-        translation: [-5.0, 4.0, 9.0],
-        scale: 3.0,
-    };
-    let placed = placement.compose(world);
-    assert_eq!(placed.translation, [97.0, 46.0, -27.0]);
-    rotation(placed.rotation, [[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]);
-    close(placed.scale, 6.0);
-}
-
-#[test]
-fn owner_update_combines_rotated_scaled_instance_with_selected_local_record() {
-    let mut factory = Factory::new();
-    let record = [1.0, 2.0, 3.0, 0.0, 0.0, 7.0, std::f32::consts::FRAC_PI_2];
-    let model = instance([("fx_rotor".into(), vec![record])].into(), &factory.log);
-    model.frame.lock().unwrap().transform = Transform {
-        rotation: [[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]],
-        translation: [10.0, 20.0, 30.0],
-        scale: 2.0,
-    };
-    let mut owner = ModelRegEffects::new();
-    owner.attach(Some(model), &mut factory);
-    owner.start_all(false, 0);
-    factory.take();
-    assert_eq!(owner.update().transformed, 1);
-    let Event::Transform(_, actual, 5) = factory.take()[0] else {
-        panic!("missing transform")
-    };
-    assert_eq!(actual.translation, [12.0, 14.0, 34.0]);
-    rotation(actual.rotation, [[0.0, -1.0, 0.0], [0.0, 0.0, -1.0], [1.0, 0.0, 0.0]]);
-    assert_eq!(actual.scale, 2.0);
-}
-
-#[test]
-fn oblique_axis_is_normalised_and_zero_angle_leaves_identity() {
-    // A half-turn around (1,1,0) swaps X/Y and reverses Z, independently
-    // distinguishing axis normalisation from treating the record as a quaternion.
-    let record = [0.0, 0.0, 0.0, 3.0, 3.0, 0.0, std::f32::consts::PI];
-    rotation(
-        Transform::from_record(record).rotation,
-        [[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, -1.0]],
-    );
-    let mut zero_angle = record;
-    zero_angle[6] = 0.0;
-    assert_eq!(
-        Transform::from_record(zero_angle).rotation,
-        Transform::IDENTITY.rotation
-    );
-}
-
-#[test]
-fn frame_selection_never_interpolates_clamps_or_uses_file_playback_fields() {
-    let mut factory = Factory::new();
-    let mut second = IDENTITY_RECORD;
-    second[0] = 9.0;
-    let model = instance(
-        [
-            ("fx_a".into(), vec![IDENTITY_RECORD, second]),
-            ("fx_empty".into(), vec![]),
-        ]
-        .into(),
-        &factory.log,
-    );
-    let mut owner = ModelRegEffects::new();
-    owner.attach(Some(model.clone()), &mut factory);
-    owner.start_all(true, 123);
-    factory.take();
-    model.frame.lock().unwrap().animated_frame = Some(1);
-    let report = owner.update();
-    assert_eq!(report.transformed, 1);
-    assert_eq!(
-        report.missing_records,
-        [MissingRecord {
-            key: "fx_empty".into(),
-            frame: 1,
-            record_count: 0
-        }]
-    );
-    let Event::Transform(_, actual, _) = factory.take()[0] else {
-        panic!("missing transform")
-    };
-    assert_eq!(actual.translation, [109.0, 2.0, 203.0]);
-    model.frame.lock().unwrap().animated_frame = Some(5);
-    let report = owner.update();
-    assert_eq!(report.transformed, 0);
-    assert_eq!(report.missing_records.len(), 2);
-    assert_eq!(report.missing_records[0].frame, 5);
-    assert!(factory.take().is_empty());
-    model.frame.lock().unwrap().animated_frame = None;
-    assert_eq!(owner.update().transformed, 1);
-    let Event::Transform(_, actual, _) = factory.take()[0] else {
-        panic!("missing transform")
-    };
-    assert_eq!(actual.translation, [101.0, 2.0, 203.0]);
-}
-
-#[test]
-fn named_controls_match_all_effect_names_and_forward_opaque_arguments() {
-    let mut factory = Factory::new();
-    let mut owner = ModelRegEffects::new();
-    owner.add_effect("b", "RoToR", &[], &mut factory);
-    owner.add_effect("a", "rotor", &[], &mut factory);
-    owner.add_effect("rotor", "other", &[], &mut factory);
-    factory.take();
-    assert_eq!(owner.start_named("ROTOR", true, 0xdeadbeef), 2);
-    assert_eq!(
-        factory.take(),
-        [Event::Start(1, true, 0xdeadbeef), Event::Start(0, true, 0xdeadbeef)]
-    );
-    assert_eq!(owner.stop_named("rOtOr", false), 2);
-    assert_eq!(factory.take(), [Event::Stop(1, false), Event::Stop(0, false)]);
-    assert_eq!(owner.start_named("missing", false, 9), 0);
-    owner.start_all(false, 7);
-    assert_eq!(
-        factory.take(),
-        [
-            Event::Start(1, false, 7),
-            Event::Start(0, false, 7),
-            Event::Start(2, false, 7)
-        ]
-    );
-    owner.stop_all(true);
-    assert_eq!(
-        factory.take(),
-        [Event::Stop(1, true), Event::Stop(0, true), Event::Stop(2, true)]
-    );
-    assert!(owner.entries().all(|entry| !entry.started()));
-}
-
-#[test]
-fn stopped_effect_has_no_transform_then_restarts_and_motion_reaches_every_entry() {
-    let mut factory = Factory::new();
-    let model = instance([("fx_a".into(), vec![IDENTITY_RECORD])].into(), &factory.log);
-    let mut owner = ModelRegEffects::new();
-    owner.attach(Some(model), &mut factory);
-    factory.take();
-    assert_eq!(owner.update_with_motion(2.5, -1.0).transformed, 0);
-    assert_eq!(factory.take(), [Event::Parameter(0, 15, -2.5)]);
-    owner.start_named("a", false, 0);
-    factory.take();
-    assert_eq!(owner.update().transformed, 1);
-    factory.take();
-    owner.stop_named("a", false);
-    factory.take();
-    assert_eq!(owner.update().transformed, 0);
-    assert!(factory.take().is_empty());
-    owner.start_named("a", false, 0);
-    factory.take();
-    assert_eq!(owner.update_with_motion(3.0, 0.5).transformed, 1);
-    let events = factory.take();
-    assert!(matches!(events[0], Event::Transform(0, _, 5)));
-    assert_eq!(events[1], Event::Parameter(0, 15, 1.5));
-}
-
-#[test]
-fn replacement_stops_releases_before_factory_and_failure_removes_entry() {
-    let mut factory = Factory::new();
-    let mut owner = ModelRegEffects::new();
-    owner.add_effect("key", "first", &[IDENTITY_RECORD], &mut factory);
-    owner.start_all(false, 0);
-    factory.take();
-    owner.add_effect("key", "second", &[], &mut factory);
-    assert_eq!(
-        factory.take(),
-        [Event::Stop(0, false), Event::Release(0), Event::Create("second".into())]
-    );
-    assert!(!owner.entries().next().unwrap().started());
-    factory.fail = true;
-    assert!(owner.add_effect("key", "third", &[], &mut factory).is_none());
-    assert_eq!(
-        factory.take(),
-        [Event::Stop(1, false), Event::Release(1), Event::Create("third".into())]
-    );
-    assert!(owner.get_effect("key").is_none());
-    assert_eq!(owner.entries().len(), 0);
-    assert!(!owner.remove("key"));
-}
-
-#[test]
-fn region_lookup_copies_records_and_does_not_require_fx_prefix() {
-    let mut factory = Factory::new();
-    let model = instance([("regpoint01".into(), vec![IDENTITY_RECORD])].into(), &factory.log);
-    let mut owner = ModelRegEffects::new();
-    owner.attach(Some(model.clone()), &mut factory);
-    assert_eq!(owner.entries().len(), 0);
-    assert!(owner.add_effect_at_region("absent", "rotor", &mut factory).is_none());
-    assert!(factory.take().is_empty());
-    assert!(owner
-        .add_effect_at_region("regpoint01", "rotor", &mut factory)
-        .is_some());
-    assert!(owner.get_effect("REGPOINT01").is_none());
-    assert!(owner.get_effect("regpoint01").is_some());
-    assert_eq!(owner.entries().next().unwrap().records(), &[IDENTITY_RECORD]);
-    let mut records = vec![IDENTITY_RECORD];
-    owner.add_effect("manual", "rotor", &records, &mut factory);
-    records[0][0] = 999.0;
-    assert_eq!(owner.entries().next().unwrap().records()[0][0], 1.0);
-}
-
-#[test]
-fn attachment_acquires_one_reference_getters_borrow_and_drop_releases_in_order() {
-    let mut factory = Factory::new();
-    let model = instance([("fx_a".into(), vec![IDENTITY_RECORD])].into(), &factory.log);
-    let weak = Arc::downgrade(&model);
-    let mut owner = ModelRegEffects::new();
-    assert_eq!(Arc::strong_count(&model), 1);
-    owner.attach(Some(model.clone()), &mut factory);
-    assert_eq!(Arc::strong_count(&model), 2);
+    let first = instance(1, regions(&["fx_a"]), &factory.log);
+    owner.attach(Some(first.clone()));
+    assert_eq!(factory.take(), [Event::Acquire(1)]);
+    owner.init(&mut factory);
+    assert_eq!(factory.take(), [Event::Create("a".into())]);
+    let effect = owner.get_effect("fx_a").unwrap() as *const dyn VisualEffect;
     assert!(owner.instance().is_some());
-    assert!(owner.get_effect("fx_a").is_some());
-    assert_eq!(Arc::strong_count(&model), 2);
-    drop(model);
+    owner.attach(Some(first.clone()));
+    assert!(std::ptr::eq(effect, owner.get_effect("fx_a").unwrap()));
+    assert!(factory.take().is_empty());
+    drop(first);
+    owner.attach(Some(instance(2, regions(&["fx_b"]), &factory.log)));
+    assert_eq!(
+        factory.take(),
+        [
+            Event::Stop(0, 0),
+            Event::Release(0),
+            Event::WrapperDrop(0),
+            Event::InstanceRelease(1),
+            Event::StorageDrop(1),
+            Event::Acquire(2)
+        ]
+    );
+    assert_eq!(owner.entries().len(), 0);
+    owner.init(&mut factory);
+    factory.take();
+    assert!(owner.shutdown());
+    assert_eq!(
+        factory.take(),
+        [
+            Event::Stop(1, 0),
+            Event::Release(1),
+            Event::WrapperDrop(1),
+            Event::InstanceRelease(2),
+            Event::StorageDrop(2)
+        ]
+    );
+    assert!(owner.shutdown());
+    assert!(factory.take().is_empty());
+}
+
+#[test]
+fn clear_processes_all_effects_before_record_storage_and_keeps_instance() {
+    let mut factory = Factory::new();
+    let mut owner = ModelRegEffects::new();
+    owner.attach(Some(instance(1, None, &factory.log)));
+    let storage = instance(9, regions(&["r"]), &factory.log);
+    owner.add_effect(
+        "b",
+        "b",
+        Some(RecordVector(RecordStorage::Region(storage.clone(), "r".into()))),
+        &mut factory,
+    );
+    owner.add_effect(
+        "a",
+        "a",
+        Some(RecordVector(RecordStorage::Region(storage, "r".into()))),
+        &mut factory,
+    );
+    factory.take();
+    owner.clear();
+    assert_eq!(
+        factory.take(),
+        [
+            Event::Stop(1, 0),
+            Event::Release(1),
+            Event::WrapperDrop(1),
+            Event::Stop(0, 0),
+            Event::Release(0),
+            Event::WrapperDrop(0),
+            Event::StorageDrop(9)
+        ]
+    );
+    assert!(owner.instance().is_some());
+    drop(owner);
+    assert_eq!(factory.take(), [Event::InstanceRelease(1), Event::StorageDrop(1)]);
+}
+
+#[test]
+fn destruction_has_no_effect_stop_or_release_and_ends_storage_before_instance() {
+    let mut factory = Factory::new();
+    let mut owner = ModelRegEffects::new();
+    owner.attach(Some(instance(1, regions(&["fx_a"]), &factory.log)));
+    owner.init(&mut factory);
     factory.take();
     drop(owner);
     assert_eq!(
         factory.take(),
-        [Event::Stop(0, false), Event::Release(0), Event::ModelReleased]
+        [Event::WrapperDrop(0), Event::InstanceRelease(1), Event::StorageDrop(1)]
     );
-    assert!(weak.upgrade().is_none());
 }
 
 #[test]
-fn reattach_and_detach_clear_old_effects_before_releasing_old_model() {
+fn init_discovers_key_byte_order_replaces_and_continues_after_failure() {
     let mut factory = Factory::new();
     let mut owner = ModelRegEffects::new();
-    owner.attach(
-        Some(instance([("fx_a".into(), vec![IDENTITY_RECORD])].into(), &factory.log)),
-        &mut factory,
-    );
-    let next = instance([("fx_b".into(), vec![IDENTITY_RECORD])].into(), &factory.log);
+    owner.attach(Some(instance(
+        1,
+        regions(&["fx_b", "fx_a", "regpoint", "fx_c"]),
+        &factory.log,
+    )));
+    add(&mut owner, &mut factory, "manual", "other");
     factory.take();
-    owner.attach(Some(next), &mut factory);
+    factory.results.extend([(false, false), (true, true), (true, true)]);
+    owner.init(&mut factory);
     assert_eq!(
         factory.take(),
         [
-            Event::Stop(0, false),
-            Event::Release(0),
-            Event::ModelReleased,
-            Event::Create("b".into())
+            Event::Create("a".into()),
+            Event::Create("b".into()),
+            Event::Create("c".into())
         ]
     );
-    owner.attach(None, &mut factory);
     assert_eq!(
-        factory.take(),
-        [Event::Stop(1, false), Event::Release(1), Event::ModelReleased]
+        owner.entries().map(EffectEntry::key).collect::<Vec<_>>(),
+        ["fx_b", "fx_c", "manual"]
     );
-    assert!(owner.instance().is_none());
     owner.init(&mut factory);
-    assert_eq!(owner.update(), UpdateReport::default());
-    assert!(owner.add_effect_at_region("fx_b", "b", &mut factory).is_none());
-    assert!(factory.take().is_empty());
-}
-
-#[test]
-fn init_replaces_filtered_entries_but_does_not_clear_unrelated_manual_entry() {
-    let mut factory = Factory::new();
-    let mut owner = ModelRegEffects::new();
-    owner.attach(
-        Some(instance([("fx_a".into(), vec![IDENTITY_RECORD])].into(), &factory.log)),
-        &mut factory,
-    );
-    owner.add_effect("manual", "b", &[], &mut factory);
-    factory.take();
-    owner.init(&mut factory);
-    assert_eq!(
-        factory.take(),
-        [Event::Stop(0, false), Event::Release(0), Event::Create("a".into())]
-    );
-    assert_eq!(owner.entries().len(), 2);
-    owner.clear();
     assert_eq!(
         factory.take(),
         [
-            Event::Stop(2, false),
+            Event::Create("a".into()),
+            Event::Stop(1, 1),
+            Event::Release(1),
+            Event::WrapperDrop(1),
+            Event::Create("b".into()),
+            Event::Stop(2, 1),
             Event::Release(2),
-            Event::Stop(1, false),
-            Event::Release(1)
+            Event::WrapperDrop(2),
+            Event::Create("c".into())
+        ]
+    );
+    assert!(owner.get_effect("manual").is_some());
+    assert!(owner.entries().find(|e| e.key() == "fx_a").unwrap().records().is_some());
+}
+
+#[test]
+fn all_controls_use_primitive_state_full_words_and_deferred_stops() {
+    let mut factory = Factory::new();
+    let mut owner = ModelRegEffects::new();
+    add(&mut owner, &mut factory, "b", "b");
+    add(&mut owner, &mut factory, "a", "a");
+    factory.set_started(0, true);
+    factory.take();
+    owner.start_all(2);
+    owner.start_all(0x8000_0002);
+    owner.stop_all(0);
+    owner.stop_all(0);
+    owner.stop_all(0xffff_0002);
+    owner.stop_all(2);
+    assert_eq!(
+        factory.take(),
+        [
+            Event::Started(1),
+            Event::Start(1, 2),
+            Event::Started(0),
+            Event::Started(1),
+            Event::Started(0),
+            Event::Started(1),
+            Event::Stop(1, 0),
+            Event::Started(0),
+            Event::Stop(0, 0),
+            Event::Started(1),
+            Event::Stop(1, 0),
+            Event::Started(0),
+            Event::Stop(0, 0),
+            Event::Started(1),
+            Event::Stop(1, 0xffff_0002),
+            Event::Started(0),
+            Event::Stop(0, 0xffff_0002),
+            Event::Started(1),
+            Event::Started(0),
+        ]
+    );
+    owner.start_all(0x8000_0002);
+    assert_eq!(
+        factory.take(),
+        [
+            Event::Started(1),
+            Event::Start(1, 0x8000_0002),
+            Event::Started(0),
+            Event::Start(0, 0x8000_0002)
+        ]
+    );
+}
+
+#[test]
+fn named_controls_repeat_starts_stop_started_only_and_distinguish_key_from_name() {
+    let mut factory = Factory::new();
+    let mut owner = ModelRegEffects::new();
+    let locale = CrtLocale::default();
+    add(&mut owner, &mut factory, "Rotor", "unrelated");
+    add(&mut owner, &mut factory, "fx_a", "rotor");
+    add(&mut owner, &mut factory, "fx_b", "ROTOR");
+    assert!(owner.get_effect("Rotor").is_some());
+    assert!(owner.get_effect("rotor").is_none());
+    factory.take();
+    assert!(owner.start_named("RoToR", 2, 0, &locale, &mut factory));
+    assert!(owner.start_named("RoToR", 0x8000_0000, 1, &locale, &mut factory));
+    owner.stop_named("ROTOR", 2, &locale);
+    owner.stop_named("ROTOR", 2, &locale);
+    assert_eq!(
+        factory.take(),
+        [
+            Event::Start(1, 2),
+            Event::Start(2, 2),
+            Event::Start(1, 0x8000_0000),
+            Event::Start(2, 0x8000_0000),
+            Event::Started(0),
+            Event::Started(1),
+            Event::Stop(1, 2),
+            Event::Started(2),
+            Event::Stop(2, 2),
+            Event::Started(0),
+            Event::Started(1),
+            Event::Started(2)
+        ]
+    );
+}
+
+#[test]
+fn crt_locale_byte_table_and_c_string_boundary_are_explicit() {
+    let mut factory = Factory::new();
+    let mut owner = ModelRegEffects::new();
+    add(&mut owner, &mut factory, "a", "Ä");
+    factory.take();
+    assert!(!owner.start_named("ä", 1, 0, &CrtLocale::default(), &mut factory));
+    let mut lower = std::array::from_fn(|b| (b as u8).to_ascii_lowercase());
+    lower[0x84] = 0xa4; // explicit TEST table, not an asserted native locale
+    let locale = CrtLocale::new(lower);
+    assert!(owner.start_named("ä\0ignored", 2, 0, &locale, &mut factory));
+    assert_eq!(factory.take(), [Event::Start(0, 2)]);
+    add(&mut owner, &mut factory, "ä", "x");
+    add(&mut owner, &mut factory, "z", "x");
+    assert_eq!(
+        owner.entries().map(EffectEntry::key).collect::<Vec<_>>(),
+        ["a", "z", "ä"]
+    );
+}
+
+#[test]
+fn low_byte_create_missing_region_and_missing_model_create_null_records() {
+    let mut factory = Factory::new();
+    let mut owner = ModelRegEffects::new();
+    let locale = CrtLocale::default();
+    assert!(!owner.start_named("new", 2, 0x100, &locale, &mut factory));
+    assert!(factory.take().is_empty());
+    assert!(owner.start_named("new", 0xdead_beef, 0x101, &locale, &mut factory));
+    assert_eq!(
+        factory.take(),
+        [Event::Create("new".into()), Event::Start(0, 0xdead_beef)]
+    );
+    assert_eq!(owner.entries().next().unwrap().records(), None);
+    owner.attach(Some(instance(1, None, &factory.log)));
+    factory.take();
+    assert!(owner.add_effect_at_region("absent", "smoke", &mut factory).is_some());
+    assert_eq!(factory.take(), [Event::Create("smoke".into())]);
+    assert!(owner.entries().next().unwrap().records().is_none());
+}
+
+#[test]
+fn replacement_failure_removes_and_remove_uses_stop_one_even_when_stopped() {
+    let mut factory = Factory::new();
+    let mut owner = ModelRegEffects::new();
+    add(&mut owner, &mut factory, "key", "old");
+    factory.take();
+    factory.results.push_back((false, false));
+    assert!(owner.add_effect("key", "new", None, &mut factory).is_none());
+    assert_eq!(
+        factory.take(),
+        [
+            Event::Stop(0, 1),
+            Event::Release(0),
+            Event::WrapperDrop(0),
+            Event::Create("new".into())
+        ]
+    );
+    assert_eq!(owner.entries().len(), 0);
+    add(&mut owner, &mut factory, "key", "new");
+    factory.take();
+    owner.remove("KEY");
+    assert!(factory.take().is_empty());
+    owner.remove("key");
+    owner.remove("key");
+    assert_eq!(
+        factory.take(),
+        [Event::Stop(1, 1), Event::Release(1), Event::WrapperDrop(1)]
+    );
+}
+
+#[test]
+fn toggle_observes_matching_states_and_only_missing_falls_back() {
+    let mut factory = Factory::new();
+    let mut owner = ModelRegEffects::new();
+    let locale = CrtLocale::default();
+    add(&mut owner, &mut factory, "a", "smoke");
+    add(&mut owner, &mut factory, "b", "SMOKE");
+    add(&mut owner, &mut factory, "c", "other");
+    factory.set_started(0, true);
+    factory.take();
+    owner.toggle_named("Smoke", 2, 1, &locale, &mut factory);
+    assert_eq!(
+        factory.take(),
+        [
+            Event::Started(0),
+            Event::Stop(0, 2),
+            Event::Started(1),
+            Event::Start(1, 2)
+        ]
+    );
+    owner.toggle_named("missing", 0x8000_0002, 0x100, &locale, &mut factory);
+    assert!(factory.take().is_empty());
+    owner.toggle_named("missing", 0x8000_0002, 0x101, &locale, &mut factory);
+    assert_eq!(
+        factory.take(),
+        [Event::Create("missing".into()), Event::Start(3, 0x8000_0002)]
+    );
+}
+
+#[test]
+fn recreate_release_without_stop_failure_keeps_null_entry_and_continues() {
+    let mut factory = Factory::new();
+    let mut owner = ModelRegEffects::new();
+    let locale = CrtLocale::default();
+    owner.add_effect("a", "smoke", records(vec![RECORD]), &mut factory);
+    add(&mut owner, &mut factory, "b", "SMOKE");
+    factory.take();
+    factory.results.extend([(false, false), (true, true)]);
+    owner.recreate_named("Smoke", 0x1234_0002, 1, &locale, &mut factory);
+    assert_eq!(
+        factory.take(),
+        [
+            Event::Release(0),
+            Event::WrapperDrop(0),
+            Event::Create("Smoke".into()),
+            Event::Release(1),
+            Event::WrapperDrop(1),
+            Event::Create("Smoke".into()),
+            Event::Start(2, 0x1234_0002)
+        ]
+    );
+    let first = owner.entries().next().unwrap();
+    assert_eq!(first.key(), "a");
+    assert_eq!(first.name(), "smoke");
+    assert_eq!(first.records(), Some([RECORD].as_slice()));
+    assert!(first.effect().is_none());
+    assert_eq!(owner.entries().len(), 2);
+    owner.start_all(2);
+    assert_eq!(factory.take(), [Event::Started(2)]);
+    factory.available = false;
+    owner.recreate_named("Smoke", 1, 1, &locale, &mut factory);
+    assert!(factory.take().is_empty());
+    factory.available = true;
+    owner.clear();
+    assert_eq!(
+        factory.take(),
+        [Event::Stop(2, 0), Event::Release(2), Event::WrapperDrop(2)]
+    );
+}
+
+#[test]
+fn recreate_failed_match_suppresses_fallback_but_null_matches_do_not() {
+    let mut factory = Factory::new();
+    let mut owner = ModelRegEffects::new();
+    let locale = CrtLocale::default();
+    add(&mut owner, &mut factory, "a", "smoke");
+    factory.take();
+    factory.results.push_back((false, false));
+    owner.recreate_named("SMOKE", 2, 1, &locale, &mut factory);
+    assert_eq!(
+        factory.take(),
+        [Event::Release(0), Event::WrapperDrop(0), Event::Create("SMOKE".into())]
+    );
+    owner.recreate_named("SMOKE", 2, 1, &locale, &mut factory);
+    assert_eq!(factory.take(), [Event::Create("SMOKE".into()), Event::Start(1, 2)]);
+    assert_eq!(owner.entries().len(), 2);
+}
+
+#[test]
+fn creation_status_and_output_are_separate_no_guessed_reference_cleanup() {
+    let mut factory = Factory::new();
+    let mut owner = ModelRegEffects::new();
+    factory.results.extend([(true, false), (false, true)]);
+    assert!(owner.add_effect("a", "null-success", None, &mut factory).is_none());
+    assert_eq!(owner.entries().len(), 1);
+    assert!(owner.add_effect("b", "bad-failure", None, &mut factory).is_none());
+    assert_eq!(owner.entries().len(), 1);
+    assert_eq!(
+        factory.take(),
+        [
+            Event::Create("null-success".into()),
+            Event::Create("bad-failure".into()),
+            Event::WrapperDrop(0)
         ]
     );
     owner.clear();
@@ -525,24 +621,276 @@ fn init_replaces_filtered_entries_but_does_not_clear_unrelated_manual_entry() {
 }
 
 #[test]
-fn incoming_nan_orientation_cannot_contaminate_composed_translation() {
-    let incoming = Transform {
-        rotation: [[f32::NAN; 3]; 3],
-        translation: [1.0, 2.0, 3.0],
-        scale: 2.0,
-    };
-    let outer = Transform {
+fn records_are_shared_not_copied_and_getters_do_not_acquire() {
+    let mut factory = Factory::new();
+    let mut owner = ModelRegEffects::new();
+    let values = Arc::new(vec![RECORD]);
+    let address = values.as_ptr();
+    owner.add_effect("key", "name", Some(RecordVector::shared(values.clone())), &mut factory);
+    factory.take();
+    assert_eq!(owner.entries().next().unwrap().records().unwrap().as_ptr(), address);
+    assert!(owner.get_effect("key").is_some());
+    assert!(factory.take().is_empty());
+    assert_eq!(Arc::strong_count(&values), 2); // host lease, NOT native AddRef
+    owner.clear();
+    assert_eq!(Arc::strong_count(&values), 1);
+}
+
+#[test]
+fn region_records_borrow_original_storage_and_missing_key_creates_anyway() {
+    let mut factory = Factory::new();
+    let mut owner = ModelRegEffects::new();
+    let model = instance(1, regions(&["r"]), &factory.log);
+    let address = model.regions.as_ref().unwrap()["r"].as_ptr();
+    owner.attach(Some(model));
+    factory.take();
+    owner.add_effect_at_region("r", "smoke", &mut factory);
+    assert_eq!(factory.take(), [Event::Create("smoke".into())]);
+    assert_eq!(owner.entries().next().unwrap().records().unwrap().as_ptr(), address);
+    owner.add_effect_at_region("missing", "other", &mut factory);
+    assert_eq!(factory.take(), [Event::Create("other".into())]);
+    assert!(owner
+        .entries()
+        .find(|e| e.key() == "missing")
+        .unwrap()
+        .records()
+        .is_none());
+}
+
+#[test]
+fn replacement_keeps_old_record_lease_until_creation_finishes() {
+    let mut factory = Factory::new();
+    let mut owner = ModelRegEffects::new();
+    let storage = instance(9, regions(&["r"]), &factory.log);
+    owner.add_effect(
+        "key",
+        "old",
+        Some(RecordVector(RecordStorage::Region(storage, "r".into()))),
+        &mut factory,
+    );
+    factory.take();
+    factory.results.push_back((false, false));
+    owner.add_effect("key", "new", None, &mut factory);
+    assert_eq!(
+        factory.take(),
+        [
+            Event::Stop(0, 1),
+            Event::Release(0),
+            Event::WrapperDrop(0),
+            Event::Create("new".into()),
+            Event::StorageDrop(9)
+        ]
+    );
+}
+
+#[test]
+fn null_record_shortcut_empty_out_of_range_and_animation_lifetime() {
+    let mut factory = Factory::new();
+    let mut owner = ModelRegEffects::new();
+    let model = instance(1, None, &factory.log);
+    *model.frame.lock().unwrap() = Some(1);
+    owner.attach(Some(model));
+    add(&mut owner, &mut factory, "a-null", "a");
+    owner.add_effect("b-empty", "b", records(vec![]), &mut factory);
+    owner.add_effect("c-short", "c", records(vec![RECORD]), &mut factory);
+    owner.add_effect(
+        "d-valid",
+        "d",
+        records(vec![RECORD, [9.0, 8.0, 7.0, 0.0, 0.0, 1.0, 0.0]]),
+        &mut factory,
+    );
+    add(&mut owner, &mut factory, "e-stopped", "e");
+    owner.start_all(2);
+    factory.set_started(4, false);
+    factory.take();
+    let report = owner.update_with_motion([1.0, -2.0, 0.5], 3.0);
+    assert!(report.success);
+    assert_eq!(report.transformed, 2);
+    assert_eq!(
+        report.missing_records,
+        [
+            MissingRecord {
+                key: "b-empty".into(),
+                frame: 1,
+                record_count: 0
+            },
+            MissingRecord {
+                key: "c-short".into(),
+                frame: 1,
+                record_count: 1
+            }
+        ]
+    );
+    let copied = Transform {
+        version: 0,
+        flags: 0x80,
         translation: [100.0, 0.0, 200.0],
         ..Transform::IDENTITY
     };
-    let composed = outer.compose(incoming);
-    assert_eq!(composed.translation, [101.0, 2.0, 203.0]);
-    assert!(composed.rotation.into_iter().flatten().all(f32::is_nan));
+    let combined = Transform {
+        flags: 0x85,
+        translation: [109.0, 8.0, 207.0],
+        ..Transform::IDENTITY
+    };
+    assert_eq!(
+        factory.take(),
+        [
+            Event::InstanceTransform,
+            Event::AnimationQuery,
+            Event::Frame,
+            Event::Started(0),
+            Event::Transform(0, copied),
+            Event::Parameter(0, 15, [3.0, -6.0, 1.5], 1),
+            Event::Started(1),
+            Event::Started(2),
+            Event::Started(3),
+            Event::Transform(3, combined),
+            Event::Parameter(3, 15, [3.0, -6.0, 1.5], 1),
+            Event::Started(4),
+            Event::AnimationRelease
+        ]
+    );
 }
 
 #[test]
-fn owner_and_immutable_getters_are_send_sync() {
-    fn check<T: Send + Sync>() {}
-    check::<ModelRegEffects>();
-    check::<EffectEntry>();
+fn empty_detached_updates_and_external_state_observations() {
+    let mut factory = Factory::new();
+    let mut owner = ModelRegEffects::new();
+    assert_eq!(owner.update(), UpdateReport::default());
+    owner.attach(Some(instance(1, None, &factory.log)));
+    factory.take();
+    assert_eq!(owner.update_with_motion([1.0; 3], 1.0), UpdateReport::default());
+    assert!(factory.take().is_empty());
+    add(&mut owner, &mut factory, "a", "a");
+    factory.take();
+    owner.update();
+    assert_eq!(
+        factory.take(),
+        [Event::InstanceTransform, Event::AnimationQuery, Event::Started(0)]
+    );
+    factory.set_started(0, true); // downstream change without owner Start
+    owner.update();
+    assert_eq!(
+        factory.take(),
+        [
+            Event::InstanceTransform,
+            Event::AnimationQuery,
+            Event::Started(0),
+            Event::Transform(
+                0,
+                Transform {
+                    version: 0,
+                    flags: 0x80,
+                    translation: [100.0, 0.0, 200.0],
+                    ..Transform::IDENTITY
+                }
+            )
+        ]
+    );
+}
+
+#[test]
+fn owner_zero_instance_flags_shortcut_and_null_effect_update_gate() {
+    let mut factory = Factory::new();
+    let mut owner = ModelRegEffects::new();
+    let model = instance(1, None, &factory.log);
+    *model.transform.lock().unwrap() = Transform {
+        version: 9, translation: [100.0, 0.0, 200.0], scale: 99.0, ..Transform::IDENTITY
+    };
+    owner.attach(Some(model));
+    owner.add_effect("a-loaded", "a", records(vec![RECORD]), &mut factory);
+    add(&mut owner, &mut factory, "b-null-record", "b");
+    factory.results.push_back((true, false));
+    add(&mut owner, &mut factory, "c-null-effect", "c");
+    owner.start_all(2);
+    factory.take();
+    let report = owner.update();
+    assert!(report.success);
+    assert_eq!(report.transformed, 2);
+    assert_eq!(factory.take(), [Event::InstanceTransform, Event::AnimationQuery,
+        Event::Started(0), Event::Transform(0, Transform { flags: 5, translation: [1.0, 2.0, 3.0], ..Transform::IDENTITY }),
+        Event::Started(1), Event::Transform(1, Transform { translation: [100.0, 0.0, 200.0], scale: 99.0, ..Transform::IDENTITY })]);
+}
+
+#[test]
+fn flag_shortcuts_ignore_invalid_instance_payload_only_when_flags_zero() {
+    let local = Transform::from_record([1.0, 2.0, 3.0, 0.0, 0.0, 1.0, 0.0]);
+    assert_eq!(local.flags, 5);
+    let unused = Transform {
+        version: 9,
+        translation: [f32::NAN; 3],
+        scale: 99.0,
+        ..Transform::IDENTITY
+    };
+    assert_eq!(unused.compose_record(local), local);
+    let instance = Transform {
+        flags: 0x40,
+        version: 9,
+        translation: [7.0, 8.0, 9.0],
+        scale: 2.0,
+        ..Transform::IDENTITY
+    };
+    assert_eq!(
+        instance.compose_record(Transform::IDENTITY),
+        Transform { version: 0, ..instance }
+    );
+    let world = instance.compose_record(local);
+    assert_eq!(world.translation, [9.0, 12.0, 15.0]);
+    assert_eq!(world.scale, 2.0);
+    assert_eq!(world.flags, 0x45);
+    assert_eq!(world.version, 0);
+}
+
+#[test]
+fn independent_axes_geometry_and_documented_zero_axis_choice() {
+    for (axis, expected) in [
+        ([1.0, 0.0, 0.0], [[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]),
+        ([0.0, 1.0, 0.0], [[0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]]),
+        ([0.0, 0.0, 7.0], [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]),
+    ] {
+        rotation(
+            Transform::from_record([0.0, 0.0, 0.0, axis[0], axis[1], axis[2], std::f32::consts::FRAC_PI_2]).rotation,
+            expected,
+        );
+    }
+    let zero = Transform::from_record(RECORD);
+    assert_eq!(zero.rotation, Transform::IDENTITY.rotation);
+    assert_eq!(zero.translation, [1.0, 2.0, 3.0]);
+    assert_eq!(zero.flags, 5);
+}
+
+#[test]
+fn axis_normalization_retains_wide_exponent_before_binary32_component_stores() {
+    // Exact power-of-two axes have normalized components (1,0,0). Squaring
+    // either magnitude in binary32 would overflow/underflow; neither is zero.
+    let expected = [[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]];
+    for axis in [2f32.powi(100), 2f32.powi(-100), f32::from_bits(1)] {
+        let transform = Transform::from_record([0.0, 0.0, 0.0, axis, 0.0, 0.0, std::f32::consts::FRAC_PI_2]);
+        rotation(transform.rotation, expected);
+    }
+}
+
+#[test]
+fn noncommuting_rotation_scaled_translation_and_effect_placement() {
+    let model = Transform {
+        flags: 0x80,
+        rotation: [[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]],
+        translation: [10.0, 20.0, 30.0],
+        scale: 2.0,
+        ..Transform::IDENTITY
+    };
+    let local = Transform::from_record([1.0, 2.0, 3.0, 0.0, 0.0, 7.0, std::f32::consts::FRAC_PI_2]);
+    let world = model.compose_record(local);
+    assert_eq!(world.translation, [12.0, 14.0, 34.0]);
+    rotation(world.rotation, [[0.0, -1.0, 0.0], [0.0, 0.0, -1.0], [1.0, 0.0, 0.0]]);
+    let placement = Transform {
+        rotation: [[0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]],
+        translation: [-5.0, 4.0, 9.0],
+        scale: 3.0,
+        ..Transform::IDENTITY
+    };
+    let placed = placement.compose(world);
+    assert_eq!(placed.translation, [97.0, 46.0, -27.0]);
+    rotation(placed.rotation, [[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]);
+    assert_eq!(placed.scale, 6.0);
 }

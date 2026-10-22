@@ -18,3 +18,6 @@
 
 <!-- from: core-model-effects4 (2026-10-22) -->
 - **GF24 - §3.11 update slot 4 motion inputs:** interfaces.tsv labels the three arguments (pos, dir, speed), but Consumer 1 only says parameter 15=speed×direction. What are their exact types, units and sources, which effects receive parameter 15 (including stopped/hidden effects), what does pos change, and is parameter assignment before or after transform update? [Portable update_with_motion accepts explicit scalar speed/direction, updates transforms then sets parameter 15 on every extant effect as the section's “each effect” literally says; it does not claim a native slot-4 binding.]
+
+<!-- from: core-model-effects-contractfix4 (2026-10-22) -->
+- **GF25 - §3.11.4 unidentified empty-key-map check:** which map does InitEffectsList check in the phrase "an empty key map", and what branch follows that check? [The coordinator review expressly withholds an empty-owner-map guard. The portable owner checks instance/model/container availability, traverses published keys in exact order and preserves repeated-Init replacement. No behavior depending on identification of the ambiguous map is implemented. GF19–GF24 remain open; their old bracketed descriptions record the original lane, not the corrected implementation.]

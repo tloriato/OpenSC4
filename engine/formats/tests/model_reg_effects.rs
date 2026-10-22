@@ -2,7 +2,7 @@
 //! The formats→core adapter uses actual parsed Model.regions, with no reparse or
 //! owner-output delegation. This test also checks parser case folding and append.
 use fc4_core::model_reg_effects::{
-    EffectFactory, InstanceFrame, ModelInstance, ModelRegEffects, Regions, Transform, VisualEffect,
+    Animation, Creation, EffectFactory, ModelInstance, ModelRegEffects, Regions, Transform, VisualEffect,
 };
 use fc4_formats::s3d::Model;
 use std::sync::{Arc, Mutex};
@@ -10,29 +10,47 @@ use std::sync::{Arc, Mutex};
 struct ParsedInstance(Model);
 
 impl ModelInstance for ParsedInstance {
-    fn regions(&self) -> &Regions {
-        &self.0.regions
+    fn acquire(&self) {}
+    fn release(&self) {}
+    fn regions(&self) -> Option<&Regions> {
+        Some(&self.0.regions)
     }
 
-    fn frame(&self) -> InstanceFrame {
-        InstanceFrame {
-            transform: Transform::IDENTITY,
-            animated_frame: Some(1),
-        }
+    fn transform(&self) -> Transform {
+        Transform::IDENTITY
     }
+    fn acquire_animation(&self) -> Option<Box<dyn Animation>> {
+        Some(Box::new(Frame))
+    }
+}
+
+struct Frame;
+impl Animation for Frame {
+    fn current_frame(&self) -> u16 {
+        1
+    }
+    fn release(self: Box<Self>) {}
 }
 
 type Transforms = Arc<Mutex<Vec<(Transform, u8)>>>;
 
-struct Effect(Transforms);
+struct Effect(Transforms, bool);
 
 impl VisualEffect for Effect {
-    fn start(&mut self, _: bool, _: u32) {}
-    fn stop(&mut self, _: bool) {}
-    fn set_transform(&mut self, transform: Transform, flags: u8) {
-        self.0.lock().unwrap().push((transform, flags));
+    fn is_started(&self) -> bool {
+        self.1
     }
-    fn set_parameter(&mut self, _: u32, _: f32) {}
+    fn start(&mut self, _: u32) {
+        self.1 = true;
+    }
+    fn stop(&mut self, _: u32) {
+        self.1 = false;
+    }
+    fn set_transform(&mut self, transform: Transform) {
+        self.0.lock().unwrap().push((transform, transform.flags));
+    }
+    fn set_parameter(&mut self, _: u32, _: [f32; 3], _: u32) {}
+    fn release(self: Box<Self>) {}
 }
 
 struct Factory {
@@ -41,9 +59,15 @@ struct Factory {
 }
 
 impl EffectFactory for Factory {
-    fn create(&mut self, name: &str) -> Option<Box<dyn VisualEffect>> {
+    fn available(&self) -> bool {
+        true
+    }
+    fn create(&mut self, name: &str) -> Creation {
         self.names.push(name.to_owned());
-        Some(Box::new(Effect(Arc::clone(&self.transforms))))
+        Creation {
+            success: true,
+            effect: Some(Box::new(Effect(Arc::clone(&self.transforms), false))),
+        }
     }
 }
 
@@ -99,9 +123,11 @@ fn parsed_regions_feed_owner_and_duplicate_records_select_current_frame() {
         transforms: Arc::default(),
     };
     let mut owner = ModelRegEffects::new();
-    owner.attach(Some(instance), &mut factory);
+    owner.attach(Some(instance));
+    assert!(factory.names.is_empty());
+    assert!(owner.init(&mut factory));
     assert_eq!(factory.names, ["rotor"]);
-    owner.start_all(false, 0);
+    owner.start_all(0);
     let report = owner.update();
     assert_eq!(report.transformed, 1);
     assert!(report.missing_records.is_empty());
@@ -110,4 +136,6 @@ fn parsed_regions_feed_owner_and_duplicate_records_select_current_frame() {
     assert_eq!(actual[0].0.translation, [9.0, 2.0, 3.0]);
     assert_eq!(actual[0].0.rotation, Transform::IDENTITY.rotation);
     assert_eq!(actual[0].1, 5);
+    drop(actual);
+    owner.shutdown();
 }
