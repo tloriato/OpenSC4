@@ -14,5 +14,8 @@
 - Full gate attempt after e5c5360c: cargo 4938/0, clippy clean, ctest 67/68 (ret_channel_check flags two new script return uses). Fixed by invoking setters without consuming uncertain return at script layer; paired public-contract return comparison remains in shadow. Concurrent quick link encountered DLL held by ctest (LNK1168); no code workaround.
 - Added check-source counters (dynamic/explicit fixture/serialized sample); no initial-baseline equality credit. Final stable gate next, with no build overlap.
 - 1729582e gate: cargo 4938 passed, clippy clean, build 4/4, ctest 68/68 PASS. Added missing known-key registration afterward; rebuild/full gate required for final immutable DLL.
+- Final stable c2baaf8a gate PASS: cargo 4938/0, clippy 0 diagnostics, CMake 4/4, ctest 68/68 (73.49s). Logs preserved build-runs/ordinance-final-{cargo,clippy,ctest}.log.
+- Immutable DLL build-runs/dlls/ordinance-c2baaf8a/FreeCity4.dll SHA256 E6445DCBEAC88EECAE1C13C579F4C18E091BAC13460735943E297F998BBE40F4.
+- Enqueue next: vo4r1-native-c2baaf8a-20261022a (native ordinance + shadow, fixture toggles, full saves April2026/December2031, quit2032).
 - No game requests outstanding. No ABI changes. No questions yet.
 - Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-verify-ordinance4-r1-manifest.json
