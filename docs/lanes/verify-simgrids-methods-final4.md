@@ -9,6 +9,8 @@
 - Implemented before call 30: owned shipped C++ factories, typed operation adapter, one natural bootstrap, actual method counters, complete comparisons, negative controls and ten-format persistent method tests.
 - First all: cargo4951/0, clippy0, ctest68/68; tree changed during run, not the stable final gate. Quick: cargo530/0 and C++ build PASS. Rust comment fmt PASS with absolute file path (relative path first failed).
 - Focused C++ gate:67/67 PASS including ten-format persistent production adapter tests and mutation/length negative controls. q.py cannot start Bash (E_ACCESSDENIED); focused tests ran through fc4verify cxxtest. qbuild does not accept cxxtest as a step (quick itself passed).
-- Next: stable all, freeze DLL/PDB, unique native39/current40/native39 save/reload controls. No game requests outstanding.
+- Code milestone:270a49a2. Stable final all at that code: cargo4951/0, clippy0, build2/2, ctest68/68 PASS (72.8s), clean tracked tree.
+- Next: run build-runs/run-sgm4-controls.ps1 -Step 0,1,2 sequentially, then audit-sgm4.py. Freezes DLL/PDB once, guards hashes and predecessor save, never discards an existing unique verdict. Uses one local wait per request, no qwait.
+- Labels:sgm4-r1-native39-20261022a/current40/roundtrip39 (same prefix/suffix). Ordinary city to2032, saved-city to2033, saved-city to2034. No outstanding request before Step0.
 - Required: focused tests, stable full gate, frozen unique native/current40/native save/reload2032+ref0 controls. No qwait.
 - Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-verify-simgrids-methods-final4-r1-manifest.json.
