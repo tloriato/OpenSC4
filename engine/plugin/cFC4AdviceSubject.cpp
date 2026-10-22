@@ -11,9 +11,15 @@
 #include "FC4Log.h"
 #include "fc4.h"
 
+// Private transport; deliberately outside the shared public ABI tables.
+extern "C" fc4_adv_obj* fc4_private_adv_subject_clone(const fc4_adv_obj* source);
+extern "C" bool fc4_private_adv_subject_set_location(const fc4_adv_obj*, float, float);
+extern "C" bool fc4_private_adv_subject_set_object(const fc4_adv_obj*, uint64_t);
+extern "C" bool fc4_private_adv_subject_set_data1(const fc4_adv_obj*, uint32_t);
+extern "C" bool fc4_private_adv_subject_set_data2(const fc4_adv_obj*, uint32_t);
 
-cFC4AdviceSubject::cFC4AdviceSubject(fc4_adv_obj* handle, NewSubjectFn newSubject, void* ctx)
-    : fc4::AdvFront(handle), newSubject_(newSubject), ctx_(ctx) {
+cFC4AdviceSubject::cFC4AdviceSubject(fc4_adv_obj* handle, NewSubjectFn, void*)
+    : fc4::AdvFront(handle) {
     Register(Token());
 }
 
@@ -44,21 +50,9 @@ bool cFC4AdviceSubject::Get(fc4_adv_subject_state* out) {
     return h && fc4_adv_subject_get(h.get(), out);
 }
 
-// The fields go back with has_location cleared, so only data1, data2 and the
-// object are written (fc4.h: SetLocation runs only when has_location).
-bool cFC4AdviceSubject::Set(const fc4_adv_subject_state& v) {
-    Pin h(*this);
-    return h && fc4_adv_subject_set(h.get(), &v);
-}
-
 bool cFC4AdviceSubject::SetLocation(float x, float z) {
-    fc4_adv_subject_state st{};
-    if (!Get(&st)) return false;
-    st.x = x;
-    st.z = z;
-    st.has_location = 1;  // the core clamps to the city's cell counts (§2.5)
-    Set(st);
-    return true;
+    Pin h(*this);
+    return h && fc4_private_adv_subject_set_location(h.get(), x, z);
 }
 
 float cFC4AdviceSubject::GetLocationX() {
@@ -77,12 +71,8 @@ bool cFC4AdviceSubject::HasLocation() {
 }
 
 bool cFC4AdviceSubject::SetObject(cIGZUnknown* object) {
-    fc4_adv_subject_state st{};
-    if (!Get(&st)) return false;
-    st.has_location = 0;
-    st.object = object != nullptr ? fc4::TokenOf(object) : 0;  // the core add_refs it, releases the old one
-    Set(st);
-    return true;
+    Pin h(*this);
+    return h && fc4_private_adv_subject_set_object(h.get(), object != nullptr ? fc4::TokenOf(object) : 0);
 }
 
 cIGZUnknown* cFC4AdviceSubject::GetObjectA() {
@@ -96,12 +86,8 @@ uint32_t cFC4AdviceSubject::GetData1() {
 }
 
 bool cFC4AdviceSubject::SetData1(uint32_t v) {
-    fc4_adv_subject_state st{};
-    if (!Get(&st)) return true;
-    st.has_location = 0;
-    st.data1 = v;
-    Set(st);
-    return true;
+    Pin h(*this);
+    return h && fc4_private_adv_subject_set_data1(h.get(), v);
 }
 
 uint32_t cFC4AdviceSubject::GetData2() {
@@ -110,12 +96,8 @@ uint32_t cFC4AdviceSubject::GetData2() {
 }
 
 bool cFC4AdviceSubject::SetData2(uint32_t v) {
-    fc4_adv_subject_state st{};
-    if (!Get(&st)) return true;
-    st.has_location = 0;
-    st.data2 = v;
-    Set(st);
-    return true;
+    Pin h(*this);
+    return h && fc4_private_adv_subject_set_data2(h.get(), v);
 }
 
 // Slot 13: a new subject with the same fields, the object held again, AddRef'd
@@ -123,11 +105,10 @@ bool cFC4AdviceSubject::SetData2(uint32_t v) {
 bool cFC4AdviceSubject::Clone(cFC4ISC4AdviceSubject** out) {
     if (out == nullptr) return false;
     *out = nullptr;
-    fc4_adv_subject_state st{};
-    if (newSubject_ == nullptr || !Get(&st)) return false;
-    fc4_adv_obj* h = newSubject_(ctx_);
+    Pin source(*this);
+    if (!source) return false;
+    fc4_adv_obj* h = fc4_private_adv_subject_clone(source.get());
     if (h == nullptr) return false;
-    fc4_adv_subject_set(h, &st);  // location already clamped; the object add_ref'd
     const uint64_t token = fc4_adv_obj_token(h);
     auto* c = token != 0 ? static_cast<cFC4ISC4AdviceSubject*>(fc4::FromToken(token)) : nullptr;
     if (c != nullptr) c->AddRef();  // before h goes: h may be the copy's only strong handle

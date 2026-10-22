@@ -803,6 +803,63 @@ unsafe extern "C" fn object_dropped(_: *mut c_void, t: u64) {
 }
 
 #[test]
+fn private_subject_clone_owns_distinct_state_and_one_more_object_reference() {
+    let game = Game::new();
+    DROPPED.with(|d| d.borrow_mut().clear());
+    unsafe {
+        let mut host = advisor_host(&game);
+        host.object_dropped = Some(object_dropped);
+        let p = fc4_advisors_create(&host, std::ptr::null(), 1);
+        assert!(!p.is_null());
+        assert!(fc4_private_adv_subject_clone(std::ptr::null()).is_null());
+        let system = fc4_advisors_system_object(p);
+        assert!(fc4_private_adv_subject_clone(system).is_null());
+        fc4_adv_obj_destroy(system);
+        let source = fc4_advisors_new_subject(p);
+        let initial = fc4_adv_subject_state {
+            x: 3.25,
+            z: 7.5,
+            has_location: 1,
+            object: HOME,
+            data1: 0x1234_5600,
+            data2: u32::MAX,
+            ..Default::default()
+        };
+        assert!(fc4_adv_subject_set(source, &initial));
+        assert_eq!(game.refs(HOME), 1);
+        let copy = fc4_private_adv_subject_clone(source);
+        assert!(!copy.is_null());
+        assert_eq!(fc4_adv_obj_kind(copy), FC4_ADV_OBJ_SUBJECT);
+        assert!(!fc4_adv_obj_same(source, copy));
+        assert_ne!(fc4_adv_obj_token(source), fc4_adv_obj_token(copy));
+        assert_eq!(game.refs(HOME), 2, "clone holds the same foreign object again");
+        let mut state = fc4_adv_subject_state::default();
+        assert!(fc4_adv_subject_get(copy, &mut state));
+        assert_eq!(state, initial);
+        let changed = fc4_adv_subject_state { object: OTHER, data1: 0x8000_0000, x: 17.0, ..initial };
+        assert!(fc4_adv_subject_set(copy, &changed));
+        assert!(fc4_adv_subject_get(source, &mut state));
+        assert_eq!(state, initial, "copy mutation leaves the source intact");
+        assert_eq!((game.refs(HOME), game.refs(OTHER)), (1, 1));
+        // Remove only the host-owned callback handles, leaving the returned
+        // owned handles responsible for final destruction (no invented owner).
+        for (_, _, h) in game.created.borrow_mut().drain(..) {
+            fc4_adv_obj_destroy(h as *mut fc4_adv_obj);
+        }
+        let copy_token = fc4_adv_obj_token(copy);
+        let source_token = fc4_adv_obj_token(source);
+        fc4_adv_obj_destroy(source);
+        assert_eq!((game.refs(HOME), game.refs(OTHER)), (0, 1));
+        assert!(fc4_adv_subject_get(copy, &mut state));
+        assert_eq!(state, changed, "copy survives destruction of source");
+        fc4_adv_obj_destroy(copy);
+        assert_eq!((game.refs(HOME), game.refs(OTHER)), (0, 0));
+        assert_eq!(DROPPED.with(|d| d.borrow().clone()), vec![source_token, copy_token]);
+        fc4_advisors_destroy(p);
+    }
+}
+
+#[test]
 fn weak_handles_and_object_dropped() {
     let f = Fixture::new();
     unsafe {

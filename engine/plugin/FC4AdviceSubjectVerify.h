@@ -81,9 +81,10 @@ struct Host {
 
 struct Compare {
     std::array<uint32_t, 14> calls{};
-    uint32_t checks = 0, differences = 0;
+    uint32_t checks = 0, differences = 0, refusals = 0;
     void Check(const char* what, uint32_t a, uint32_t b) {
         ++checks;
+        FC4_LOG("advice-subject-verify: result %s native_or_actual=%08X core_or_expected=%08X", what, a, b);
         if (a == b) return;
         ++differences;
         FC4_LOG("advice-subject-verify: DIFF %s native=%08X core=%08X", what, a, b);
@@ -116,11 +117,9 @@ struct Compare {
     }
 };
 
-// Unwired prototype: this compares the actual production C++ fronts over Rust
-// state/get/set, but its Clone does NOT call Rust clone_subject. AD18 blocks
-// using this as the requested complete Rust-method verifier. No fallback is
-// invoked by the simulator hook below.
-inline void CompareProductionFrontsPrototype() {
+// Independent originals. The production front's Clone invokes Rust
+// AdviceSubject::clone_subject through the private owned-handle transport.
+inline void CompareProductionFronts() {
     static bool done = false;
     if (done || SettingInt("advice_subject_verify", "FC4_ADVICE_SUBJECT_VERIFY", 0) != 1) return;
     cISC4City* city = propcity::AppCity(); // borrowed; only primitive dimensions shared
@@ -232,9 +231,11 @@ inline void CompareProductionFrontsPrototype() {
     v.Check("Clone return", nr, cr);
     v.Check("Clone native success", nr && nc != nullptr, true);
     v.Check("Clone core success", cr && cc != nullptr, true);
-    if (!nr || nc == nullptr || !cr || cc == nullptr)
+    if (!nr || nc == nullptr || !cr || cc == nullptr) {
+        ++v.refusals;
         FC4_LOG("advice-subject-verify: REFUSED Clone native_ok=%u native_out=%p core_ok=%u core_out=%p",
                 nr, static_cast<void*>(nc), cr, static_cast<void*>(cc));
+    }
     if (nr && nc != nullptr) FC4_ACQUIRED(nc, "AdviceSubject Clone independent fixture");
     if (nr && nc != nullptr && cr && cc != nullptr) {
         v.Check("Clone native distinct", nc != n, true);
@@ -277,20 +278,14 @@ inline void CompareProductionFrontsPrototype() {
     v.Check("core subject cleanup", h.created, h.dropped);
     v.Check("ref warnings", static_cast<uint32_t>(RefWarningCount() - warnings), 0);
     for (unsigned slot = 3; slot != 14; ++slot)
-        FC4_LOG("advice-subject-verify: slot=%u native_comparisons=%u", slot, v.calls[slot]);
-    FC4_LOG("advice-subject-verify: checks=%u differences=%u created=%u dropped=%u ref_warnings=%ld serialization=withheld",
-            v.checks, v.differences, h.created, h.dropped, RefWarningCount() - warnings);
-    FC4_LOG("advice-subject-verify: unsupported=serialization/no-independent-typed-stream; direct-Rust-clone_subject; "
-            "direct-Rust-setter-return-values; nonfinite-locations; failed-QI-output-semantics");
+        FC4_LOG("advice-subject-verify: slot=%u native_calls=%u native_results=%u", slot, v.calls[slot], v.calls[slot]);
+    FC4_LOG("advice-subject-verify: checks=%u differences=%u refusals=%u undefined_returns=0 created=%u dropped=%u ref_warnings=%ld serialization=withheld",
+            v.checks, v.differences, v.refusals, h.created, h.dropped, RefWarningCount() - warnings);
+    FC4_LOG("advice-subject-verify: unsupported=serialization/no-independent-typed-stream; "
+            "nonfinite-locations; failed-QI-output-semantics; advisor-owner/default/replacement-promotion; AD11; AD16");
 }
 
 inline void Run() {
-    static bool refused = false;
-    if (refused || SettingInt("advice_subject_verify", "FC4_ADVICE_SUBJECT_VERIFY", 0) != 1) return;
-    refused = true;
-    // Required actual Rust clone ownership transport is absent from the
-    // existing C API. This lane may not add shared ABI exports (AD18).
-    FC4_LOG("advice-subject-verify: REFUSED AD18 missing actual Rust subject-clone handle endpoint; "
-            "native_comparisons=0 core_comparisons=0 unverified=1");
+    CompareProductionFronts();
 }
 } // namespace fc4::subjectverify

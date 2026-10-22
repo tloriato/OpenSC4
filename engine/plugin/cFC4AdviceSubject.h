@@ -31,8 +31,8 @@ public:
 
 class cFC4AdviceSubject final : public cFC4ISC4AdviceSubject, public cIGZSerializable, public cIFC4CoreObject, public fc4::AdvFront {
 public:
-    // Takes over `handle` (FC4AdvLife.h). `cloneFn` builds a
-    // new core subject for Clone (nullptr: Clone fails).
+    // Takes over `handle` (FC4AdvLife.h). The factory arguments are retained
+    // for existing callers; Clone uses the actual Rust clone transport.
     using NewSubjectFn = fc4_adv_obj* (*)(void* ctx);
     cFC4AdviceSubject(fc4_adv_obj* handle, NewSubjectFn newSubject, void* ctx);
 
@@ -68,8 +68,4 @@ public:
 
 private:
     bool Get(struct fc4_adv_subject_state* out);
-    bool Set(const struct fc4_adv_subject_state& v);
-
-    NewSubjectFn newSubject_ = nullptr;
-    void* ctx_ = nullptr;
 };

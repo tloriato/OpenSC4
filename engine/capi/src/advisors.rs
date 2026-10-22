@@ -2266,6 +2266,39 @@ pub unsafe extern "C" fn fc4_adv_subject_set(o: *const fc4_adv_obj, v: *const fc
     }
 }
 
+/// Private production transport for subject slot 13. The caller owns the
+/// returned handle; the front is announced through the existing object_created
+/// callback, exactly as for advice clones. NULL/non-subject handles fail closed.
+#[no_mangle]
+pub unsafe extern "C" fn fc4_private_adv_subject_clone(o: *const fc4_adv_obj) -> *mut fc4_adv_obj {
+    match obj_ref(o) {
+        Some(Obj::Subject(s)) => guard(std::ptr::null_mut(), || Obj::Subject(s.clone_subject()).into_raw()),
+        _ => std::ptr::null_mut(),
+    }
+}
+
+// Private slot transports preserve each Rust method's return and ownership
+// effects instead of replaying the aggregate state setter for a single field.
+#[no_mangle]
+pub unsafe extern "C" fn fc4_private_adv_subject_set_location(o: *const fc4_adv_obj, x: f32, z: f32) -> bool {
+    matches!(obj_ref(o), Some(Obj::Subject(s)) if guard(false, || s.set_location(x, z)))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fc4_private_adv_subject_set_object(o: *const fc4_adv_obj, token: u64) -> bool {
+    matches!(obj_ref(o), Some(Obj::Subject(s)) if guard(false, || s.set_object(opt(token))))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fc4_private_adv_subject_set_data1(o: *const fc4_adv_obj, value: u32) -> bool {
+    matches!(obj_ref(o), Some(Obj::Subject(s)) if guard(false, || s.set_data1(value)))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fc4_private_adv_subject_set_data2(o: *const fc4_adv_obj, value: u32) -> bool {
+    matches!(obj_ref(o), Some(Obj::Subject(s)) if guard(false, || s.set_data2(value)))
+}
+
 // ---- the MySim agent ------------------------------------------------------------------------------------
 
 /// The agent's `Init` (mysims.md §1.3): false without MySims.

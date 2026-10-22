@@ -5,7 +5,10 @@
 ## Handoff
 - Round 2 goal: implement actual production clone transport, then independent native subject measurement.
 - Prior report and prototype read; private export/local declarations authorized, ABI tables/version unchanged.
-- Next: inspect old live checks; implement Obj::Subject clone handle and rewire production front.
+- Done: private owned Obj::Subject clone transport invokes actual Rust clone_subject; production front rewired. Four private single-field setters preserve Rust returns and ownership effects (no aggregate-set replay).
+- Focused ownership/independence CAPI test added. Opt-in verifier wired; fullword native results logged and clone refusal counted separately.
+- Next: collect baseline all (session 79550, live qbuild PID 29392 at inspection), then quick/focused checks and ONE final stable all. No overlap.
+- fmt absolute paths required; check currently reports pre-existing formatting differences (advisors.rs weak handles and tests); no mass format performed.
 - Old log timestamps alone do not establish a live check or PASS; WMI process inspection denied.
 - No game request outstanding. No native measurements yet.
 - Manifest: `C:/Users/tlori/FreeCity4/build-runs/run4-verify-advice-subject4-r2-manifest.json`.
