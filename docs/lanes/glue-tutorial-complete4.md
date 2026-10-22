@@ -11,7 +11,8 @@
 - Done (next commit): version-gated TU6/TU9 native boundaries; singleton binding/conditional restoration; unlock native calls; native window slots; TU7 cheat/TU8 filter; CAPI save-preparation export (ABI=true); start/cheat harness actions.
 - Done 80570fae: native boundaries and harness actions committed. Quick retry built successfully; Rust fmt check passed all six touched files. Initial fake-ref/include failures fixed.
 - Full gate 954e39cb: PASS 4240 Rust tests, clippy0, CMake4/4, ctest67/67 (89.9s). Previous missing return annotations fixed.
-- Outstanding game: gtc4-r1-original-20261022a (disable=tutorial, constructed-only probe, turbo end2032), waiter exec43487. Never discard a completed verdict.
+- Original verdict gtc4-r1-original-20261022a: clean2032/ref0, actual currentTask=set, native NEXT advanced0->1, close/pre-save successful. Constructed-only Konradshohe; 40s hidden-dialog hold reported despite clean verdict.
+- Outstanding game: gtc4-r1-ours-20261022a (enable=tutorial, same constructed-only probe, turbo end2032), waiter exec24195. Never discard a completed verdict.
 - Next: original verdict, replacement trace, genuine tutorial fixture/reopen, candidate regression. At most one request outstanding.
 - Fixture unresolved: queue documents only FC4 Test region; native tutorial-city reopen requires a persisted shipped tutorial fixture, not constructed-only ordinary-city actions.
 - Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-glue-tutorial-complete4-r1-manifest.json.
