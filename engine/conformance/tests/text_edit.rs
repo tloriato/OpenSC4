@@ -54,6 +54,11 @@ impl Services for Host {
             char_length(bytes, index, bytes.len() as u32 - index, selector)
         }
     }
+    fn length_from_glyph_count(&mut self, bytes: &[u8], glyphs: u32, selector: i32) -> Result<u32> {
+        let mut at = 0;
+        for _ in 0..glyphs { at += char_length(bytes, at, bytes.len() as u32 - at, selector)?; }
+        Ok(at)
+    }
     fn call(&mut self, call: Call) -> Result<Reply> {
         let reply = match &call {
             Call::CodePage => Reply::Word(self.selector as u32),
@@ -76,7 +81,7 @@ impl Services for Host {
             Call::ClipboardPaste(_) => Reply::Bytes(self.pasted.clone()),
             Call::Color { value, .. } => Reply::Word(*value),
             Call::Search { .. } => Reply::Word(self.search_result),
-            Call::SoundAcquire { .. } => Reply::Handle(Some(55)),
+            Call::SoundAcquire { .. } => Reply::Sound { acquired: false, handle: Some(55) },
             Call::Timer { .. } | Call::Notify { .. } | Call::Base(_, _) | Call::SoundPlay(_) => Reply::Bool(true),
             _ => Reply::Unit,
         };
@@ -465,8 +470,11 @@ fn page_uses_current_x_arrow_reuses_cache_and_both_preserve_it() {
     e.key_down(0x28, 0, &mut h).unwrap();
     assert_eq!(e.preferred_x(), 70);
     assert_eq!(e.position().line, 1);
-    let mut page = e.clone();
-    let mut arrow = e.clone();
+    let mut page = e;
+    let (mut arrow, mut arrow_host) = editor(1, 0, text);
+    arrow.set_gutter_x(0, &mut arrow_host).unwrap();
+    arrow.set_insertion_index(7, &mut arrow_host).unwrap();
+    arrow.key_down(0x28, 0, &mut arrow_host).unwrap();
     page.key_down(0x22, 0, &mut h).unwrap();
     arrow.key_down(0x28, 0, &mut h).unwrap();
     assert_eq!(page.position().column, 1);
@@ -684,4 +692,57 @@ fn find_filters_exact_end_without_inventing_search_semantics() {
     assert_eq!(e.find_text(b"", 0, false, &mut h), Ok(u32::MAX));
     h.search_result = 2;
     assert_eq!(e.find_text(b"", 0, true, &mut h), Ok(2));
+}
+
+#[test]
+fn sound_failure_still_releases_created_handle_without_playing() {
+    let (mut e, mut h) = editor(0x201, 0, b"abc");
+    e.set_sound_id(0, 77).unwrap();
+    e.set_text(Some(b"\nx"), 2, false, &mut h).unwrap();
+    let acquire = h.calls.iter().position(|c| matches!(c, Call::SoundAcquire { id: 77, .. })).unwrap();
+    let release = h.calls.iter().position(|c| *c == Call::Release(55)).unwrap();
+    assert!(acquire < release);
+    assert!(!h.calls.iter().any(|c| matches!(c, Call::SoundPlay(_))));
+}
+
+#[test]
+fn scroll_page_down_can_overshoot_last_full_page() {
+    let mut h = Host { bars: true, ..Host::default() };
+    let mut e = TextEdit::new(9, 0, 42);
+    e.set_area(Rect { left: 0, top: 0, right: 210, bottom: 40 }, &mut h).unwrap();
+    e.init(&mut h).unwrap();
+    e.set_text(Some(b"0\n1\n2\n3\n4\n5\n6\n7\n8\n9"), 19, false, &mut h).unwrap();
+    h.bar_value = 5;
+    e.message(3, 0x887113a3, 0, (0, 0), &mut h).unwrap();
+    assert_eq!(e.visible_size().2, 4);
+    assert!(e.scroll(Scroll::PageDown, &mut h).unwrap());
+    assert_eq!(e.first_visible_line(), 9);
+}
+
+#[test]
+fn pixel_only_scroll_start_gate_and_left_signed_underflow() {
+    let mut h = Host { bars: true, height: 16, ..Host::default() };
+    let mut e = TextEdit::new(5, 0, 42);
+    e.set_area(Rect { left: 0, top: 0, right: 50, bottom: 40 }, &mut h).unwrap();
+    e.init(&mut h).unwrap();
+    // Init removes an unnecessary horizontal bar but leaves its enable bit.
+    e.set_text(Some(b"abcdefghij"), 10, false, &mut h).unwrap();
+    h.bar_value = 5;
+    e.message(3, 0x887113a3, 1, (0, 0), &mut h).unwrap();
+    assert!(!e.scroll(Scroll::Start, &mut h).unwrap());
+    assert_eq!(e.scroll_offsets().1, 5);
+    e.scroll(Scroll::Left, &mut h).unwrap();
+    assert_eq!(e.scroll_offsets().1 as i32, -11);
+}
+
+#[test]
+fn insertion_repair_caps_active_end_but_retains_excessive_anchor() {
+    let (mut e, mut h) = editor(1, 0, b"abc");
+    e.set_selection(3, 3, &mut h).unwrap();
+    e.remove_raw(0, 2, None, &mut h).unwrap();
+    e.fix_insertion().unwrap();
+    assert_eq!((e.position().anchor, e.position().end), (3, 1));
+    e.set_text(Some(b"a\nb"), 3, false, &mut h).unwrap();
+    e.adjust_line_array(3, 1).unwrap();
+    assert_eq!(e.line_starts(), &[0, 2]);
 }

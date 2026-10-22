@@ -65,15 +65,8 @@ impl TextEdit {
                 if !password {
                     return Ok((line, chosen));
                 }
-                // LengthFromGlyphCount walks the WHOLE original text prefix.
-                let mut bytes = 0;
-                for _ in 0..chosen {
-                    let n = char_length(&self.text, bytes, self.text_length().wrapping_sub(bytes), self.selector)?;
-                    if n == 0 {
-                        return Err(Boundary::NonProgress);
-                    }
-                    bytes = bytes.wrapping_add(n);
-                }
+                // Native passes the WHOLE original text, not this line.
+                let bytes = s.length_from_glyph_count(&self.text, chosen, self.selector)?;
                 return Ok((line, bytes));
             }
             previous_width = width;
@@ -103,8 +96,16 @@ impl TextEdit {
         clip: Rect,
         s: &mut impl Services,
     ) -> Result<()> {
+        let bytes = match Self::span(buffer, at, count) {
+            Ok(bytes) => bytes.to_vec(),
+            Err(error) => {
+                s.call(Call::UnsupportedSpan { purpose: "draw", start: at, count,
+                    logical_length: buffer.len() as u32 })?;
+                return Err(error);
+            }
+        };
         s.call(Call::Draw {
-            bytes: Self::span(buffer, at, count)?.to_vec(),
+            bytes,
             x,
             y,
             foreground: palette.0,

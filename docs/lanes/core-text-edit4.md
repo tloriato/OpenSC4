@@ -5,8 +5,8 @@
 ## Handoff
 - Goal: first portable TextEdit owner, published contracts only; preserve TE5/TE8, no game/native promotion.
 - Done: 3d010273 substantive first source; added layout/scroll geometry/navigation, complete key routing, paint ordering/hit mapping and resource/timer adapters. TE9 records unpublished choices; TE5/TE8 preserved.
-- Done: 33 independent conformance tests written (36 fn declarations including helpers); all seven new Rust files pass qbuild fmt with absolute paths. No game requests.
-- Next: collect quick result (fc4verify-quick-test.log), resolve findings, final stable all gate and final report/queue.
+- Done: 37 independent scenarios written; all seven new Rust files passed qbuild fmt with absolute paths before final small fixes. Resource owner cannot be cloned without acquiring references. No game requests.
+- Next: quick result (fc4verify-quick-test.log), stable full gate and final report/queue; final source commit follows fixes to the one clippy collapsible-match finding and sound failure-handle release. LengthFromGlyphCount is a foreign call, not an inferred parser.
 - Baseline all: Rust stopped in unchanged capi occupant_manager_tests::slot42_callbacks_run_unlocked_across_threads: 536 passed, 1 failed (200.82s). Clippy still running; quick waiting on build directory lock. Do not claim a clean gate.
 - Constraints: no game, clipboard OS, ABI changes, agents, main edits or branch/ref updates.
 - Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-core-text-edit4-r1-manifest.json.
@@ -95,9 +95,9 @@ Portable entries below implement owner decisions in the named area, with foreign
 | `0x009BD610` | GetIndexFromLineAndColumn | P | position/byte navigation |
 | `0x009BD66E` | SetInsertionIndex | P | position/byte navigation |
 | `0x009BD6B4` | SetInsertionLineAndColumn | P | position/byte navigation |
-| `0x009BD71A` | IncrementInsertionPositionByComposedCharacter | P | withheld: no matching portable entry |
+| `0x009BD71A` | IncrementInsertionPositionByComposedCharacter | P | increment_position(composed=true); foreign composed lengths TE5 |
 | `0x009BD7FA` | IncrementInsertionPosition | P | position/byte navigation |
-| `0x009BD89D` | IncrementInsertionPositionByWord | P | withheld: no matching portable entry |
+| `0x009BD89D` | IncrementInsertionPositionByWord | P | increment_word: space/LF byte scans |
 | `0x009BD997` | SetSelection | P | position/byte navigation |
 | `0x009BDA65` | FixInsertionPositionIfBroken | P | position/byte navigation |
 | `0x009BDB00` | GetPixelWidthOfLongestLine | P | layout/scroll |
@@ -135,7 +135,7 @@ Portable entries below implement owner decisions in the named area, with foreign
 | `0x009BF776` | RemoveChar | P | mutation/history |
 | `0x009BF8A8` | RemoveText | P/B | mutation/history |
 | `0x009BF98B` | RecalculateAll | P/B | layout/scroll |
-| `0x009BFB9C` | Init | P/B | withheld: no matching portable entry |
+| `0x009BFB9C` | Init | P/B | init: font fallback, cursor, timers, code page, clipboard; foreign failures TE8 |
 | `0x009BFCA5` | SetArea | P | layout/scroll |
 | `0x009BFCEF` | SetFlags | P/B | mode/flags |
 | `0x009BFDC6` | SetFont | P/B | resources/colors |

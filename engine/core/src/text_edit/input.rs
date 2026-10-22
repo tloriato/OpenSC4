@@ -241,10 +241,8 @@ impl TextEdit {
                     self.copy_selection(s)?;
                 }
             }
-            0x0d => {
-                if self.flags & 0x400 != 0 {
-                    self.notify(s, 0x9b1552d5, 13, 0)?;
-                }
+            0x0d if self.flags & 0x400 != 0 => {
+                self.notify(s, 0x9b1552d5, 13, 0)?;
             }
             _ => (),
         }

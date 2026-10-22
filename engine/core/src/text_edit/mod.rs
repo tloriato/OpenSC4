@@ -48,6 +48,8 @@ pub trait Services {
     fn next_utf16(&mut self, bytes: &[u8], selector: i32) -> Result<(u32, u32)>;
     fn thai_level(&mut self, current: u16, previous: u16) -> Result<u32>;
     fn composed_length(&mut self, bytes: &[u8], index: u32, previous: bool, selector: i32) -> Result<u32>;
+    /// Only the call-site contract is published; no inferred parser.
+    fn length_from_glyph_count(&mut self, bytes: &[u8], glyphs: u32, selector: i32) -> Result<u32>;
     /// Only service outputs: resource identity, clipboard bytes, base result,
     /// geometry, colors and timer outcomes. No final editor decision is delegated.
     fn call(&mut self, call: Call) -> Result<Reply>;
@@ -128,6 +130,7 @@ pub enum Call {
         args: [u32; 7],
     },
     SoundPlay(u64),
+    UnsupportedSpan { purpose: &'static str, start: u32, count: u32, logical_length: u32 },
     Fill {
         rect: Rect,
         color: u32,
@@ -168,6 +171,7 @@ pub enum Reply {
     Bytes(Option<Vec<u8>>),
     Rectangle(Rect),
     Size(u32, u32),
+    Sound { acquired: bool, handle: Option<u64> },
 }
 
 impl Reply {
@@ -219,7 +223,7 @@ pub struct Bar {
     pub image_rect: Rect,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct TextEdit {
     text: Vec<u8>,
     lines: Vec<u32>,
@@ -421,20 +425,19 @@ impl TextEdit {
         if id == 0 {
             return Ok(false);
         }
-        let acquired = s
+        let reply = s
             .call(Call::SoundAcquire {
                 reason,
                 id,
                 args: [5, 0x5b523ba4, 0, id, 0, 0, 0],
-            })?
-            .handle()?;
-        if let Some(handle) = acquired {
-            let result = s.call(Call::SoundPlay(handle));
-            s.call(Call::Release(handle))?;
-            result?.boolean()
-        } else {
-            Ok(false)
-        }
+            })?;
+        let Reply::Sound { acquired, handle } = reply else { return Err(Boundary::Foreign); };
+        let result = if acquired {
+            let handle = handle.ok_or(Boundary::Foreign)?;
+            s.call(Call::SoundPlay(handle)).and_then(Reply::boolean)
+        } else { Ok(false) };
+        if let Some(handle) = handle { s.call(Call::Release(handle))?; }
+        result
     }
     pub fn set_sound_id(&mut self, index: i32, id: u32) -> Result<bool> {
         if index >= 4 {
