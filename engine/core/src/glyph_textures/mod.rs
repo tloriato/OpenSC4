@@ -434,7 +434,6 @@ impl<P: TextureServices> GlyphTextureManager<P> {
     /// +4/+8 AddRef and message-target AddRef/Release/QI use the same primary
     /// methods, with receiver adjustment only. No neighboring ordinance thunks
     /// are exposed here. Auxiliary slot 3 uses deleting_destructor below.
-
     pub fn reference_count(&self) -> u32 {
         self.refs
     }

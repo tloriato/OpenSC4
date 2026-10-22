@@ -10,7 +10,10 @@
 - Done: corrected source and first 30 glyph tests committed as fabf19ce; exact 43-body/shared-entry/unsupported checklist below; fmt PASS (2 touched Rust files), diff --check clean.
 - Done: 5169862c fixes x87 subtraction tails via error-free TwoSum and 64-bit-significand rounding, distinguishing 2^-60, half-spacing 2^-65, and 2^-70. There are now 31 glyph tests (12 new); fmt PASS on both touched Rust files after this commit, diff --check clean.
 - Done: restore now reads font identity from each map key (glyph-info has no native font-ID field); a 32nd glyph test covers two map keys holding the same pointer with separate references.
-- Next: collect serial quick/fmt/all results on final source 6d551576 (32 glyph tests, 13 new; expected core test count 3060), inspect actual counts, replace Handoff with measured report, queue only passing bounded source. Do not relaunch the existing pipeline merely because it is quiet.
+- Final phase (phase 2/2, logical 3/3, no further round): OS Toolhelp/NtQueryInformationProcess command-line inspection found no live lane qbuild/compiler/PowerShell driver; CIM was denied. Old session numbers are historical, not liveness evidence.
+- Preserved prior four gate logs as build-runs/phase1-*.log before replacement; quick logs end at lock wait. Historical qbuild-test.log contains 40440 NUL bytes, LNK1104 on automata_records and 4441 baseline tests/19 glyph tests, not a final-source gate. Its four doctest suites completed but are baseline only.
+- Narrow fix: remove the demonstrated blank line at mod.rs:437 (clippy empty_line_after_doc_comments); behavior/source 6d551576 otherwise retained. Current intra-doc link global_cache_misses resolves to the public function in this module; require fresh doctest completion before claiming final PASS.
+- Next: commit lint-only correction, then one serial quick -> touched-file fmt -> all on unchanged source with CARGO_BUILD_JOBS=RUST_TEST_THREADS=1. Measure 32 glyph tests, actual core count (expected 3060), summed totals, clippy and full CTest. No queue until PASS.
 - Scope: glyph_textures only plus independent tests/conformance; no ABI, game, textures_materials, RE, or shared-table changes.
 - Family reservation remains logical round 2/3, this phase max 2 remaining rounds; original parked evidence retained.
 - GT1/GT2 remain foreign unknown boundaries. Unsupported invalid-memory/nontermination must stay explicit.
@@ -22,7 +25,7 @@
 - Older wrappers (baseline all 96574, quick 92060, quick 32-cell result, prior all 15722) may still finish; do not confuse original 19-test/fabf19ce results with final 32-test source 6d551576. Inspect the current serial pipeline completion/counts before queueing. Current logs: qbuild-test.log, qbuild-clippy.log, fc4verify-quick-test.log and fc4verify-quick-deps.log.
 - The map-key restore fix was committed while the serial pipeline's quick step was still waiting for its build-directory lock; its all step has not yet launched. No source changes are authorized after the final committed tree except a demonstrated gate failure.
 - Final fmt PASS on both touched Rust files at 22:04 local; final tree clean before this handoff update. Only four tracked files changed from base (owner, tests, size vectors, this lane record). No queue entry, no game request, ABI unchanged. Formatting helper uses rustfmt stdin plus engine/rustfmt.toml and apply_patch only.
-- Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-core-glyph-contractfix4-r1-manifest.json.
+- Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-core-glyph-contractfix4-r2-manifest.json; final maxRounds=1, no subagents/game/native/ABI/default/maps/coverage work.
 
 ## Review checklist (bounded portable contracts)
 
