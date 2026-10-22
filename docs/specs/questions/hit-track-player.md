@@ -1,8 +1,8 @@
 # cHitTrackPlayer — unresolved implementation questions
 
 About `docs/specs/hit-track-player.md`. Filed 2026-10-22 by `re-hittrack4`.
-No complete-owner credit: **75 / 110 bodies, 4385 / 16012 bytes specified;
-35 bodies / 11627 bytes remain open**. Sizes are exported body bytes. Groups below
+No complete-owner credit: **82 / 110 bodies, 6324 / 16012 bytes specified;
+28 bodies / 9688 bytes remain open**. Sizes are exported body bytes. Groups below
 partition every open inventory row exactly once; the cleanup boundary is additional
 external work and is not added to this owner’s byte count.
 
@@ -18,19 +18,14 @@ Remaining owned bodies: **1 / 6754 bytes**:
 
 **HT2 — Playback preparation and source admission.** Target: `hit-track-player.md` §4, §6, §8.
 
-Resolve PlayPause gating, fade-in arithmetic, reference acquisition and partial-failure state; SetTrackDef provider precedence, dependency-chain traversal and parameter writes; patch/sample selection, NoteOn and dependent-start setup; and the two child-visitor callbacks at 0x0093AB4B / 0x0093ABD4 (match property 0x456B8F1D and sound action). Verify adjusted views and callback timing against bytes. Also reconcile the non-owned cleanup boundary 0x0093E60A used by the deleting destructor: its misleading cHitChannel label is not proof of inheritance, and this lane adds no contract to that owner.
+The seven owned playback/definition bodies are answered in spec §6.4–6.7 and
+archived as HT2-owned. Remaining: reconcile the **non-owned** cleanup boundary
+0x0093E60A used by the deleting destructor, including release order, dependent
+removal and channel teardown. Its misleading cHitChannel label is not proof of
+inheritance, and this lane adds no complete contract to that owner. The visitor
+argument 0x456B8F1D is a GetTrackDef interface query, not an integer property key.
 
-Remaining owned bodies: **7 / 1939 bytes**:
-
-| Entry | Bytes | Export name / local status |
-|---|---:|---|
-| `0x0093AB4B` | 137 | unnamed; contract unresolved |
-| `0x0093ABD4` | 137 | unnamed; contract unresolved |
-| `0x0093B791` | 541 | `cHitTrackPlayer::PlayPause` |
-| `0x0093B9AE` | 321 | `cHitTrackPlayer::UpdatePatch` |
-| `0x0093BFEF` | 82 | `cHitTrackPlayer::NoteOn` |
-| `0x0093C0EC` | 317 | `cHitTrackPlayer::StartSndDependent` |
-| `0x0093EAA1` | 404 | `cHitTrackPlayer::SetTrackDef` |
+Remaining owned bodies in HT2: **0 / 0 bytes**; external cleanup remains open.
 
 **HT3 — Property, register and spatial dispatch.** Target: `hit-track-player.md` §3, §5, §8.
 

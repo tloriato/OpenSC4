@@ -338,6 +338,163 @@ clears the pause dword nor unloads or clears the main source references.
 Evidence: `0x0093BC4F–0x0093BC69` (byte stores and position copy),
 `0x0093BC84–0x0093BCFC` (notifications and two conditional/unconditional releases).
 
+### 6.4 PlayPause: gated success, resume and fresh activation
+
+`0x0093B791` (541 bytes) enters on P. In this subsection G(k) means integer
+read through P+4 slot +0x10; S(k,v,s) means its integer write slot +0x0C,
+including the suppression argument s. Every read is performed at its stated
+position; property notifications may change subsequent reads.
+
+1. Read `0xFFB0333D`. If nonzero, ask HitMan +0x8C for that ID. If it returns
+   an object, obtain its sound view through +0x10, then read that view's +0x50.
+   A zero result returns **true immediately**, without clearing fade state,
+   changing pause, resetting cursors or acquiring the active reference. A missing
+   object or a nonzero result continues. This is a gate, not a failed start.
+2. Ask this player's sound-view IsPlaying. Only if true, ask IsPaused. If both
+   are true, write P+0x5C=1 and return sound-view Unpause's result. Its Update(0)
+   and possible error check therefore happen through §5.1, not the fresh path.
+3. Otherwise clear byte P+0x100. If G(`0xFFFF4E79`) is nonzero, perform these
+   writes in order: if G(`0xFF0AD592`) is nonzero, S(`0xFF53DBF3`,
+   G(`0xFF2D16F2`),1); then S(`0xFF47F685`,`0xFF53DBF3`,1),
+   S(`0xFF2D16F2`,G(`0xFF53DBF3`),1), S(`0xFF53DBF3`,0,1).
+   Read `0xFF2D16F2` again, multiply by 1000 retaining the low 32 bits,
+   read `0xFFFF4E79` again and perform **signed** division of that wrapped product
+   by this second denominator, truncating toward zero. Write the quotient to
+   `0xFFD1C82F` with suppression 1. If a fresh read of `0xFFD1C82F` is nonzero,
+   S(`0xFF0AD592`,1,0). The initial denominator test does not protect a later
+   zero denominator after callbacks; zero or signed quotient overflow faults
+   at the division, rather than returning a managed failure.
+4. Clear P+0x5C, S(`0xFFAEC905`,G(`0xFFAEC905`),0), then UpdateVolPan.
+   S(`0xFF5F15E1`,G(`0xFF5F15E1`),0) is the first write whose false result
+   stops this path: return false with prior changes retained.
+5. Copy P+0x70 to both P+0x6C and P+0x74. Retained-assign P+0xAC into P+0xB0.
+   If G(`0xFF3C2160`) is nonzero, obtain a temporary HitMan reference and call
+   its +0x40(ID,`0xDB1ACFB2`,address of P+0xB0). Release the temporary in either
+   case. A false result returns false; the cursor and list changes are not rolled
+   back. A zero ID skips this lookup.
+6. Set wait P+0x44=G(`0xFF0246FE`); UpdatePitch; set byte P+0x58=1;
+   AddRef this primary player; S(`0xFF245400`,1,0); return true, ignoring that
+   last write's result. This body does not register the periodic update target.
+
+Evidence: gate/resume `0x0093B79A–0x0093B800`; ordered writes and
+IMUL/CDQ/IDIV `0x0093B805–0x0093B8C9`; failure and activation
+`0x0093B8CC–0x0093B9A6`. Both early-success paths bypass the activation AddRef.
+
+### 6.5 Patch selection and NoteOn
+
+UpdatePatch (`0x0093B9AE`, 321 bytes, P) reads patch ID `0xFFAEC905`, then
+`0xFF6F9546`. If the latter is nonzero and equal to the patch ID, diagnose
+`Recursive sound id` through HitMan +0x74(P,text) and return false without
+clearing the existing source. Otherwise, when ID differs from cached P+0x64,
+clear/release P+0x7C, clear/release P+0x80, then store the new ID in P+0x64.
+These are reference releases, not explicit Stop or Kill calls.
+
+If P+0x7C is null and ID nonzero, request sound-manager P+0x94 slot +0x48
+with arguments (ID,0,0,`0xFD584467`,address of P+0x7C). The output-reference
+helper clears/releases the old destination before the call. A false result
+diagnoses `Sample file not found` and returns false; there is no rollback of
+the cached ID. Otherwise, if P+0x7C exists, clear/release P+0x80 and QI that
+primary for `0x206077D2` into P+0x80. This QI result is ignored.
+
+Still within the non-null-primary branch, read `0xFF891EAA`. If nonzero, ask
+HitMan P+0x8C slot +0x58(ID), retained-assign its result into P+0x88, and if
+that result is non-null call provider +0x18(P+4,main primary). Zero ID leaves
+the previous provider in place. Then write property `0xFFF7B8DF` on the main
+primary, using the value read from P+4 and suppression 0. Finally, whether or
+not there was a primary, call UpdateVolPan, then UpdatePitch, and return true.
+Their results and the property write result do not determine this return.
+Evidence: `0x0093B9BB–0x0093BA57`, `0x0093BA61–0x0093BAE8`.
+
+NoteOn (`0x0093BFEF`, 82 bytes, P, one incoming word) does **not** use its
+argument. If P+0x7C is null on entry, diagnose `Attempt to play note with no
+channel` and return false, without attempting UpdatePatch. Otherwise call
+UpdatePatch and ignore its result, dereference P+0x80 and call its +0x18
+(the three-word Play entry) with (1024,0,1). Save its byte result, call
+UpdateVolPan and UpdatePitch, then return that saved byte. There is no second
+null check after UpdatePatch, and no failure return for a now-null sound view;
+an invalid view can fault. In particular, the incoming note word does not become
+a frequency or Play argument in this body. Evidence: `0x0093BFF2–0x0093C03E`.
+
+### 6.6 Dependent sounds and child visitors
+
+StartSndDependent (`0x0093C0EC`, 317 bytes, P, ID) asks the sound manager from
+RZ::SM at +0x48(ID,0,0,`0x206077D2`,out). The call's boolean is ignored;
+a null output returns false. A non-null output is appended as a retained
+reference to P+0x98 **before** any property copying or Play call. Take a
+temporary retained reference to provider-vector entry zero and QI the child for
+`0xFD584467`. If successful, enumerate the parent's provider zero through
++0x18(out key,out value pointer), then +0x1C for subsequent entries. For each
+entry, ask the child's register view +0x18(key). Only if absent, write its
+integer word from value-pointer+4 with child +0x0C(key,word,1). Existing child
+values win; failed writes do not stop enumeration. This copies provider zero,
+not the merged lookup across all parent providers.
+
+Read the parent's properties in this order: `0xFF141C48`, `0xFF9250B3`,
+`0xFF9EC945`, `0xFF1885BE`; call the child's sound-view +0x14 Play with those
+four values in the listed argument order. Ignore its result. Release temporary
+child-register, parent-provider and child-sound references in that order, then
+return true. The list's reference remains even on Play failure. There is no
+sequencer activation, active-player AddRef, rollback or periodic registration in
+this body. Evidence: creation/list insertion `0x0093C0FC–0x0093C14B`, copy
+`0x0093C150–0x0093C1AE`, Play and releases `0x0093C1B0–0x0093C220`.
+
+The two 137-byte visitor bodies `0x0093AB4B` and `0x0093ABD4` take a child
+interface and a 32-bit match ID. Each QIs the child for player primary
+`0xBB1BE367`; if successful calls that player's GetTrackDef
+(`+0x20`)(`0x456B8F1D`,out), then calls the returned interface's +0x1C.
+This is an interface query through GetTrackDef, **not** an integer property
+lookup. Compare the returned word for equality with match ID. On equality,
+obtain the sound view through primary +0x0C and call respectively Kill (+0x24,
+first visitor) or Stop (+0x20, second visitor). Ignore the sound action result,
+release the queried definition interface, release the queried primary and
+return false. On either query failure or ID mismatch, release whichever queried
+references exist and return true. The original child argument is borrowed and
+is not released. Returned sound view is borrowed. Both outputs start null;
+there is no null check between a successful query and dereference. Caller-level
+meaning of the false visitor result remains part of interpreter HT1.
+Evidence: `0x0093AB4F–0x0093ABD3`, `0x0093ABD8–0x0093AC5C`; borrowed sound
+view adjustment verified at shared `0x00968303`.
+
+### 6.7 Track definition and provider-chain installation
+
+SetTrackDef (`0x0093EAA1`, 404 bytes, P, definition) assumes vector storage
+exists. If provider zero exists, call its +0x14 (clear/reset). Otherwise
+allocate 24 bytes, construct the property-set object at `0x00939237` if allocation
+succeeds, and retained-assign the resulting pointer (or null) into slot zero.
+Retained-assign the incoming definition into slot one. Copy slot one's reference
+into a temporary and query its +0x20 with key-address `0xFF4C97BE` and a
+zero-initialized integer output variant (`0x00AD25FC`).
+
+While the query succeeds and its returned word is nonzero, release/clear the
+temporary current provider, then ask sound-manager P+0x94 +0x0C for the key
+triple (type `0x0B8D821A`, group `0xFC45CAF7`, instance=returned word), IID
+`0xEBB10CDD`, and temporary output. If output is null, stop the chain. Otherwise
+retained-assign it into the next vector slot (first slot two), query that new
+provider for `0xFF4C97BE`, and repeat. There is no bounds, capacity, repeated-ID
+or cycle check, and **no vector resize** in this body. Slots beyond the last
+written one are not cleared. A shorter replacement chain can therefore retain
+old trailing providers, which §5.2 still searches. A chain exceeding allocated
+slots is not a safe, dynamically growing operation established by this routine.
+
+After the chain, read `0xFF5F15E1`; if nonzero invoke primary +0x68(value),
+the cursor-setup helper at `0x0093AEB1`, ignoring its result. Then read
+`0xFF891EAA`; if nonzero ask HitMan +0x58(value) and retained-assign its result
+to P+0x88; zero leaves that provider unchanged. Finally QI the original incoming
+definition for `0x3B93C5E7`; on success obtain its +0x1C word and pass it to
+this player's sound-view SetID. Release that QI reference and the temporary
+chain reference, then return true. Allocation, failed dependency lookup,
+cursor-setup failure and failed final QI do not produce a false result here.
+Null incoming definitions are not checked before querying provider one.
+
+Reference assignments used here AddRef a differing new non-null reference,
+store it, then Release the old non-null reference; equal pointers are a no-op.
+The temporary copy adds one reference; changing it releases the previous one.
+Evidence: installation `0x0093EAAA–0x0093EB29`, chain
+`0x0093EB2E–0x0093EBA5`, final effects `0x0093EBA7–0x0093EC34`;
+shared assignment/copy bodies `0x0094909A`, `0x00969FEA`, `0x00966956`.
+The misleading shared label `cS3DVector3::cS3DVector3` at `0x004F20A0`
+actually clears/releases the output reference before returning its address.
+
 ## 7. Timer and interpreter scheduling
 
 Update reaches HandleTimerCallback through primary +0x60. The callback body at
@@ -402,8 +559,8 @@ Those unresolved callback actions are HT3, not an assumed no-op message handler.
 ## 9. Open coverage
 
 Only inventory rows with a section reference have a concrete contract here.
-Coverage: **75 / 110 bodies, 4385 / 16012 bytes specified**. Exactly
-**35 bodies / 11627 bytes remain open** (HT1: 1/6754; HT2: 7/1939;
+Coverage: **82 / 110 bodies, 6324 / 16012 bytes specified**. Exactly
+**28 bodies / 9688 bytes remain open** (HT1: 1/6754; HT2: external cleanup only;
 HT3: 3/924; HT4: 3/715; HT5: 21/1295). These are body counts/bytes,
 not estimates from source-line length. The largest gap is DoCommand.
 Rows marked open remain necessary implementation work, grouped into HT1–HT5 in
@@ -455,6 +612,31 @@ must be preserved when those gaps are filled.
     untranslated short key to distinguish parent float lookup from child integer
     key translation.
 
+13. Gate PlayPause with a nonzero `0xFFB0333D`, a returned peer whose sound-view
+    +0x50 returns zero, and seeded pause/fade/cursors. Require true with these
+    fields unchanged, no active AddRef and no activation-property write.
+14. Fresh PlayPause, denominator=3, copied value=-5: rate is -1666 (signed
+    division); value=4294968 gives wrapped product 704 and rate 234. Make the
+    `0xFF5F15E1` self-write fail: prior writes remain, but no cursor reset or
+    active AddRef occurs. Make the later Hit-list lookup fail instead: the
+    cursor reset has already occurred and is not rolled back.
+15. Start a dependent whose Play returns false, with parent provider-zero
+    values A=7 and B=-3, child containing A=0 and lacking B. Require no A write,
+    suppressed integer B=-3 write, a retained list entry and true return. Parent
+    provider-one values are not enumerated for this copy.
+16. Replace a chain [definition,D1,D2] with one having no dependency: slot one
+    changes, but D1/D2 remain retained and searchable. A failed dependency fetch
+    ends the chain yet SetTrackDef returns true. Keep fixtures within vector
+    allocation; no unsafe overrun experiment is required.
+17. Give NoteOn a main primary, make UpdatePatch diagnose recursive ID, and
+    retain a valid old sound view. Require Play(1024,0,1), volume and pitch
+    updates despite that failure, and return the Play byte. Vary the incoming
+    note word: it changes none of these calls.
+18. Visitors: an equal queried definition ID invokes Kill or Stop respectively
+    and returns false even when the action fails. A mismatch invokes neither
+    action and returns true. In both cases release definition before primary;
+    do not release the borrowed input or sound view.
+
 These are discriminating implementation cases, not results of an executed game
 or an implementation test suite. No game/shadow claim is made for this docs lane.
 
@@ -486,8 +668,8 @@ audit. Open rows are tracked in the questions file as implementation gaps.
 | `0x0093AAB5` | 29 | unnamed | reach | open |
 | `0x0093AAD2` | 40 | unnamed | neighbour | open |
 | `0x0093AAFA` | 47 | unnamed | reach | open |
-| `0x0093AB4B` | 137 | unnamed | reach | open |
-| `0x0093ABD4` | 137 | unnamed | reach | open |
+| `0x0093AB4B` | 137 | unnamed | reach | §6.6 |
+| `0x0093ABD4` | 137 | unnamed | reach | §6.6 |
 | `0x0093AC5D` | 42 | `cHitTrackPlayer::Shutdown` | name-high | §4 |
 | `0x0093AC87` | 22 | `cHitTrackPlayer::GetTrackDef` | name-high | §5 |
 | `0x0093AC9D` | 20 | `cHitTrackPlayer::SetHitList` | name-high | §5 |
@@ -519,18 +701,18 @@ audit. Open rows are tracked in the questions file as implementation gaps.
 | `0x0093B6CE` | 32 | unnamed | neighbour | open |
 | `0x0093B6EE` | 136 | unnamed | neighbour | open |
 | `0x0093B776` | 27 | unnamed | neighbour | open |
-| `0x0093B791` | 541 | `cHitTrackPlayer::PlayPause` | name-high | open |
-| `0x0093B9AE` | 321 | `cHitTrackPlayer::UpdatePatch` | name-high | open |
+| `0x0093B791` | 541 | `cHitTrackPlayer::PlayPause` | name-high | §6.4 |
+| `0x0093B9AE` | 321 | `cHitTrackPlayer::UpdatePatch` | name-high | §6.5 |
 | `0x0093BB39` | 51 | unnamed | reach | open |
 | `0x0093BB6C` | 132 | unnamed | reach | open |
 | `0x0093BBF0` | 278 | `cHitTrackPlayer::Kill` | name-high | §6 |
 | `0x0093BD06` | 745 | `cHitTrackPlayer::HandleNotifySetPropertyValue` | name-high | open |
-| `0x0093BFEF` | 82 | `cHitTrackPlayer::NoteOn` | name-high | open |
+| `0x0093BFEF` | 82 | `cHitTrackPlayer::NoteOn` | name-high | §6.5 |
 | `0x0093C041` | 35 | unnamed | neighbour | open |
 | `0x0093C064` | 53 | unnamed | neighbour | open |
 | `0x0093C099` | 41 | unnamed | neighbour | open |
 | `0x0093C0C2` | 42 | unnamed | reach | open |
-| `0x0093C0EC` | 317 | `cHitTrackPlayer::StartSndDependent` | name-high | open |
+| `0x0093C0EC` | 317 | `cHitTrackPlayer::StartSndDependent` | name-high | §6.6 |
 | `0x0093C229` | 6754 | `cHitTrackPlayer::DoCommand` | name-high | open |
 | `0x0093DE80` | 25 | unnamed | reach | open |
 | `0x0093DE99` | 179 | unnamed | reach | open |
@@ -573,7 +755,7 @@ audit. Open rows are tracked in the questions file as implementation gaps.
 | `0x0093E89E` | 62 | unnamed | reach | §4 |
 | `0x0093E8DC` | 24 | unnamed | reach | §4 |
 | `0x0093E8F4` | 429 | `cHitTrackPlayer::cHitTrackPlayer` | name-medium | §4 |
-| `0x0093EAA1` | 404 | `cHitTrackPlayer::SetTrackDef` | name-high | open |
+| `0x0093EAA1` | 404 | `cHitTrackPlayer::SetTrackDef` | name-high | §6.7 |
 | `0x00949B47` | 3 | `cHitTrackPlayer::GetUseCount` | name-low | §5 |
 | `0x009CFA36` | 12 | `cHitTrackPlayer::AsIGZSndRegisterSet` | name-low | §2 |
 
