@@ -51,7 +51,6 @@
 #include "FC4MySimsShadow.h"  // the mysims1 lane: mysims_shadow
 #include "cFC4Automata.h"  // the glue19 lane
 #include "FC4HistoryShadow.h"
-#include "FC4WeatherShadow.h"
 #include "FC4NetMgrShadow.h"
 #include "FC4TerrainShadow.h"  // the glue16 lane
 #include "FC4CitySitShadow.h"     // the glue17 lane: citysit_shadow
@@ -112,6 +111,7 @@
 #include "FC4ExemplarFactory.h"   // the glue-exemplars4 lane
 #include "FC4Span565Bridge.h"     // the glue-span565-impl4 lane
 #include "FC4Span1555Shadow.h"    // the glue-span1555-impl4 lane: span1555
+#include "FC4WeatherShadow.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -735,9 +735,9 @@ void Resolve() {
     }
     // The cSpanRender1555 native bridge (FC4Span1555Shadow.h; glue-span1555-impl4).
     Span1555Startup(enabledKey("span1555"));
-    WeatherShadowStartup(g_enabled[0], enabledKey("weather"));
     // Scripted actions (FC4Script.h; tooling): the whole file is parsed now.
     ScriptReload();
+    WeatherShadowStartup(g_enabled[0], enabledKey("weather"));
 }
 
 }  // namespace

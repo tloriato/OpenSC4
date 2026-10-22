@@ -28,6 +28,7 @@ uint64_t g_days = 0, g_weeks = 0, g_months = 0, g_saves = 0;
 uint64_t g_compared = 0, g_mismatches = 0, g_refused = 0, g_failures = 0;
 uint64_t g_ownerRefused = 0, g_originalCalls = 0;
 uint64_t g_seen = 0;
+uint64_t g_passthrough = 0;
 
 int32_t Month(void*) { return g_month; }
 int32_t Hemisphere(void*) { return g_hemisphere; }
@@ -36,7 +37,8 @@ void Report(const char* operation, int64_t julian) {
     Log("weather shadow %s julian=%lld: INCOMPLETE WY1; original=%p natural_calls=%llu "
         "days=%llu weeks=%llu months=%llu presaves=%llu calendar_equal=%llu calendar_compared=%llu "
         "calendar_mismatches=%llu simulation_compared=0 simulation_refused=%llu failures=%llu "
-        "owner_refused=%llu natural_seen=%llu fixtures=0 fallback=0 resync=0 native_seed_captured=0 rng_draws_captured=0 "
+        "owner_refused=%llu natural_seen=%llu passthrough=%llu input_month=%d hemisphere=%d "
+        "fixtures=0 fallback=0 resync=0 native_seed_captured=0 rng_draws_captured=0 "
         "init_compared=0 read_compared=0 write_compared=0 ambient_compared=0 wind_compared=0 "
         "grid_compared=0 shutdown_compared=0 full_exact=0",
         operation, static_cast<long long>(julian), g_original,
@@ -45,7 +47,8 @@ void Report(const char* operation, int64_t julian) {
         static_cast<unsigned long long>(g_saves), static_cast<unsigned long long>(g_compared - g_mismatches),
         static_cast<unsigned long long>(g_compared), static_cast<unsigned long long>(g_mismatches),
         static_cast<unsigned long long>(g_refused), static_cast<unsigned long long>(g_failures),
-        static_cast<unsigned long long>(g_ownerRefused), static_cast<unsigned long long>(g_seen));
+        static_cast<unsigned long long>(g_ownerRefused), static_cast<unsigned long long>(g_seen),
+        static_cast<unsigned long long>(g_passthrough), g_month, g_hemisphere);
 }
 
 void CompareCalendar() {
@@ -142,9 +145,11 @@ bool WeatherShadowDeliver(cIGZMessageTarget2* target, const char* name, cIGZMess
         std::strcmp(name, "cSC4WeatherSimulator") != 0 ||
         (type != kDay && type != kWeek && type != kMonth)) return false;
     ++g_seen;
+    ++g_refused;  // every eligible delivery lacks aligned stateful replay, including passthroughs
     cFC4ISC4WeatherSimulator* owner = nullptr;
     if (!target->QueryInterface(kWeatherIID, reinterpret_cast<void**>(&owner)) || !owner) {
         ++g_ownerRefused;
+        ++g_passthrough;
         return false;
     }
     FC4_ACQUIRED(owner, "weather shadow delivery owner QI");
@@ -152,6 +157,7 @@ bool WeatherShadowDeliver(cIGZMessageTarget2* target, const char* name, cIGZMess
     FC4_RELEASE(owner);
     if (!same) {
         ++g_ownerRefused;
+        ++g_passthrough;
         return false;
     }
     // Exactly one authoritative natural delivery. Never invoke the Rust
@@ -162,9 +168,12 @@ bool WeatherShadowDeliver(cIGZMessageTarget2* target, const char* name, cIGZMess
     if (type == kDay) ++g_days;
     if (type == kWeek) ++g_weeks;
     if (type == kMonth) ++g_months;
-    ++g_refused;
     CompareCalendar();
-    if (type == kMonth) Report("month", data1);
+    if (type == kMonth || (type == kWeek && g_weeks == 1) || (type == kDay && g_days == 1)) {
+        Log("weather shadow: native dispatch target=%p owner=%p type=0x%08x finished=%d",
+            target, g_original, type, *finished ? 1 : 0);
+        Report(type == kMonth ? "month" : (type == kWeek ? "first-week" : "first-day"), data1);
+    }
     return true;
 }
 

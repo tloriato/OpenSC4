@@ -514,9 +514,6 @@ if(FC4_IS_WIN32_X86)
         plugin/FC4AdvLife.h
         plugin/cFC4AdvisorObjects.h
         plugin/cFC4AdvisorObjects.cpp
-        # Independent original weather calendar probes; stateful replay parked as WY1.
-        plugin/FC4WeatherShadow.cpp
-        plugin/FC4WeatherShadow.h
         # gzcom-dll SDK sources (LGPL-2.1-or-later). Not the SDK's
         # Opt-in 8888 bridge (span-render-8888.md section 1.1).
         plugin/FC4SpanRender8888.cpp
@@ -526,7 +523,10 @@ if(FC4_IS_WIN32_X86)
         "${FC4_GZCOM_DIR}/src/cRZBaseString.cpp"
         "${FC4_GZCOM_DIR}/src/SC4String.cpp"
         "${FC4_GZCOM_DIR}/src/cRZBaseVariant.cpp"
-        "${FC4_GZCOM_DIR}/src/StringResourceManager.cpp")
+        "${FC4_GZCOM_DIR}/src/StringResourceManager.cpp"
+        # Independent original weather calendar probes; stateful replay parked as WY1.
+        plugin/FC4WeatherShadow.cpp
+        plugin/FC4WeatherShadow.h)
     target_include_directories(FreeCity4 PRIVATE "${FC4_GZCOM_DIR}/include" plugin)
     target_compile_definitions(FreeCity4 PRIVATE
         _CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN

@@ -13,5 +13,7 @@
 - Done d8e91506: substantive calendar-only shadow and WY1. `qbuild quick`: FAIL 22/209 edges, same C1083 object write Permission denied; weather translation unit not yet built. No Rust crate touched.
 - Checked parent output directory ACL permits Modify for sandbox users; process inspection is unavailable (OS Access denied). No permission changes or service restarts attempted.
 - Review caught and fixed retained pointer clearing at shutdown; native date out-parameters now use checked canaries and false original delivery results increment failures.
-- Next: final all gate, test whether a worktree-local sccache directory/unique port avoids an existing daemon with another sandbox context. No shared configuration edits. No readiness/game claims without compiled DLL and real-game evidence.
+- Final all gate with local SCCACHE_DIR and unique SCCACHE_SERVER_PORT=44267: Rust 4938/0/0, clippy 0 diagnostics; C++ FAIL 22 edges, same C1083 output write Permission denied, ctest skipped. Cache isolation did not resolve infrastructure.
+- Final review: simulation_refused includes all eligible deliveries, with passthrough and owner refusals explicit; log input month/hemisphere and first day/week native dispatch evidence. Move shared additions to ends of lists.
+- Next: record exact final-source gate and blocked report; no game submission while DLL cannot build. Stateful simulation is still parked on WY1 regardless of build outcome.
 - No game requests outstanding. No ABI changes. No forbidden sources accessed.
