@@ -15,6 +15,8 @@ mod paint;
 mod resources;
 
 pub use encoding::{char_length, glyph_count, previous_char_length};
+pub use layout::Scroll;
+pub use paint::{PaintContext, PaintPalette};
 pub use crate::fonts::layout::Rect;
 pub use crate::ui_windows::win::WinToken;
 
@@ -201,6 +203,8 @@ impl TextEdit {
         Self {
             text: Vec::new(), lines: Vec::new(), position: Position::default(),
             flags: Self::normalize_flags(flags), selector, maximum: u32::MAX,
+            // [choice TE9] No published default for this word; configurable zero
+            // is portable initial storage, not a native constructor assertion.
             undo_limit: 0, undo: Vec::new(), redo: Vec::new(), pending: Vec::new(),
             gutter_x: 5, gutter_y: 0, width: 0, height: 0,
             visible_width: 0, visible_height: 0, visible_rows: 0, line_height: 0,
