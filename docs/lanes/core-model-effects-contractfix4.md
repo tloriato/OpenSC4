@@ -14,6 +14,8 @@
 - Next: collect baseline and quick gates; fix compile/test diagnostics; inventory report for 23 roles, stable-source final all, then ready queue.
 - Storage leases extend portable allocation lifetimes without native AddRef; destruction drops host wrappers without foreign Stop/Release. No native adapter or equivalence claimed.
 - Thin-address fixture fix and role inventory committed in 91f667d6; touched-file fmt passed. Native baseline build still outstanding; first quick ended E0502/configure failure, both documented below.
+- Baseline workspace test log aggregates 5,140 passed / 0 failed / 0 ignored, 22 result lines; initial all clippy failed on the now-fixed in-flight fixture, native baseline result pending.
+- Added explicit manual-entry/null attachment transitions; core suite now 25 tests versus original 16. Comment boundary milestone 6755b875.
 
 ## Contract reconciliation (working)
 
@@ -65,7 +67,7 @@ GF19–GF24 remain open, unedited and unanswered. Remaining scope: inventory/hel
 ## Validation (pending)
 
 - First substantive correction committed at `5548319b`, before call 30; implementation milestone `20956ca7`.
-- Core fixtures currently 24 tests (parent 16), plus the existing one formats integration test, with independent expected traces/geometry derived from the published contract.
+- Core fixtures currently 25 tests (parent 16), plus the existing one formats integration test, with independent expected traces/geometry derived from the published contract.
 - Initial `all` began on the clean baseline; workspace cargo tests completed, but clippy observed the in-flight test pointer borrow error. Final stable gate will supersede this mixed-source baseline attempt.
 - First quick run: E0502 in same-pointer test fixture; dependents compiled. Fixed by comparing a thin address. Its CMake configure also hit Ninja recompaction permission denial while the baseline build was outstanding. No build-system changes made; serialize subsequent gates.
 - Touched-file fmt passes with absolute paths (four files); relative-path attempt could not resolve files. Final fmt/gate counts will be recorded here before ready.

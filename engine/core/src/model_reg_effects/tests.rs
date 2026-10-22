@@ -303,6 +303,42 @@ fn clear_processes_all_effects_before_record_storage_and_keeps_instance() {
 }
 
 #[test]
+fn null_to_null_preserves_manual_entries_but_new_and_null_attachments_shutdown() {
+    let mut factory = Factory::new();
+    let mut owner = ModelRegEffects::new();
+    add(&mut owner, &mut factory, "manual", "smoke");
+    factory.take();
+    owner.attach(None);
+    assert!(factory.take().is_empty());
+    assert!(owner.get_effect("manual").is_some());
+    owner.attach(Some(instance(1, regions(&["fx_a"]), &factory.log)));
+    assert_eq!(
+        factory.take(),
+        [
+            Event::Stop(0, 0),
+            Event::Release(0),
+            Event::WrapperDrop(0),
+            Event::Acquire(1)
+        ]
+    );
+    owner.init(&mut factory);
+    assert_eq!(factory.take(), [Event::Create("a".into())]);
+    owner.attach(None);
+    assert_eq!(
+        factory.take(),
+        [
+            Event::Stop(1, 0),
+            Event::Release(1),
+            Event::WrapperDrop(1),
+            Event::InstanceRelease(1),
+            Event::StorageDrop(1)
+        ]
+    );
+    assert!(owner.instance().is_none());
+    assert_eq!(owner.entries().len(), 0);
+}
+
+#[test]
 fn destruction_has_no_effect_stop_or_release_and_ends_storage_before_instance() {
     let mut factory = Factory::new();
     let mut owner = ModelRegEffects::new();
