@@ -9017,6 +9017,8 @@ bool fc4_tutorial_get_state(const fc4_tutorial* t, fc4_tutorial_state* out);
  * unless the version is 2 and maps the GUID (0 -> 0x8A5B7A6C, 1 -> 0xEA5D6DC8). */
 bool fc4_tutorial_write(const fc4_tutorial* t, const fc4_ostream* out);
 bool fc4_tutorial_read(fc4_tutorial* t, const fc4_istream* in);
+/* TU7: atomically prepare the four saved fields before native metadata/save. */
+void fc4_tutorial_prepare_city_save(fc4_tutorial* t, uint32_t guid);
 
 /* ---- network manager (docs/specs/network-manager.md; engine/capi/src/network_manager.rs) ----
  * cSC4NetworkManager (component 53) and cSC4NetworkLotManager (component 11).

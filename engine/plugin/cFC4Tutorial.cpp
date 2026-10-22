@@ -19,6 +19,7 @@
 #include "FC4PropCityCommon.h"
 #include "FC4RefAudit.h"
 #include "FC4Streams.h"
+#include "compat/FC4Compat.h"
 
 #include "GZServPtrs.h"
 #include "cIGZApp.h"
@@ -33,9 +34,18 @@
 #include "cISCLua.h"
 #include "cRZBaseString.h"
 #include "cRZCOMDllDirector.h"
+#include "cGZMessage.h"
+#include "cISC4Region.h"
+#include "cISC4RegionalCity.h"
 
 #include <mutex>
 #include <set>
+#include <cctype>
+#include <cstdlib>
+#include <cstring>
+#include <exception>
+#include <string>
+#include <vector>
 
 namespace {
 
@@ -69,14 +79,6 @@ std::set<const void*>& Live() {
     return s;
 }
 
-// Logged once per process: a host route the shim does not have (TU6-TU9).
-void NoteOnce(std::atomic<bool>& flag, const char* what) {
-    if (!flag.exchange(true)) fc4::Log("tutorial: %s", what);
-}
-std::atomic<bool> g_noteWindow{false};
-std::atomic<bool> g_noteRegistry{false};
-std::atomic<bool> g_noteFilter{false};
-
 // ---- host callbacks (fc4_tutorial_host) ------------------------------------------------------------------
 //
 // The core runs under the lock: the game calls it asks for are queued
@@ -90,8 +92,8 @@ void UnsubscribeCb(void* u, uint32_t type) {
     cFC4TutorialSystem* s = Self(u);
     s->Lock().Defer([s, type] { s->Subscribe(type, false); });
 }
-bool CheatsAvailableCb(void* u) { return Self(u)->CheatsAvailable(); }
-bool HasCheatManagerCb(void* u) { return Self(u)->HasCheatManager(); }
+bool CheatsAvailableCb(void* u) { fc4::CoreLock::Unlocked unlock(Self(u)->Lock()); return Self(u)->CheatsAvailable(); }
+bool HasCheatManagerCb(void* u) { fc4::CoreLock::Unlocked unlock(Self(u)->Lock()); return Self(u)->HasCheatManager(); }
 void RegisterCheatCb(void* u) {
     cFC4TutorialSystem* s = Self(u);
     s->Lock().Defer([s] { s->CheatRegistration(true); });
@@ -100,32 +102,15 @@ void UnregisterCheatCb(void* u) {
     cFC4TutorialSystem* s = Self(u);
     s->Lock().Defer([s] { s->CheatRegistration(false); });
 }
-void AddRefCb(void*, uint64_t token) {
+void AddRefCb(void* u, uint64_t token) {
+    fc4::CoreLock::Unlocked unlocked(Self(u)->Lock());
     if (cIGZUnknown* p = fc4::FromToken(token)) FC4_ADDREF(p);
 }
-void ReleaseCb(void*, uint64_t token) {
+void ReleaseCb(void* u, uint64_t token) {
+    fc4::CoreLock::Unlocked unlocked(Self(u)->Lock());
     if (cIGZUnknown* p = fc4::FromToken(token)) FC4_RELEASE(p);
 }
-// TU9: cSC4TutorialUIWinProc has no route in docs/abi: no window.
-uint64_t CreateWindowCb(void*) {
-    NoteOnce(g_noteWindow, "WARNING the tutorial window cannot be created (no route to cSC4TutorialUIWinProc, TU9); "
-                           "the tutorial runs without a window");
-    return 0;
-}
-// TU6: the registry (cISC4App slot 49) has no interface: no entry, SetActive not made.
-bool RegistrySetActiveCb(void*, uint32_t guid, bool active) {
-    NoteOnce(g_noteRegistry, "the tutorial registry is not reachable (TU6): SetActive and the entry lookup answer "
-                             "false");
-    fc4::Log("tutorial: registry SetActive(0x%08X, %d) not made (TU6)", guid, active ? 1 : 0);
-    return false;
-}
-bool RegistryEntryEnabledCb(void*, uint32_t guid, bool* enabled) {
-    NoteOnce(g_noteRegistry, "the tutorial registry is not reachable (TU6): SetActive and the entry lookup answer "
-                             "false");
-    fc4::Log("tutorial: registry entry 0x%08X not looked up (TU6): no window opens", guid);
-    if (enabled != nullptr) *enabled = false;
-    return false;
-}
+#include "cFC4TutorialNative.inl"
 // §4.2 (TU2, answered): endTutorial calls the 3D view, when present, slot 60
 // CloseTertiaryMenu then slot 59 CloseSecondaryMenu (docs/abi interfaces.tsv
 // cISC4View3DWin 59 / 60; the SDK header has the same slots). The view is the
@@ -145,7 +130,7 @@ void ViewRestoreCb(void* u) {
         fc4::propcity::Drop(view);
     });
 }
-uint64_t FetchLuaCb(void* u) { return Self(u)->FetchLuaContext(); }
+uint64_t FetchLuaCb(void* u) { fc4::CoreLock::Unlocked unlock(Self(u)->Lock()); return Self(u)->FetchLuaContext(); }
 
 fc4_tutorial_host MakeHost(cFC4TutorialSystem* self) {
     fc4_tutorial_host h{};
@@ -160,8 +145,16 @@ fc4_tutorial_host MakeHost(cFC4TutorialSystem* self) {
     h.add_ref = &AddRefCb;
     h.release = &ReleaseCb;
     h.create_window = &CreateWindowCb;
-    // The window's slots are never reached: there is no window (create_window
-    // answers 0 and the core never keeps a window it was not given).
+    h.init_window = &InitWindowCb;
+    h.close_window = &CloseWindowCb;
+    h.window_current_task = &CurrentTaskCb;
+    h.task_edge_scrolling_allowed = &TaskEdgeCb;
+    h.window_filter_value = &FilterValueCb;
+    h.window_show_hints = &ShowHintsCb;
+    h.window_catalog_menu = &CatalogCb;
+    h.window_left_click = &LeftClickCb;
+    h.window_reset = &ResetWindowCb;
+    h.window_event = &EventCb;
     h.registry_set_active = &RegistrySetActiveCb;
     h.registry_entry_enabled = &RegistryEntryEnabledCb;
     h.view_restore_controls = &ViewRestoreCb;
@@ -186,8 +179,11 @@ uint32_t cFC4TutorialCheatHandler::Release() { return owner_->Release(); }
 // §4.3: the debug subcommands (reset, save, step, next, quit) of the cheat
 // "Tutorial" are not specified (TU7): logged and ignored. Only registered
 // when the app's debug functionality is on.
-bool cFC4TutorialCheatHandler::DoMessage(cGZMessage&) {
-    fc4::Log("tutorial: the debug cheat \"Tutorial\" was issued; its subcommands are not specified (TU7), ignored");
+bool cFC4TutorialCheatHandler::DoMessage(cGZMessage& msg) {
+    if (msg.dwMessageType != 0x230E27AC) return true;
+    auto* text = reinterpret_cast<cIGZString*>(static_cast<uintptr_t>(msg.dwData2));
+    const std::string line = text->ToChar(); // TU7: parse before testing the cheat ID
+    owner_->CheatCommand(line.c_str(), msg.dwData1);
     return true;
 }
 
@@ -197,6 +193,7 @@ cFC4TutorialSystem::cFC4TutorialSystem() : cheat_(this) {
     host_ = MakeHost(this);
     core_ = fc4_tutorial_create(&host_, fc4::TokenOf(Primary()));
     if (core_ == nullptr) fc4::Log("cFC4TutorialSystem: core creation failed");
+    BindNativeOwner();
     {
         std::lock_guard<std::mutex> g(LiveLock());
         Live().insert(this);
@@ -209,8 +206,17 @@ cFC4TutorialSystem::~cFC4TutorialSystem() {
         std::lock_guard<std::mutex> g(LiveLock());
         Live().erase(this);
     }
+    // TU4: no implicit Shutdown; drop one window reference and the retained
+    // Lua context. Normal city teardown already called Shutdown.
+    const auto state = State();
+    if (auto* window = fc4::FromToken(state.window)) FC4_RELEASE(window);
+    if (auto* lua = fc4::FromToken(state.lua_context)) FC4_RELEASE(lua);
     fc4_tutorial_destroy(core_);
     core_ = nullptr;
+    if (nativeOwnerBound_) {
+        void** global = fc4::compat::TutorialNative()->systemGlobal;
+        if (*global == static_cast<cISC4TutorialSystem*>(this)) *global = previousNativeOwner_;
+    }
     fc4::Log("cFC4TutorialSystem destroyed (%u IsTutorial calls, %u off-main calls)", isTutorialCalls_.load(),
              lock_.OffMainCalls());
 }
@@ -235,10 +241,7 @@ uint32_t cFC4TutorialSystem::AddRef() {
     return ++refCount_;
 }
 
-// §1 / TU4 (answered): the last Release destroys and frees the object without
-// running Shutdown (the shipped city calls Shutdown first). [choice]The C++ object is freed at the last
-// reference; one still subscribed (Init without Shutdown) is shut down first
-// so that no subscription is left on a deleted object (as HW13's choice).
+// TU4: the last Release destroys without implicitly calling Shutdown.
 uint32_t cFC4TutorialSystem::Release() {
     {
         fc4::CoreLock::Section s(lock_, "tutorial Release");
@@ -248,7 +251,6 @@ uint32_t cFC4TutorialSystem::Release() {
     refCount_ = 0;
     if (destroying_) return 0;
     destroying_ = true;
-    if (subscribed_) Shutdown();
     delete this;
     return 0;
 }
@@ -414,10 +416,18 @@ int32_t cFC4TutorialSystem::GetTutorialGUID() {
 // §4.4 slot 13: the argument's layout ("a message of kind 3 with ID ...,
 // data field 2 / 3") is not specified (TU8): not decoded; with no window the
 // slot answers true without reading it, as the original.
-bool cFC4TutorialSystem::FilterMessage(uint32_t) {
-    NoteOnce(g_noteFilter, "FilterMessage's argument is not decoded (TU8); answered true");
+bool cFC4TutorialSystem::FilterMessage(uint32_t message) {
+    // TU8: plain record, never a COM message. With no window do not read it.
+    if (State().window == 0) return true;
+    const auto* fields = reinterpret_cast<const uint32_t*>(static_cast<uintptr_t>(message));
+    if (fields[0] != 3) return true;
+    const uint32_t id = fields[1];
+    uint32_t data2 = 0, data3 = 0;
+    if (id == 0x287259F6 || id == 0x287259F7) data2 = fields[2];
+    else if (id == 0x49D993D4) data3 = fields[3];
+    else return true;
     fc4::CoreLock::Section s(lock_, "tutorial FilterMessage");
-    return fc4_tutorial_filter_message(core_, 0, 0, 0, 0);
+    return fc4_tutorial_filter_message(core_, 3, id, data2, data3);
 }
 
 // §4.4 slot 14: no defined result ("—"); this object is returned.
@@ -545,3 +555,55 @@ bool TutorialIsTutorial(cISC4TutorialSystem* t, bool* ours) {
 }
 
 }  // namespace fc4
+
+bool cFC4TutorialSystem::BindNativeOwner() {
+    const auto* native = fc4::compat::TutorialNative();
+    if (native == nullptr) return false;
+    void* interfaceView = static_cast<cISC4TutorialSystem*>(this);
+    if (nativeOwnerBound_) return *native->systemGlobal == interfaceView;
+    previousNativeOwner_ = *native->systemGlobal; // borrowed; never AddRef/Release the global
+    *native->systemGlobal = interfaceView;
+    nativeOwnerBound_ = true;
+    fc4::Log("tutorial native: bound live cISC4TutorialSystem=%p previous=%p", interfaceView, previousNativeOwner_);
+    return true;
+}
+
+void cFC4TutorialSystem::CheatCommand(const char* line, uint32_t cheatID) {
+    auto tokens = TutorialTokens(line);
+    if (cheatID != kCheatTutorial || (tokens.size() != 2 && tokens.size() != 3)) return;
+    for (char& c : tokens[1]) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    const bool hasNumber = tokens.size() == 3;
+    const uint32_t n = hasNumber ? TutorialNumber(tokens[2]) : static_cast<uint32_t>(GetTutorialGUID());
+    const auto& command = tokens[1];
+    fc4::Log("tutorial cheat: command=%s argc=%u value=0x%08X", command.c_str(),
+             static_cast<unsigned>(tokens.size()), n);
+    if (command == "reset") {
+        if (cISC4App* app = App()) {
+            app->GetRegion()->ResetTutorialCity(n);
+            startTutorial();
+            ResetTutorialNumAndIndex(hasNumber ? static_cast<int32_t>(n) : GetTutorialGUID(), 0);
+            FC4_RELEASE(app);
+        }
+    } else if (command == "save") {
+        if (hasNumber && (n == 0 || n == UINT32_MAX)) return;
+        if (hasNumber) {
+            fc4::CoreLock::Section section(lock_, "tutorial cheat save fields");
+            fc4_tutorial_prepare_city_save(core_, n);
+        }
+        // TU7 has no native app-null guard on save. App is live in this flow.
+        cISC4App* app = App();
+        app->GetRegionalCity()->SetTutorialGUID(n);
+        app->RequestSaveCity(true, false);
+        FC4_RELEASE(app);
+    } else if (command == "step" && hasNumber) {
+        ResetTutorialNumAndIndex(GetTutorialGUID(), static_cast<int32_t>(n));
+    } else if (command == "next" && !hasNumber) {
+        const auto state = State();
+        if (state.window != 0) {
+            using Fn = void(__thiscall*)(void*);
+            reinterpret_cast<Fn>(fc4::compat::TutorialNative()->moveNext)(Pointer(state.window));
+        }
+    } else if (command == "quit" && !hasNumber) {
+        if (State().window != 0) endTutorial(false);
+    }
+}

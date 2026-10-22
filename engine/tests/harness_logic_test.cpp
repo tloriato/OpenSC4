@@ -236,7 +236,11 @@ void ScriptParseTests() {
         CHECK(a.kind == kTutorialReset && a.x0 == 3 && a.z0 == 4);
         CHECK(ParseScriptLine("2026-02-01 tutorial end 1", 16, &a, &has, &error) && has);
         CHECK(a.kind == kTutorialEnd && a.x0 == 1);
-        CHECK(ErrorIs("2026-02-01 tutorial start", "tutorial 'start' is not query, task, next, end, event or reset"));
+        CHECK(ParseScriptLine("2026-02-01 tutorial start", 17, &a, &has, &error) && a.kind == kTutorialStart);
+        CHECK(ParseScriptLine("2026-02-01 tutorial cheat step 1e", 18, &a, &has, &error) &&
+              a.kind == kTutorialCheat && a.text == "step 1e");
+        CHECK(ParseScriptLine("2026-02-01 tutorial cheat NEXT 1", 19, &a, &has, &error) &&
+              a.kind == kTutorialCheat && a.text == "NEXT 1");
         CHECK(ErrorIs("2026-02-01 tutorial next 1", "tutorial next takes 0 argument(s)"));
         CHECK(ErrorIs("2026-02-01 tutorial end 2", "tutorial end argument '2' is not 0 or 1"));
         CHECK(ErrorIs("2026-02-01 port airport 4096 2", "x '4096' is not a cell coordinate 0..4095"));

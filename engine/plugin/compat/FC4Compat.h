@@ -285,6 +285,13 @@ bool SpanRender4444Entries(void*** vtable, uintptr_t functions[5]);
 // nullptr (logged once) if the executable is not identified or the address is not aligned, committed,
 // writable memory inside its image.
 void** AdvisorSystemGlobal();
+
+// tutorial.md §§4.2.1/4.2.2, direct-calls.md TU6/TU9. Only GOG 1.1.641.
+struct TutorialBoundary {
+    uintptr_t getItem, setActive, construct, init, close, event, moveNext;
+    void** systemGlobal;
+};
+const TutorialBoundary* TutorialNative();
 // The compatibility table.
 const ExecutableVersion* SupportedVersions(int* count);
 

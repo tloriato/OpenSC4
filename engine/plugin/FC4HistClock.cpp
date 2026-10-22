@@ -35,6 +35,18 @@ CoreLock::CoreLock() : mainTid_(GetCurrentThreadId()) { InitializeCriticalSectio
 
 CoreLock::~CoreLock() { DeleteCriticalSection(&cs_); }
 
+CoreLock::Unlocked::Unlocked(CoreLock& lock) : l_(lock), depth_(lock.depth_) {
+    pending_.swap(l_.pending_);
+    l_.depth_ = 0;
+    for (int i = 0; i < depth_; ++i) LeaveCriticalSection(&l_.cs_);
+}
+
+CoreLock::Unlocked::~Unlocked() {
+    for (int i = 0; i < depth_; ++i) EnterCriticalSection(&l_.cs_);
+    l_.depth_ = depth_;
+    l_.pending_.swap(pending_);
+}
+
 void CoreLock::Defer(std::function<void()> op) {
     // depth_ is only non-zero for the thread inside the section (owner check
     // through the critical section's own owner field would be private API).

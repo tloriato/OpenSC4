@@ -29,6 +29,9 @@
 #include "cFC4NetworkTool.h"  // the glue29 lane: NetToolRegistry
 #include "cFC4PortDeveloper.h"  // the glue-portdev4 lane: the port action
 #include "cFC4ZoneManager.h"
+#include "cGZMessage.h"
+#include "cIGZMessageTarget.h"
+#include "cRZBaseString.h"
 
 #include "SC4Rect.h"
 #include "cISC4City.h"
@@ -325,6 +328,20 @@ void TutorialStep(void* p) {
     const harness::ScriptAction& a = *c.a;
     c.ret = -1;  // no return value (query, task, next)
     switch (a.kind) {
+        case harness::kTutorialStart: c.ret = c.t->startTutorial() ? 1 : 0; break;
+        case harness::kTutorialCheat: {
+            cIGZMessageTarget* handler = nullptr;
+            if (c.t->QueryInterface(0xE98B2F57, reinterpret_cast<void**>(&handler)) && handler) {
+                FC4_ACQUIRED(handler, "tutorial cheat QueryInterface");
+                cRZBaseString line(("Tutorial " + a.text).c_str());
+                cGZMessage msg(0x230E27AC);
+                msg.dwData1 = 0x6A382BAF;
+                msg.dwData2 = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(static_cast<cIGZString*>(&line)));
+                c.ret = handler->DoMessage(msg) ? 1 : 0;
+                FC4_RELEASE(handler);
+            }
+            break;
+        }
         case harness::kTutorialTask: c.t->SetTutorialTaskNumber(static_cast<uint32_t>(a.x0)); break;  // slot 19
         case harness::kTutorialNext: c.t->IncrementTutorialTaskNumber(); break;                       // slot 20
         case harness::kTutorialEnd: c.ret = c.t->endTutorial(a.x0 != 0) ? 1 : 0; break;               // slot 6
@@ -453,7 +470,9 @@ void ScriptOnNewDay(int32_t julian) {
     // `save` and what follows it wait for the tick (FC4Script.h).
     cISC4City* city = ObserverCity();
     for (const harness::ScriptAction* a : due) {
-        if (g_waiting.empty() && !g_inTick && a->op != harness::ScriptOp::Save) {
+        const bool tutorialMutation = a->op == harness::ScriptOp::Tutorial &&
+            (a->kind == harness::kTutorialStart || a->kind == harness::kTutorialCheat);
+        if (g_waiting.empty() && !g_inTick && a->op != harness::ScriptOp::Save && !tutorialMutation) {
             RunAction(*a, julian, city);
             continue;
         }

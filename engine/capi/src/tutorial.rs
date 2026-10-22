@@ -423,6 +423,19 @@ fn no_core_objects(_: u32, _: *mut c_void) -> Option<Rc<dyn SaveObject>> {
     None
 }
 
+/// TU7 `Tutorial save n`: publish all four fields before metadata/save callbacks.
+#[no_mangle]
+pub unsafe extern "C" fn fc4_tutorial_prepare_city_save(t: *mut fc4_tutorial, guid: u32) {
+    with_t(t, (), |h| {
+        h.sys.with_state(|s| {
+            s.is_tutorial = 1;
+            s.guid = guid;
+            s.task_number = 0;
+            s.end_pending = false;
+        });
+    });
+}
+
 /// `Read` (§3): false unless the version is 2; the GUID goes through the
 /// registry's mapping (0 → 0x8A5B7A6C, 1 → 0xEA5D6DC8).
 #[no_mangle]

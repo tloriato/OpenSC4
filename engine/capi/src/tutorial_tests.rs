@@ -79,7 +79,7 @@ unsafe extern "C" fn release(u: *mut c_void, t: u64) {
 }
 unsafe extern "C" fn create_window(u: *mut c_void) -> u64 {
     game(u).log("create window");
-    *game(u).refs.borrow_mut().entry(WINDOW).or_default() += 1; // the creation count
+    // TU9: the native constructor starts at zero; the owner takes both refs.
     WINDOW
 }
 unsafe extern "C" fn init_window(u: *mut c_void, w: u64) {
@@ -189,6 +189,21 @@ fn read(t: *mut fc4_tutorial, bytes: &[u8]) -> bool {
     let mut i = In::new(bytes);
     let is = istream(&mut i);
     unsafe { fc4_tutorial_read(t, &is) }
+}
+
+#[test]
+fn prepare_cheat_save_sets_all_fields_before_callbacks() {
+    let g = Game::new();
+    let t = create(&g);
+    unsafe {
+        fc4_tutorial_set_task_number(t, 27);
+        fc4_tutorial_end(t, false);
+        fc4_tutorial_prepare_city_save(t, 0xCC02_D3A3);
+    }
+    let s = state(t);
+    assert_eq!((s.is_tutorial, s.guid, s.task_number, s.end_pending), (1, 0xCC02_D3A3, 0, 0));
+    assert_eq!(s.window, 0);
+    unsafe { fc4_tutorial_destroy(t) };
 }
 
 #[test]

@@ -110,6 +110,21 @@ public:
     // lock is held; immediately otherwise).
     void Defer(std::function<void()> op);
 
+    // Synchronous native callbacks can call this owner again from another
+    // thread. Only use while this thread owns a Section, with core guards
+    // released. Preserve this call's deferred operations across reentry.
+    class Unlocked {
+    public:
+        explicit Unlocked(CoreLock& lock);
+        ~Unlocked();
+        Unlocked(const Unlocked&) = delete;
+        Unlocked& operator=(const Unlocked&) = delete;
+    private:
+        CoreLock& l_;
+        int depth_;
+        std::vector<std::function<void()>> pending_;
+    };
+
     class Section {
     public:
         Section(CoreLock& lock, const char* what);

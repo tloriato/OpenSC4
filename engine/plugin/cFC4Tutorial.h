@@ -21,22 +21,14 @@
 // 0xE98B2F57) at +8, cIGZSerializable at +0x10 (here: wherever MSVC puts
 // it). QueryInterface answers those four IIDs and 1.
 //
-// What the shim cannot reach (no route in docs/abi; questions TU6-TU9 in
-// docs/specs/questions/tutorial.md):
-//   - the tutorial registry's entry lookup and SetActive (TU6: a plain C++
-//     object at app+0x1C0, no vtable, its calls not in docs/abi/direct-calls.md)
-//     and the tutorial window (TU9: cSC4TutorialUIWinProc, no rows): the host
-//     answers "no entry" / "no window", so a loaded tutorial city keeps
-//     is-tutorial set without a window (quirk 2's state);
-//   - the debug cheat's subcommands (TU7): the handler logs and ignores them;
-//   - FilterMessage's argument (TU8, §4.4: "a message of kind 3"): its layout
-//     is not specified, so it is not decoded (without a window the slot only
-//     answers true anyway).
-// The 3D view slots 60 / 59 of endTutorial (TU2, answered) are called.
+// TU6-TU9: use the version-gated native registry and original tutorial window.
+// Bind the borrowed singleton to the actual cISC4TutorialSystem interface view
+// for the object's lifetime, restoring the prior binding only if still ours.
+// Plain cheat notifications and filter records are decoded per §§4.3.1/4.4.2.
 //
 // IsTutorial (§4.1) is read on the fire, flammability and advisor paths,
-// also off the main thread: one CoreLock (FC4HistClock.h); every game call a
-// core call asks for is queued and made once the section is left.
+// also off the main thread: CoreLock protects entry; synchronous native calls
+// leave it explicitly. The core never retains its state mutex across callbacks.
 //
 // OFF by default: FreeCity4.ini `enable = tutorial`; `disable` still wins.
 #pragma once
@@ -120,6 +112,8 @@ public:
     bool CheatsAvailable();
     bool HasCheatManager();
     uint64_t FetchLuaContext();
+    bool BindNativeOwner();
+    void CheatCommand(const char* line, uint32_t cheatID = 0x6A382BAF);
 
     // fc4_tutorial_is_tutorial under the lock (the fire and flammability readers).
     uint32_t CoreIsTutorial();
@@ -134,6 +128,8 @@ private:
     fc4_tutorial* core_ = nullptr;
     cFC4TutorialCheatHandler cheat_;
     std::atomic<uint32_t> isTutorialCalls_{0};
+    void* previousNativeOwner_ = nullptr;  // borrowed
+    bool nativeOwnerBound_ = false;
 };
 
 // Factory for the subsystem table (reference count 0).

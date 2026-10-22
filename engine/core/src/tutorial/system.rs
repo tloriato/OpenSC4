@@ -32,13 +32,19 @@ pub fn query_interface(iid: u32) -> bool {
 /// The window teardown of `endTutorial` and `Shutdown` (§4.2, TU5): close
 /// it, release it, then clear +0x40 and release it again — the two
 /// references `startTutorial` took.
-fn drop_window(s: &StateLock, host: &dyn TutorialHost) {
-    let Some(w) = s.borrow_mut().window.take() else {
+fn drop_window(s: &StateLock, host: &dyn TutorialHost, closing: &Cell<bool>) {
+    if closing.get() {
+        return;
+    }
+    let Some(w) = s.borrow().window else {
         return;
     };
+    closing.set(true);
     host.close_window(w);
     host.release(w);
+    s.borrow_mut().window = None;
     host.release(w);
+    closing.set(false);
 }
 
 // Native window callbacks temporarily leave the plugin's CoreLock. Getters
@@ -105,6 +111,7 @@ pub struct TutorialSystem {
     host: Rc<dyn TutorialHost>,
     token: Cell<u64>,
     s: StateLock,
+    window_closing: Cell<bool>, // main-thread lifecycle reentry, never a getter
 }
 
 impl TutorialSystem {
@@ -114,6 +121,7 @@ impl TutorialSystem {
             host,
             token: Cell::new(token),
             s: StateLock(Mutex::new(TutorialState::default())),
+            window_closing: Cell::new(false),
         })
     }
 
@@ -192,7 +200,7 @@ impl TutorialSystem {
         // [TU5] Step 2: the same window teardown as `endTutorial`, without
         // its registry, 3D view and flag steps. Both references
         // `startTutorial` took are dropped.
-        drop_window(&self.s, &*self.host);
+        drop_window(&self.s, &*self.host, &self.window_closing);
         // [TU5] Step 3: the unsubscribe order is not `SUBSCRIPTIONS`'s.
         for m in msg::UNSUBSCRIPTIONS {
             self.host.unsubscribe(m);
@@ -231,7 +239,7 @@ impl TutorialSystem {
     pub fn end_tutorial(&self, end_registry: bool) -> bool {
         // [TU5] The same window teardown as `Shutdown`, without its cheat
         // and unsubscribe steps.
-        drop_window(&self.s, &*self.host);
+        drop_window(&self.s, &*self.host, &self.window_closing);
         if end_registry {
             let guid = self.s.borrow().guid;
             self.host.registry_set_active(guid, false);
@@ -363,9 +371,10 @@ impl TutorialSystem {
         let Some(w) = self.window() else {
             return false;
         };
-        self.s.borrow_mut().guid = a as u32;
         let n = self.host.window_reset(w, a, b);
-        self.s.borrow_mut().task_number = n;
+        let mut s = self.s.borrow_mut();
+        s.guid = a as u32;
+        s.task_number = n;
         true
     }
 
@@ -401,7 +410,7 @@ impl SaveObject for TutorialSystem {
         if out.error() != 0 {
             return false;
         }
-        let s = self.s.borrow();
+        let s = self.snapshot();
         out.put_u16(RECORD_VERSION);
         out.put_u8(s.is_tutorial);
         out.put_u32(s.task_number as u32);

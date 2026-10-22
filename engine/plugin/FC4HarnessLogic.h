@@ -219,6 +219,8 @@ constexpr int32_t kTutorialNext = 2;   // tutorial next: slot 20 IncrementTutori
 constexpr int32_t kTutorialEnd = 3;    // tutorial end 0|1: slot 6 endTutorial(bool)
 constexpr int32_t kTutorialEvent = 4;  // tutorial event e: slot 18 OnTutorialEvent(e)
 constexpr int32_t kTutorialReset = 5;  // tutorial reset a b: slot 17 ResetTutorialNumAndIndex(a, b)
+constexpr int32_t kTutorialStart = 6;  // tutorial start: only on a valid tutorial fixture
+constexpr int32_t kTutorialCheat = 7;  // tutorial cheat <whole command after Tutorial>
 constexpr int32_t kScriptMaxTutorialArg = 999999;
 
 // The `disaster` action's kinds.
@@ -543,13 +545,21 @@ inline bool ParseScriptLine(const std::string& raw, int32_t lineNo, ScriptAction
         }
     } else if (name == "tutorial") {
         // Tooling (glue-tutorial4): the city's tutorial system (cISC4City slot
-        // 82) through its interface. No `start`: the original's startTutorial
-        // opens its tutorial window (tutorial.md 4.2).
+        // 82) through its interface. Start requires a known registry GUID;
+        // cheat sends a plain TU7 notification to either owner's handler.
         a.op = ScriptOp::Tutorial;
         const std::string what = nargs > 0 ? detail::Lower(tok[2]) : std::string();
         size_t want = 0;
         if (what == "query") {
             a.kind = kTutorialQuery;
+        } else if (what == "start") {
+            a.kind = kTutorialStart;
+        } else if (what == "cheat" && nargs >= 2) {
+            a.kind = kTutorialCheat;
+            a.text = detail::TrimBlank(line.substr(at[3]));
+            *out = a;
+            *has = true;
+            return true;
         } else if (what == "task") {
             a.kind = kTutorialTask, want = 1;
         } else if (what == "next") {
@@ -561,7 +571,7 @@ inline bool ParseScriptLine(const std::string& raw, int32_t lineNo, ScriptAction
         } else if (what == "reset") {
             a.kind = kTutorialReset, want = 2;
         } else {
-            *error = "tutorial '" + what + "' is not query, task, next, end, event or reset";
+            *error = "tutorial '" + what + "' is not query, task, next, end, event, reset, start or cheat";
             return false;
         }
         if (nargs != want + 1) {

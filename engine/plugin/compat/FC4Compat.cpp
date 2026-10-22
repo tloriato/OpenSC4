@@ -22,6 +22,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <initializer_list>
 
 namespace fc4 {
 namespace compat {
@@ -895,6 +896,24 @@ bool Span8888SlotEntry(unsigned slot, void*** entry, uintptr_t* function) {
     if (entry != nullptr) *entry = reinterpret_cast<void**>(kVtable + 4u * slot);
     if (function != nullptr) *function = kSlots[slot];
     return true;
+}
+
+const TutorialBoundary* TutorialNative() {
+    static const TutorialBoundary boundary = {
+        0x004B5D10, 0x004B5D80, 0x00442920, 0x00443E60,
+        0x00442C80, 0x00443970, 0x00443BD0, reinterpret_cast<void**>(0x00B20E88)};
+    static const bool available = [] {
+        const ExecutableVersion* v = IdentifiedVersion();
+        if (v != &kVersions[0]) return false;
+        for (uintptr_t entry : {boundary.getItem, boundary.setActive, boundary.construct,
+                                boundary.init, boundary.close, boundary.event, boundary.moveNext}) {
+            if (!CheckCode("tutorial native boundary", entry, v->imageBase)) return false;
+        }
+        return CheckAddress("tutorial singleton", reinterpret_cast<uintptr_t>(boundary.systemGlobal), v->imageBase)
+            && CheckImageVtable("tutorial window base", v, 0x00A8638C)
+            && DirectCall(Direct::GlobalHeapAllocate) != 0;
+    }();
+    return available ? &boundary : nullptr;
 }
 
 }  // namespace compat
