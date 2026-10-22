@@ -1,24 +1,104 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| tools-build-singleflight4: build/check single-flight | Codex / `tools-build-singleflight4` (tooling; reserved branch, detached HEAD) | in progress: same-family round 2 ownership repair; original failed evidence preserved | Repair descendant containment, venv peer authorization and bounded authentication; validate with supplied pytest venv |
+| tools-build-singleflight4: build/check single-flight | Codex / `tools-build-singleflight4` (tooling; reserved branch, detached HEAD) | wip: repaired Windows descendant/delegation/auth regressions; supplied-venv full pytest 195 passed; persistent-service lifecycle guarantee remains unresolved | Keep held; review bounded fail-closed service behavior and preserved cache-lifetime DRAFT for remaining third-round decision only |
 
-## Handoff
+## Round 2 result: tested repair, still held
 
-- Goal: repair all three demonstrated ownership defects on original family, no engine/build/game work.
-- Baseline/report tip dd50e233; copied baseline scripts/JSON remain untouched under build-runs/evidence-run4.
-- Inspected helper: direct Popen.communicate drains no DEVNULL descendants; Listener.accept authenticates without deadline; venv peer differs from Popen PID.
-- Implemented suspended-launch Windows Job containment, job publication/recovery, strict venv redirector authorization and bounded authenticated accept/close; validation ongoing.
-- Venv original intended/copied/inherited/stale/forged token regression passed 1 test (2.034 s), log r2-venv-delegation-01.log.
-- Repair plus original ownership/gate tests passed 54 tests in 84.377 s (r2-ownership-focused-03.log); run records dirty source and exact helper hash, not final-source validation.
-- Crash tests now close observer Job handles before crashing: missing kernel evidence is uncertainty, not drainage. Explicit fixture recovery waits retained process handles then archives metadata; never unlinks lock inode.
-- Linux subreaper fallback retained (not executed here); final Windows handshake/creation-time refinements need fresh focused validation.
-- Supplied venv currently prints No module named pytest; local-target pip attempt found no matching distribution (r2-pytest-dependency-01.log). Full pytest still required, not substituted.
-- Next: inspect r2-descendants-01.log/json, repair actual failures; run original ownership set and provided-venv full pytest when available.
-- Required interpreter: C:/Users/tlori/FreeCity4/build-runs/pytest-venv/Scripts/python.exe.
-- Old full-suite log: build-runs/coordinator-full-tools-2231.log (9 failed, 168 passed); do not overwrite.
-- No current run labels; cache idle DRAFT remains deferred. No new queue publication until measured validation.
+The three demonstrated Windows defects have substantive repairs and actual process/pipe regressions.
+This is **not ready**: the source conservatively fails closed for persistent services without trustworthy
+work-completion evidence. It does not implement an explicit service lifecycle acknowledgement, so it cannot
+claim the requested complete guarantee while admitting an intentionally persistent sccache daemon.
+Passing pytest does not promote this remaining limitation.
 
-## Changes
+Commits: `7564e06c` introduces suspended-launch Job containment and bounded authentication;
+`f66b5299` repairs lost-Job recovery and retains launch creation identity; `84676ad5` completes the
+new fixture matrix and recovery operations note. All final code/test validation used **84676ad5**, with
+tracked source clean at both start and finish. Subsequent changes are this report only.
+
+### What changed
+
+- A Windows command enters a fresh kernel Job before its suspended initial thread resumes. Its children
+  cannot escape by an early spawn, direct normal/nonzero exit, abrupt termination or redirected output.
+  No breakaway or kill-on-close policy is enabled. Drainage uses live kernel membership, not PID age,
+  a process-name exemption or a single process snapshot.
+- Job identities are published before command entry. After incomplete drainage, the guardian returns a
+  bounded error and leaves ownership uncertain. Direct-command deadlines still report timeout; only the
+  pre-existing direct-child timeout termination is retained. Descendants are not killed to recover a lease.
+- Guardian failure never treats a vanished Job name as evidence that former members exited. An existing
+  empty Job is evidence; missing evidence requires independent whole-tree proof before explicit metadata
+  archive. The lock inode is never unlinked. Crash fixtures deliberately close observer Job handles before
+  crashing, retain process handles/creation times, release owned writers and wait every retained member.
+- One venv redirector launch may authorize its immediate base-Python child using the retained launch creation
+  time, exact interpreter images, parent edge, Job membership and actual OS pipe peer. Direct global Python
+  remains supported. The actual guardian's OS server identity is checked; copying a key grants no branch.
+- Authentication moved out of the sole acceptor into bounded workers. The mutual handshake has a fixed
+  deadline, partial receives can be cancelled, hello reads and cleanup joins are bounded, and incomplete
+  cleanup preserves uncertainty. Authentication and JSON-only message decoding remain in place.
+- Linux uses kernel subreaper adoption at the outer command/delegate boundary; that fallback was not run
+  on this Windows host. Unsupported hosts fail closed before command entry.
+
+Only the shared helper, isolated fixture/tests and documentation changed. Wrapper parsers and production
+qbuild/fc4verify drivers remain unchanged. See [recovery operations](../ops/build-ownership-recovery.md).
+
+### Measured final validation
+
+Interpreter for the required suite: `C:/Users/tlori/FreeCity4/build-runs/pytest-venv/Scripts/python.exe`.
+Capture helper `build-runs/run-r2.py` records full HEAD/tree, helper SHA256, dirty state, command,
+start/finish UTC timestamps and log path in each JSON sidecar. It refuses existing evidence paths.
+
+| Actual command/result | Evidence under ignored build-runs/ |
+|---|---|
+| Supplied venv: `-m unittest tools.tests.test_build_singleflight tools.tests.test_build_singleflight_repair tools.tests.test_gate -q`: **58 tests, OK, 113.848 s** | `r2-final-venv-focused-01.log` / `.json` |
+| Global base Python: original ownership module: **16 tests, OK, 31.849 s** | `r2-final-global-ownership-01.log` / `.json` |
+| Supplied venv: `-m pytest -q tools/tests`: **195 passed in 207.73 s (0:03:27)**, exit 0 | `r2-final-tools-pytest-01.log` / `.json` |
+| `tools/doccheck.py check`: **doccheck check: ok** | `r2-final-doccheck-01.log`; report recheck `r2-report-doccheck-01.log` |
+| Python compilation and `git diff --check`: no errors | `r2-final-compilation-01.log`, `r2-final-diffcheck-01.log` |
+
+The one final full pytest run completed after the focused checks, against the same committed clean source.
+The unittest counts are additional evidence, not a replacement for pytest. Early attempts printed
+`No module named pytest`; three bounded dependency attempts found no matching distribution. Availability
+subsequently allowed the exact required venv command to execute; no interpreter substitution is claimed.
+
+The new matrix covers normal, abrupt, nonzero and timeout direct exits with both actual file-log wrappers
+and captured output; all surviving grandchildren use DEVNULL. It also covers three early-exiting generations,
+wrapper/delegate/guardian failures, bounded uncertain ownership, actual writer release and justified recovery.
+Contenders run **while** the writer is held; sentinel logs/verdict bytes remain unchanged, then all retained
+members are observed exited. No fixture duration was extended to hide a failure.
+
+Actual half-open named-pipe peers connect and never answer the challenge. Authorized children still join;
+normal, exception and parent-crash cleanup remain bounded. Abandoned/malformed peers and guardian failure
+also run against the real endpoint. Original alias normalization, cross-worktree concurrency, busy entry points,
+copied/inherited/stale/forged/sibling token and second-claim rejection tests remain and pass.
+
+Separate repaired-wrapper identity capture, `r2-repaired-peer-processes-02.json`:
+global launch/peer **28808**, guardian **14064**; venv redirector **32752**, actual peer **10044**, guardian
+**38396**. Both return 0 with **stderr empty**. The JSON retains exact images, parents, process creation times,
+separate stdout/stderr and confirmed process exits. Capture provenance is `r2-repaired-peer-probe-02.json`.
+The first repaired probe had a filename collision between detail and capture metadata; its stdout/log and
+capture JSON remain, and the second probe uses distinct exclusive-create files. No baseline was overwritten.
+
+`r2-evidence-index.json` hashes 34 artifacts, including old logs, copied negative evidence and repaired process
+captures. The copied baseline helper still hashes to
+`cdceda66f887ed81a150acb310ae637872af09cd40af242f8c860961eacc8f2b`.
+The original full-suite failure (9 failed / 168 passed), all six descendant violations, failed round-2 labels and
+original pinned probe scripts/JSON remain available. They were not adapted to make negative evidence green.
+
+### Remaining limitation and coordinator next step
+
+Cache stays enabled with its existing server ports and idle settings. No daemon was started, stopped or
+probed, and no process-name exemption was introduced. Consequently an opaque persistent service can cause
+bounded failure followed by retained uncertainty instead of a passing build. That safety behavior is measured
+for owned writers, but a complete trustworthy service/work-completion protocol is **not implemented**.
+Keep the merge entry **wip**. The preserved cache-lifetime DRAFT is deferred for the coordinator's remaining
+third-round decision only; this lane reserves or launches no follow-up and does not claim that work completed.
+
+Linux execution is also unmeasured here. Cargo, clippy, CMake/CTest and game runs: n/a. No engine, RE, SDK,
+ABI, live orchestration/provider/guard/target/queue-state or main changes. Questions filed: none.
+
+## Historical first-round report
+
+The following first-round report and coordinator findings are retained for provenance. Their limits and next
+steps describe that earlier source; the round-2 measurements and WIP limitation above govern this tip.
 
 Substantive integration: `ff8a6997`. Tests and final ownership hardening: `be46dee7`.
 All measured final-source validation below used `be46dee79cfa16490d5e2c4645e0ff25da0cff8a`.
@@ -48,7 +128,7 @@ All measured final-source validation below used `be46dee79cfa16490d5e2c4645e0ff2
   head/tree/dirty/start/finish and actual step/log records, with narrow `ownership` provenance added. SDK and
   environment preparation remain inside ownership. Conventions document contention and exceptional recovery.
 
-## Measured validation
+### First-round measured validation
 
 Windows, Python 3.12. Harmless Python child commands synchronized by sockets; no duration-modeling sleeps.
 The fixture substitutes build context/command payloads while exercising actual drivers, log writers,
@@ -75,7 +155,7 @@ Evidence: ignored `build-runs/singleflight-focused.log`, `singleflight-pytest.lo
 `singleflight-unittest.log`, `singleflight-doccheck.log`; capture helper
 `build-runs/run-singleflight-validation.py`. Unit-test regress messages refer to fixtures, not actual game requests.
 
-## Limits and next step
+### First-round limits and next step
 
 The required full pytest run is outstanding. Default Windows Python has no pytest; a bounded install into
 the worktree's ignored test-deps directory printed `No matching distribution found for pytest` and installed
@@ -91,7 +171,7 @@ failures, then promote the queue entry to ready if clean. No engine baseline gat
 Cargo, clippy and CTest: n/a; no real Cargo/CMake/game/RE, ABI, defaults, coverage, guard/provider/orchestration,
 live queue/state or main changes. Game runs: none. Questions filed: none.
 
-## Coordinator validation and review, 2026-10-22
+### Coordinator validation and review, 2026-10-22
 
 The coordinator ran the required full suite on clean source `946556c7` using
 `C:/Users/tlori/FreeCity4/build-runs/pytest-venv/Scripts/python.exe -m pytest -q tools/tests`.
