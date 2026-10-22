@@ -72,7 +72,7 @@ public:
     }
     bool Init() override { return Call(3) != 0; }
     bool Shutdown() override { return Call(4) != 0; }
-    cIGZLua5* GetLua() override { Refuse("GetLua (transport not bound)"); return nullptr; }
+    cIGZLua5* GetLua() override { return reinterpret_cast<cIGZLua5*>(static_cast<uintptr_t>(Call(11))); }
     int32_t RunScriptString(const cIGZString&, const cIGZString&, const cIGZString&) override {
         Refuse("RunScriptString"); return 0;
     }
@@ -88,7 +88,7 @@ public:
     bool GetBreakpointCondition(int32_t, const cIGZString&, int32_t, cIGZString&) override { Refuse("GetBreakpointCondition"); return false; }
     bool SetBreakpointCondition(int32_t, const cIGZString&, int32_t, const cIGZString&) override { Refuse("SetBreakpointCondition"); return false; }
     bool GetBreakpointEntryList(int32_t, const cIGZString&, SC4List<BreakpointEntry>&) override {
-        Refuse("GetBreakpointEntryList (LH3)"); return false;
+        Refuse("GetBreakpointEntryList (adapter incomplete)"); return false;
     }
     void EnumerateScriptIDs(SC4Vector<int32_t>&) override { Refuse("EnumerateScriptIDs"); }
     bool GetScriptInfo(int32_t, cIGZLua5Thread**, cIGZString*, cIGZString*, int32_t*, int32_t*, bool*) override {
@@ -156,7 +156,8 @@ private:
         case 8: *reply = fw != nullptr; return true;
         case 9: if (fw) fw->AddToTick(static_cast<cIGZSystemService*>(owner)); return true;
         case 10: if (fw) fw->RemoveFromTick(static_cast<cIGZSystemService*>(owner)); return true;
-        case 11: if (!unknown) return false; FC4_RELEASE(unknown); return true;
+        // Only owned Lua/generator factory references reach this bounded bridge.
+        case 11: if (!unknown) return false; FC4_RELEASE_CREATED(unknown); return true;
         case 12: case 13: return true; // native allocation is freed after Rust call returns
         default: owner->Refuse("unbound primitive"); return false;
         }

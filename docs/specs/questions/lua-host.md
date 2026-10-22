@@ -8,3 +8,6 @@ No open entries. LH1/LH2 are in [answered/lua-host.md](answered/lua-host.md).
 
 <!-- from: glue-lua-native4 (2026-10-22) -->
 - **LH4 - section 1.4.1 plugin installation timing:** LH1 explicitly leaves the duplicate-class selection policy and a public plugin callback preceding the application's factory request unproved. Is there a supported public installation sequence that selects an external ScriptServer factory before service `0x4BD10133` is registered and references are retained? Specify the callback/order and selection contract, or confirm no supported route. [No duplicate-class interception, service removal/replacement, private-field patch or cached-reference retargeting; opt-in public acquisition tracing only.]
+
+<!-- from: glue-lua-native4 correction (2026-10-22) -->
+**LH3 withdrawn as a spec blocker:** section 6.3.6 already publishes the payload size `0x34`, ID/name/line/enabled/condition offsets `0/4/0x18/0x1C/0x20`, clear-before-lookup and ordered deep-copy behavior. The SDK forward declaration alone is not a missing specification. Implementing the concrete string/list adapter remains implementation work; no additional layout is guessed in this round. Retain LH3 for provenance, with no unanswered-contract claim.

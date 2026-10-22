@@ -8,8 +8,12 @@
 - Published LH1/LH2 read; core CLSID/service/priority roles corrected.
 - Added bounded private CAPI lifecycle transport and three-view C++ wrapper; incomplete factory is never registered.
 - LH2 uses public CommandServer service acquisition, separate typed Lua-generator interface and borrowed sibling Shutdown.
-- Added enable=luascripts public acquisition traces at six framework phases. LH3 payload ABI and LH4 insertion route filed.
-- Next: build/fix focused checks; baseline all still running; native execution/list transport is explicitly incomplete.
+- Milestone bf59c831: bounded CAPI/native implementation committed before call 30.
+- Added enable=luascripts public acquisition traces at six framework phases. LH4 insertion route filed; LH3 withdrawn (6.3.6 already supplies payload offsets/copy behavior).
+- Baseline all PASS: cargo 4961/0, clippy 0 diagnostics, build 210/210, ctest 68/68; tree changed during baseline.
+- CAPI checks cover failed-init latch, Release at zero, cleanup after unbound primitive, borrowed generator sibling and busy owner refusal.
+- fmt PASS using absolute touched paths; relative-path fmt failed because wrapper working directory differs.
+- Next: stable final all, then immutable opt-in game trace through 2032 and full save/shutdown; no activation or comparison credit.
 - No game requests outstanding. No implementation changes yet.
 - Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-glue-lua-native4-r1-manifest.json.
 - No tools/, analysis, executable, shared maps/defaults/ABI-table inputs permitted.
