@@ -14,6 +14,7 @@
 // The layout-compatible grid family (plugin/FC4SimGridLogic.h) against
 // docs/specs/simgrid.md §3-§6, with a counting malloc allocator and a fake city.
 #include "FC4SimGridLogic.h"
+#include "FC4SimGridsMethods.h"
 
 #include <cmath>
 #include <cstdio>
@@ -355,6 +356,50 @@ void TestAllocFailure() {
     CHECK(g_live.empty());
 }
 
+template<class T> void TestPersistentMethodTape(T high) {
+    auto* native=new Grid<T>(); auto* owned=new Grid<T>();
+    native->Init(); native->SetTractSize(8);
+    OStream bootstrap; CHECK(native->Write(bootstrap));
+    IStream input(bootstrap.bytes); CHECK(owned->Read(input));
+    fc4::SimGridsMethods<T> tape(owned);
+    std::vector<uint8_t> out;
+    int32_t a[4]={1,1,0,0};
+    native->SetTractValue(1,1,high);
+    CHECK(tape.Run(5,a,reinterpret_cast<const uint8_t*>(&high),sizeof(T),out));
+    for(int i=0;i<100;++i) {
+        CHECK(tape.Run(1,a,nullptr,0,out));
+        const T v=native->GetTractValue(1,1);
+        CHECK(fc4::SimGridsBuffersEqual(&v,sizeof(v),out));
+    }
+    CHECK(tape.scalarGet==100 && tape.scalarSet==1 && tape.calls==101);
+    // Mutation after bootstrap must be detected and never installed in owned.
+    const T corrupt=static_cast<T>(11); native->SetTractValue(1,1,corrupt);
+    CHECK(tape.Run(1,a,nullptr,0,out));
+    CHECK(!fc4::SimGridsBuffersEqual(&corrupt,sizeof(corrupt),out));
+    CHECK(owned->GetTractValue(1,1)==high);
+    native->SetTractValue(1,1,high); // restoration only in this negative-control fixture
+    for(uint32_t op : {2u,3u,4u}) {
+        int32_t rect[4]={0,0,2,2};
+        CHECK(tape.Run(op,rect,nullptr,0,out));
+        T v=op==2?native->GetCellValue(0,0):(op==3?native->GetAverageValueInCellRect(0,0,2,2):native->GetAverageValueInTractRect(0,0,2,2));
+        CHECK(fc4::SimGridsBuffersEqual(&v,sizeof(v),out));
+    }
+    const auto before=tape.calls;
+    int32_t bad[4]={-1,0,0,1};
+    CHECK(!tape.Run(1,bad,nullptr,0,out));
+    CHECK(!tape.Run(3,bad,nullptr,0,out));
+    CHECK(!tape.Run(5,a,nullptr,0,out));
+    CHECK(tape.calls==before);
+    OStream expected,actual; CHECK(owned->Write(expected)); CHECK(native->Write(actual));
+    CHECK(fc4::SimGridsBuffersEqual(actual.bytes.data(),actual.bytes.size(),expected.bytes));
+    actual.bytes.back()^=1;
+    CHECK(!fc4::SimGridsBuffersEqual(actual.bytes.data(),actual.bytes.size(),expected.bytes));
+    CHECK(!fc4::SimGridsBuffersEqual(expected.bytes.data(),expected.bytes.size()-1,expected.bytes));
+    CHECK(tape.Run(14,a,nullptr,0,out));
+    CHECK(out.size()==64*sizeof(T) && tape.bulkGet==64);
+    native->Release(); owned->Release(); CHECK(g_live.empty());
+}
+
 }  // namespace
 
 int main() {
@@ -363,6 +408,11 @@ int main() {
     TestRecord();
     TestTraceAndRawChange();
     TestAllocFailure();
+    TestPersistentMethodTape<uint8_t>(201); TestPersistentMethodTape<int8_t>(-3);
+    TestPersistentMethodTape<uint16_t>(60001); TestPersistentMethodTape<int16_t>(-300);
+    TestPersistentMethodTape<uint32_t>(0xdeadbeef); TestPersistentMethodTape<int32_t>(-70001);
+    TestPersistentMethodTape<uint64_t>(0x123456789abcdef0ull); TestPersistentMethodTape<int64_t>(-5);
+    TestPersistentMethodTape<float>(1.9f); TestPersistentMethodTape<double>(-3.25);
     if (g_fail != 0) {
         std::printf("simgrid_test: %d failure(s)\n", g_fail);
         return 1;

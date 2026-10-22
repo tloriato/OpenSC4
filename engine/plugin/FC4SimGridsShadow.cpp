@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Same-process original-interface/Rust verification. No original layout reads,
+// Same-process original-interface/shipped-cFC4SimGrid verification. No original layout reads,
 // vtable patches, host-backed Rust grids, fallback, or post-bootstrap resync.
 #include "FC4SimGridsShadow.h"
 #include "FC4Config.h"
@@ -8,6 +8,8 @@
 #include "FC4Streams.h"
 #include "FC4Subsystems.h"
 #include "FC4WriteCapture.h"
+#include "FC4SimGridsMethods.h"
+#include "cFC4SimGrid.h"
 #include "cIGZCOM.h"
 #include "cIGZApp.h"
 #include "cIGZFrameWork.h"
@@ -19,13 +21,11 @@
 #include <algorithm>
 #include <cstring>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <type_traits>
 #include <vector>
-
-extern "C" int32_t fc4_simgrids_verify(uint32_t, uint32_t, const uint8_t*, uint32_t,
-    const int32_t*, const uint8_t*, uint32_t, uint8_t*, uint32_t);
 
 namespace fc4 { namespace {
 bool Enabled() { static const bool on = SettingInt("simgrids_shadow", "FC4_SIMGRIDS_SHADOW", 0) != 0; return on; }
@@ -35,26 +35,44 @@ template<class T> void Append(std::vector<uint8_t>& b, const T& v) {
 template<class T> T Field(const std::vector<uint8_t>& b, size_t off) {
     T v{}; if (off + sizeof(v) <= b.size()) std::memcpy(&v, b.data() + off, sizeof(v)); return v;
 }
+struct Production {
+    uint64_t reads=0, writes=0;
+    virtual ~Production() = default;
+    virtual bool Read(const std::vector<uint8_t>&) = 0;
+    virtual bool Write(std::vector<uint8_t>&) = 0;
+    virtual bool Run(uint32_t,const int32_t*,const uint8_t*,uint32_t,std::vector<uint8_t>&) = 0;
+    virtual uint64_t Calls() const = 0;
+    virtual uint64_t Gets() const = 0;
+    virtual uint64_t Sets() const = 0;
+    virtual uint64_t BulkGets() const = 0;
+};
+std::unique_ptr<Production> MakeProduction(uint32_t kind);
 struct Shadow {
     uint32_t kind = 0;
     std::string owner;
     std::vector<uint8_t> record;
+    std::unique_ptr<Production> production;
+    uint64_t detectionChecks=0;
     uint64_t comparisons = 0, exact = 0, refused = 0, failures = 0, calls = 0, changed = 0;
     uint64_t get = 0, bulkRead = 0, set = 0, bulkWrite = 0, fill = 0, shutdown = 0;
     bool Apply(uint32_t op, std::vector<uint8_t>& out, int32_t x = 0, int32_t z = 0,
                int32_t w = 0, int32_t h = 0, const void* data = nullptr, uint32_t n = 0) {
         int32_t a[4] = {x,z,w,h};
-        // Scalar returns must not clear a megabyte on every natural getter.
-        const size_t capacity=(op>=1 && op<=4)?8:((op==12 || op==13)?64:record.size()*(op==7?16:1)+1024);
-        out.resize(capacity);
-        int32_t len = fc4_simgrids_verify(kind, op, record.data(), static_cast<uint32_t>(record.size()), a,
-            static_cast<const uint8_t*>(data), n, out.data(), static_cast<uint32_t>(out.size()));
-        if (len < 0) { ++refused; out.clear(); return false; }
-        out.resize(len); return true;
+        out.clear();
+        if(op==0) { // Exactly one natural bootstrap; later Read only from the fixture tape.
+            if(production) { ++refused; return false; }
+            production=MakeProduction(kind);
+            if(!production || !production->Read(record) || !production->Write(out)) { ++failures; return false; }
+            return true;
+        }
+        if(!production || !production->Run(op,a,static_cast<const uint8_t*>(data),n,out)) { ++refused; return false; }
+        if(op==1 || op==2 || op==3 || op==4 || op==5 || op==8 || op==9 || op==12 || op==13 || op==14) return true;
+        if(!production->Write(out)) { ++failures; return false; }
+        return true;
     }
     void Check(const void* p, size_t n, const std::vector<uint8_t>& expected, const char* what) {
         ++comparisons;
-        if (expected.size() == n && (n == 0 || std::memcmp(p, expected.data(), n) == 0)) ++exact;
+        if (SimGridsBuffersEqual(p,n,expected)) ++exact;
         else if (comparisons - exact <= 8) {
             const auto* bytes=static_cast<const uint8_t*>(p); size_t at=0;
             while(at<std::min(n,expected.size()) && bytes[at]==expected[at]) ++at;
@@ -63,7 +81,7 @@ struct Shadow {
     }
     void Update(uint32_t op, int32_t x = 0, int32_t z = 0, const void* data = nullptr, uint32_t n = 0) {
         std::vector<uint8_t> out;
-        if (Apply(op, out, x, z, 0, 0, data, n)) { changed += out != record; record.swap(out); }
+        if (Apply(op, out, x, z, 0, 0, data, n) && op!=5 && op!=8 && op!=9) { changed += out != record; record.swap(out); }
         // Refusals retain the previous expected state, never native fallback.
     }
     bool Capture(cIGZUnknown* obj, std::vector<uint8_t>& b) {
@@ -72,11 +90,24 @@ struct Shadow {
         b = cap.Bytes(); return true;
     }
     void RecordCheck(cIGZUnknown* obj) {
+        if(!production || !production->Write(record)) { ++failures; return; }
         std::vector<uint8_t> b;
         if (Capture(obj,b)) Check(b.data(), b.size(), record, "complete-write");
     }
+    void DetectionCheck() {
+        std::vector<uint8_t> a,b;
+        if(!production || !production->Write(a) || a.empty()) { ++failures; return; }
+        b=a; b.back()^=1;
+        // Same complete-buffer comparator used for observed results; injected
+        // corruption is a separate negative control, never equality credit.
+        if(!SimGridsBuffersEqual(b.data(),b.size(),a) && !SimGridsBuffersEqual(a.data(),a.size()-1,a) && SimGridsBuffersEqual(a.data(),a.size(),a)) ++detectionChecks; else ++failures;
+    }
+    void Boolean(bool native,uint32_t op,const char* what) {
+        std::vector<uint8_t> out; const uint8_t actual=native?1:0;
+        if(Apply(op,out)) Check(&actual,1,out,what);
+    }
     void Report(const char* source, uint64_t token) const {
-        Log("simgrids-shadow: source=%s owner=%s token=%p clsid=%08X exact=%llu/%llu differences=%llu refused=%llu failures=%llu calls=%llu get=%llu bulk_read=%llu set=%llu bulk_write=%llu fill=%llu shutdown=%llu changed=%llu bootstrap=1 resync=0 fallback=0", source, owner.c_str(), FromToken(token), kind, exact, comparisons, comparisons-exact, refused, failures, calls, get, bulkRead, set, bulkWrite, fill, shutdown, changed);
+        Log("simgrids-shadow: source=%s owner=%s token=%p clsid=%08X exact=%llu/%llu differences=%llu refused=%llu failures=%llu calls=%llu get=%llu bulk_read=%llu set=%llu bulk_write=%llu fill=%llu shutdown=%llu changed=%llu bootstrap=1 resync=0 fallback=0 backend=shipped-cpp method_calls=%llu method_get=%llu method_set=%llu method_bulk_get=%llu method_read=%llu method_write=%llu detection_checks=%llu", source, owner.c_str(), FromToken(token), kind, exact, comparisons, comparisons-exact, refused, failures, calls, get, bulkRead, set, bulkWrite, fill, shutdown, changed,production?production->Calls():0,production?production->Gets():0,production?production->Sets():0,production?production->BulkGets():0,production?production->reads:0,production?production->writes:0,detectionChecks);
     }
 };
 std::mutex mu;
@@ -109,6 +140,57 @@ public:
 private: const std::vector<uint8_t>& b_; size_t at_=0; bool good_=true;
 };
 
+// These references belong only to the verifier. The direct shipped factories
+// return count-0 objects; take one reference, QI typed/serializable references,
+// then release the factory reference. Never expose these objects to the host.
+// Natural map operations and destruction run under mu (including other getter
+// threads); fixtures are local to the startup thread and never published.
+template<class T> class OwnedProduction final : public Production {
+public:
+    OwnedProduction(cISC4SimGrid<T>* g,cIGZSerializable* s) : grid(g),serial(s),methods(g) {}
+    ~OwnedProduction() override {
+        const uint32_t remaining=FC4_RELEASE(serial);
+        const uint32_t last=FC4_RELEASE(grid);
+        Log("simgrids-shadow: source=production-cleanup backend=shipped-cpp serial_release=%u final_release=%u expected=1,0",remaining,last);
+    }
+    bool Read(const std::vector<uint8_t>& b) override { Input input(b); ++reads; return serial->Read(input) && input.Position()==b.size() && input.GetError()==0; }
+    bool Write(std::vector<uint8_t>& b) override { WriteCapture cap; ++writes; if(!cap.Capture(grid)) return false; b=cap.Bytes(); return true; }
+    bool Run(uint32_t op,const int32_t* a,const uint8_t* d,uint32_t n,std::vector<uint8_t>& out) override { return methods.Run(op,a,d,n,out); }
+    uint64_t Calls() const override { return methods.calls; }
+    uint64_t Gets() const override { return methods.scalarGet; }
+    uint64_t Sets() const override { return methods.scalarSet; }
+    uint64_t BulkGets() const override { return methods.bulkGet; }
+private:
+    cISC4SimGrid<T>* grid;
+    cIGZSerializable* serial;
+    SimGridsMethods<T> methods;
+};
+template<class T> std::unique_ptr<Production> Own(cIGZUnknown* raw) {
+    if(!raw) return {};
+    FC4_ADDREF(raw);
+    cISC4SimGrid<T>* grid=nullptr; cIGZSerializable* serial=nullptr;
+    if(raw->QueryInterface(0xC9BD939A,reinterpret_cast<void**>(&grid)) && grid) FC4_ACQUIRED(grid,"QueryInterface (owned simgrids production)");
+    if(raw->QueryInterface(GZIID_cIGZSerializable,reinterpret_cast<void**>(&serial)) && serial) FC4_ACQUIRED(serial,"QueryInterface (owned simgrids production)");
+    FC4_RELEASE(raw);
+    if(!grid || !serial) { if(grid) FC4_RELEASE(grid); if(serial) FC4_RELEASE(serial); return {}; }
+    return std::make_unique<OwnedProduction<T>>(grid,serial);
+}
+std::unique_ptr<Production> MakeProduction(uint32_t kind) {
+    switch(kind) {
+    case 0x49B9E602: return Own<uint8_t>(CreateFC4SimGridU8());
+    case 0x49B9E603: return Own<int8_t>(CreateFC4SimGridS8());
+    case 0x49B9E604: return Own<uint16_t>(CreateFC4SimGridU16());
+    case 0x49B9E605: return Own<int16_t>(CreateFC4SimGridS16());
+    case 0x49B9E606: return Own<uint32_t>(CreateFC4SimGridU32());
+    case 0x49B9E607: return Own<int32_t>(CreateFC4SimGridS32());
+    case 0x49B9E608: return Own<uint64_t>(CreateFC4SimGridU64());
+    case 0x49B9E609: return Own<int64_t>(CreateFC4SimGridS64());
+    case 0x49B9E60A: return Own<float>(CreateFC4SimGridF32());
+    case 0x49B9E60B: return Own<double>(CreateFC4SimGridF64());
+    default: return {};
+    }
+}
+
 template<class T> void Fixture(uint32_t kind, const std::vector<uint8_t>& city) {
     Shadow s; s.kind = kind;
     Log("simgrids-shadow: source=fixture phase=factory clsid=%08X",kind);
@@ -127,9 +209,11 @@ template<class T> void Fixture(uint32_t kind, const std::vector<uint8_t>& city) 
     Log("simgrids-shadow: source=fixture phase=capture-sized clsid=%08X",kind);
     // Bootstrap is an input, excluded from equality numerator/denominator.
     s.Capture(g,s.record);
-    auto boolean = [&](bool v, const char* name) { std::vector<uint8_t> expected{1}; uint8_t actual=v?1:0; s.Check(&actual,1,expected,name); };
-    boolean(initialInit,"initial-Init-return");
-    boolean(g->Init(),"Init-return"); s.Update(8); s.RecordCheck(g);
+    std::vector<uint8_t> bootstrap;
+    if(!s.Apply(0,bootstrap) || bootstrap!=s.record) { ++s.failures; FC4_RELEASE_CREATED(g); s.Report("fixture-bootstrap-failed",0); return; }
+    s.DetectionCheck();
+    s.Boolean(initialInit,8,"initial-Init-return");
+    s.Boolean(g->Init(),8,"Init-return"); s.RecordCheck(g);
     g->SetInstanceID(0x51A00000u + kind); s.Update(10,static_cast<int32_t>(0x51A00000u+kind));
     for (int size : {8, 4, 3, 8, 8}) {
         g->SetTractSize(size); // §4.3: original bool return deliberately ignored.
@@ -168,28 +252,33 @@ template<class T> void Fixture(uint32_t kind, const std::vector<uint8_t>& city) 
         FC4_ACQUIRED(serial,"QueryInterface (simgrids fixture)");
         auto saved=s.record;
         T v=static_cast<T>(23); g->SetTractValues(v); s.Update(6,0,0,&v,sizeof(v));
-        Input input(saved); boolean(serial->Read(input),"Read-return");
-        // Intentional fixture Read: replay identical supplied record in Rust.
-        s.record=saved; s.Update(0); s.RecordCheck(g);
+        Input input(saved); uint8_t readResult=serial->Read(input)?1:0;
+        // Explicit fixture operation input, replayed to both objects. This is
+        // not a later native snapshot: saved was written by production state.
+        uint8_t expectedRead=s.production->Read(saved)?1:0;
+        s.Check(&readResult,1,std::vector<uint8_t>{expectedRead},"Read-return"); s.RecordCheck(g);
         // Valid fields are literal, not recomputed from the city on Read.
         auto stored=saved; uint32_t storedClass=0x49B9E603;
         std::memcpy(stored.data()+3,&storedClass,4);
         float storedWidth=37.0f; std::memcpy(stored.data()+27,&storedWidth,4);
-        Input literal(stored); boolean(serial->Read(literal),"Read-literal-return");
-        s.record=stored; s.Update(0); s.RecordCheck(g);
+        Input literal(stored); readResult=serial->Read(literal)?1:0;
+        expectedRead=s.production->Read(stored)?1:0;
+        s.Check(&readResult,1,std::vector<uint8_t>{expectedRead},"Read-literal-return"); s.RecordCheck(g);
         std::vector<uint8_t> consumed; Append(consumed,static_cast<uint32_t>(saved.size()));
         uint32_t pos=static_cast<uint32_t>(input.Position()); s.Check(&pos,4,consumed,"Read-consumed");
         saved[0]=2; Input invalid(saved); uint8_t result=serial->Read(invalid)?1:0;
-        s.Check(&result,1,std::vector<uint8_t>{0},"invalid-version-return"); s.RecordCheck(g);
+        expectedRead=s.production->Read(saved)?1:0;
+        s.Check(&result,1,std::vector<uint8_t>{expectedRead},"invalid-version-return"); s.RecordCheck(g);
         FC4_RELEASE(serial);
     } else ++s.failures;
-    boolean(g->Shutdown(),"Shutdown-return"); s.Update(9); s.RecordCheck(g);
+    s.Boolean(g->Shutdown(),9,"Shutdown-return"); s.RecordCheck(g);
     // Only our extra reference is released; final reference belongs to this fixture.
     const uint32_t raised=FC4_ADDREF(g); uint32_t lowered=FC4_RELEASE(g);
     std::vector<uint8_t> raisedExpected; Append(raisedExpected,uint32_t(2)); s.Check(&raised,4,raisedExpected,"AddRef-count");
     std::vector<uint8_t> expected; Append(expected,raised-1); s.Check(&lowered,4,expected,"Release-decrement");
     uint32_t last=FC4_RELEASE_CREATED(g); expected.clear(); Append(expected,uint32_t(0)); s.Check(&last,4,expected,"Release-destroy");
     Log("simgrids-shadow: source=fixture clsid=%08X exact=%llu/%llu differences=%llu refused=%llu failures=%llu allocation=1 final_release=%u bootstrap=1 resync=0 fallback=0",kind,s.exact,s.comparisons,s.comparisons-s.exact,s.refused,s.failures,last);
+    s.Report("fixture-methods",0);
 }
 } // namespace
 
@@ -237,8 +326,8 @@ void SimGridsShadowValue(uint64_t t,int32_t x,int32_t z,const void* value,uint32
 void SimGridsShadowBulkRead(uint64_t t,const void* values,uint32_t count,uint32_t size) {
     if(!Enabled()) return; std::lock_guard<std::mutex> lock(mu); auto it=Find(t); if(it==natural.end()) return;
     auto& s=it->second; ++s.calls; ++s.bulkRead;
-    std::vector<uint8_t> expected(s.record.begin()+43,s.record.end());
-    s.Check(values,static_cast<size_t>(count)*size,expected,"natural-bulk-read");
+    std::vector<uint8_t> expected;
+    if(s.Apply(14,expected)) s.Check(values,static_cast<size_t>(count)*size,expected,"natural-bulk-read");
     s.RecordCheck(FromToken(t));
 }
 void SimGridsShadowSet(uint64_t t,int32_t x,int32_t z,const void* value,uint32_t size) {
@@ -271,7 +360,7 @@ void SimGridsShadowBulkWrite(uint64_t t,const uint32_t* indices,const void* valu
 void SimGridsShadowShutdown(uint64_t t,bool result) {
     if(!Enabled()) return; std::lock_guard<std::mutex> lock(mu); auto it=Find(t); if(it==natural.end()) return;
     auto& s=it->second; ++s.calls; ++s.shutdown; uint8_t r=result?1:0;
-    s.Check(&r,1,std::vector<uint8_t>{1},"natural-Shutdown-return"); s.Update(9); s.RecordCheck(FromToken(t)); s.Report("natural-shutdown",t);
+    std::vector<uint8_t> expected; if(s.Apply(9,expected)) s.Check(&r,1,expected,"natural-Shutdown-return"); s.RecordCheck(FromToken(t)); s.Report("natural-shutdown",t);
 }
 void SimGridsShadowRelease(uint64_t t) {
     if(!Enabled()) return; std::lock_guard<std::mutex> lock(mu);

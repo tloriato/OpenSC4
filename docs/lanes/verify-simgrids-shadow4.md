@@ -4,6 +4,14 @@
 
 ## Final report
 
+Post-publication correction (verify-simgrids-methods-final4): the historical
+8,621,314/8,621,314 total below is retained-record probe evidence. Its 8,620,930
+scalar queries directly indexed serialized bytes; the 1,010,081 scalar setters
+also patched retained records. Those operations did not execute production
+SimGrid methods. Preserve all historical counts and adverse runs, but award no
+production-method verification or new coverage credit to them. New shipped-C++
+method evidence is recorded separately in the methods-final4 lane report.
+
 Ready to integrate the bounded, opt-in verifier. This report grants equality credit only to the observed native pollution-grid calls and the separately constructed cases. It grants no full simgrids replacement, utility, owner, or default-promotion credit. SG1 and SG2 remain open. Original cap3, thisround2; this round audited existing evidence without code changes, rebuilding, restarting, or new game requests.
 
 ### Implementation and boundaries

@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Private, stateless verification transport. Never calls host grids. Each call
+//! Historical retained-record probe transport, NOT production-method evidence.
+//! The active plugin verifier uses owned shipped C++ objects instead; it does
+//! not call this bridge. Historical scalar op1/op5 counts remain record probes.
+//! Private, stateless transport. Never calls host grids. Each call
 //! reconstructs an isolated Rust grid from the shadow's *retained* record;
 //! native output never replaces that record after the single bootstrap.
 use fc4_core::grid::{CityDims, GridElem, SimGrid, TractGrid};
