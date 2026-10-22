@@ -139,6 +139,7 @@ private:
             return true;
         }
         case 2:
+            // [abi-ret] lua-host.md 3.1 returns the open flag; 6.3.2 specifies Boolean status in AL.
             *reply = static_cast<cIGZLua5*>(unknown)->Open(static_cast<cIGZLua5::OpenFlags>(call->number)); return true;
         case 3: static_cast<cIGZLua5*>(unknown)->Close(); return true;
         case 5: {
@@ -187,10 +188,9 @@ void LuaScriptsTrace(const char* phase) {
         if (original->QueryInterface(GZIID_cIGZSystemService, reinterpret_cast<void**>(&service)) && service)
             FC4_ACQUIRED(service, "ScriptServer service QI trace");
     }
-    Log("LUASCRIPTS trace phase=%s fw_state=%d acquire=%d original=%p service=%p id=%08X priority=%d running=%d installed=0 gap=LH4",
+    Log("LUASCRIPTS trace phase=%s fw_state=%d acquire=%d original=%p service=%p id=%08X priority=%d running=unobserved installed=0 gap=LH4",
         phase, fw ? static_cast<int>(fw->GetState()) : -1, acquired, original, service,
-        service ? service->GetServiceID() : 0, service ? service->GetServicePriority() : 0,
-        service ? service->IsServiceRunning() : 0);
+        service ? service->GetServiceID() : 0, service ? service->GetServicePriority() : 0);
     if (service) FC4_RELEASE(service);
     if (original) FC4_RELEASE(original);
     static bool constructed = false;
