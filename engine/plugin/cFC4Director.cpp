@@ -52,6 +52,7 @@
 #include "cFC4PropManager.h"  // the glue21 lane: fc4::PropManagerAppShutdown
 #include "cFC4LotConfigManager.h"  // the glue21 lane: fc4::LotConfigManagerAppShutdown
 #include "cFC4Simulator.h"
+#include "FC4LuaScriptServerBridge.h"
 
 #include "cIGZCOM.h"
 #include "cIGZFrameWork.h"
@@ -223,6 +224,7 @@ public:
     }
 
     bool OnStart(cIGZCOM* pCOM) override {
+        fc4::LuaScriptsTrace("OnStart");
         FC4_LOGV("OnStart enter (com=%p)", static_cast<void*>(pCOM));
         fc4::Log("FreeCity4 %s loaded (core ABI %u, %s mode); dll: %s; log: %s", FC4_VERSION_STRING, fc4_abi_version(),
                  simulatorReplaced_ ? "replacement" : "PASSTHROUGH (simulator disabled, original simulator in use)",
@@ -294,12 +296,14 @@ public:
     // ---- cIGZFrameWorkHooks (all eight, logged on entry) ------------------------------------
 
     bool PreFrameWorkInit() override {
+        fc4::LuaScriptsTrace("PreFrameWorkInit");
         FC4_LOGV("hook PreFrameWorkInit");
         fc4::FpuLog("hook PreFrameWorkInit", true);
         return true;
     }
 
     bool PreAppInit() override {
+        fc4::LuaScriptsTrace("PreAppInit");
         FC4_LOGV("hook PreAppInit");
         // The first hook after the game's PreFrameWorkInit has run.
         fc4::FpuSetReference("hook PreAppInit");
@@ -307,6 +311,7 @@ public:
     }
 
     bool PostAppInit() override {
+        fc4::LuaScriptsTrace("PostAppInit");
         fc4::FpuLog("hook PostAppInit (enter)", true);
         // foundations §18.2: our DLL's presence raised the main thread's x87
         // precision somewhere between PreAppInit and here, and nothing in the
@@ -362,6 +367,7 @@ public:
     }
 
     bool PreAppShutdown() override {
+        fc4::LuaScriptsTrace("PreAppShutdown");
         FC4_LOGV("hook PreAppShutdown");
         fc4::FpuLog("hook PreAppShutdown");
         fc4::NetMgrShadowStop();
@@ -396,6 +402,7 @@ public:
     }
 
     bool PostSystemServiceShutdown() override {
+        fc4::LuaScriptsTrace("PostSystemServiceShutdown");
         FC4_LOGV("hook PostSystemServiceShutdown");
         fc4::FpuLog("hook PostSystemServiceShutdown");
         fc4::AutotestOnShutdownComplete("PostSystemServiceShutdown");

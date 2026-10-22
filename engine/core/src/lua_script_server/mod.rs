@@ -9,8 +9,11 @@ mod foreign;
 pub use foreign::{Failure, Foreign, Handle, Interface, Primitive, RecordToken, StackOp, Value};
 use std::collections::BTreeMap;
 
-pub const CLASS_ID: u32 = 0x4bd10133;
-pub const SERVICE_ID: u32 = 0xfff0bdc1;
+// LH1: these three roles are distinct; the base constructor takes service ID
+// and signed priority, not a class/service pair.
+pub const CLASS_ID: u32 = 0xcbd101a9;
+pub const SERVICE_ID: u32 = 0x4bd10133;
+pub const SERVICE_PRIORITY: i32 = -999999;
 pub const SCRIPT_SERVER_IID: u32 = 0x4bd10129;
 pub const CREATED: u32 = 0x6ba990d8;
 pub const TERMINATED: u32 = 0xcba990d3;

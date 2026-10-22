@@ -2,3 +2,9 @@
 <!-- Append-only questions from clean-room implementer lanes. -->
 
 No open entries. LH1/LH2 are in [answered/lua-host.md](answered/lua-host.md).
+
+<!-- from: glue-lua-native4 (2026-10-22) -->
+- **LH3 - section 6.3.6 native slot 18 payload ABI:** the SDK forward-declares `cIGZLuaScriptServer::BreakpointEntry` but does not define it. What is the exact x86 native payload layout (field types/offsets, string ownership and construction/destruction), and output-list append/copy contract for `GetBreakpointEntryList`? The Rust-owned breakpoint payload is not evidence of C++ layout. [Native output-list binding withheld; no guessed payload or writes.]
+
+<!-- from: glue-lua-native4 (2026-10-22) -->
+- **LH4 - section 1.4.1 plugin installation timing:** LH1 explicitly leaves the duplicate-class selection policy and a public plugin callback preceding the application's factory request unproved. Is there a supported public installation sequence that selects an external ScriptServer factory before service `0x4BD10133` is registered and references are retained? Specify the callback/order and selection contract, or confirm no supported route. [No duplicate-class interception, service removal/replacement, private-field patch or cached-reference retargeting; opt-in public acquisition tracing only.]

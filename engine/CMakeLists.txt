@@ -521,6 +521,9 @@ if(FC4_IS_WIN32_X86)
         # Independent native grid verification (no public ABI table changes).
         plugin/FC4SimGridsShadow.cpp
         plugin/FC4SimGridsShadow.h
+        # glue-lua-native4: bounded owned boundary and public acquisition trace.
+        plugin/FC4LuaScriptServer.cpp
+        plugin/FC4LuaScriptServerBridge.h
         # cRZMessage2Standard: foundations §5.1 says it differs from the game.
         "${FC4_GZCOM_DIR}/src/cRZCOMDllDirector.cpp"
         "${FC4_GZCOM_DIR}/src/cRZBaseString.cpp"

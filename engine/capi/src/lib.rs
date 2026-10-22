@@ -1121,3 +1121,6 @@ pub mod span_render8888;
 mod simgrids_verify;
 // glue-dates4: published cIGZDate scalar/text contracts.
 pub mod dates;
+
+// glue-lua-native4: bounded private owner transport; no public ABI registration.
+mod lua_script_server;
