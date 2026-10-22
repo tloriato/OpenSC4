@@ -42,6 +42,7 @@ import zlib
 from pathlib import Path
 
 from build_lease import Lease, LeaseError, canonical_worktree, ownership, run_process
+from build_cache import CacheOwnershipError, require_output_ownership
 
 VS = Path(r"C:\Program Files\Microsoft Visual Studio\2022\Community")
 VCVARS = VS / "VC" / "Auxiliary" / "Build" / "vcvars32.bat"
@@ -340,6 +341,10 @@ def ensure_sdk(wt):
 
 
 def run(cmd, cwd, env, log, timeout=None):
+    try:
+        require_output_ownership(cmd, env)
+    except CacheOwnershipError as exc:
+        raise LeaseError(str(exc)) from exc
     t0 = time.time()
     # CreateProcess looks the program up on this process's PATH, not the child's: resolve it on the child's
     cmd = [shutil.which(str(cmd[0]), path=env.get("PATH")) or cmd[0], *cmd[1:]]

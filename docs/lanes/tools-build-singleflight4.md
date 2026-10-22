@@ -1,6 +1,22 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| tools-build-singleflight4: build/check single-flight | Codex / `tools-build-singleflight4` (tooling; reserved branch, detached HEAD) | wip: repaired Windows descendant/delegation/auth regressions; supplied-venv full pytest 195 passed; persistent-service lifecycle guarantee remains unresolved | Keep held; review bounded fail-closed service behavior and preserved cache-lifetime DRAFT for remaining third-round decision only |
+| tools-build-singleflight4: build/check single-flight | Codex / `tools-build-singleflight4` (tooling; reserved branch, detached HEAD) | in progress | Verify installed storage/client capability and implement the reviewed whole-output ownership design within final original-family round |
+
+## Handoff
+
+- Goal: FINAL3/3, preserve canonical whole-worktree exclusion including service-owned writes; no production cache/compiler mutation.
+- Start verified: clean detached `53ed3bc47cf16101a3a7cbc4078ccf9bc02c978f`; actual copied r2 result is WIP with 195 passed, not approval to promote.
+- Historical evidence: dd50e233 9 failed / 168 passed / 306.40 s; 6/6 descendant violations; 6/6 service violations and distinct new persistent-service uncertainty must remain.
+- Source design: copied `build-runs/evidence-run4/coordinator-singleflight-service-design.md`; capability/config/service-role proof mandatory, no name exemptions or legacy fallback.
+- Intake: `build-runs/r3-intake-02.json`: no old recorded PID matches or attributable old check; native command-line inventory used after CIM access denied; do not touch other live lanes.
+- Verified ZIP SHA256 `8056ff89839725c64c2f878a0a703ab4e3f68e90ce192f9d68ce90a770dfdcbb`, 70 files; pinned installed binary SHA256 `7600fb817625313850b8a0525c7743c5d44f53494141390223187e57f394ccb0`.
+- Actual bounded isolated wire probe (`r3-protocol-probe.json`): true/file true/ERROR_LOG send StorageHandshake(5); false/empty/LOG empty/distributed send legacy Compile(4); invalid errors without request. No request serviced and no real daemon used.
+- Partial safety change: detected cached paths now reject before log opening/command launch at actual qbuild/fc4verify and guardian boundaries; no service exemption, cache-off fallback or client-side readiness claim.
+- Next: focused actual wrapper quarantine regressions and isolated capability evidence; complete service protocol still missing. Full ownership guarantee remains WIP.
+- Required final full pytest uses provided `C:/Users/tlori/FreeCity4/build-runs/pytest-venv/Scripts/python.exe` once on stable committed source after new focused tests.
+- No subagents, engine edits, current-daemon probes/mutations, shared cache/compiler checks, merge/ref edits or new rounds.
+
+## Preserved round-two report
 
 ## Round 2 result: tested repair, still held
 

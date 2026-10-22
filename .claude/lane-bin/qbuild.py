@@ -20,9 +20,14 @@ import subprocess
 import sys
 
 from build_lease import Lease, LeaseError, canonical_worktree, run_process
+from build_cache import CacheOwnershipError, require_output_ownership
 
 
 def run(cmd, cwd, log, env=None):
+    try:
+        require_output_ownership(cmd, env)
+    except CacheOwnershipError as exc:
+        raise LeaseError(str(exc)) from exc
     p = run_process(cmd, cwd=cwd, log=log, env=env)
     with open(log, "rb") as f:
         text = f.read().replace(b"\x00", b"").decode("utf-8", errors="replace")

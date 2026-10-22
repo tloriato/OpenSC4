@@ -26,6 +26,8 @@ import time
 from multiprocessing.connection import Client, Listener, deliver_challenge, answer_challenge
 from multiprocessing import AuthenticationError
 
+from build_cache import CacheOwnershipError, require_output_ownership
+
 INVITE = "FC4_BUILD_DELEGATION"
 LOCK = ".build-check.lock"
 OWNER = ".build-check-owner.json"
@@ -543,6 +545,7 @@ def _execute(request, wt, info, nested=False):
         cmd, kw = request["cmd"], request["kwargs"]
         env = dict(kw.get("env") or os.environ)
         env.pop(INVITE, None)
+        require_output_ownership(cmd, env)
         kw["env"] = env
         if request.get("delegate"):
             delegation = _Delegation(wt, info)
@@ -574,6 +577,8 @@ def _execute(request, wt, info, nested=False):
             else:
                 response = {"returncode": child.returncode, "stdout": stdout, "stderr": stderr,
                             "console": not capture and not log}
+    except CacheOwnershipError as exc:
+        response = {"error": str(exc)}
     except OSError as exc:
         response = {"oserror": [exc.errno, exc.strerror, exc.filename]}
     except Exception as exc:
