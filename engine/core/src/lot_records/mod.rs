@@ -29,13 +29,13 @@ pub mod walls;
 #[cfg(test)]
 mod lifecycle_tests;
 #[cfg(test)]
+mod mutation_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tests_construction;
 #[cfg(test)]
 mod walls_tests;
-#[cfg(test)]
-mod mutation_tests;
 
 use std::any::Any;
 use std::cell::RefCell;

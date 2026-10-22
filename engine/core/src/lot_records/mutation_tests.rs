@@ -434,3 +434,71 @@ fn native_zero_wealth_has_no_forced_minimum() {
     update_wealth(&mut lot, &mut h).unwrap();
     assert_eq!(lot.wealth, 1);
 }
+
+#[test]
+fn capacity_selected_index_insertion_does_not_search_population_maps() {
+    let mut h = Host {
+        profile: BuildingProfile {
+            capacities: vec![map(&[(J, 20)]), map(&[(K, 100)])],
+            ..Default::default()
+        },
+        fallback: B,
+        ..Default::default()
+    };
+    let mut lot = LotRecord {
+        state: 3,
+        populations: vec![map(&[(K, 9)]), map(&[])],
+        ..Default::default()
+    };
+    assert_eq!(set_population(&mut lot, K, 3, &mut h), Ok(true));
+    assert_eq!(lot.populations, vec![map(&[(K, 9)]), map(&[(K, 3)])]);
+    h.profile.capacities.clear();
+    h.calls.clear();
+    assert_eq!(set_population(&mut lot, K, 12, &mut h), Ok(false));
+    assert_eq!(h.calls, ["type-true", "profile", "type-true", "profile"]);
+}
+
+#[test]
+fn vacant_capacity_gate_bypass_and_negative_mixed_fraction_are_not_clamped() {
+    let mut h = residence(vec![map(&[(K, 100), (J, 100)])]);
+    h.profile.mixed_occupancy = true;
+    let mut lot = LotRecord {
+        state: 4,
+        populations: vec![map(&[(J, 25)])],
+        building_type: B,
+        ..Default::default()
+    };
+    assert_eq!(available_capacity(&lot, K, false, &mut h), Ok(0));
+    assert_eq!(available_capacity(&lot, K, true, &mut h), Ok(75));
+    lot.state = 0;
+    assert_eq!(capacity_ignoring_state(&lot, K, &mut h), 100);
+    lot.state = 3;
+    lot.populations[0].insert(J, 125);
+    assert_eq!(available_capacity(&lot, K, false, &mut h), Ok((-25i16) as u16));
+    h.profile.capacities[0].insert(J, 0);
+    lot.populations[0].insert(J, 1);
+    assert_eq!(available_capacity(&lot, K, false, &mut h), Ok(0));
+}
+
+#[test]
+fn construction_without_type_preserves_population_and_unknown_type_clears_it() {
+    let mut h = Host::default();
+    let mut lot = LotRecord {
+        state: 1,
+        wealth: 2,
+        vacate_reason: 6,
+        populations: vec![map(&[(K, 7)])],
+        ..Default::default()
+    };
+    set_state(&mut lot, 2, 0, 99, &mut h).unwrap();
+    assert_eq!(lot.populations, vec![map(&[(K, 7)])]);
+    assert_eq!((lot.wealth, lot.vacate_reason), (0, 6));
+    assert_eq!(h.data, Some([1, 2, 0, 0]));
+    lot.state = 1;
+    lot.building_type = B;
+    lot.wealth = 2;
+    set_state(&mut lot, 2, 0, 0, &mut h).unwrap();
+    assert!(lot.populations.is_empty());
+    assert_eq!(lot.wealth, 2);
+    assert_eq!(h.data, Some([1, 2, B, 2]));
+}

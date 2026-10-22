@@ -84,11 +84,9 @@ fn population_map(lot: &LotRecord, index: usize) -> Result<&PopulationMap, Mutat
     })
 }
 
-/// Lot slot 50. The true argument bypasses the state gate, not just state 4.
-pub fn capacity(lot: &LotRecord, dev_type: u32, bypass_state: bool, host: &mut impl MutationHost) -> u16 {
-    if !bypass_state && lot.state != 3 {
-        return 0;
-    }
+/// Lot slot 50 with its second argument true, as used by SetState. The
+/// false-argument state gate is deliberately not inferred from slot 52.
+pub fn capacity_ignoring_state(lot: &LotRecord, dev_type: u32, host: &mut impl MutationHost) -> u16 {
     let building_type = host.building_type(lot, true);
     let profile = host.profile(building_type);
     profile
@@ -297,7 +295,7 @@ pub fn set_state(
             host.release_construction_resources(profile.construction_resources);
             if lot.state == 3 {
                 let dev_type = host.developer_type(profile.purpose, profile.native_wealth);
-                let count = capacity(lot, dev_type, true, host);
+                let count = capacity_ignoring_state(lot, dev_type, host);
                 set_population(lot, dev_type, count, host)?;
             }
         }
