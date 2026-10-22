@@ -14,6 +14,9 @@
 - RP6 locale profiles remain unmeasured; no unsupported locale mutation or native construction calls added.
 - Stable full gate PASS: cargo 4642/4642, clippy zero diagnostics, build 6/6, ctest 69/69 (91.0s).
 - Substantive adapter commit 961fdaeb; C++ ABI fixture/quick gate commit 48237e0d.
-- Next: immutable DLL copy, then unique candidate and union game requests; no qwait.
+- Game grprops4-r1-native-48237e0d clean to2032-01-07 ref0; 385 names,5500 finds exact; 462 restoring setter probes exact; P/U and balanced ref checks pass; shutdown releases retained reference.
+- 21 persistent live/default differences filed RP8; no getter-output seeding or resync. RP6 uncontrolled native profile probes recorded, not a locale-profile closure.
+- DLL snapshot build-runs/renderprops-dll/FreeCity4.dll SHA256 5053463be47b1b96f77fbd6e57bef8aed62a2d1e7fff74ba1d8e09632faa4346.
+- Next: explicit39-key union+renderprops run with same immutable DLL and three scripted probes, then final wip report (RP7/RP8 blockers).
 - Guard manifest: C:/Users/tlori/FreeCity4/build-runs/run4-glue-render-properties4-r1-manifest.json.
 - No game request outstanding. No ABI changes or questions yet.
