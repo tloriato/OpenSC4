@@ -543,7 +543,8 @@ def _execute(request, wt, info, nested=False):
     response = None
     try:
         cmd, kw = request["cmd"], request["kwargs"]
-        env = dict(kw.get("env") or os.environ)
+        supplied_env = kw.get("env")
+        env = dict(os.environ if supplied_env is None else supplied_env)
         env.pop(INVITE, None)
         require_output_ownership(cmd, env)
         kw["env"] = env

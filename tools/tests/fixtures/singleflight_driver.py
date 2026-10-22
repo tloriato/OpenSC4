@@ -85,15 +85,24 @@ class FakeCtx:
 
 
 def fake_step(ctx, args, name):
-    rc, text, secs = f.run([sys.executable, DRIVER, "command", name], ctx.engine, ctx.env, ctx.log(name))
+    env = cache_boundary_env(ctx.env)
+    rc, text, secs = f.run([sys.executable, DRIVER, "command", name], ctx.engine, env, ctx.log(name))
     parser = {"test": f.parse_cargo_test, "clippy": f.parse_clippy, "ctest": f.parse_ctest}.get(name, f.parse_ninja)
     return {**parser(text), "seconds": secs, "log": str(ctx.log(name))}
+
+
+def cache_boundary_env(env):
+    if not os.environ.get("FC4_TEST_CACHE_WRAPPER"):
+        return env
+    event("cache-entry")
+    return {**env, "RUSTC_WRAPPER": os.environ["FC4_TEST_CACHE_WRAPPER"]}
 
 
 def install(wt):
     original_run = q.run
 
     def harmless_run(cmd, cwd, log, env=None):
+        env = cache_boundary_env(env)
         if os.environ.get("FC4_TEST_TREE_MODE") == "timeout":
             p = lease.run_process([sys.executable, DRIVER, "command", cmd[1]], cwd=cwd, log=log,
                                   env=env, timeout=1)
@@ -162,6 +171,13 @@ def main():
     if kind == "lease":
         with lease.Lease(wt):
             lease.run_process([sys.executable, DRIVER, "command", "lease"], capture_output=True)
+        return 0
+    if kind == "lease-cache":
+        with lease.Lease(wt):
+            env = cache_boundary_env(dict(os.environ))
+            lease.run_process([sys.executable, DRIVER, "command", "unreachable"], env=env,
+                              log=Path(wt) / "build-runs/qbuild-test.log"
+                              if os.environ.get("FC4_TEST_FILE_LOG") else None, capture_output=True)
         return 0
     if kind == "tree-capture":
         with lease.Lease(wt):

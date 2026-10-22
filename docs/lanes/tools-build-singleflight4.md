@@ -12,7 +12,10 @@
 - Verified ZIP SHA256 `8056ff89839725c64c2f878a0a703ab4e3f68e90ce192f9d68ce90a770dfdcbb`, 70 files; pinned installed binary SHA256 `7600fb817625313850b8a0525c7743c5d44f53494141390223187e57f394ccb0`.
 - Actual bounded isolated wire probe (`r3-protocol-probe.json`): true/file true/ERROR_LOG send StorageHandshake(5); false/empty/LOG empty/distributed send legacy Compile(4); invalid errors without request. No request serviced and no real daemon used.
 - Partial safety change: detected cached paths now reject before log opening/command launch at actual qbuild/fc4verify and guardian boundaries; no service exemption, cache-off fallback or client-side readiness claim.
-- Next: focused actual wrapper quarantine regressions and isolated capability evidence; complete service protocol still missing. Full ownership guarantee remains WIP.
+- Done `96fd83c4`: partial quarantine; no permission to promote. Focused provided-venv pytest `r3-cache-focused-01`: **10 passed in 19.62 s**, exit 0, dirty development source recorded.
+- Focused cases use actual qbuild/CLI/imported/nested/direct Lease dispatch, held OS ownership, BUSY contenders, unchanged sentinel logs/verdicts, and bounded uncached fixture recovery; no service writer is launched or claimed drained.
+- Fixed explicit `env={}` inheritance and retained clippy's wrapper removal. No cache env/hash/endpoint/idle policy changes.
+- Next: commit focused milestone, bounded isolated installed Rust/C++ capability evidence if feasible; service identity/bootstrap/restart and all-client dataflow protocol still missing. Then ONE final clean-source full pytest plus compile/diff/doccheck.
 - Required final full pytest uses provided `C:/Users/tlori/FreeCity4/build-runs/pytest-venv/Scripts/python.exe` once on stable committed source after new focused tests.
 - No subagents, engine edits, current-daemon probes/mutations, shared cache/compiler checks, merge/ref edits or new rounds.
 

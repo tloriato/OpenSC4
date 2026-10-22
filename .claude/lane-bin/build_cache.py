@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import shlex
 
 
 class CacheOwnershipError(RuntimeError):
@@ -25,7 +26,8 @@ def require_output_ownership(cmd, env=None):
     service containment. Empty wrapper values retain their uncached meaning.
     """
     values = {str(k).upper(): str(v) for k, v in (os.environ if env is None else env).items()}
-    args = [os.fspath(arg) for arg in cmd]
+    args = ([arg.strip('"') for arg in shlex.split(cmd, posix=os.name != "nt")]
+            if isinstance(cmd, str) else [os.fspath(arg) for arg in cmd])
     reasons = []
     for key in ("RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER", "CARGO_BUILD_RUSTC_WRAPPER",
                 "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER"):
