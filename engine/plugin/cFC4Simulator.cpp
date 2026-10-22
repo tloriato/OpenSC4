@@ -12,6 +12,7 @@
 // root); if not, see <https://www.gnu.org/licenses/>.
 
 #include "cFC4Simulator.h"
+#include "FC4AdviceSubjectVerify.h"
 
 #include "FC4AuraShadow.h"
 #include "FC4BudgetShadow.h"
@@ -1114,6 +1115,7 @@ bool cFC4Simulator::OnTick(uint32_t unknown1) {
     fc4::TickScope tick;
     FC4_X87_SCOPE("simulator OnTick", 0);  // x87 leftover guard at the entry and the end (FC4Fpu.h)
     ++ticks_;
+    fc4::subjectverify::Run();
     if (ticks_ == 1 || ticks_ % 1000 == 0) {
         fc4_state st{};
         st.struct_size = sizeof(st);
