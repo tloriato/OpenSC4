@@ -455,10 +455,11 @@ void RunAction(const harness::ScriptAction& a, int32_t julian, cISC4City* city) 
             auto* o = city ? city->GetOrdinanceSimulator() : nullptr;
             if (!o) { result = "skipped: no ordinance simulator"; break; }
             OrdinanceShadowFixture(true);
-            const bool ok = a.kind == 0 ? o->SetOrdinanceAvailable(a.ordinanceID, a.on) :
-                a.kind == 1 ? o->SetOrdinanceOn(a.ordinanceID, a.on) : o->SetOrdinanceEnabled(a.ordinanceID, a.on);
+            if (a.kind == 0) o->SetOrdinanceAvailable(a.ordinanceID, a.on);
+            else if (a.kind == 1) o->SetOrdinanceOn(a.ordinanceID, a.on);
+            else o->SetOrdinanceEnabled(a.ordinanceID, a.on);
             OrdinanceShadowFixture(false);
-            result = std::string("fixture action; native/city setter returned ") + (ok ? "true" : "false");
+            result = "fixture setter invoked; outcome compared by shadow when active";
             break;
         }
     }

@@ -41,10 +41,10 @@
 //   dispatch type              real station: begin tool, dispatch, record/shadow,
 //                              revoke, end; INCOMPLETE unless a vehicle dispatched
 //   save [fast]                cISC4App::SaveCity(fast) (docs/abi/vtables.tsv
-//   ordinance hex-ID on|available|enabled 0|1   real city ordinance setter (explicit fixture action)
 //                              cSC4App::vftable_3 slot 16, pop 4): the city
 //                              saved in place, a full save unless `fast`;
 //                              logs `-> ok=<0|1> (SaveCity(full|fast) in N ms)`
+//   ordinance hex-ID on|available|enabled 0|1   real city ordinance setter (explicit fixture action)
 //   terrain x0 z0 x1 z1 h [kind]  cISTETerrain::SetAltitude(rect, h, true, kind)
 //                              (city slot 84, terrain slot 49, terrain.md §6): the
 //                              inclusive VERTEX rectangle set to h metres, its

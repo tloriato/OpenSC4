@@ -26,6 +26,7 @@ std::recursive_mutex g_lock;
 bool g_enabled = false, g_valid = false;
 thread_local bool g_native = false;
 thread_local bool g_fixture = false;
+thread_local bool g_sampling = false;
 cISC4OrdinanceSimulator* g_original = nullptr; // borrowed until PreCityShutdown
 fc4_ordinance_sim* g_core = nullptr;
 std::vector<fc4_ordinance*> g_objects;
@@ -34,6 +35,7 @@ std::array<void*, 26> g_saved{}, g_table{}; // ordinance.md compiled SDK slot ta
 void** g_originalTable = nullptr;
 uint64_t g_checks = 0, g_differences = 0, g_months = 0, g_refusals = 0;
 uint64_t g_posts = 0, g_effects = 0, g_nested = 0, g_bootstraps = 0;
+std::array<uint64_t, 3> g_sourceChecks{}, g_sourceDifferences{}; // dynamic, explicit fixture, serialized sample
 std::array<uint64_t, 26> g_calls{};
 std::array<uint64_t, 26> g_fixtureCalls{};
 void Call(size_t slot) { ++(g_fixture ? g_fixtureCalls : g_calls)[slot]; }
@@ -54,9 +56,12 @@ struct NativeScope {
 };
 void Check(const char* what, bool same) {
     ++g_checks;
+    const size_t source = g_fixture ? 1 : g_sampling ? 2 : 0;
+    ++g_sourceChecks[source];
     if (!same) {
         ++g_differences;
-        Log("ordinance shadow difference: %s check=%llu differences=%llu", what, g_checks, g_differences);
+        ++g_sourceDifferences[source];
+        Log("ordinance shadow difference: %s source=%u check=%llu differences=%llu", what, unsigned(source), g_checks, g_differences);
     }
 }
 void NoRef(void*, uint64_t) {} // core tokens are identities, not owned native references
@@ -312,6 +317,8 @@ bool Bootstrap(cISC4OrdinanceSimulator* original) {
 
 void Records() {
     NativeScope scope;
+    const bool wasSampling = g_sampling;
+    g_sampling = true;
     WriteCapture native, ours;
     const bool a = native.Capture(g_original);
     OStreamAdapter out(ours);
@@ -326,6 +333,7 @@ void Records() {
         Check("ordinance serialization success", ax && by);
         if (ax && by) Check("ordinance serialized bytes", x.Bytes() == y.Bytes());
     }
+    g_sampling = wasSampling;
 }
 void Install(cISC4OrdinanceSimulator* p) {
     // Only the public SDK dispatch table (26 slots), never executable bytes.
@@ -385,8 +393,11 @@ bool OrdinanceShadowDeliver(cIGZMessageTarget2* target, const char* name, cIGZMe
 void OrdinanceShadowCityShutdown() {
     std::lock_guard<std::recursive_mutex> lock(g_lock);
     if (!g_enabled) return;
-    Log("ordinance shadow: shutdown months=%llu exact=%llu/%llu differences=%llu bootstraps=%llu resync=0 fallback=0 refusals=%llu nested=%llu",
+    Log("ordinance shadow: shutdown months=%llu matches=%llu/%llu differences=%llu bootstraps=%llu resync=0 fallback=0 refusals=%llu nested=%llu",
         g_months, g_checks - g_differences, g_checks, g_differences, g_bootstraps, g_refusals, g_nested);
+    for (size_t i = 0; i < 3; ++i)
+        Log("ordinance shadow: source=%u (0=dynamic 1=fixture 2=serialized-sample) matches=%llu/%llu differences=%llu",
+            unsigned(i), g_sourceChecks[i] - g_sourceDifferences[i], g_sourceChecks[i], g_sourceDifferences[i]);
     for (size_t i = 0; i < g_calls.size(); ++i) Log("ordinance shadow: simulator slot=%u natural=%llu fixture=%llu", unsigned(i), g_calls[i], g_fixtureCalls[i]);
     for (auto& t : g_taps) {
         for (size_t i = 0; i < t->calls.size(); ++i)
