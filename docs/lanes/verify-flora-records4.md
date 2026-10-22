@@ -12,7 +12,11 @@
 - Done: a25cef82 independent Rust occupant codec committed before call 30; FQ17 partial-state/override question appended.
 - Done: 6f3a7fad typed probe; quick 3452 tests PASS, dependents compiled, build PASS (tree changed; stable gate still required).
 - Game vfocc-r2-d1-20261022-1758 clean/ref0: 585 comparisons/0 differences, 340 FQ17 refusals, 2607 natural occupants/15642 read-only queries, invalid0.
-- Next: stable full gate of expanded independent reference lifetime/base mutations/output-error probe; immutable 2032/save/reload controls.
+- Stable full all on 17369af7: cargo 4941/0, clippy0 diagnostics, CMake4/4, CTest68/68 (242.2s); no tree-changed marker.
+- Guard2032 vfocc-r2-guard2032-20261022-a clean/ref0: each probe810/0, 340 refusals,70 undefined returns,0 fallbacks. Script full save ok1 (11484ms), date2031-01-11.
+- Immutable DLL build-runs/dlls/vfocc-r2-final/FreeCity4.dll SHA256 daed6fc7e7d83e3ed793787adbf4c20061c5b289220c1743b82ebaad2384a8aa.
+- Saved isolated-slot game-data fixture main build-runs/fixtures/vfocc-r2-save-20261022-a.sc4 SHA25682de3ffe2ac3e7b11ec36ce04917203d1afd82ad6d8286a2d42ce1ea396d4390 (never committed).
+- Next: wait reload2032 request, then same-fixture probe-disabled2032 control; final report with remaining FQ17 coverage gaps.
 - Expanded probe compares native release counts with independently allocated Rust atomic reference model and destroys both at zero.
 - Probe opt-in flora_occupant_verify=1; enable simulator, keep flora_shadow=0 (avoids static-record getters entirely).
 - No game request outstanding. New labels unique; wait without qwait.
