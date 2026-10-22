@@ -6,7 +6,8 @@
 - Goal: first portable TextEdit owner, published contracts only; preserve TE5/TE8, no game/native promotion.
 - Done: 3d010273 substantive first source; added layout/scroll geometry/navigation, complete key routing, paint ordering/hit mapping and resource/timer adapters. TE9 records unpublished choices; TE5/TE8 preserved.
 - Done: 37 independent scenarios written; all seven new Rust files passed qbuild fmt with absolute paths before final small fixes. Resource owner cannot be cloned without acquiring references. No game requests.
-- Next: quick result (fc4verify-quick-test.log), stable full gate and final report/queue; final source commit follows fixes to the one clippy collapsible-match finding and sound failure-handle release. LengthFromGlyphCount is a foreign call, not an inferred parser.
+- Done: quick core test phase 3047 passed, 0 failed (34.26s); conformance phase pending. Final source fixes include the sole clippy finding, sound failure-handle release and fresh editor dimension queries for both scrollbar placements. LengthFromGlyphCount remains foreign.
+- Next: collect stable full gate and 37 independent cases from logs; fix any failures; final report/queue only after measured results. No queue has been written.
 - Baseline all: Rust stopped in unchanged capi occupant_manager_tests::slot42_callbacks_run_unlocked_across_threads: 536 passed, 1 failed (200.82s). Clippy still running; quick waiting on build directory lock. Do not claim a clean gate.
 - Constraints: no game, clipboard OS, ABI changes, agents, main edits or branch/ref updates.
 - Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-core-text-edit4-r1-manifest.json.

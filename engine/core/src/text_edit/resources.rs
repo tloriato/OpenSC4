@@ -319,28 +319,30 @@ impl TextEdit {
     }
     pub fn bar_sizes(&self, s: &mut impl Services) -> Result<()> {
         if let Some(bar) = self.horizontal.handle {
+            let (width, height) = self.editor_size(s)?;
             let (_, hh) = Self::bar_size(Some(bar), s)?;
             let (vw, _) = Self::bar_size(self.vertical.handle, s)?;
             s.call(Call::BarRect {
                 bar,
                 rect: Rect {
                     left: 0,
-                    top: self.height.wrapping_sub(hh) as i32,
-                    right: self.width.wrapping_sub(vw) as i32,
-                    bottom: self.height as i32,
+                    top: height.wrapping_sub(hh) as i32,
+                    right: width.wrapping_sub(vw) as i32,
+                    bottom: height as i32,
                 },
             })?;
         }
         if let Some(bar) = self.vertical.handle {
+            let (width, height) = self.editor_size(s)?;
             let (vw, _) = Self::bar_size(Some(bar), s)?;
             let (_, hh) = Self::bar_size(self.horizontal.handle, s)?;
             s.call(Call::BarRect {
                 bar,
                 rect: Rect {
-                    left: self.width.wrapping_sub(vw).wrapping_add(1) as i32,
+                    left: width.wrapping_sub(vw).wrapping_add(1) as i32,
                     top: 0,
-                    right: self.width as i32,
-                    bottom: self.height.wrapping_sub(hh) as i32,
+                    right: width as i32,
+                    bottom: height.wrapping_sub(hh) as i32,
                 },
             })?;
         }

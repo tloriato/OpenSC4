@@ -99,8 +99,12 @@ impl TextEdit {
         let bytes = match Self::span(buffer, at, count) {
             Ok(bytes) => bytes.to_vec(),
             Err(error) => {
-                s.call(Call::UnsupportedSpan { purpose: "draw", start: at, count,
-                    logical_length: buffer.len() as u32 })?;
+                s.call(Call::UnsupportedSpan {
+                    purpose: "draw",
+                    start: at,
+                    count,
+                    logical_length: buffer.len() as u32,
+                })?;
                 return Err(error);
             }
         };

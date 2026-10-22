@@ -17,6 +17,7 @@ struct Host {
     reject_a: bool,
     zero_consume: bool,
     search_result: u32,
+    editor_size: (u32, u32),
 }
 impl Services for Host {
     fn has_font(&self) -> bool {
@@ -56,7 +57,9 @@ impl Services for Host {
     }
     fn length_from_glyph_count(&mut self, bytes: &[u8], glyphs: u32, selector: i32) -> Result<u32> {
         let mut at = 0;
-        for _ in 0..glyphs { at += char_length(bytes, at, bytes.len() as u32 - at, selector)?; }
+        for _ in 0..glyphs {
+            at += char_length(bytes, at, bytes.len() as u32 - at, selector)?;
+        }
         Ok(at)
     }
     fn call(&mut self, call: Call) -> Result<Reply> {
@@ -70,7 +73,15 @@ impl Services for Host {
                 None
             }),
             Call::BarWindow(handle) => Reply::Handle(Some(*handle + 10)),
+            Call::WindowSize(42) => Reply::Size(self.editor_size.0, self.editor_size.1),
             Call::WindowSize(_) => Reply::Size(12, 10),
+            Call::Base("SetArea", coordinates) => {
+                self.editor_size = (
+                    coordinates[2].wrapping_sub(coordinates[0]),
+                    coordinates[3].wrapping_sub(coordinates[1]),
+                );
+                Reply::Bool(true)
+            }
             Call::ImageRect(_) => Reply::Rectangle(Rect {
                 left: 0,
                 top: 0,
@@ -81,7 +92,10 @@ impl Services for Host {
             Call::ClipboardPaste(_) => Reply::Bytes(self.pasted.clone()),
             Call::Color { value, .. } => Reply::Word(*value),
             Call::Search { .. } => Reply::Word(self.search_result),
-            Call::SoundAcquire { .. } => Reply::Sound { acquired: false, handle: Some(55) },
+            Call::SoundAcquire { .. } => Reply::Sound {
+                acquired: false,
+                handle: Some(55),
+            },
             Call::Timer { .. } | Call::Notify { .. } | Call::Base(_, _) | Call::SoundPlay(_) => Reply::Bool(true),
             _ => Reply::Unit,
         };
@@ -699,7 +713,11 @@ fn sound_failure_still_releases_created_handle_without_playing() {
     let (mut e, mut h) = editor(0x201, 0, b"abc");
     e.set_sound_id(0, 77).unwrap();
     e.set_text(Some(b"\nx"), 2, false, &mut h).unwrap();
-    let acquire = h.calls.iter().position(|c| matches!(c, Call::SoundAcquire { id: 77, .. })).unwrap();
+    let acquire = h
+        .calls
+        .iter()
+        .position(|c| matches!(c, Call::SoundAcquire { id: 77, .. }))
+        .unwrap();
     let release = h.calls.iter().position(|c| *c == Call::Release(55)).unwrap();
     assert!(acquire < release);
     assert!(!h.calls.iter().any(|c| matches!(c, Call::SoundPlay(_))));
@@ -707,11 +725,24 @@ fn sound_failure_still_releases_created_handle_without_playing() {
 
 #[test]
 fn scroll_page_down_can_overshoot_last_full_page() {
-    let mut h = Host { bars: true, ..Host::default() };
+    let mut h = Host {
+        bars: true,
+        ..Host::default()
+    };
     let mut e = TextEdit::new(9, 0, 42);
-    e.set_area(Rect { left: 0, top: 0, right: 210, bottom: 40 }, &mut h).unwrap();
+    e.set_area(
+        Rect {
+            left: 0,
+            top: 0,
+            right: 210,
+            bottom: 40,
+        },
+        &mut h,
+    )
+    .unwrap();
     e.init(&mut h).unwrap();
-    e.set_text(Some(b"0\n1\n2\n3\n4\n5\n6\n7\n8\n9"), 19, false, &mut h).unwrap();
+    e.set_text(Some(b"0\n1\n2\n3\n4\n5\n6\n7\n8\n9"), 19, false, &mut h)
+        .unwrap();
     h.bar_value = 5;
     e.message(3, 0x887113a3, 0, (0, 0), &mut h).unwrap();
     assert_eq!(e.visible_size().2, 4);
@@ -721,9 +752,22 @@ fn scroll_page_down_can_overshoot_last_full_page() {
 
 #[test]
 fn pixel_only_scroll_start_gate_and_left_signed_underflow() {
-    let mut h = Host { bars: true, height: 16, ..Host::default() };
+    let mut h = Host {
+        bars: true,
+        height: 16,
+        ..Host::default()
+    };
     let mut e = TextEdit::new(5, 0, 42);
-    e.set_area(Rect { left: 0, top: 0, right: 50, bottom: 40 }, &mut h).unwrap();
+    e.set_area(
+        Rect {
+            left: 0,
+            top: 0,
+            right: 50,
+            bottom: 40,
+        },
+        &mut h,
+    )
+    .unwrap();
     e.init(&mut h).unwrap();
     // Init removes an unnecessary horizontal bar but leaves its enable bit.
     e.set_text(Some(b"abcdefghij"), 10, false, &mut h).unwrap();

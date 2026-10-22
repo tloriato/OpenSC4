@@ -287,6 +287,12 @@ impl TextEdit {
             Err(Boundary::Foreign)
         }
     }
+    pub(super) fn editor_size(&self, s: &mut impl Services) -> Result<(u32, u32)> {
+        match s.call(Call::WindowSize(self.token))? {
+            Reply::Size(width, height) => Ok((width, height)),
+            _ => Err(Boundary::Foreign),
+        }
+    }
     pub fn calculate_visible_width(&mut self, s: &mut impl Services) -> Result<u32> {
         let (bar, _) = Self::bar_size(self.vertical.handle, s)?;
         let sum = self.gutter_x.wrapping_mul(2).wrapping_add(bar);

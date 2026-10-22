@@ -130,7 +130,12 @@ pub enum Call {
         args: [u32; 7],
     },
     SoundPlay(u64),
-    UnsupportedSpan { purpose: &'static str, start: u32, count: u32, logical_length: u32 },
+    UnsupportedSpan {
+        purpose: &'static str,
+        start: u32,
+        count: u32,
+        logical_length: u32,
+    },
     Fill {
         rect: Rect,
         color: u32,
@@ -425,18 +430,23 @@ impl TextEdit {
         if id == 0 {
             return Ok(false);
         }
-        let reply = s
-            .call(Call::SoundAcquire {
-                reason,
-                id,
-                args: [5, 0x5b523ba4, 0, id, 0, 0, 0],
-            })?;
-        let Reply::Sound { acquired, handle } = reply else { return Err(Boundary::Foreign); };
+        let reply = s.call(Call::SoundAcquire {
+            reason,
+            id,
+            args: [5, 0x5b523ba4, 0, id, 0, 0, 0],
+        })?;
+        let Reply::Sound { acquired, handle } = reply else {
+            return Err(Boundary::Foreign);
+        };
         let result = if acquired {
             let handle = handle.ok_or(Boundary::Foreign)?;
             s.call(Call::SoundPlay(handle)).and_then(Reply::boolean)
-        } else { Ok(false) };
-        if let Some(handle) = handle { s.call(Call::Release(handle))?; }
+        } else {
+            Ok(false)
+        };
+        if let Some(handle) = handle {
+            s.call(Call::Release(handle))?;
+        }
         result
     }
     pub fn set_sound_id(&mut self, index: i32, id: u32) -> Result<bool> {
