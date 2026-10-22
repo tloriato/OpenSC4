@@ -1,6 +1,24 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| verify-flora-records4 (final round 3/3) | Codex / verify-flora-records4, detached HEAD | wip: 25-case occupant verification exact; fresh-save reload stalls with probe off; final stable gate pending | Coordinator: investigate fresh-fixture core tick stall; no fourth occupant-family round or owner promotion. |
+| verify-flora-records4 (final round 3/3) | Codex / verify-flora-records4, detached HEAD | continue: guard context limit; code/corpus complete; last stable native build failed; fresh-save stalls with probe off | Coordinator: collect native build error and investigate fixture stall; no fourth occupant-family implementation round or promotion. |
+
+## Handoff
+
+- Goal: close final existing occupant-family round; no fourth/renamed implementation round, no owner/static/default promotion.
+- Source complete:367e155e substantive query/corpus/QI work, final source29f66555; report9bfb382e.
+- Done:25 distinct typed inputs (20 normal cross +5 narrowing), production Rust query/visibility, cross-view COM identity/refcounts.
+- Done:quick3456/0; serial workspace4943/0; clippy0; native CTest68/68 passed earlier, but tree-changed marker from evidence commits.
+- Last fixed-HEAD all on9bfb382e:Rust4943/0,clippy0,native build FAIL,CTest skipped. Last command saw fc4verify FAIL(6.0s); build error NOT inspected.
+- Exact next step for coordinator:inspect build-runs/fc4verify-build.log and fc4verify-configure.log plus flora-r3-final-all.log for native build failure; do not assume earlier CTest result is current stable gate.
+- Guard denied that inspection at context152k/150k; only this handoff/commit permitted. No merge-queue file written.
+- Game DLL immutable:a4579088af1b685bd30bd62d12104ec5e4dbb98021bf162a28098a6d1b2e1cf1 in build-runs/dlls/vfocc-r3-games/.
+- Guard/known reload/control all clean/ref0; guard+reload119500 mixed/0 differences,63500 Rust query comparisons; full counts below.
+- Fresh saved fixture reload AND probe-off control stalled at2031-01-07 inside core fc4_sim_on_tick before any probe; both retained, unresolved, no credit.
+- No game request outstanding. All five unique round3 labels below have completed verdicts. Never discard or repeat a proved run absent code change.
+- FQ18 newly appended; FQ16/FQ17 retained; exact residual methods and refusal/undefined accounting below.
+- Runtime JSON flora-r3-final-gate.json now{fmt:0,all:1}; fc4verify-ctest.log is STALE earlier68/68, not last attempt.
+- Failed timing-test evidence flora-r3-failed-workspace-test.log and flora-r3-attempt1-* preserved; earlier Rust failures were300ms thread tests, no unrelated edits.
+- All code/report committed; detached HEAD intentional. Do not switch/update refs, merge, push, or create another occupant family round.
 
 ## Result
 
