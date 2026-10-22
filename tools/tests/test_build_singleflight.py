@@ -424,14 +424,14 @@ class SingleflightTests(unittest.TestCase):
         files = self.sentinels()
         text = self.finish(self.start(steps=("quick",)), ok=False)
         self.assertIn("ownership uncertain after guardian failure", text)
-        self.assertIn("manually archiving", text)
+        self.assertIn("let owned work finish and retry", text)
         self.assert_unchanged(files)
         self.assertEqual(self.owner()["status"], "active")
         self.go(held)
         wait_process(data["pid"])
         self.finish(first, ok=False)
-        # Explicit recovery only after the supervised raw command has really exited.
-        (self.wt / "build-runs" / lease.OWNER).rename(self.wt / "archived-owner.json")
+        # The named kernel job proves the entire tree has drained; no PID/age
+        # inference or active-inode/metadata deletion is required for recovery.
         self.finish(self.start(steps=("quick",)), ("context", "quick"))
 
 

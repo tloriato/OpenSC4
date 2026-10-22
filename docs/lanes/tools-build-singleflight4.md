@@ -7,7 +7,10 @@
 - Goal: repair all three demonstrated ownership defects on original family, no engine/build/game work.
 - Baseline/report tip dd50e233; copied baseline scripts/JSON remain untouched under build-runs/evidence-run4.
 - Inspected helper: direct Popen.communicate drains no DEVNULL descendants; Listener.accept authenticates without deadline; venv peer differs from Popen PID.
-- Next: implement Windows Job containment before command entry, strict venv redirector authorization and bounded authenticated accept/close.
+- Implemented suspended-launch Windows Job containment, job publication/recovery, strict venv redirector authorization and bounded authenticated accept/close; validation ongoing.
+- Venv original intended/copied/inherited/stale/forged token regression passed 1 test (2.034 s), log r2-venv-delegation-01.log.
+- Supplied venv currently prints No module named pytest; local-target pip attempt found no matching distribution (r2-pytest-dependency-01.log). Full pytest still required, not substituted.
+- Next: inspect r2-descendants-01.log/json, repair actual failures; run original ownership set and provided-venv full pytest when available.
 - Required interpreter: C:/Users/tlori/FreeCity4/build-runs/pytest-venv/Scripts/python.exe.
 - Old full-suite log: build-runs/coordinator-full-tools-2231.log (9 failed, 168 passed); do not overwrite.
 - No current run labels; cache idle DRAFT remains deferred. No new queue publication until measured validation.

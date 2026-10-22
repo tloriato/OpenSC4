@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -22,7 +23,9 @@ DRIVER = str(Path(__file__).resolve())
 def event(stage):
     host, port = os.environ["FC4_TEST_SYNC"].split(":")
     with socket.create_connection((host, int(port)), timeout=25) as sock:
-        data = {"stage": stage, "pid": os.getpid(), "wrapper": os.environ.get("FC4_TEST_WRAPPER_PID"),
+        data = {"stage": stage, "pid": os.getpid(), "parent_pid": os.getppid(),
+                "executable": sys.executable, "base_executable": sys._base_executable,
+                "wrapper": os.environ.get("FC4_TEST_WRAPPER_PID"),
                 "invite": os.environ.get("FC4_TEST_CAPTURED_INVITE"),
                 "raw_invite": os.environ.get(lease.INVITE), "id": os.environ.get("FC4_TEST_ID")}
         sock.sendall(json.dumps(data).encode() + b"\n")
@@ -33,6 +36,17 @@ def event(stage):
 
 def command(stage):
     event(stage)
+    if os.environ.get("FC4_TEST_TREE_STAGE") == stage:
+        subprocess.Popen([sys.executable, DRIVER, "descendant", os.environ.get("FC4_TEST_DEPTH", "0")],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        event("parent-spawned")
+        mode = os.environ["FC4_TEST_TREE_MODE"]
+        if mode == "abrupt":
+            os._exit(73)
+        if mode == "nonzero":
+            return 3
+        if mode == "timeout":
+            event("timeout-held")
     if os.environ.get("FC4_TEST_FAIL_STAGE") == stage:
         print("error: intentional harmless command failure")
         return 3
@@ -80,6 +94,10 @@ def install(wt):
     original_run = q.run
 
     def harmless_run(cmd, cwd, log, env=None):
+        if os.environ.get("FC4_TEST_TREE_MODE") == "timeout":
+            p = lease.run_process([sys.executable, DRIVER, "command", cmd[1]], cwd=cwd, log=log,
+                                  env=env, timeout=1)
+            return p.returncode, Path(log).read_text().splitlines()
         return original_run([sys.executable, DRIVER, "command", cmd[1]], cwd, log, env)
 
     q.run = harmless_run
@@ -115,10 +133,23 @@ def main():
     kind = sys.argv.pop(1)
     if kind == "command":
         return command(sys.argv[1])
+    if kind == "descendant":
+        depth = int(sys.argv[1])
+        if depth:
+            subprocess.Popen([sys.executable, DRIVER, "descendant", str(depth - 1)],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            os._exit(0)
+        event("writer")
+        with open(os.environ["FC4_TEST_WRITER_PATH"], "ab") as stream:
+            stream.write(b"owned output\n")
+        event("writer-done")
+        return 0
     wt = sys.argv[sys.argv.index("--wt") + 1]
     os.environ["FC4_TEST_WRAPPER_PID"] = str(os.getpid())
     if lease.INVITE in os.environ:
         os.environ["FC4_TEST_CAPTURED_INVITE"] = os.environ[lease.INVITE]
+        if os.environ.get("FC4_TEST_PRE_JOIN"):
+            event("before-join")
     install(wt)
     if kind == "qbuild":
         return q.main()
@@ -132,6 +163,12 @@ def main():
         with lease.Lease(wt):
             lease.run_process([sys.executable, DRIVER, "command", "lease"], capture_output=True)
         return 0
+    if kind == "tree-capture":
+        with lease.Lease(wt):
+            p = lease.run_process([sys.executable, DRIVER, "command", "tree"], capture_output=True,
+                                  timeout=1 if os.environ["FC4_TEST_TREE_MODE"] == "timeout" else None)
+            print(p.stdout.decode() if isinstance(p.stdout, bytes) else p.stdout)
+            return p.returncode
     raise ValueError(kind)
 
 
