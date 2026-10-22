@@ -16,6 +16,7 @@
 - Thin-address fixture fix and role inventory committed in 91f667d6; touched-file fmt passed. Native baseline build still outstanding; first quick ended E0502/configure failure, both documented below.
 - Baseline workspace test log aggregates 5,140 passed / 0 failed / 0 ignored, 22 result lines; initial all clippy failed on the now-fixed in-flight fixture, native baseline result pending.
 - Added explicit manual-entry/null attachment transitions; core suite now 25 tests versus original 16. Comment boundary milestone 6755b875.
+- Attachment coverage committed a20a42ab. Static review made zero-instance-flags unit scale explicit; baseline native build compiling 214 C++ steps, subsequent gates remain serialized.
 
 ## Contract reconciliation (working)
 

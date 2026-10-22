@@ -109,7 +109,7 @@ impl Transform {
         let mut result = if local.flags == 0 {
             self
         } else if self.flags == 0 {
-            local
+            Self { scale: 1.0, ..local }
         } else {
             let mut composed = self.compose(local);
             composed.scale = self.scale;
