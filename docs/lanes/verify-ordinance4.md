@@ -29,6 +29,16 @@
 
 ## Final outcome
 
+## Handoff
+- Guard stopped at150k after report369e3109; merge-queue creation denied, no queue file written.
+- Goal remains independent exact ordinance verification; current implementation is partial/WIP.
+- Done: code2269d93c, full gate4938/0/clippy clean/ctest68/68, four completed immutable game results in report below.
+- Next exact step: review SV3 and crime native-ordinance last-release warning at cFC4CrimeSimulator.cpp:996; implement actual native host/effect capture and controlled reload before claiming ready.
+- Native turbo/normal clean2032/ref0 each retain1760 serialized differences; union native ref1; full40 clean2032/ref0 with shadow inactive.
+- No outstanding requests. No ABI change, no promotion, no resync/fallback. All results and DLL hashes/paths preserved below.
+
+## Outcome details
+
 WIP; no exact-owner coverage or promotion. Substantive implementation commits:2dedf01b,e5c5360c,1729582e,c2baaf8a,2269d93c. Native remains authoritative whenever shadow is active. SDK dispatch is observed per runtime instance, with QI owner identity; no executable bytes/private state maps or native algorithm forwarding. Bootstrap captures native public Write once into independent Rust objects; bootstrap equality receives no credit. Serialization samples, natural dynamic calls and explicit fixtures have separate denominators. No resync/fallback; all mismatches retained. Shadow host writes are suppressed and counted, never applied twice.
 
 Final stable code gate at2269d93c: cargo4938 passed/0failed, clippy0diagnostics, ctest68/68. Rust files untouched, fmt not applicable. No C ABI export/version/table changes. Diagnostic DLL SHA256 AEA6A17CA2551AC8C37A3D0BDF8CE93A49E5BDF0C38A7D188D1650840E05D5B6; immutable paths and raw logs remain under build-runs.
