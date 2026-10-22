@@ -16,6 +16,9 @@
 - Done: 29f66555 final source; fmt absolute paths passed, exit0/files2. Final all running, blocked on build-directory lock behind baseline/quick; do not relaunch it.
 - Note: flora-r3-final-gate.json contains old {fmt:1} until the current runner finishes; require its all key before accepting completion.
 - Probe accounting algorithms means runtime production Rust query comparisons, not distinct algorithm implementations (10 query selectors).
+- Focused 32-bit Rust tests complete with no failures; native build still compiling. Final workspace attempt failed two existing timing tests: occupant_manager_tests slot42_callbacks_run_unlocked_across_threads and slot44_holds_the_lock_across_threads (300ms scheduler window).
+- Failure evidence preserved in flora-r3-failed-workspace-test.log; quick evidence flora-r3-passed-quick-test.log. No unrelated code/test changes.
+- Retry runner waits for first gate to finish, archives it, then repeats the full gate once with RUST_TEST_THREADS=1 (no skipped tests). Do not launch another gate.
 - Next: focused quick/fmt, review measured differences, stable final all then immutable-DLL game controls.
 - FQ18 added for failed-QI output/null-address policy and multi-bit flag semantics; no guessed equivalence.
 - Need final stable all, immutable DLL, unique coordinator guarded2032/save/reload/probe-off runs.
