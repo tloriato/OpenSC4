@@ -7,8 +7,10 @@
 //! Providers implement only foreign string, font, renderer and framework services.
 //! No provider implements a glyph map, cache decision, owner size or lifetime.
 //!
-//! Missing published contracts are tracked as GT3–GT6. In particular, this module
-//! does not invent bodies for the inherited/shared service slots in the ABI table.
+//! GT1 (font source identity) and GT2 (framework registration semantics) remain
+//! foreign boundaries. This is bounded portable computation, not integration or
+//! whole-owner/native-default credit. Native invalid memory and nontermination
+//! are explicit unsupported paths, never simulated with a hang or unsafe access.
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -71,13 +73,6 @@ pub trait TextureBinding {
     fn first_texture(&self) -> u32;
 }
 
-pub struct RenderedText<B> {
-    pub binding: B,
-    pub texture_size: [u32; 2],
-    pub glyph_size: [u32; 2],
-    pub extents: [f32; 4],
-}
-
 /// Only primitive foreign operations. `source_rect` is initially (0,0,1,1) for
 /// glyphs; None denotes the string call, whose rectangle is not specified.
 pub trait TextureServices {
@@ -87,16 +82,33 @@ pub trait TextureServices {
     fn lookup_font(&mut self, font_id: u32) -> Option<Self::Font>;
     fn render_text(
         &mut self,
-        font: &Self::Font,
+        font: Option<&Self::Font>,
         text: &[u8],
         source_rect: Option<[f32; 4]>,
-    ) -> Option<RenderedText<Self::Binding>>;
+        binding: &mut Option<Self::Binding>,
+    ) -> RenderOutputWords;
     fn compare_strings(&self, a: &[u8], b: &[u8], case_sensitive: bool) -> Ordering;
     fn char_length(&self, remaining: &[u8]) -> usize;
     fn binding_factory_exists(&self) -> bool;
     fn register_framework_slot(&mut self, slot: u32);
     fn subscribe(&mut self, message: u32);
     fn unsubscribe(&mut self, message: u32);
+    /// Reference primitives for another manager, not delegated owner decisions.
+    fn add_ref_manager(&mut self, manager: u64);
+    fn release_manager(&mut self, manager: u64);
+}
+
+/// Raw renderer return/metric words; the binding is written through its slot.
+pub struct RenderOutputWords {
+    pub succeeded: bool,
+    pub texture_size: [u32; 2],
+    pub extents: [f32; 4],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ManagerLink {
+    Local,
+    Foreign(u64),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -115,12 +127,13 @@ pub struct StringId(u64);
 
 pub struct GlyphTextureInfo<B> {
     key: GlyphKey,
-    texture_size: [u16; 2],
-    glyph_size: [u16; 2],
-    uv: [f32; 4],
+    texture_size: Option<[u16; 2]>,
+    glyph_size: Option<[u16; 2]>,
+    uv: Option<[f32; 4]>,
     binding: Option<B>,
     refs: u32,
-    manager: bool,
+    manager: Option<ManagerLink>,
+    destroyed: bool,
 }
 
 impl<B> GlyphTextureInfo<B> {
@@ -133,19 +146,19 @@ impl<B> GlyphTextureInfo<B> {
         out.clone_from(&self.key.character);
     }
 
-    pub fn texture_size(&self) -> [u32; 2] {
-        self.texture_size.map(u32::from)
+    pub fn texture_size(&self) -> Option<[u32; 2]> {
+        self.texture_size.map(|words| words.map(u32::from))
     }
 
-    pub fn glyph_size(&self) -> [u32; 2] {
-        self.glyph_size.map(u32::from)
+    pub fn glyph_size(&self) -> Option<[u32; 2]> {
+        self.glyph_size.map(|words| words.map(u32::from))
     }
 
-    pub fn uv(&self) -> [f32; 4] {
+    pub fn uv(&self) -> Option<[f32; 4]> {
         self.uv
     }
 
-    /// Borrowed slot-7 observation; GT6 asks whether native slot 7 also AddRefs.
+    /// Slot 7 is a borrowed load, without AddRef (§3.1).
     pub fn binding(&self) -> Option<&B> {
         self.binding.as_ref()
     }
@@ -155,21 +168,27 @@ impl<B> GlyphTextureInfo<B> {
     }
 
     pub fn has_manager(&self) -> bool {
-        self.manager
+        self.manager.is_some()
+    }
+
+    /// Both info slot-0 bodies ignore IID and output, including IID 1.
+    pub fn query_interface<T>(&self, _iid: u32, _out: &mut T) -> bool {
+        false
     }
 }
 
 pub struct StringTextureInfo<F> {
-    size: [u16; 2],
+    size: Option<[u16; 2]>,
     refs: u32,
-    manager: bool,
+    manager: Option<ManagerLink>,
     text: Vec<u8>,
-    font: F,
+    font: Option<F>,
+    destroyed: bool,
 }
 
 impl<F> StringTextureInfo<F> {
-    pub fn size(&self) -> [u32; 2] {
-        self.size.map(u32::from)
+    pub fn size(&self) -> Option<[u32; 2]> {
+        self.size.map(|words| words.map(u32::from))
     }
 
     pub fn reference_count(&self) -> u32 {
@@ -177,17 +196,16 @@ impl<F> StringTextureInfo<F> {
     }
 
     pub fn has_manager(&self) -> bool {
-        self.manager
+        self.manager.is_some()
     }
 
     fn release(&mut self) -> u32 {
         self.refs = self.refs.wrapping_sub(1);
-        // §3: the manager-less count-1 destruction quirk is intentional.
-        if self.refs == 0 || (self.refs == 1 && !self.manager) {
-            0
-        } else {
-            self.refs
-        }
+        self.refs
+    }
+
+    pub fn query_interface<T>(&self, _iid: u32, _out: &mut T) -> bool {
+        false
     }
 }
 
@@ -200,30 +218,55 @@ struct CacheEntry<B> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StringError {
-    MissingFont,
-    /// Outside the published P(n) domain (GT3); no guessed overflow result.
-    UnrepresentablePowerOfTwo,
+    /// Native dereferences a null font; this safe model cannot execute that path.
+    UnsupportedNullFont,
+    /// Native signed P loops forever on this domain; this is not a native error.
+    UnsupportedNonterminatingPower,
     DeletedManager,
 }
 
-/// Literal §1.5 target, including truncation only after the subtraction (§7.4).
-/// GT3 asks for native intermediate precision and overflow behavior. f64 is the
-/// literal real-number reading and matches both published discriminating vectors.
+/// §3.2 x87 arithmetic, after the single float32 B store. Integer fixed-point
+/// evaluation preserves all bits of the float32 constants and intermediate
+/// products (at most 59 significant bits here, within x87's 64-bit significand).
+/// No intermediate float32/f64 rounding is introduced before truncation.
 pub fn sweep_target(bytes: u32, budget: u32) -> u32 {
-    if f64::from(bytes) / f64::from(budget) > 1.1 {
-        (f64::from(bytes) - 0.1 * f64::from(budget)) as u32
+    let b = (bytes as i32 as f32) as i64;
+    let l = i64::from(budget as i32);
+    let above = match l.cmp(&0) {
+        Ordering::Greater => b * 8_388_608 > l * 9_227_469,
+        Ordering::Less => b * 8_388_608 < l * 9_227_469,
+        Ordering::Equal => b > 0, // +infinity; 0/0 is unordered.
+    };
+    if above {
+        ((b * 134_217_728 - l * 13_421_773) / 134_217_728) as u32
     } else {
         budget
     }
 }
 
 fn padded_dimension(value: u32) -> Result<u16, StringError> {
-    // GT3: perform P(width+2), then the specified 16-bit field assignment.
-    value
-        .checked_add(2)
-        .and_then(u32::checked_next_power_of_two)
-        .map(|n| n as u16)
-        .ok_or(StringError::UnrepresentablePowerOfTwo)
+    let n = value.wrapping_add(2) as i32;
+    if n <= 1 {
+        Ok(1)
+    } else if n <= 0x4000_0000 {
+        Ok((n as u32).next_power_of_two() as u16)
+    } else {
+        Err(StringError::UnsupportedNonterminatingPower)
+    }
+}
+
+fn narrow_metric(value: f64) -> u16 {
+    // Only the published finite signed-integer conversion domain is supported;
+    // do not promise Rust's saturating float cast as an x87 invalid conversion.
+    assert!(value.is_finite() && (-2_147_483_648.0..2_147_483_648.0).contains(&value.trunc()),
+        "unsupported x87 invalid integer conversion");
+    (value.trunc() as i32) as u16
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArrayUnsupported {
+    NativeNontermination,
+    NativeInvalidRead,
 }
 
 /// Owns the glyph map and string cache. Ordered IDs are safe pointer surrogates;
@@ -233,10 +276,20 @@ pub struct GlyphTextureManager<P: TextureServices> {
     refs: u32,
     deleted: bool,
     initialized: bool,
+    service_id: u32,
+    priority: u32,
+    second_priority: u32,
+    running: u8,
+    // The published constructor does not specify the auxiliary counter word.
+    auxiliary_count: Option<u32>,
+    allocation_freed: bool,
     glyph_map: Vec<(GlyphKey, GlyphId)>,
     glyphs: BTreeMap<GlyphId, GlyphTextureInfo<P::Binding>>,
     strings: BTreeMap<StringId, StringTextureInfo<P::Font>>,
     cache: Vec<CacheEntry<P::Binding>>,
+    // Native destruction frees nodes without releasing their pointer values.
+    // Keep those references in the safe host arena until Rust context teardown.
+    unreleased_bindings: Vec<P::Binding>,
     budget: u32,
     bytes: u32,
     last_sweep: u32,
@@ -245,21 +298,25 @@ pub struct GlyphTextureManager<P: TextureServices> {
 }
 
 impl<P: TextureServices> GlyphTextureManager<P> {
-    /// GT4: constructor reference count is not published. The caller names its
-    /// existing references explicitly; this is not a claimed native default.
-    pub fn new(services: P, initial_references: u32) -> Self {
+    pub fn new(services: P) -> Self {
         Self {
             services,
-            refs: initial_references,
+            refs: 0,
             deleted: false,
             initialized: false,
+            service_id: SERVICE_ID,
+            priority: SERVICE_PRIORITY as u32,
+            second_priority: SERVICE_PRIORITY as u32,
+            running: 0,
+            auxiliary_count: None,
+            allocation_freed: false,
             glyph_map: Vec::new(),
             glyphs: BTreeMap::new(),
             strings: BTreeMap::new(),
             cache: Vec::new(),
+            unreleased_bindings: Vec::new(),
             budget: DEFAULT_CACHE_BYTES,
             bytes: 0,
-            // GT4: literal zero initial time; constructor time is not published.
             last_sweep: 0,
             misses: 0,
             next_id: 0,
@@ -269,6 +326,24 @@ impl<P: TextureServices> GlyphTextureManager<P> {
     pub fn services(&self) -> &P {
         &self.services
     }
+
+    pub fn service_id(&self) -> u32 { self.service_id }
+    pub fn set_service_id(&mut self, word: u32) { self.service_id = word; }
+    pub fn priority(&self) -> u32 { self.priority }
+    pub fn second_priority(&self) -> u32 { self.second_priority }
+    pub fn running(&self) -> u8 { self.running }
+    pub fn set_running(&mut self, word: u32) { self.running = word as u8; }
+    pub fn service_slot_11(&self, _word: u32) -> bool { true }
+    pub fn auxiliary_count(&self) -> Option<u32> { self.auxiliary_count }
+    pub fn auxiliary_release(&mut self) -> Option<u32> {
+        let count = self.auxiliary_count.as_mut()?;
+        *count = count.saturating_sub(1);
+        Some(*count)
+    }
+
+    /// +4/+8 AddRef and message-target AddRef/Release/QI use the same primary
+    /// methods, with receiver adjustment only. No neighboring ordinance thunks
+    /// are exposed here. Auxiliary slot 3 uses deleting_destructor below.
 
     pub fn reference_count(&self) -> u32 {
         self.refs
@@ -337,7 +412,7 @@ impl<P: TextureServices> GlyphTextureManager<P> {
         }
         self.refs = self.refs.wrapping_sub(1);
         if self.refs == 0 {
-            self.destroy();
+            self.deleting_destructor(1);
         }
         Some(self.refs)
     }
@@ -347,7 +422,6 @@ impl<P: TextureServices> GlyphTextureManager<P> {
     pub fn init(&mut self, cache_kb: u32) -> bool {
         if !self.initialized && !self.deleted {
             self.initialized = true;
-            // GT3: literal 32-bit field assignment after multiplying by 1024.
             self.budget = cache_kb.wrapping_mul(1024);
             self.services.register_framework_slot(3);
             self.services.register_framework_slot(9);
@@ -358,16 +432,12 @@ impl<P: TextureServices> GlyphTextureManager<P> {
 
     pub fn shutdown(&mut self) -> bool {
         if self.initialized {
-            let entries = std::mem::take(&mut self.glyph_map);
-            for (_, id) in entries {
-                if let Some(glyph) = self.glyphs.get_mut(&id) {
-                    if glyph.manager {
-                        glyph.manager = false;
-                        self.refs = self.refs.wrapping_sub(1);
-                    }
-                }
+            let entries: Vec<_> = self.glyph_map.iter().map(|(_, id)| *id).collect();
+            for id in entries {
+                self.set_glyph_manager(id, None);
                 self.release_glyph(id);
             }
+            self.glyph_map.clear();
             self.services.unsubscribe(RESTORE_TEXTURES);
             self.initialized = false;
         }
@@ -388,79 +458,176 @@ impl<P: TextureServices> GlyphTextureManager<P> {
         })
     }
 
+    /// The two private tree helpers' portable result. A sorted Vec models node
+    /// ordering/sentinel endpoints without claiming a native tree allocation.
+    /// Duplicate insertion preserves the first pointer and makes no AddRef.
+    fn insert_unique(&mut self, key: GlyphKey, id: GlyphId) -> (GlyphId, u8) {
+        match self.find_key(&key) {
+            Ok(index) => (self.glyph_map[index].1, 0),
+            Err(index) => {
+                self.glyph_map.insert(index, (key, id));
+                (id, 1)
+            }
+        }
+    }
+
+    fn acquire_manager_link(&mut self, link: ManagerLink) {
+        match link {
+            ManagerLink::Local => { self.add_ref(); }
+            ManagerLink::Foreign(id) => self.services.add_ref_manager(id),
+        }
+    }
+
+    fn release_manager_link(&mut self, link: ManagerLink) {
+        match link {
+            ManagerLink::Local => { self.release(); }
+            ManagerLink::Foreign(id) => self.services.release_manager(id),
+        }
+    }
+
+    pub fn set_glyph_manager(&mut self, id: GlyphId, new: Option<ManagerLink>) -> Option<()> {
+        let old = self.glyphs.get(&id)?.manager;
+        if old == new { return Some(()); }
+        if let Some(link) = new { self.acquire_manager_link(link); }
+        self.glyphs.get_mut(&id)?.manager = new;
+        if let Some(link) = old { self.release_manager_link(link); }
+        Some(())
+    }
+
+    /// Constructor state has no initialized size/UV fields and no references.
+    pub fn create_glyph_info(&mut self) -> GlyphId {
+        let id = GlyphId(self.allocate_id());
+        self.glyphs.insert(id, GlyphTextureInfo {
+            key: GlyphKey { character: Vec::new(), font_id: 0 },
+            texture_size: None, glyph_size: None, uv: None, binding: None,
+            refs: 0, manager: None, destroyed: false,
+        });
+        id
+    }
+
+    pub fn create_string_info(&mut self) -> StringId {
+        let id = StringId(self.allocate_id());
+        self.strings.insert(id, StringTextureInfo {
+            size: None, refs: 0, manager: None, text: Vec::new(), font: None,
+            destroyed: false,
+        });
+        id
+    }
+
+    /// Native failures leave the caller's output untouched.
+    pub fn get_glyph_texture_out(&mut self, key: GlyphKey, out: &mut Option<GlyphId>) -> bool {
+        if let Some(id) = self.get_glyph_texture(key) {
+            *out = Some(id);
+            true
+        } else { false }
+    }
+
     pub fn get_glyph_texture(&mut self, key: GlyphKey) -> Option<GlyphId> {
         if self.deleted {
             return None;
         }
-        let insertion = match self.find_key(&key) {
+        match self.find_key(&key) {
             Ok(index) => {
                 let id = self.glyph_map[index].1;
                 self.add_ref_glyph(id);
                 return Some(id);
             }
-            Err(index) => index,
-        };
+            Err(_) => (),
+        }
         let font = self.services.lookup_font(key.font_id)?;
-        let rendered = self
-            .services
-            .render_text(&font, &key.character, Some([0.0, 0.0, 1.0, 1.0]))?;
-        // GT3: extents divided by the renderer's full dimensions before the
-        // independent u16 field assignments; zero follows IEEE division.
-        let [w, h] = rendered.texture_size;
-        let [l, t, r, b] = rendered.extents;
-        let info = GlyphTextureInfo {
-            key: key.clone(),
-            texture_size: rendered.texture_size.map(|n| n as u16),
-            glyph_size: rendered.glyph_size.map(|n| n as u16),
-            uv: [l / w as f32, t / h as f32, r / w as f32, b / h as f32],
-            binding: Some(rendered.binding),
-            refs: 2, // Map and caller; the manager link itself is counted below.
-            manager: true,
-        };
-        let id = GlyphId(self.allocate_id());
-        self.glyphs.insert(id, info);
-        self.glyph_map.insert(insertion, (key, id));
-        self.refs = self.refs.wrapping_add(1);
+        let mut binding = None;
+        let rendered = self.services.render_text(Some(&font), &key.character,
+            Some([0.0, 0.0, 1.0, 1.0]), &mut binding);
+        if !rendered.succeeded { return None; }
+        let [w, h] = rendered.texture_size.map(|word| f64::from(word as i32));
+        let [r0, r1, r2, r3] = rendered.extents.map(f64::from);
+        let id = self.create_glyph_info();
+        self.set_glyph_manager(id, Some(ManagerLink::Local));
+        let info = self.glyphs.get_mut(&id).expect("constructed glyph");
+        info.key = key.clone();
+        info.texture_size = Some(rendered.texture_size.map(|n| n as u16));
+        // Differences of float32 operands are exact for the supported integer
+        // conversion domain in f64; division rounds only at the float32 store.
+        info.glyph_size = Some([narrow_metric(r0 - r2), narrow_metric(r1 - r3)]);
+        info.uv = Some([(r2 / w) as f32, (r3 / h) as f32, (r0 / w) as f32, (r1 / h) as f32]);
+        info.binding = binding;
+        self.insert_unique(key, id);
+        self.add_ref_glyph(id); // Separate map and caller references, not helper work.
+        self.add_ref_glyph(id);
         Some(id)
     }
 
     pub fn add_ref_glyph(&mut self, id: GlyphId) -> Option<u32> {
         let info = self.glyphs.get_mut(&id)?;
+        if info.destroyed { return None; }
         info.refs = info.refs.wrapping_add(1);
         Some(info.refs)
     }
 
     pub fn release_glyph(&mut self, id: GlyphId) -> Option<u32> {
         let info = self.glyphs.get_mut(&id)?;
+        if info.destroyed { return None; }
         info.refs = info.refs.wrapping_sub(1);
-        if info.refs == 1 && info.manager {
-            // §2: remove the map's reference when it is the only one left.
-            self.glyph_map.retain(|(_, existing)| *existing != id);
-            info.refs = 0;
-        }
         let count = info.refs;
-        if count == 0 {
-            let mut info = self.glyphs.remove(&id)?;
-            if info.manager {
-                info.manager = false;
-                self.release(); // Destruction releases manager before binding (§2).
+        if count == 1 && info.manager.is_some() {
+            // Foreign managers are primitives; the local owner computes its own
+            // identity scan/erasure/Release. A foreign link is not integrated.
+            if info.manager == Some(ManagerLink::Local) {
+                self.remove_glyph(id);
             }
-            drop(info.binding.take());
+            return Some(0);
+        }
+        if count == 0 {
+            self.destroy_glyph(id, 1);
         }
         Some(count)
     }
 
-    /// Appends to the existing vector, retaining successful characters even if
-    /// others fail. Character boundaries come from the framework code page.
-    pub fn string_to_glyph_texture_array(&mut self, font_id: u32, text: &[u8], out: &mut Vec<GlyphId>) {
+    /// Erase the first matching pointer before Release. An absent pointer does
+    /// not consume a reference, even when another glyph has an equal key.
+    pub fn remove_glyph(&mut self, id: GlyphId) {
+        if let Some(index) = self.glyph_map.iter().position(|(_, existing)| *existing == id) {
+            self.glyph_map.remove(index);
+            self.release_glyph(id);
+        }
+    }
+
+    pub fn destroy_glyph(&mut self, id: GlyphId, flags: u32) -> Option<GlyphId> {
+        let info = self.glyphs.get_mut(&id)?;
+        if info.destroyed { return None; }
+        info.destroyed = true;
+        let manager = info.manager.take();
+        if let Some(link) = manager { self.release_manager_link(link); }
+        let info = self.glyphs.get_mut(&id)?;
+        drop(info.binding.take());
+        info.key.character.clear();
+        if flags & 1 != 0 { self.glyphs.remove(&id); }
+        Some(id)
+    }
+
+    pub fn destroy_string(&mut self, id: StringId, flags: u32) -> Option<StringId> {
+        let info = self.strings.get_mut(&id)?;
+        if info.destroyed { return None; }
+        info.destroyed = true;
+        drop(info.font.take());
+        info.text.clear();
+        let manager = info.manager.take();
+        if let Some(link) = manager { self.release_manager_link(link); }
+        if flags & 1 != 0 { self.strings.remove(&id); }
+        Some(id)
+    }
+
+    /// Clear and Release the old vector first. Unsupported reports native
+    /// nontermination/invalid memory; it is never a claimed native safety stop.
+    pub fn string_to_glyph_texture_array(&mut self, font_id: u32, text: &[u8], out: &mut Vec<GlyphId>)
+        -> Result<(), ArrayUnsupported> {
+        for id in out.drain(..) { self.release_glyph(id); }
         let mut offset = 0;
-        while offset < text.len() {
+        let mut remaining = text.len() as u32;
+        while (remaining as i32) > 0 {
             let length = self.services.char_length(&text[offset..]);
-            // Invalid provider boundaries have no published native contract.
-            // GT6: stop safely rather than loop forever or split arbitrary bytes.
-            if length == 0 || length > text.len() - offset {
-                break;
-            }
+            if length == 0 { return Err(ArrayUnsupported::NativeNontermination); }
+            if length > text.len() - offset { return Err(ArrayUnsupported::NativeInvalidRead); }
             let key = GlyphKey {
                 character: text[offset..offset + length].to_vec(),
                 font_id,
@@ -469,54 +636,48 @@ impl<P: TextureServices> GlyphTextureManager<P> {
                 out.push(id);
             }
             offset += length;
+            remaining = remaining.wrapping_sub(length as u32);
         }
+        Ok(())
     }
 
     pub fn get_cached_string_texture(&mut self, font_id: u32, text: &[u8]) -> Result<StringId, StringError> {
         if self.deleted {
             return Err(StringError::DeletedManager);
         }
-        // GT6: null font behavior is not published. Return a typed error without
-        // rendering or modifying owner state; successful calls still always true.
-        let font = self.services.lookup_font(font_id).ok_or(StringError::MissingFont)?;
+        // Native has no null-font branch: report unsupported invalid memory,
+        // rather than presenting a safe rejection as native behavior.
+        let font = self.services.lookup_font(font_id).ok_or(StringError::UnsupportedNullFont)?;
         let size = [
             padded_dimension(font.text_width(text))?,
             padded_dimension(font.height())?,
         ];
-        let id = StringId(self.allocate_id());
-        self.strings.insert(
-            id,
-            StringTextureInfo {
-                size,
-                refs: 1,
-                manager: true,
-                text: text.to_vec(),
-                font,
-            },
-        );
-        self.refs = self.refs.wrapping_add(1);
+        let id = self.create_string_info();
+        self.acquire_manager_link(ManagerLink::Local);
+        let info = self.strings.get_mut(&id).expect("constructed string");
+        info.manager = Some(ManagerLink::Local);
+        info.font = Some(font);
+        info.text = text.to_vec();
+        info.size = Some(size);
+        self.add_ref_string(id);
         Ok(id)
     }
 
     pub fn add_ref_string(&mut self, id: StringId) -> Option<u32> {
         let info = self.strings.get_mut(&id)?;
+        if info.destroyed { return None; }
         info.refs = info.refs.wrapping_add(1);
         Some(info.refs)
     }
 
     pub fn release_string(&mut self, id: StringId) -> Option<u32> {
-        let count = self.strings.get_mut(&id)?.release();
-        if count == 0 {
-            let info = self.strings.remove(&id)?;
-            let manager = info.manager;
-            // §3 specifies font, text, manager release ordering.
-            drop(info.font);
-            drop(info.text);
-            if manager {
-                self.release();
-            }
+        let info = self.strings.get_mut(&id)?;
+        if info.destroyed { return None; }
+        let count = info.release();
+        if count == 0 || (count == 1 && info.manager.is_none()) {
+            self.destroy_string(id, 1);
         }
-        Some(count)
+        Some(if count <= 1 { 0 } else { count })
     }
 
     /// §3 slot 4 / §1.4: a token identifies a string object, not its text content.
@@ -524,6 +685,9 @@ impl<P: TextureServices> GlyphTextureManager<P> {
         if !self.strings.contains_key(&id) || self.deleted {
             return 0;
         }
+        // An absent manager/font is a native invalid dereference, unsupported
+        // by this token API; no independent standalone renderer is invented.
+        if self.strings[&id].manager != Some(ManagerLink::Local) { return 0; }
         if let Some(index) = self.cache.iter().position(|entry| entry.owner == id) {
             let mut entry = self.cache.remove(index);
             entry.used = true;
@@ -538,16 +702,17 @@ impl<P: TextureServices> GlyphTextureManager<P> {
         self.misses = self.misses.wrapping_add(1);
         CACHE_MISSES.fetch_add(1, AtomicOrdering::Relaxed);
         let info = &self.strings[&id];
-        let Some(rendered) = self.services.render_text(&info.font, &info.text, None) else {
+        let mut binding = None;
+        let rendered = self.services.render_text(info.font.as_ref(), &info.text, None, &mut binding);
+        if !rendered.succeeded {
             return 0;
-        };
-        // GT3: literal w*h*4 of the string owner's stored 16-bit dimensions;
-        // whether native accounting instead uses render outputs is unpublished.
-        let [w, h] = info.size();
+        }
+        let Some(binding) = binding else { return 0; }; // Unsupported native null binding dereference.
+        let [w, h] = info.size().expect("unsupported uninitialized string dimensions");
         let bytes = w.wrapping_mul(h).wrapping_mul(4);
         self.add_ref_string(id);
         self.cache.push(CacheEntry {
-            binding: rendered.binding,
+            binding,
             owner: id,
             bytes,
             used: true,
@@ -576,11 +741,11 @@ impl<P: TextureServices> GlyphTextureManager<P> {
         }
         if time - self.last_sweep > 50 {
             self.last_sweep = time;
-            if self.bytes > self.budget {
+            if (self.bytes as i32) > (self.budget as i32) {
                 let target = sweep_target(self.bytes, self.budget);
                 let mut index = 0;
                 // One oldest-to-newest pass; do not revisit just-cleared entries.
-                while index < self.cache.len() && self.bytes > target {
+                while index < self.cache.len() && (self.bytes as i32) > (target as i32) {
                     if self.cache[index].used {
                         self.cache[index].used = false;
                         index += 1;
@@ -599,16 +764,11 @@ impl<P: TextureServices> GlyphTextureManager<P> {
                 for (_, id) in &self.glyph_map {
                     let info = self.glyphs.get_mut(id).expect("live glyph map reference");
                     drop(info.binding.take()); // Must precede lookup and re-render.
-                    if let Some(font) = self.services.lookup_font(info.key.font_id) {
-                        if let Some(rendered) =
-                            self.services
-                                .render_text(&font, &info.key.character, Some([0.0, 0.0, 1.0, 1.0]))
-                        {
-                            // §1.6 only replaces the binding. GT5 asks if restore
-                            // also writes dimensions/UVs, or retains on failure.
-                            info.binding = Some(rendered.binding);
-                        }
-                    }
+                    let font = self.services.lookup_font(info.key.font_id);
+                    // The renderer gets the actual cleared slot, regardless of
+                    // lookup/success. Ignore metric outputs and success status.
+                    self.services.render_text(font.as_ref(), &info.key.character,
+                        Some([0.0, 0.0, 1.0, 1.0]), &mut info.binding);
                 }
             }
         }
@@ -622,22 +782,24 @@ impl<P: TextureServices> GlyphTextureManager<P> {
         self.bytes = 0;
     }
 
-    fn destroy(&mut self) {
+    pub fn deleting_destructor(&mut self, flags: u32) {
         if self.deleted {
             return;
         }
         self.deleted = true;
-        // GT4: destructor body is not published. Release owned resources in the
-        // order shutdown then cache cleanup; do not claim full manager coverage.
-        self.shutdown();
-        self.clear_cache();
+        for entry in self.cache.drain(..) {
+            self.unreleased_bindings.push(entry.binding);
+        }
+        self.glyph_map.clear(); // Destroy key strings/nodes, never mapped glyphs.
+        self.allocation_freed = flags & 1 != 0;
     }
 }
 
 impl<P: TextureServices> Drop for GlyphTextureManager<P> {
     fn drop(&mut self) {
-        // Dropping the entire portable context is explicit host teardown, even
-        // if the host abandoned tokens without issuing their native Releases.
-        self.destroy();
+        // Native destruction does not release the arena's referenced objects.
+        // Rust allocation teardown after this call drops remaining safe arena
+        // values; that host-only resource cleanup is not native Release behavior.
+        self.deleting_destructor(0);
     }
 }

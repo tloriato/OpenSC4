@@ -57,9 +57,9 @@ struct Services {
     serial: u32,
     factory: bool,
     texture_size: [u32; 2],
-    glyph_size: [u32; 2],
     extents: [f32; 4],
     char_length_override: Option<usize>,
+    write_on_failure: bool,
 }
 
 impl Default for Services {
@@ -73,9 +73,9 @@ impl Default for Services {
             serial: 0,
             factory: true,
             texture_size: [64, 16],
-            glyph_size: [61, 13],
-            extents: [1.0, 2.0, 62.0, 15.0],
+            extents: [62.0, 15.0, 1.0, 2.0],
             char_length_override: None,
+            write_on_failure: false,
         }
     }
 }
@@ -94,21 +94,22 @@ impl TextureServices for Services {
         })
     }
 
-    fn render_text(&mut self, font: &Font, text: &[u8], rect: Option<[f32; 4]>) -> Option<RenderedText<Binding>> {
-        record(&self.log, format!("render:{}:{text:?}:{rect:?}", font.id));
-        if self.failed_text.iter().any(|failed| failed == text) {
-            return None;
-        }
-        self.serial += 1;
-        Some(RenderedText {
-            binding: Binding {
+    fn render_text(&mut self, font: Option<&Font>, text: &[u8], rect: Option<[f32; 4]>,
+        binding: &mut Option<Binding>) -> RenderOutputWords {
+        record(&self.log, format!("render:{}:{text:?}:{rect:?}", font.map_or(0, |f| f.id)));
+        let succeeded = !self.failed_text.iter().any(|failed| failed == text);
+        if succeeded || self.write_on_failure {
+            self.serial += 1;
+            *binding = Some(Binding {
                 handle: self.serial,
                 log: self.log.clone(),
-            },
+            });
+        }
+        RenderOutputWords {
+            succeeded,
             texture_size: self.texture_size,
-            glyph_size: self.glyph_size,
             extents: self.extents,
-        })
+        }
     }
 
     fn compare_strings(&self, a: &[u8], b: &[u8], sensitive: bool) -> Ordering {
@@ -137,10 +138,18 @@ impl TextureServices for Services {
     fn unsubscribe(&mut self, message: u32) {
         record(&self.log, format!("unsubscribe:{message:08x}"));
     }
+
+    fn add_ref_manager(&mut self, id: u64) {
+        record(&self.log, format!("manager-addref:{id}"));
+    }
+    fn release_manager(&mut self, id: u64) {
+        record(&self.log, format!("manager-release:{id}"));
+    }
 }
 
 fn manager() -> GlyphTextureManager<Services> {
-    let mut m = GlyphTextureManager::new(Services::default(), 1);
+    let mut m = GlyphTextureManager::new(Services::default());
+    m.add_ref();
     assert!(m.init(1024));
     m
 }
@@ -214,9 +223,9 @@ fn glyph_outputs_sizes_uv_and_case_font_order() {
     let mut out = b"old content".to_vec();
     info.copy_character(&mut out);
     assert_eq!(out, b"Z");
-    assert_eq!(info.texture_size(), [64, 16]);
-    assert_eq!(info.glyph_size(), [61, 13]);
-    assert_eq!(info.uv(), [0.015625, 0.125, 0.96875, 0.9375]);
+    assert_eq!(info.texture_size(), Some([64, 16]));
+    assert_eq!(info.glyph_size(), Some([61, 13]));
+    assert_eq!(info.uv(), Some([0.015625, 0.125, 0.96875, 0.9375]));
     assert_eq!(info.binding().unwrap().first_texture(), 1);
     m.get_glyph_texture(key(b"a", 2)).unwrap();
     m.get_glyph_texture(key(b"A", 9)).unwrap();
@@ -242,24 +251,24 @@ fn missing_font_and_failed_glyph_render_leave_no_map_or_manager_reference() {
 }
 
 #[test]
-fn character_array_appends_code_page_characters_and_skips_failure() {
+fn character_array_clears_releases_then_uses_code_page_and_skips_failure() {
     let mut m = manager();
     let first = m.get_glyph_texture(key(b"old", 1)).unwrap();
     let mut output = vec![first];
     m.services.failed_text.push(b"!".to_vec());
-    m.string_to_glyph_texture_array(7, b"A\x81\x40!A", &mut output);
-    assert_eq!(output.len(), 4);
-    assert_eq!(output[0], first);
-    assert_eq!(output[1], output[3]);
-    assert_eq!(m.glyph(output[2]).unwrap().character(), b"\x81\x40");
-    assert_eq!(m.glyph(output[1]).unwrap().reference_count(), 3);
-    m.string_to_glyph_texture_array(7, b"", &mut output);
-    assert_eq!(output.len(), 4);
+    m.string_to_glyph_texture_array(7, b"A\x81\x40!A", &mut output).unwrap();
+    assert!(m.glyph(first).is_none());
+    assert_eq!(output.len(), 3);
+    assert_eq!(output[0], output[2]);
+    assert_eq!(m.glyph(output[1]).unwrap().character(), b"\x81\x40");
+    assert_eq!(m.glyph(output[0]).unwrap().reference_count(), 3);
+    m.string_to_glyph_texture_array(7, b"", &mut output).unwrap();
+    assert!(output.is_empty());
     m.services.char_length_override = Some(0);
-    m.string_to_glyph_texture_array(7, b"A", &mut output);
+    assert_eq!(m.string_to_glyph_texture_array(7, b"A", &mut output), Err(ArrayUnsupported::NativeNontermination));
     m.services.char_length_override = Some(8);
-    m.string_to_glyph_texture_array(7, b"A", &mut output);
-    assert_eq!(output.len(), 4);
+    assert_eq!(m.string_to_glyph_texture_array(7, b"A", &mut output), Err(ArrayUnsupported::NativeInvalidRead));
+    assert!(output.is_empty());
 }
 
 #[test]
@@ -273,13 +282,13 @@ fn published_size_vectors_and_padded_dimension_boundaries() {
         m.services.width = v[0];
         m.services.height = v[1];
         let id = m.get_cached_string_texture(7, b"test").unwrap();
-        assert_eq!(m.string(id).unwrap().size(), [v[2], v[3]], "{line}");
+        assert_eq!(m.string(id).unwrap().size(), Some([v[2], v[3]]), "{line}");
         assert_eq!(m.services.serial, 0);
     }
-    assert_eq!(padded_dimension(u32::MAX), Err(StringError::UnrepresentablePowerOfTwo));
+    assert_eq!(padded_dimension(u32::MAX), Ok(1));
     assert_eq!(
         padded_dimension(0x8000_0000),
-        Err(StringError::UnrepresentablePowerOfTwo)
+        Ok(1)
     );
 }
 
@@ -299,7 +308,7 @@ fn published_lazy_render_identity_and_cache_reference() {
     assert_eq!((m.cached_bytes(), m.cached_entries()), (4096, 1));
     assert_eq!(m.string_texture(b), 2);
     assert_eq!(m.cached_entries(), 2);
-    assert_eq!(m.release_string(a), Some(1));
+    assert_eq!(m.release_string(a), Some(0));
     assert!(m.string(a).is_some());
     m.do_message(RESTORE_TEXTURES);
     assert!(m.string(a).is_none());
@@ -311,12 +320,12 @@ fn published_lazy_render_identity_and_cache_reference() {
 fn failed_string_render_retries_and_typed_precreation_failures() {
     let mut m = manager();
     m.services.missing_font = Some(9);
-    assert_eq!(m.get_cached_string_texture(9, b"x"), Err(StringError::MissingFont));
+    assert_eq!(m.get_cached_string_texture(9, b"x"), Err(StringError::UnsupportedNullFont));
     assert_eq!(m.reference_count(), 1);
-    m.services.width = u32::MAX;
+    m.services.width = 0x4000_0000;
     assert_eq!(
         m.get_cached_string_texture(1, b"x"),
-        Err(StringError::UnrepresentablePowerOfTwo)
+        Err(StringError::UnsupportedNonterminatingPower)
     );
     assert_eq!(m.reference_count(), 1);
     m.services.width = 61;
@@ -466,7 +475,7 @@ fn restore_failure_releases_old_binding_and_preserves_literal_metadata_gt5() {
     m.services.texture_size = [128, 32];
     m.do_message(RESTORE_TEXTURES);
     assert!(m.glyph(g).unwrap().binding().is_some());
-    assert_eq!(m.glyph(g).unwrap().texture_size(), [64, 16]);
+    assert_eq!(m.glyph(g).unwrap().texture_size(), Some([64, 16]));
     assert_eq!(m.glyph(g).unwrap().uv(), uv);
 }
 
@@ -475,14 +484,14 @@ fn string_no_manager_count_one_quirk_and_normal_lifetimes() {
     let mut m = manager();
     let s = m.get_cached_string_texture(7, b"unrendered").unwrap();
     assert_eq!(m.add_ref_string(s), Some(2));
-    assert_eq!(m.release_string(s), Some(1));
+    assert_eq!(m.release_string(s), Some(0));
     assert_eq!(m.release_string(s), Some(0));
     assert_eq!(m.reference_count(), 1);
     let s = m.get_cached_string_texture(7, b"detached state").unwrap();
     m.add_ref_string(s);
     // Explicitly exercise §3's specified manager-less state, not a claimed
     // native public setter. Balance the manager link before detaching.
-    m.strings.get_mut(&s).unwrap().manager = false;
+    m.strings.get_mut(&s).unwrap().manager = None;
     m.release();
     assert_eq!(m.release_string(s), Some(0));
     assert!(m.string(s).is_none());
@@ -501,9 +510,8 @@ fn final_manager_reference_released_by_glyph_destruction() {
     assert_eq!(m.release(), None);
     assert_eq!(m.get_cached_string_texture(7, b"x"), Err(StringError::DeletedManager));
     let events = log(&m);
-    let unsubscribe = events.iter().position(|s| s.starts_with("unsubscribe:")).unwrap();
-    let binding = events.iter().position(|s| s == "binding-release:1").unwrap();
-    assert!(unsubscribe < binding);
+    assert!(!events.iter().any(|s| s.starts_with("unsubscribe:")));
+    assert!(events.iter().any(|s| s == "binding-release:1"));
 }
 
 #[test]
