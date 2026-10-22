@@ -1,12 +1,12 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| core-model-effects-contractfix4 (portable model effects contracts) | Codex / core-model-effects-contractfix4 | in progress | Audit Consumer 1, correct production owner, focused checks and final full gate |
+| core-model-effects-contractfix4 (portable model effects contracts) | Codex / core-model-effects-contractfix4 | in progress | Final phase 2: preserve old evidence, run one stable all, finish bounded report |
 
 ## Handoff
-- CONTINUATION: context guard measured 149074/150000; no merge queue written. Source committed at 9fdea6f2, fmt four files passed.
-- CURRENT NEXT: collect quick session 43478 (logs fc4verify-quick-test/deps/build); handoff commit may invalidate its tree record, so rerun quick if required. Then commit its result and run ONE stable final qbuild all. Final all has NOT started.
-- Quick last log: core/formats test execution reached formats game_data sweeps; sweep_model_keys passed, two long sweeps pending, no failures observed. Do not invent final counts.
-- Background automation cell 70 was terminated to prevent post-handoff commits/all launch; its qbuild quick child may remain active. Initial obsolete all wrappers 19336/21180 were cancelled after no build/test child remained.
+- FINAL logical round 3/3; phase 2 starts at clean a8b403fd. Engine tree a6f8ca9f35d248ad366f0da9739a1ddc60af70b4 equals final source 9fdea6f2. Documentation movement does not invalidate matching engine evidence.
+- CURRENT NEXT: archive old logs, inspect remaining published contracts, then run ONE serial stable qbuild all. Final all has NOT started. No new quick is needed solely for documentation movement.
+- Collected quick session 43478 file evidence: 3269 passed / 0 failed / 0 ignored over 11 test summaries; all 25 model_reg_effects fixtures passed; core/formats doctests 0/0. Dependency log is compilation-only. No surviving wrapper or recovered wrapper exit/stdout record: this is NOT complete quick acceptance.
+- Refreshed OS identities at 00:23:05+01: own old pipelines/cargo/compiler absent; 19336/21180 absent. Owned orphan stats client 28760 created 23:43:57.828985+01, parent 21180 absent, own cwd, exact --show-stats --stats-format json, CPU 0.03125s; verified handle/creation/argv/cwd and terminated ONLY that client. Cache daemon 35492 created 23:20:46.856140+01 has only conhost 7568, no compiler child; untouched. No direct cache RPC or claim about disappeared parents. Metadata fallback used after CIM access denied; descendants filtered by creation time to avoid reused PIDs.
 - Source complete for supported scope; report/inventory below is a working draft. Preserve GF19-GF24; GF25 appended. Final report must replace this Handoff after gates; no native/game/whole-owner credit.
 - Goal: implement unambiguous graphics-formats 3.11 contracts; no native/glue/default promotion.
 - Reserved detached worktree reused; initial status clean and main.. empty.
@@ -79,4 +79,4 @@ GF19–GF24 remain open, unedited and unanswered. Remaining scope: inventory/hel
 - Touched-file fmt passes with absolute paths (four files); relative-path attempt could not resolve files. Final fmt/gate counts will be recorded here before ready.
 - No ABI exports, shared defaults, native glue, coverage maps, tools or game files changed. No game requests/runs; no native/shadow/whole-owner promotion.
 - GF19-GF24 remain open; no game runs, ABI edits, RE sources, subagents or other-worktree edits.
-- Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-core-model-effects-contractfix4-r1-manifest.json.
+- Final-round manifest: C:/Users/tlori/FreeCity4/build-runs/run4-core-model-effects-contractfix4-r2-manifest.json.
