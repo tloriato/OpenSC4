@@ -15,5 +15,8 @@
 - Adverse native39-a: CLEAN2032 but ref_warnings=1, native landvalue at development Unhold:254; no downstream requests or save copy. Do not attribute it to owned-grid cleanup (all logged1,0).
 - Actual shipped fixture differences: u32/u64/i64 averages10 each, f64 average1 =31/600; SG3 filed. Production algorithms unchanged. Diagnostic patch adds full scalar bits/op/size; all differences remain counted.
 - Next: quick+stable all for diagnostic code; frozen-b controls use the parent's preserved2032 fixture, ending2033/2034/2035. This input/profile is bounded; no causal claim for the adverse run. Normal-speed fixture control also required.
+- Diagnostic code milestone:d81d9a29; quick530/0 build4/4 and stable all4951/0 clippy0 ctest68/68 PASS72.6s.
+- A native total:23,030,495/23,030,495 exact; method_calls27,774,902; scalar get23,029,595/set2,652,243; bulk_get2,093,056; reads300/writes900; cleanup310 all1,0. Fixture569/600, SG3 differences31; methods1200/read40/write340/detection10. No resync/fallback/refusals/failures. A ref1 remains adverse.
+- Starting b controls via build-runs/run-sgm4-controls.ps1, then run-sgm4-normal.ps1 and audit-sgm4.py. No further source changes planned.
 - Required: focused tests, stable full gate, frozen unique native/current40/native save/reload2032+ref0 controls. No qwait.
 - Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-verify-simgrids-methods-final4-r1-manifest.json.
