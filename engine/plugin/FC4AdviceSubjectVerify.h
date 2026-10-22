@@ -116,7 +116,11 @@ struct Compare {
     }
 };
 
-inline void Run() {
+// Unwired prototype: this compares the actual production C++ fronts over Rust
+// state/get/set, but its Clone does NOT call Rust clone_subject. AD18 blocks
+// using this as the requested complete Rust-method verifier. No fallback is
+// invoked by the simulator hook below.
+inline void CompareProductionFrontsPrototype() {
     static bool done = false;
     if (done || SettingInt("advice_subject_verify", "FC4_ADVICE_SUBJECT_VERIFY", 0) != 1) return;
     cISC4City* city = propcity::AppCity(); // borrowed; only primitive dimensions shared
@@ -278,5 +282,15 @@ inline void Run() {
             v.checks, v.differences, h.created, h.dropped, RefWarningCount() - warnings);
     FC4_LOG("advice-subject-verify: unsupported=serialization/no-independent-typed-stream; direct-Rust-clone_subject; "
             "direct-Rust-setter-return-values; nonfinite-locations; failed-QI-output-semantics");
+}
+
+inline void Run() {
+    static bool refused = false;
+    if (refused || SettingInt("advice_subject_verify", "FC4_ADVICE_SUBJECT_VERIFY", 0) != 1) return;
+    refused = true;
+    // Required actual Rust clone ownership transport is absent from the
+    // existing C API. This lane may not add shared ABI exports (AD18).
+    FC4_LOG("advice-subject-verify: REFUSED AD18 missing actual Rust subject-clone handle endpoint; "
+            "native_comparisons=0 core_comparisons=0 unverified=1");
 }
 } // namespace fc4::subjectverify
