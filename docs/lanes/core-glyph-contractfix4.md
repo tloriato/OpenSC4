@@ -8,7 +8,7 @@
 - Done: substantive corrections committed as 6dcdff59 (before call 30); inherited state, wrapping refs, storage-only destruction, renderer slot writes, signed arithmetic, identity removal and unique insertion.
 - Done: 11 independent contract tests added (30 total glyph tests), expanded metric vectors, exact rational float32 UV stores and fixed-point sweep arithmetic, wrapped tree/cache count words, typed unsupported string paths; touched-file fmt PASS.
 - Done: corrected source and first 30 glyph tests committed as fabf19ce; exact 43-body/shared-entry/unsupported checklist below; fmt PASS (2 touched Rust files), diff --check clean.
-- Done: final arithmetic audit found f64 subtraction loses a retained x87 tail at integer boundaries; error-free TwoSum plus explicit 64-bit-significand rounding now distinguishes 2^-60, half-spacing 2^-65, and 2^-70. Added a 31st independent glyph test.
+- Done: 5169862c fixes x87 subtraction tails via error-free TwoSum and 64-bit-significand rounding, distinguishing 2^-60, half-spacing 2^-65, and 2^-70. There are now 31 glyph tests (12 new); fmt PASS on both touched Rust files after this commit, diff --check clean.
 - Next: run serial stable quick/fmt/all on the new arithmetic commit, inspect counts, replace Handoff with measured report, queue tested source.
 - Scope: glyph_textures only plus independent tests/conformance; no ABI, game, textures_materials, RE, or shared-table changes.
 - Family reservation remains logical round 2/3, this phase max 2 remaining rounds; original parked evidence retained.
@@ -16,8 +16,9 @@
 - Baseline command returned session 96574; quick command session 92060 (do not poll; inspect quiet logs). No game requests.
 - Focused quick reissued on corrected source after the independent vectors; quiet logs own the completion record.
 - Prior all launched on fabf19ce (session 15722), superseded by the necessary x87-tail correction; do not treat it as the final stable gate.
-- Baseline measured so far: capi 2/0, conformance 1232/0; all 19 original glyph tests passed. Whole baseline core/cargo/clippy/native/CTest still pending at 21:45 local. Corrected 30-test execution has not been claimed.
-- Earlier quick/all wrappers still own their logs. The stable serial pipeline will use q.py to retain its own unambiguous console-count log under build-runs/q/.
+- Baseline measured so far: capi 2/0, conformance 1232/0, core 3047/0 (19 original glyph tests), formats 147/0; further integration suites pending at 21:54 local (installed-data sweep >60 seconds). Whole baseline/clippy/native/CTest not yet complete. Corrected 31-test execution has not been claimed.
+- Stable pipeline runs build-runs/final-glyph-gate.ps1 directly (session 79604), quick then fmt then all, jobs/test threads=1. q.py invocation failed due Bash E_ACCESSDENIED (q/20261022-215043-5792.log); direct PowerShell fallback launched successfully. No new game request.
+- Older wrappers (baseline all 96574, quick 92060, quick 32-cell result, prior all 15722) may still finish; do not confuse their original 19-test/fabf19ce results with corrected 31-test source. Stable source is 5169862c; inspect its pipeline completion/counts before queueing.
 - Baseline and first quick still compiling at 21:37 local, machine has many concurrent Rust compilations; no PASS claimed. Formatting helper uses rustfmt stdin plus engine/rustfmt.toml; only touched files change through apply_patch.
 - Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-core-glyph-contractfix4-r1-manifest.json.
 
