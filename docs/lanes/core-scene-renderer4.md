@@ -5,7 +5,8 @@
 ## Handoff
 - Goal: first bounded production scene renderer from render3d sections 1–12 and view3d sections 3–4.
 - Done: reused reserved detached worktree; clean initial status; read lane rules and published renderer sections. Independent literal fixtures committed before production implementation (D1–D6, B1–B4, queue boxes, stable duplicates, S1–S6).
-- Next: implement bounded dirty/list/backing/shake/model queue algorithms; collect initial all session 3939 before any new gate.
+- Done: first substantive production module implements owned dirty/list/backing algorithms, typed partial model queue, bounded shake state. Full draw/lifecycle and missing geometry remain Unsupported. Source not yet checked.
+- Next: inspect baseline result, add discriminating executable tests, format touched sources, quick then final all serially. Initial all session 3939 must be collected before a new gate.
 - Scope: only new scene_renderer module/tests, additive lib declaration, this report, appended render3d questions.
 - No native/game/ABI/glue work; no whole-owner or byte-total credit; section 7 residual remains unsupported.
 - Required fixtures before implementation: D1–D6, B1–B4, model queue, stable duplicates, S1–S6.

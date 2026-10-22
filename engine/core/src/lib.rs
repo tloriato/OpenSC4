@@ -146,3 +146,4 @@ pub mod key_accelerator;
 pub mod view_input_controls;
 pub mod snapshots;
 pub mod resource_editor;
+pub mod scene_renderer;
