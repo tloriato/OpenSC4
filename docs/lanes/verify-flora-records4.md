@@ -23,6 +23,7 @@
 - Frozen game DLL build-runs/dlls/vfocc-r3-games/FreeCity4.dll SHA256 a4579088af1b685bd30bd62d12104ec5e4dbb98021bf162a28098a6d1b2e1cf1; never overwrite it. Final gate runner freezes to a different directory.
 - Guard vfocc-r3-guard2032-20261022-a clean/ref0 to2032-01-09: 8x25 creations,95600 mixed/0 differences,50800 Rust query comparisons,17000 refusals,4400 undefined returns,0 fallbacks; natural20682/124092 queries/invalid0.
 - Saved fixture main build-runs/fixtures/vfocc-r3-save-20261022-a.sc4 SHA256 efb152e603bdb0ac760514891084e9ea76e9956f1cabdbf54a7ae9515b7ca14a. Guard complete; reload next, then probe-off; no fourth family round.
+- Reload vfocc-r3-reload2032-20261022-a STALLED/ref0 at2031-01-07, WATCHDOG inside core fc4_sim_on_tick >10s; zero occupant probes/queries before stall, no reload credit. Preserve verdict/log; same-fixture probe-off diagnostic next.
 - Next: focused quick/fmt, review measured differences, stable final all then immutable-DLL game controls.
 - FQ18 added for failed-QI output/null-address policy and multi-bit flag semantics; no guessed equivalence.
 - Need final stable all, immutable DLL, unique coordinator guarded2032/save/reload/probe-off runs.
