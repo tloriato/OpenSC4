@@ -193,12 +193,6 @@ struct CoreBox {
         orig = nullptr;
         (void)ctx.release();
     }
-    void Swap(CoreBox& o) {
-        std::swap(ctx, o.ctx);
-        std::swap(host, o.host);
-        std::swap(core, o.core);
-        std::swap(orig, o.orig);
-    }
 };
 
 CoreBox g_run;  // the running shadow core
@@ -772,6 +766,7 @@ void PropDevShadowMonth(cISC4City* city, int32_t julian) {
     if (!SehGuard("propdev shadow (the month's record)", &MonthCompare, &mo)) {
         Log("propdev shadow: a fault comparing the record; the shadow core is abandoned (its references leak)");
         g_run.Abandon();
+        g_faulted = true;
         mo.compared = false;
         mo.incomplete = "a fault";
     }
@@ -787,7 +782,7 @@ void PropDevShadowMonth(cISC4City* city, int32_t julian) {
     }
     ++g_months;
     if (g_month.d.mismatches == 0) ++g_cleanMonths;
-    char head[512];
+    char head[768];
     snprintf(head, sizeof(head),
              "propdev shadow month %s: followed=%s steps=%u blocks=%u certain=%u raw-compared=%u removed orig/ours "
              "%u/%u (not kept %u) created orig/ours %u/%u (not compared) messages=%u ticks=%u message-removals=%u; "

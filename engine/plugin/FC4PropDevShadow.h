@@ -43,9 +43,10 @@
 //
 // Log lines (always written):
 //   propdev shadow: ON (...) | requested but INACTIVE (...)                  game start
-//   propdev shadow month YYYY-MM-DD: followed=first|yes|resynced steps=.. blocks=.. certain=.. removed orig/ours ..;
+//   propdev shadow month YYYY-MM-DD: followed=checkpoint|yes steps=.. blocks=.. certain=.. removed orig/ours ..;
 //     created orig/ours .. (not compared); record ...; mismatches=N[; differences: ...]
-//   propdev shadow: city shutdown: N month lines, M with mismatches=0
+//   propdev evidence YYYY-MM-DD|city-shutdown: cumulative attempts, probes,
+//     native-calls, independent-exact=0/N refused=N, failures, resyncs=0.
 #pragma once
 
 #include <cstdint>
