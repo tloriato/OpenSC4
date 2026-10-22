@@ -22,3 +22,18 @@
   constructed verifier now establishes `Init` and `SetTractSize(8)` before capturing its first input record.
   This setup receives no comparison credit; unsized factory serialization remains unverified. This is a parked
   contract question, not a request for additional RE. SG1 replacement/out-of-range choices remain unchanged.
+
+<!-- from: verify-simgrids-methods-final4 (2026-10-22) -->
+- **SG3 - section 4.1 (shipped C++ method differences):** same-process native versus independently owned
+  shipped `cFC4SimGrid<T>` objects expose constructed average differences previously hidden by the
+  retained-record/Rust transport. In `sgm4-r1-native39-20261022a`, u32/u64/i64 each differ on all ten
+  average returns (cell and tract rectangles for S=8,4,3,8,8), and f64 differs on the cell average at S=3:
+  31 differences among 600 fixture checks; every complete serialized state comparison is retained.
+  Inputs per size: fill7, (1,1)=unsigned max for u32 or 0x0123456789ABCDEF for u64/i64, (0,0)=T(1.9),
+  other tracts7; cell rectangle(0,0,2*S,2*S), tract rectangle(0,0,2,2). f64 uses (1,1)=-3 and (0,0)=1.9.
+  First u32 average has native low byte00 versus shipped low byte03. Which precise return/conversion
+  behavior should the published contract require for these typed cases? Later diagnostic runs retain
+  complete scalar bit patterns with op/size/rectangle, not just their first differing byte.
+  [choice] Keep the published production implementation unchanged, preserve and count every difference
+  under SG3, and grant no exact-average or full-family verification credit. This is a bounded contract
+  question, not authorization for another RE round. SG1/SG2 remain open.

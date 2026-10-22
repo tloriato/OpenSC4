@@ -233,7 +233,15 @@ template<class T> void Fixture(uint32_t kind, const std::vector<uint8_t>& city) 
             if (op==2) { x=size+1; z=size+1; value=g->GetCellValue(x,z); }
             if (op==3) { w=size*2; h=size*2; value=g->GetAverageValueInCellRect(x,z,w,h); }
             if (op==4) value=g->GetAverageValueInTractRect(x,z,w,h);
-            if(s.Apply(op,out,x,z,w,h)) s.Check(&value,sizeof(value),out,"typed-return");
+            if(s.Apply(op,out,x,z,w,h)) {
+                if(!SimGridsBuffersEqual(&value,sizeof(value),out)) {
+                    uint64_t actualBits=0,expectedBits=0;
+                    std::memcpy(&actualBits,&value,sizeof(value));
+                    std::memcpy(&expectedBits,out.data(),std::min(sizeof(expectedBits),out.size()));
+                    Log("simgrids-shadow: scalar-detail clsid=%08X op=%u size=%d rect=%d,%d,%d,%d bytes=%u actual_le=%016llX expected_le=%016llX question=SG3",kind,op,size,x,z,w,h,static_cast<unsigned>(sizeof(T)),actualBits,expectedBits);
+                }
+                s.Check(&value,sizeof(value),out,"typed-return");
+            }
         }
         std::vector<uint8_t> geometry;
         for (int32_t v2 : {g->GetTractSize(),g->GetTractShift(),g->GetTractCountX(),g->GetTractCountZ()}) Append(geometry,v2);
