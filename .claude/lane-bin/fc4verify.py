@@ -41,6 +41,8 @@ import time
 import zlib
 from pathlib import Path
 
+from build_lease import Lease, LeaseError, canonical_worktree, ownership, run_process
+
 VS = Path(r"C:\Program Files\Microsoft Visual Studio\2022\Community")
 VCVARS = VS / "VC" / "Auxiliary" / "Build" / "vcvars32.bat"
 CMAKE_BIN = VS / "Common7" / "IDE" / "CommonExtensions" / "Microsoft" / "CMake" / "CMake" / "bin"
@@ -222,7 +224,7 @@ def evaluate_record(rec, required=GATE_STEPS, reparse=True):
 
 
 def git(wt, *args, check=False, strip=True):
-    p = subprocess.run(["git", "-C", str(wt), *args], capture_output=True, text=True, encoding="utf-8",
+    p = run_process(["git", "-C", str(wt), *args], capture_output=True, text=True, encoding="utf-8",
                        errors="replace")
     if check and p.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)}: {p.stderr.strip()}")
@@ -266,7 +268,7 @@ def vcvars_env():
             return d["env"], d["path"]
     except (OSError, ValueError, KeyError):
         pass
-    p = subprocess.run(f'cmd /d /s /c ""{VCVARS}" >nul 2>&1 && set"', capture_output=True, text=True,
+    p = run_process(f'cmd /d /s /c ""{VCVARS}" >nul 2>&1 && set"', capture_output=True, text=True,
                        errors="replace")
     after = {}
     for l in p.stdout.splitlines():
@@ -343,13 +345,12 @@ def run(cmd, cwd, env, log, timeout=None):
     cmd = [shutil.which(str(cmd[0]), path=env.get("PATH")) or cmd[0], *cmd[1:]]
     with open(log, "wb") as f:
         f.write(("$ " + " ".join(str(c) for c in cmd) + "\n").encode("utf-8"))
-        f.flush()
-        try:
-            p = subprocess.run([str(c) for c in cmd], cwd=str(cwd), env=env, stdout=f, stderr=subprocess.STDOUT,
-                               timeout=timeout)
-            rc = p.returncode
-        except subprocess.TimeoutExpired:
-            rc = None
+    try:
+        p = run_process([str(c) for c in cmd], cwd=str(cwd), env=env, log=log, append=True,
+                        timeout=timeout)
+        rc = p.returncode
+    except subprocess.TimeoutExpired:
+        rc = None
     if rc is None:
         with open(log, "ab") as f:
             f.write(f"\nfc4verify: TIMEOUT after {timeout} s\n".encode("utf-8"))
@@ -408,7 +409,7 @@ def step_build(ctx, _a):
         return {"ok": False, "summary": f"configure: {cfg['summary']}", "seconds": s1, "log": str(ctx.log("configure")),
                 "errors": cfg["errors"]}
     if ctx.cached:
-        subprocess.run([ctx.env["RUSTC_WRAPPER"], "--zero-stats"], env=ctx.env, capture_output=True)
+        run_process([ctx.env["RUSTC_WRAPPER"], "--zero-stats"], env=ctx.env, capture_output=True)
     rc, text, s2 = run(["cmake", "--build", ctx.build], ctx.engine, ctx.env, ctx.log("build"), timeout=7200)
     res = parse_ninja(text)
     dll = ctx.build / "FreeCity4.dll"
@@ -552,7 +553,7 @@ def sha256(path):
 
 
 def cache_stats(env):
-    p = subprocess.run([env["RUSTC_WRAPPER"], "--show-stats", "--stats-format", "json"], env=env,
+    p = run_process([env["RUSTC_WRAPPER"], "--show-stats", "--stats-format", "json"], env=env,
                        capture_output=True, text=True, errors="replace")
     try:
         st = json.loads(p.stdout)["stats"]
@@ -579,22 +580,40 @@ def fmt_cache(c):
 
 
 def verify(wt, steps, log_dir=None, tag=None, use_cache=True, crates=None, cxx_tests=False, quiet=False,
-           errors_cap=15):
+           errors_cap=15, json_path=None):
     """Run `steps` in `wt`; returns the verdict record (also what `gate` writes)."""
-    wt = Path(wt).resolve()
-    log_dir = Path(log_dir) if log_dir else wt / "build-runs"
-    tag = tag or ("fc4lane-" + wt.name)
+    wt = canonical_worktree(wt)
+    log_dir = Path(log_dir).resolve() if log_dir else wt / "build-runs"
+    if log_dir.exists() and not log_dir.is_dir():
+        raise ValueError(f"fc4verify: log directory is not a directory: {log_dir}")
+    if json_path:
+        json_path = Path(json_path).resolve()
+        if json_path.is_dir() or json_path in (wt / "build-runs" / ".build-check.lock",
+                                               wt / "build-runs" / ".build-check-owner.json"):
+            raise ValueError(f"fc4verify: invalid verdict path: {json_path}")
+    steps = list(steps)
     if "gate" in steps:
         steps = [s for s in steps if s != "gate"] + [s for s in GATE_STEPS if s not in steps]
+    if not steps or any(s not in STEPS for s in steps):
+        raise ValueError(f"fc4verify: unknown/empty steps {steps!r} ({', '.join(STEPS)}, gate)")
+    with Lease(wt):
+        rec = _verify_owned(wt, steps, log_dir, tag or ("fc4lane-" + wt.name), use_cache, crates,
+                            cxx_tests, quiet, errors_cap)
+        if json_path:
+            json_path.parent.mkdir(parents=True, exist_ok=True)
+            json_path.write_text(json.dumps(rec, indent=2) + "\n", encoding="utf-8")
+        return rec
+
+
+def _verify_owned(wt, steps, log_dir, tag, use_cache, crates, cxx_tests, quiet, errors_cap):
+    started = time.strftime("%Y-%m-%d %H:%M:%S")
     ctx = Ctx(wt, log_dir, tag, use_cache)
     a = argparse.Namespace(crates=crates, cxx_tests=cxx_tests)
     rec = {"tool": "fc4verify", "version": 1, "worktree": str(wt), "tag": tag, "steps": ctx.results,
-           "started": time.strftime("%Y-%m-%d %H:%M:%S"), "cache": ctx.cached}
+           "started": started, "cache": ctx.cached, "ownership": ownership()}
     rec.update(tree_state(wt))
     t0 = time.time()
     for s in steps:
-        if s not in STEPS:
-            raise SystemExit(f"fc4verify: unknown step {s!r} ({', '.join(STEPS)}, gate)")
         r = STEPS[s](ctx, a)
         ctx.results[s] = r
         if not quiet:
@@ -632,12 +651,13 @@ def main(argv=None):
     ap.add_argument("--errors", type=int, default=15, help="max error lines per step")
     ap.add_argument("steps", nargs="+")
     a = ap.parse_args(argv)
-    rec = verify(a.wt, a.steps, a.log_dir, a.tag, not a.no_cache, a.crates, a.cxx_tests, errors_cap=a.errors)
-    if a.json:
-        Path(a.json).parent.mkdir(parents=True, exist_ok=True)
-        Path(a.json).write_text(json.dumps(rec, indent=2) + "\n", encoding="utf-8")
+    rec = verify(a.wt, a.steps, a.log_dir, a.tag, not a.no_cache, a.crates, a.cxx_tests,
+                 errors_cap=a.errors, json_path=a.json)
     return 0 if rec["ok"] else 1
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except (LeaseError, OSError, ValueError) as exc:
+        sys.exit(str(exc))

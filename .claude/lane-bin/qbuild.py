@@ -19,10 +19,11 @@ import re
 import subprocess
 import sys
 
+from build_lease import Lease, LeaseError, canonical_worktree, run_process
+
 
 def run(cmd, cwd, log, env=None):
-    with open(log, "w", encoding="utf-8", errors="replace") as f:
-        p = subprocess.run(cmd, cwd=cwd, stdout=f, stderr=subprocess.STDOUT, env=env)
+    p = run_process(cmd, cwd=cwd, log=log, env=env)
     with open(log, "rb") as f:
         text = f.read().replace(b"\x00", b"").decode("utf-8", errors="replace")
     return p.returncode, text.splitlines()
@@ -92,7 +93,7 @@ def step_clippy(wt, logdir, cap):
 
 def fc4verify(wt, steps):
     tool = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fc4verify.py")
-    p = subprocess.run([sys.executable, tool, "--wt", wt, *steps])
+    p = run_process([sys.executable, tool, "--wt", wt, *steps], delegate=True)
     return p.returncode == 0
 
 
@@ -108,7 +109,7 @@ def step_fmt(wt, files, cap):
     if not files:
         print("fmt: no files given")
         return False
-    p = subprocess.run(["rustfmt", "--check", "--edition", "2021", *files], cwd=os.path.join(wt, "engine"),
+    p = run_process(["rustfmt", "--check", "--edition", "2021", *files], cwd=os.path.join(wt, "engine"),
                        capture_output=True, text=True, errors="replace")
     lines = (p.stdout + p.stderr).splitlines()
     print(f"fmt: exit={p.returncode} files={len(files)} diff_lines={len(lines)}")
@@ -123,23 +124,28 @@ def main():
     ap.add_argument("--errors", type=int, default=15, help="max error/diagnostic lines per step (default 15)")
     ap.add_argument("steps", nargs="+")
     a = ap.parse_args()
-    wt = os.path.abspath(a.wt)
+    wt = str(canonical_worktree(a.wt))
     logdir = os.path.join(wt, "build-runs")
-    os.makedirs(logdir, exist_ok=True)
     steps = a.steps
     if steps[0] == "fmt":
         return 0 if step_fmt(wt, steps[1:], a.errors) else 1
     if steps == ["all"]:
         steps = ["test", "clippy", "verify"]
     fns = {"test": step_test, "clippy": step_clippy, "quick": step_quick, "verify": step_verify}
-    ok = True
     for s in steps:
         if s not in fns:
             sys.exit(f"qbuild: unknown step {s!r} (test, clippy, quick, verify, fmt, all)")
-        ok = fns[s](wt, logdir, a.errors) and ok
-    print("qbuild: PASS" if ok else "qbuild: FAIL")
-    return 0 if ok else 1
+    with Lease(wt):
+        os.makedirs(logdir, exist_ok=True)
+        ok = True
+        for s in steps:
+            ok = fns[s](wt, logdir, a.errors) and ok
+        print("qbuild: PASS" if ok else "qbuild: FAIL")
+        return 0 if ok else 1
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except (LeaseError, OSError) as exc:
+        sys.exit(str(exc))

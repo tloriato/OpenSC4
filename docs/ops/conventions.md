@@ -30,5 +30,12 @@ build or commit.
 - **Build infra:** build through `qbuild.py` / `fc4verify.py`, never a bare cmake: they set a private
   `_MSPDBSRV_ENDPOINT_` (the shared 32-bit `mspdbsrv` runs out of address space with many lanes, LNK1318) and the
   sccache server per worktree ([coordinating.md](coordinating.md) "Build cache, lane checks and the gate").
+  Both share one fail-fast OS lease per canonical worktree, including alternate log directories and verdict
+  publication. A busy check prints its owner's PID, command, source and start: let it finish, then retry;
+  it has not run a check or published a new verdict. `fmt` checks remain independent. The lease guardian
+  waits for launched commands even if a wrapper exits unexpectedly; only its verified delegated child can join.
+  Never remove `build-runs/.build-check.lock`. If the guardian itself crashes, ownership fails closed:
+  inspect `build-runs/.build-check-owner.json` and surviving commands; only after confirming all have ended,
+  manually archive that metadata file and retry (a live OS lock still cannot be bypassed).
 - **Coordinator only, status reports for the user:** plain language, short, what changed and what is next.
 - **Coordinator only, memory:** a Claude coordinator's notes are in `C:\Users\tlori\.claude\projects\C--Users-tlori-FreeCity4\memory\`.
