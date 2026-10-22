@@ -1,8 +1,8 @@
 # cHitTrackPlayer — unresolved implementation questions
 
 About `docs/specs/hit-track-player.md`. Filed 2026-10-22 by `re-hittrack4`.
-No complete-owner credit: **69 / 110 bodies, 3454 / 16012 bytes specified;
-41 bodies / 12558 bytes remain open**. Sizes are exported body bytes. Groups below
+No complete-owner credit: **75 / 110 bodies, 4385 / 16012 bytes specified;
+35 bodies / 11627 bytes remain open**. Sizes are exported body bytes. Groups below
 partition every open inventory row exactly once; the cleanup boundary is additional
 external work and is not added to this owner’s byte count.
 
@@ -34,20 +34,14 @@ Remaining owned bodies: **7 / 1939 bytes**:
 
 **HT3 — Property, register and spatial dispatch.** Target: `hit-track-player.md` §3, §5, §8.
 
-Specify register-view slots +0x0C through +0x20, short-key translation through 0x009377C9, ordered provider lookup and default values, type conversions (integer versus binary32), propagation to children with override protection, and suppression/notification flag handling. Resolve every branch of HandleNotifySetPropertyValue, including calls to pitch/patch/volume providers. Decode the spatial read/write units and rounding at 0x0093A9BC / 0x0093AA0E; decompiler labels such as _lua_gettop are not numeric evidence. Do not assume these are city messages or ordinary register-index setters.
+Partial progress: register-view slot bodies, precedence, local variants, suppression and child propagation are now specified in §5.2. HT3 stays open for every branch of HandleNotifySetPropertyValue, including calls to pitch/patch/volume providers, and the spatial read/write units and rounding at 0x0093A9BC / 0x0093AA0E; decompiler labels such as _lua_gettop are not numeric evidence. Resolve the shared translation table at 0x009377C9 and invalid/out-of-range _ftol2 conversion as external encodings when reconciling notifications. Do not assume these are city messages or ordinary register-index setters.
 
-Remaining owned bodies: **9 / 1855 bytes**:
+Remaining owned bodies: **3 / 924 bytes**:
 
 | Entry | Bytes | Export name / local status |
 |---|---:|---|
 | `0x0093A9BC` | 82 | unnamed; contract unresolved |
 | `0x0093AA0E` | 97 | `cHitTrackPlayer::SetPosition` |
-| `0x0093ADDD` | 80 | unnamed; contract unresolved |
-| `0x0093AE2D` | 75 | unnamed; contract unresolved |
-| `0x0093B200` | 104 | unnamed; contract unresolved |
-| `0x0093B268` | 263 | unnamed; contract unresolved |
-| `0x0093B36F` | 274 | unnamed; contract unresolved |
-| `0x0093B481` | 135 | unnamed; contract unresolved |
 | `0x0093BD06` | 745 | `cHitTrackPlayer::HandleNotifySetPropertyValue` |
 
 **HT4 — Pitch and completion-time arithmetic.** Target: `hit-track-player.md` §5, §8.
@@ -64,7 +58,7 @@ Remaining owned bodies: **3 / 715 bytes**:
 
 **HT5 — Owned container and source-index support.** Target: `hit-track-player.md` §4–8.
 
-For each listed body specify its local container operation, ownership changes, key comparison and duplicate rules, iterator invalidation, caller view and return value, including zero-copy/empty cases and callback removals. Several exported bodies have erased or misleading STL prototypes. Resolve allocation growth and overlap behavior for the reference-provider vector, source-list/index insertion and removal, static pool lifetime and teardown. Existing calls to these helpers in specified wrappers do not supply these contracts.
+For each listed body specify its local container operation, ownership changes, key comparison and duplicate rules, iterator invalidation, caller view and return value, including zero-copy/empty cases and callback removals. Several exported bodies have erased or misleading STL prototypes. Resolve allocation growth and overlap behavior for the reference-provider vector, source-list/index insertion and removal, static pool lifetime and teardown. Existing calls to these helpers in specified wrappers do not supply these contracts. Separately resolve shared exception continuation 0x0093E0F9, absent from the instruction export: the focused fallback query could not decode it because capstone is unavailable. This external continuation adds no body to the owned count.
 
 Remaining owned bodies: **21 / 1295 bytes**:
 

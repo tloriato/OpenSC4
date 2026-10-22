@@ -179,7 +179,9 @@ or independently computed success. Property words are raw 32-bit values.
 
 The last four labels are retained for locating the export, not as trustworthy API
 descriptions. Register-view key translation and notifications remain HT3; these
-wrappers must not be replaced by guessed semantics from their names.
+wrappers must not be replaced by guessed semantics from their names. The core
+register-view dispatch bodies are specified in §5.2; the translation table and
+property-notification actions remain external/open boundaries.
 Evidence: bytes at the individual entries; register forwarding adjustments are
 `this-8` on the sound view and `this+4` on the primary view.
 
@@ -225,6 +227,42 @@ primary Update(0). If IsPlaying is then true, it registers P+20 with the sound
 system's +0x78 slot and period argument **20**. Finally it returns whether primary
 GetErrorCondition's byte is zero. This final test occurs after the zero-time update;
 Unpause is not an unconditional success. Evidence: `0x0093B0C6–0x0093B107`.
+
+### 5.2 Register-view dispatch and propagation
+
+These six bodies enter with R=P+4. The vector they consult is P+0xA0 through
+P+0xA4. For **integer** reads, writes, containment and clear propagation, a key
+whose unsigned value is at most 255 is passed through shared translator
+`0x009377C9`; use its nonzero result, otherwise retain the original key. Negative
+signed words therefore do not enter this translation branch. The translator's
+table is an external encoding boundary. Float reads and writes do **not** perform
+this translation in their own bodies.
+
+| Register-view slot / body | Local contract |
+|---|---|
+| +0x10 / `0x0093B200`, integer read(key) | After key translation, scan every vector entry in order, skipping nulls. Ask provider slot +0x20 with key address and a zero-initialized integer output variant (table `0x00AD25FC`). Return the first successful provider's 32-bit result, including zero; if none succeeds, return zero. A successful zero does not continue searching. |
+| +0x20 / `0x0093ADDD`, float read(key) | Same ordered search using a binary32 output variant (`0x00AD2BA4`) and the literal, untranslated key. Return the first successful output by FLD of its binary32 word. On failure return +0.0 (raw zero word at `0x00A81054`). This body performs no integer cast of the stored float. |
+| +0x18 / `0x0093AE2D`, contains(key) | Translate the key, ask entry zero's slot +0x24; if true return true, otherwise return entry one's +0x24 result. It does not inspect later providers and does not null-check either entry it accesses. This is deliberately different from read's full-vector search. |
+| +0x0C / `0x0093B268`, integer write(key,value,suppress) | Translate key; update primary comparison flags against signed zero using §3. Retain vector entry zero locally and write its +0x0C using the integer variant. Then perform the child propagation below. If suppress's low byte is zero, call primary +0x80(key) and return that callback's byte result; otherwise return true. Release the retained local provider before returning. Ignore the property write and child write return values. |
+| +0x1C / `0x0093B36F`, float write(key,value,suppress) | Use the literal key; compare the binary32 input against +0.0 using §3; retain entry zero and write its +0x0C using the float variant. Propagate to eligible children **through their integer-write slot**, converting input with shared `_ftol2` at `0x009EEF04` and passing its low 32 bits. For finite inputs in signed-32 range this truncates toward zero, e.g. -3.9 becomes -3. Suppression, callback-result selection and local provider release match integer write. Invalid/out-of-range conversion remains the compiler helper's boundary rather than a new clamp here. |
+| +0x14 / `0x0093B481`, clear propagation(key,suppress) | Translate key and visit all dependent sounds. For each supporting primary IID `0xBB1BE367`, obtain its register view through primary +0x18 and call its +0x14(key,0), then release the temporary primary view. This body does not erase a local provider property, query a child's track definition or check its override. If suppress's low byte is zero, call own primary +0x80(key) afterwards. There is no prescribed result. |
+
+Integer/float writes traverse dependent sounds in list order after the local
+write. QI each sound for `0xBB1BE367`, then ask its GetTrackDef for IID
+`0xEBB10CDD`. If the returned definition pointer is null, skip that child. If
+the definition's +0x24 says the key exists, skip it: the child's own track
+definition protects the value. Otherwise obtain the child's register view and
+call its integer-write +0x0C(key,value,suppress). Release temporary definition and
+primary interfaces before continuing. The float parent forwards the literal key,
+so a child's integer-write entry can subsequently translate a short key. This
+propagation happens even when the parent's suppress flag is nonzero; suppress
+controls the notification calls, not the local write or traversal.
+
+Evidence: integer key translation `0x0093B208–0x0093B221`; provider precedence
+`0x0093B23D–0x0093B263`; float FLD/output and no short-key branch
+`0x0093ADDD–0x0093AE2B`; integer propagation `0x0093B2D1–0x0093B36C`;
+float conversion and integer dispatch `0x0093B416–0x0093B42D`;
+clear propagation `0x0093B4AF–0x0093B505`.
 
 ## 6. Playback entry points
 
@@ -342,9 +380,9 @@ The owned exception funclet (`0x0093E0DF`, 26 bytes) obtains HitMan, calls its
 diagnostic +0x74 with the saved player pointer and
 `Unknown exception while executing instruction`, then returns continuation
 address `0x0093E0F9` to the exception runtime. This body does not perform a Kill or
-clear the wait/error/active fields. The continuation belongs to the callback's
-loop-tail region; exact exception-type matching and runtime dispatch remain a
-shared SEH boundary, not a claimed portable exception implementation.
+clear the wait/error/active fields. The target's instructions are absent from the
+export; exact continuation behavior, exception-type matching and runtime dispatch
+remain a shared SEH boundary, not a claimed portable exception implementation.
 Command encodings and individual command state changes remain HT1.
 
 ## 8. External boundaries and current limits
@@ -364,9 +402,9 @@ Those unresolved callback actions are HT3, not an assumed no-op message handler.
 ## 9. Open coverage
 
 Only inventory rows with a section reference have a concrete contract here.
-Coverage: **69 / 110 bodies, 3454 / 16012 bytes specified**. Exactly
-**41 bodies / 12558 bytes remain open** (HT1: 1/6754; HT2: 7/1939;
-HT3: 9/1855; HT4: 3/715; HT5: 21/1295). These are body counts/bytes,
+Coverage: **75 / 110 bodies, 4385 / 16012 bytes specified**. Exactly
+**35 bodies / 11627 bytes remain open** (HT1: 1/6754; HT2: 7/1939;
+HT3: 3/924; HT4: 3/715; HT5: 21/1295). These are body counts/bytes,
 not estimates from source-line length. The largest gap is DoCommand.
 Rows marked open remain necessary implementation work, grouped into HT1–HT5 in
 `questions/hit-track-player.md`. Reach/neighbour attribution alone is not proof
@@ -395,7 +433,8 @@ must be preserved when those gaps are filled.
    PlayPause fail with a nonzero dependent-sound key: the dependent start still
    occurs, but Unpause does not.
 7. Give Stop a main source, fade denominator 3, and current value 5. Rate is
-   1666. A product that wraps 32 bits distinguishes widened arithmetic. A zero
+   1666. With current value 4294968 and denominator 3, the product wraps to 704
+   and rate is 234, rather than the widened-product quotient 1431656000. A zero
    rate still sets deferred-stop state and is killed by the next eligible timer.
 8. Fade x=0 to t=10 at r=1000, e=10: write x=10 and leave enable set. The next
    positive tick overshoots, clamps and clears it. At r=1, e=20, repeated ticks
@@ -406,6 +445,15 @@ must be preserved when those gaps are filled.
    normal loop exit. A hard cap of 100 commands fails.
 10. Clear sequencer-active but leave one playing dependent: IsPlaying remains
     true. Stop that dependent and run a callback: it is pruned, then Kill occurs.
+11. Supply provider values [absent, zero, nonzero]: integer read returns the
+    second provider's zero without consulting the third. Containment consults
+    only the first two providers, even if a later provider contains the key.
+12. Write float -3.9 under a full property key with suppression enabled: local
+    float storage receives -3.9, an eligible child's integer setter receives -3,
+    and the parent's property notification is suppressed. A child whose track
+    definition already contains the key receives no write. Repeat with an
+    untranslated short key to distinguish parent float lookup from child integer
+    key translation.
 
 These are discriminating implementation cases, not results of an executed game
 or an implementation test suite. No game/shadow claim is made for this docs lane.
@@ -447,8 +495,8 @@ audit. Open rows are tracked in the questions file as implementation gaps.
 | `0x0093ACD6` | 212 | `cHitTrackPlayer::CompletionTime` | name-high | open |
 | `0x0093ADAA` | 16 | `cHitTrackPlayer::Reset` | name-high | §4 |
 | `0x0093ADBA` | 35 | `cHitTrackPlayer::SetRegisterVal` | name-high | §5 |
-| `0x0093ADDD` | 80 | unnamed | neighbour | open |
-| `0x0093AE2D` | 75 | unnamed | neighbour | open |
+| `0x0093ADDD` | 80 | unnamed | neighbour | §5.2 |
+| `0x0093AE2D` | 75 | unnamed | neighbour | §5.2 |
 | `0x0093AE78` | 20 | unnamed | reach | §5 |
 | `0x0093AE8C` | 37 | `cHitTrackPlayer::UpdateVolPan` | name-medium | §5 |
 | `0x0093AF0D` | 52 | `cHitTrackPlayer::SetFrequency` | name-high | §5 |
@@ -463,10 +511,10 @@ audit. Open rows are tracked in the questions file as implementation gaps.
 | `0x0093B01E` | 109 | `cHitTrackPlayer::Pause` | name-high | §5 |
 | `0x0093B08B` | 125 | `cHitTrackPlayer::Unpause` | name-high | §5 |
 | `0x0093B108` | 248 | `cHitTrackPlayer::Stop` | name-high | §6 |
-| `0x0093B200` | 104 | unnamed | neighbour | open |
-| `0x0093B268` | 263 | unnamed | neighbour | open |
-| `0x0093B36F` | 274 | unnamed | neighbour | open |
-| `0x0093B481` | 135 | unnamed | neighbour | open |
+| `0x0093B200` | 104 | unnamed | neighbour | §5.2 |
+| `0x0093B268` | 263 | unnamed | neighbour | §5.2 |
+| `0x0093B36F` | 274 | unnamed | neighbour | §5.2 |
+| `0x0093B481` | 135 | unnamed | neighbour | §5.2 |
 | `0x0093B508` | 454 | `cHitTrackPlayer::UpdatePitch` | name-high | open |
 | `0x0093B6CE` | 32 | unnamed | neighbour | open |
 | `0x0093B6EE` | 136 | unnamed | neighbour | open |
