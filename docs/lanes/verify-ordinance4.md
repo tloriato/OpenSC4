@@ -1,8 +1,8 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| verify-ordinance4 (independent ordinance shadow) | `verify-ordinance4` / (engine lane, detached worktree) | in progress | (1) baseline gate; (2) inspect spec and owner; (3) implement and validate native/Rust shadow |
+| verify-ordinance4 (independent ordinance shadow) | `verify-ordinance4` / (engine lane, detached worktree) | WIP: cargo4938/0, clippy clean, ctest68/68; native turbo and normal clean2032/ref0 but1760 serialized differences each (SV3); combined native ref1; current40 clean2032/ref0; ABI unchanged | (1) resolve SV3; (2) fix crime native ordinance lifetime; (3) capture actual native host reads/effects and natural lifecycle/save/reload calls |
 
-## Handoff
+## Report and measured milestones
 - Goal: independent same-process original-versus-Rust ordinance verification; native authoritative.
 - Worktree reused at detached HEAD; initial tree clean, no main.. commits.
 - Implemented first independent serialized bootstrap + monthly follow + natural simulator SDK dispatch observation.
@@ -26,5 +26,24 @@
 - Next queued label vo4r1-union-native-2269d93c-20261022c: literal current40 enable list with ordinance disabled for native authority and shadow; then full40 replacement control.
 - Combined native run completed2032-01-01, harness clean BUT ref_warnings=1 (FAIL ref0),178173/179933 matches,1760differences; dynamic176221/176221, fixture368/688,sample1584/3024. Warning is last release of native ordinance simulator classA990C08E; preserve log, do not waive.
 - Last pending control label vo4r1-current40-2269d93c-20261022d uses all40 replacements and requests shadow (must be INACTIVE, never self-compare).
+
+## Final outcome
+
+WIP; no exact-owner coverage or promotion. Substantive implementation commits:2dedf01b,e5c5360c,1729582e,c2baaf8a,2269d93c. Native remains authoritative whenever shadow is active. SDK dispatch is observed per runtime instance, with QI owner identity; no executable bytes/private state maps or native algorithm forwarding. Bootstrap captures native public Write once into independent Rust objects; bootstrap equality receives no credit. Serialization samples, natural dynamic calls and explicit fixtures have separate denominators. No resync/fallback; all mismatches retained. Shadow host writes are suppressed and counted, never applied twice.
+
+Final stable code gate at2269d93c: cargo4938 passed/0failed, clippy0diagnostics, ctest68/68. Rust files untouched, fmt not applicable. No C ABI export/version/table changes. Diagnostic DLL SHA256 AEA6A17CA2551AC8C37A3D0BDF8CE93A49E5BDF0C38A7D188D1650840E05D5B6; immutable paths and raw logs remain under build-runs.
+
+| Unique label | Outcome | Paired output matches/total |
+|---|---|---|
+| vo4r1-native-c2baaf8a-20261022a | clean2032-01-17/ref0,72months | 731207/732967;1760differences |
+| vo4r1-normal-2269d93c-20261022b | clean2032-01-01/ref0,72months | 744378/746138;1760differences |
+| vo4r1-union-native-2269d93c-20261022c | harness clean2032/ref1: FAIL ref0 | 178173/179933;1760differences |
+| vo4r1-current40-2269d93c-20261022d | clean2032-01-01/ref0 | shadow INACTIVE because ordinance replaced; no comparison credit |
+
+All runs used the same21 explicit actions: missing-ID failures, unchanged setters, unavailable-on repetition, reavailability, enabled toggles, month boundary, two full saves, digests and full quit. Normal-speed mismatch persistence rules out a turbo-only explanation. Combined native warning: cFC4CrimeSimulator::ReleaseServices lambda line996 released last native ordinance simulator reference; not waived or hidden. Full40 control passed and does not perform Rust self-comparison. No request remains outstanding.
+
+SV3 records concrete serialized lengths/offsets and current literal refresh choice; the question index was not regenerated because tools/ is forbidden. It does not excuse missing implementation. Exact native tuning/date/funds/host read capture, native effects/message comparison, natural Init/Read/Write/Shutdown and Simulate interception, simulator name/lookup calls, direct misc holder, natural setter calls and controlled save/reload2032 are UNTESTED. Serialized samples are not natural save-call verification. Zero-call slots remain untested. Direct native monthly-income getter calls are real (e.g. CPR716 calls in normal run); fixture setters are separately logged4 availability/8on/4enabled. Actual native lifecycle/reload and same-input proof remain required before ready.
+
+Next steps: resolve published persistence contract SV3 without guessing; repair the crime reference ownership using public contracts; implement native input/effect capture and controlled reload evidence. Preserve all four unique results and both immutable DLLs. Do not promote or relabel this partial shadow as exact.
 - No game requests outstanding. No ABI changes. No questions yet.
 - Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-verify-ordinance4-r1-manifest.json
