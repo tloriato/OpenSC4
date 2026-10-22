@@ -18,5 +18,7 @@
 - Diagnostic code milestone:d81d9a29; quick530/0 build4/4 and stable all4951/0 clippy0 ctest68/68 PASS72.6s.
 - A native total:23,030,495/23,030,495 exact; method_calls27,774,902; scalar get23,029,595/set2,652,243; bulk_get2,093,056; reads300/writes900; cleanup310 all1,0. Fixture569/600, SG3 differences31; methods1200/read40/write340/detection10. No resync/fallback/refusals/failures. A ref1 remains adverse.
 - Starting b controls via build-runs/run-sgm4-controls.ps1, then run-sgm4-normal.ps1 and audit-sgm4.py. No further source changes planned.
+- Native39-b CLEAN2033/ref1 repeats native landvalue development Unhold:254 warning. Guard stopped save copy and downstream chain. Native4,312,882/4,312,882 exact; methods5,219,544; gets4,312,690/sets505,438/bulk_get401,408/read64/write192; cleanup74 all1,0. Fixtures569/600 SG3diff31 with complete bits.
+- Outstanding:sgm4-r1-normal39-20261022b (single independent normal-speed control). Next: independent current40 control from original parent fixture, audit, final wip report. Do not claim the required ref0 save/reload chain; do not change development or profiles to hide the warning. No fourth round.
 - Required: focused tests, stable full gate, frozen unique native/current40/native save/reload2032+ref0 controls. No qwait.
 - Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-verify-simgrids-methods-final4-r1-manifest.json.
