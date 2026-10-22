@@ -897,5 +897,21 @@ bool Span8888SlotEntry(unsigned slot, void*** entry, uintptr_t* function) {
     return true;
 }
 
+bool RenderTextPrimitives(RenderTextPrimitive* upper, RenderTextPrimitive* lower) {
+    if (!upper || !lower) return false;
+    *upper = nullptr;
+    *lower = nullptr;
+    const ExecutableVersion* v = IdentifiedVersion();
+    if (!v || v->timeDateStamp != 0x4C12BFB7 || v->sizeOfImage != 0x007C8000 ||
+        v->imageBase != 0x00400000 || sizeof(void*) != 4) return false;
+    const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA(nullptr));
+    // Published RP6 RVAs; never probe exports or substitute the plugin CRT.
+    const uintptr_t u = base + 0x005EF5A9, l = base + 0x005F0543;
+    if (!CheckCode("renderprops isupper", u, base) || !CheckCode("renderprops tolower", l, base)) return false;
+    *upper = reinterpret_cast<RenderTextPrimitive>(u);
+    *lower = reinterpret_cast<RenderTextPrimitive>(l);
+    return true;
+}
+
 }  // namespace compat
 }  // namespace fc4

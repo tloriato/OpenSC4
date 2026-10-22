@@ -12714,4 +12714,6 @@ _Static_assert(sizeof(fc4_span565_source) == (sizeof(void*) == 4 ? 24 : 32), "fc
 _Static_assert(sizeof(fc4_span565_blt) == 32, "fc4_span565_blt layout");
 #endif
 
+/* glue-render-properties4: native byte-text owner API (additive, version unchanged by lane). */
+#include "fc4_render_properties.h"
 #endif /* FC4_H */

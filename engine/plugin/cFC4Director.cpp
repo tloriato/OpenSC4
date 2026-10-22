@@ -49,6 +49,7 @@
 #include "FC4SpanRender4444.h"  // the glue-span4444-impl4 lane: enable = span4444
 #include "FC4SpanContext.h"  // the glue-span-context-final4 lane
 #include "FC4SpanRender8888.h"  // the opt-in 8888 native bridge
+#include "FC4RenderProperties.h"
 #include "cFC4PropManager.h"  // the glue21 lane: fc4::PropManagerAppShutdown
 #include "cFC4LotConfigManager.h"  // the glue21 lane: fc4::LotConfigManagerAppShutdown
 #include "cFC4Simulator.h"
@@ -357,6 +358,7 @@ public:
         fc4::MySimsShadowStart();        // mysims_shadow (FC4MySimsShadow.h)
         fc4::SpanRender4444Start();      // enable = span4444 (FC4SpanRender4444.h)
         fc4::SpanRender8888Start();      // enable = span8888 (opt-in)
+        fc4::RenderPropertiesStart();   // enable = renderprops (verification only)
         fc4::FpuLog("hook PostAppInit (exit)");
         return true;
     }
@@ -382,6 +384,7 @@ public:
         fc4::SpanContextShutdown();  // glue-span-context-final4: caller counts (before the entries go back)
         fc4::SpanRender4444Stop();  // enable = span4444: the original vtable entries back
         fc4::SpanRender8888Stop();
+        fc4::RenderPropertiesStop();
         fc4::DialogsStop();  // close_dialogs (FC4Dialogs.h)
         fc4::ObserverStop();
         fc4::ExemplarFactoryRestore();  // the game's factories back (data-formats §8.1)

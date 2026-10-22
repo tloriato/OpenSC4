@@ -333,5 +333,9 @@ bool SpanContextAddresses(SpanContextVA* out);
 // only: the entry's address and the function it must hold; false otherwise (logged once per slot).
 bool Span8888SlotEntry(unsigned slot, void*** entry, uintptr_t* function);
 
+// render-properties §1.4: borrowed executable CRT int32 cdecl(int32) primitives.
+using RenderTextPrimitive = int32_t(__cdecl*)(int32_t);
+bool RenderTextPrimitives(RenderTextPrimitive* upper, RenderTextPrimitive* lower);
+
 }  // namespace compat
 }  // namespace fc4

@@ -21,3 +21,6 @@
   accepted locale/codepage and startup construction order, observed I/i/high-byte results,
   and effects of locale changes. Native language-manager success can mask a failed
   setlocale; requested language alone is insufficient evidence. No profile run was made.
+
+<!-- from: glue-render-properties4 (2026-10-22) -->
+- **RP7 - §1.1/§1.4 application/view installation and native construction:** What public acquisition/factory and installation contracts permit creating independent native owners and supplying a replacement to the application and view? The SDK GetRenderProperties route is borrowed and has no setter; §1.1 identifies constructors but does not publish a callable constructor ABI, factory ID, or application/view ownership-transfer boundary. Please specify full P/U interface installation and lifetime, including view construction, failure and shutdown. [Implement only native-text Rust adapter and independent comparisons against the acquired original; withhold replacement and native fresh-owner/deleting-destructor/locale-construction experiments. Do not invent object layout writes, class registration, constructor calls or a forwarding proxy.]

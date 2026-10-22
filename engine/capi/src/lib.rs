@@ -1116,3 +1116,5 @@ mod disaster_layer_tests;
 mod span1555_tests;
 // glue-span8888-impl4: the cSpanRender8888 bridge (span-render-8888.md §1.1-§9).
 pub mod span_render8888;
+// glue-render-properties4: byte-preserving native text service adapter.
+pub mod render_properties;

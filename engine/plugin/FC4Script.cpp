@@ -12,6 +12,7 @@
 // root); if not, see <https://www.gnu.org/licenses/>.
 
 #include "FC4Script.h"
+#include "FC4RenderProperties.h"
 
 #include "FC4Config.h"
 #include "FC4Diag.h"
@@ -435,7 +436,10 @@ void RunAction(const harness::ScriptAction& a, int32_t julian, cISC4City* city) 
             result = "the DIGEST line follows";
             digest = true;
             break;
-        case ScriptOp::Mark: result = "marked"; break;
+        case ScriptOp::Mark:
+            if (a.text == "renderprops-check") RenderPropertiesCheck("script", true);
+            result = "marked";
+            break;
         case ScriptOp::Save:
             NetMgrShadowBeforeSave(city, julian);  // netmgr_shadow = 1 only: the records the save writes
             result = RunSave(a, city);
