@@ -1,9 +1,10 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| core-scene-renderer4 (first portable cSC43DRender owner) | Codex / `core-scene-renderer4` (engine lane, detached HEAD) | in progress; owner denominator 130 functions; exact body bytes unknown; ABI unchanged | (1) Baseline and inventory. (2) Commit independent fixtures. (3) Implement bounded production algorithms and verify. |
+| core-scene-renderer4 (first portable cSC43DRender owner) | Codex / `core-scene-renderer4` (engine lane, detached HEAD) | continue: guard context 154k/150k; code 93a6fc20; initial workspace Rust 5142/0/0 and clippy clean, baseline CMake active; new 13 tests unvalidated; final gates/fmt pending; 130 owner denominator, body bytes unknown; ABI unchanged; RND5–RND7; no merge queue | (1) Collect baseline session 3939. (2) Respect existing family budget; serial quick/final all and absolute fmt remain outstanding. (3) Measure source/artifact correspondence before ready. |
 
 ## Handoff
 - Goal: first bounded production scene renderer from render3d sections 1–12 and view3d sections 3–4.
+- Done commits: f4d643d0 independent inventory/fixtures; 09fcae9f production module; 36adf9ee discriminators/record/camera; 93a6fc20 boundary fixes (current code); 6a4ad074 detailed inventory/report. Guard stopped further work at 154k/150k; no merge-queue file was written. Do not reset the family budget.
 - Done: reused reserved detached worktree; clean initial status; read lane rules and published renderer sections. Independent literal fixtures committed before production implementation (D1–D6, B1–B4, queue boxes, stable duplicates, S1–S6).
 - Done: first substantive production module implements owned dirty/list/backing algorithms, typed partial model queue, bounded shake state. Full draw/lifecycle and missing geometry remain Unsupported. Source not yet checked.
 - Done: discriminating tests now cover dirty ties/penalty/deadline/threshold/area boundary, lists, backing failures/shared ownership, queue kinds/refs/box policy, typed record partial failures and bounded shake cases. Added typed camera reference operations and actual existing camera-control forwarding. RND5–RND7 appended. Rust sources formatted via rustfmt stdout applied with apply_patch.
@@ -12,9 +13,12 @@
 - Fact: frustum-domain failure now remains Unsupported on a coalesced repeat. Shake list start uses supplied post-restart elapsed time (not invented zero); raw clock restart remains an explicit embedding requirement, so full Start is partial.
 - Scope: only new scene_renderer module/tests, additive lib declaration, this report, appended render3d questions.
 - No native/game/ABI/glue work; no whole-owner or byte-total credit; section 7 residual remains unsupported.
-- Required fixtures before implementation: D1–D6, B1–B4, model queue, stable duplicates, S1–S6.
+- Fixtures were committed before implementation: D1–D6, B1–B4, model queue, stable duplicates, S1–S6. D5 spacing was later corrected from 100 to 1000 because 100 yields a merge score of -900 and cannot exercise the node threshold.
 - Questions retained: RND1, RND2, RND4. Filed RND5–RND7 in questions/render3d.md; next available RND8. Generated question index deliberately untouched.
 - Baseline: initial all launched in session 3939. Existing cargo PID 6076 has 131 handles; Windows denies command-line/path attribution, no pre-existing qbuild logs in this lane. No processes killed. No game requests.
+- At round stop: the last single collection waited 300 seconds and baseline session 3939 remained active. CMake previously showed 62/215 steps, no reported errors. No quick or final all was launched by the conditional serial runner because the baseline did not finish. No final CTest count or plugin artifact correspondence is established. Do not count initial Rust/clippy as final-source validation.
+- Evidence locations: qbuild-test.log (SHA256 a8d5eeacc0e0b779c1e97c97087dd1957b42eedcdb3679d37947be831d35f816), qbuild-clippy.log (80072f9ba4c8ba51de131c2521230152808b9208fdcaf57e7eb2a157f473d9b7), fc4verify-build.log/configure.log in build-runs. collect-scene-renderer4.py emits read-only totals and source/artifact hashes; format-scene-renderer4.py emits apply_patch updates from rustfmt stdout. The latter was used for formatting but is not a successful qbuild fmt check.
+- Exact next commands after collecting baseline: `python C:/Users/tlori/FreeCity4/.claude/lane-bin/qbuild.py --wt C:/Users/tlori/FreeCity4/.claude/worktrees/core-scene-renderer4 quick`, then the same wrapper `all`; then `fmt` with absolute paths to lib.rs and all seven scene_renderer/*.rs files. Preserve baseline evidence before overwritten logs. Existing long gate must be collected first; do not overlap.
 
 ## Initial named-method inventory (committed before implementation in f4d643d0)
 
