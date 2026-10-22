@@ -2,6 +2,7 @@
 #include "FC4WeatherShadow.h"
 
 #include "FC4Config.h"
+#include "FC4Checked.h"
 #include "FC4Interfaces.h"
 #include "FC4Log.h"
 #include "FC4RefAudit.h"
@@ -56,13 +57,17 @@ void CompareCalendar() {
         ++g_failures;
         return;
     }
-    uint32_t year = 0, month = 0, day = 0, doy = 0, weekday = 0;
-    simulator->GetSimDateParts(&year, &month, &day, &doy, &weekday);
-    if (month < 1 || month > 12) {
+    FC4_OUT(uint32_t, year, "weather shadow GetSimDateParts year");
+    FC4_OUT(uint32_t, month, "weather shadow GetSimDateParts month");
+    FC4_OUT(uint32_t, day, "weather shadow GetSimDateParts day");
+    FC4_OUT(uint32_t, doy, "weather shadow GetSimDateParts day of year");
+    FC4_OUT(uint32_t, weekday, "weather shadow GetSimDateParts weekday");
+    simulator->GetSimDateParts(year.ptr(), month.ptr(), day.ptr(), doy.ptr(), weekday.ptr());
+    if (month.get() < 1 || month.get() > 12) {
         ++g_failures;
         return;
     }
-    g_month = static_cast<int32_t>(month);
+    g_month = static_cast<int32_t>(month.get());
     g_hemisphere = static_cast<int32_t>(g_city->GetWorldHemisphere());
     const int32_t nativeMonth = g_original->GetCurrentSeasonMonth();
     const int32_t nativeSeason = g_original->GetCurrentSeason();
@@ -152,6 +157,7 @@ bool WeatherShadowDeliver(cIGZMessageTarget2* target, const char* name, cIGZMess
     // Exactly one authoritative natural delivery. Never invoke the Rust
     // simulator with fabricated seeds or duplicate its host notifications.
     *finished = target->DoMessage(message);
+    if (!*finished) ++g_failures;
     ++g_originalCalls;
     if (type == kDay) ++g_days;
     if (type == kWeek) ++g_weeks;
@@ -175,6 +181,7 @@ void WeatherShadowCityShutdown() {
     fc4_weather_destroy(g_core);
     g_core = nullptr;
     FC4_RELEASE(g_original);
+    g_original = nullptr;
     g_city = nullptr;
 }
 }  // namespace fc4
