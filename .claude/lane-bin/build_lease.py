@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import contextvars
+import errno
 import json
 import os
 from pathlib import Path
@@ -22,6 +23,7 @@ import tempfile
 import threading
 import time
 from multiprocessing.connection import Client, Listener
+from multiprocessing import AuthenticationError
 
 INVITE = "FC4_BUILD_DELEGATION"
 LOCK = ".build-check.lock"
@@ -31,6 +33,10 @@ _current = contextvars.ContextVar("fc4_build_lease", default=None)
 
 class LeaseError(RuntimeError):
     """Busy, invalid delegation, or uncertain ownership; no check was started."""
+
+
+class _LockBusy(OSError):
+    pass
 
 
 def canonical_worktree(wt):
@@ -74,6 +80,16 @@ def _recv(stream):
     return _unwire(json.loads(line))
 
 
+def _conn_send(conn, value):
+    conn.send_bytes(json.dumps(_wire(value), ensure_ascii=True).encode("utf-8"))
+
+
+def _conn_recv(conn):
+    # A copied authentication key is not peer authorization. Never unpickle
+    # anything from a connection, including a not-yet-verified hello.
+    return _unwire(json.loads(conn.recv_bytes().decode("utf-8")))
+
+
 def _peer_pid(conn, server=False):
     if os.name == "nt":
         import ctypes
@@ -103,8 +119,10 @@ class _KernelLock:
             else:
                 import fcntl
                 fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BaseException:
+        except BaseException as exc:
             os.close(self.fd)
+            if isinstance(exc, OSError) and exc.errno in (errno.EACCES, errno.EAGAIN):
+                raise _LockBusy(str(exc)) from exc
             raise
 
     def close(self):
@@ -114,9 +132,11 @@ class _KernelLock:
 def _owner_text(path):
     try:
         d = json.loads(path.read_text(encoding="utf-8"))
+        if d.get("status") != "active":
+            return f"owner publication/recovery in progress; metadata={path} (do not break the live OS lock)"
         return (f"worktree={d['worktree']} owner PID={d['pid']} guardian PID={d['guardian_pid']} "
                 f"invocation={d['invocation']} started={d['started']} source={d['source']} command={d['command']}")
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return f"owner identity unavailable; metadata={path} (do not break the live OS lock)"
 
 
@@ -145,8 +165,9 @@ class _Delegation:
         self.claimed = False
         self.handlers = []
 
-    def start(self, pid):
-        self.pid = pid
+    def start(self, child):
+        self.child = child  # Windows process handle / POSIX waitpid identity, not PID existence
+        self.pid = child.pid
         self.thread = threading.Thread(target=self.serve, daemon=True)
         self.thread.start()
 
@@ -155,28 +176,38 @@ class _Delegation:
             while True:
                 try:
                     conn = self.listener.accept()
-                except (OSError, EOFError):
+                except (AuthenticationError, EOFError):
+                    continue  # a forged/aborted handshake must not disable the real child's session
+                except OSError:
                     return
                 try:
                     peer = _peer_pid(conn)
+                    if (peer not in (self.pid, os.getpid())
+                            or (peer == self.pid and (self.claimed or self.child.poll() is not None))):
+                        if conn.poll(5):
+                            conn.recv_bytes()  # drain hello without trusting/deserializing it
+                        _conn_send(conn, {"error": "build/check: delegation rejected (wrong live child/worktree/invocation)"})
+                        conn.close()
+                        continue
                     if not conn.poll(5):
                         conn.close()
                         continue
-                    hello = conn.recv()
+                    hello = _conn_recv(conn)
                     if peer == os.getpid() and hello == {"stop": True}:
                         conn.close()
                         return
                     if (peer != self.pid or hello.get("worktree") != str(self.wt)
-                            or hello.get("invocation") != self.info["invocation"] or self.claimed):
-                        conn.send({"error": "build/check: delegation rejected (wrong live child/worktree/invocation)"})
+                            or hello.get("invocation") != self.info["invocation"] or self.claimed
+                            or self.child.poll() is not None):
+                        _conn_send(conn, {"error": "build/check: delegation rejected (wrong live child/worktree/invocation)"})
                         conn.close()
                         continue
                     self.claimed = True
-                    conn.send({"owner": self.info})
+                    _conn_send(conn, {"owner": self.info})
                     handler = threading.Thread(target=self.handle, args=(conn,), daemon=True)
                     self.handlers.append(handler)
                     handler.start()
-                except (EOFError, OSError, LeaseError, ValueError):
+                except (EOFError, OSError, LeaseError, ValueError, TypeError, AttributeError):
                     conn.close()
         finally:
             self.done.set()
@@ -187,11 +218,11 @@ class _Delegation:
         with conn:
             while True:
                 try:
-                    request = conn.recv()
+                    request = _conn_recv(conn)
                     if request.get("delegate"):
-                        conn.send({"error": "build/check: a delegated child cannot create another branch"})
+                        _conn_send(conn, {"error": "build/check: a delegated child cannot create another branch"})
                     else:
-                        conn.send(_execute(request, self.wt, self.info))
+                        _conn_send(conn, _execute(request, self.wt, self.info))
                 except (EOFError, OSError):
                     return
 
@@ -201,7 +232,7 @@ class _Delegation:
                 def stop():
                     try:
                         with Client(self.address, authkey=self.key) as conn:
-                            conn.send({"stop": True})
+                            _conn_send(conn, {"stop": True})
                     except (OSError, EOFError):
                         pass
                 threading.Thread(target=stop, daemon=True).start()
@@ -234,7 +265,7 @@ def _execute(request, wt, info):
             timeout = kw.pop("timeout", None)
             with subprocess.Popen(cmd, **kw) as child:
                 if delegation:
-                    delegation.start(child.pid)
+                    delegation.start(child)
                 try:
                     stdout, stderr = child.communicate(timeout=timeout)
                 except subprocess.TimeoutExpired:
@@ -265,6 +296,7 @@ def _guardian():
     lock = None
     owner = None
     info = None
+    safe = True
     try:
         request = _recv(sys.stdin)
         wt = canonical_worktree(request["worktree"])
@@ -273,12 +305,13 @@ def _guardian():
         owner = runs / OWNER
         try:
             lock = _KernelLock(runs / LOCK)
-        except OSError:
-            raise LeaseError("build/check busy: " + _owner_text(owner) + "; let that invocation finish, then retry")
+        except _LockBusy:
+            raise LeaseError("build/check busy (OS lease held; published owner): " + _owner_text(owner)
+                             + "; let that invocation finish, then retry")
         if owner.exists():
             try:
                 old = json.loads(owner.read_text(encoding="utf-8"))
-                if old.get("status") != "released":
+                if not isinstance(old, dict) or old.get("status") != "released":
                     raise ValueError("unclean guardian")
             except (ValueError, OSError):
                 raise LeaseError("build/check ownership uncertain after guardian failure: " + _owner_text(owner)
@@ -296,14 +329,17 @@ def _guardian():
             request = _unwire(json.loads(line))
             if request.get("close"):
                 break
-            _send(sys.stdout, _execute(request, wt, info))
+            safe = False
+            response = _execute(request, wt, info)
+            safe = True  # every command and delegated handler has been drained
+            _send(sys.stdout, response)
     except (LeaseError, OSError, ValueError) as exc:
         try:
             _send(sys.stdout, {"error": str(exc)})
         except (OSError, ValueError):
             pass
     finally:
-        if info is not None:
+        if info is not None and safe:
             _publish(owner, {**info, "status": "released", "finished": time.strftime("%Y-%m-%d %H:%M:%S")})
         if lock:
             lock.close()
@@ -320,6 +356,8 @@ class Lease:
         try:
             if invitation is not None:
                 invite = json.loads(invitation)
+                if not isinstance(invite, dict):
+                    raise LeaseError("build/check: invalid delegation invitation (expected an object)")
                 if invite["worktree"] != str(self.wt):
                     raise LeaseError("build/check: delegation rejected for a different canonical worktree")
                 owner_path = self.wt / "build-runs" / OWNER
@@ -329,7 +367,7 @@ class Lease:
                     raise LeaseError("build/check: stale/forged delegation does not match the live owner metadata")
                 try:
                     probe = _KernelLock(self.wt / "build-runs" / LOCK)
-                except OSError:
+                except _LockBusy:
                     pass
                 else:
                     probe.close()
@@ -337,16 +375,18 @@ class Lease:
                 self.conn = _connect(invite)
                 if _peer_pid(self.conn, server=True) != owner["guardian_pid"]:
                     raise LeaseError("build/check: delegation server is not the live guardian")
-                self.conn.send({"worktree": str(self.wt), "invocation": invite["invocation"]})
+                _conn_send(self.conn, {"worktree": str(self.wt), "invocation": invite["invocation"]})
                 if not self.conn.poll(5):
                     raise LeaseError("build/check: delegation handshake timed out; ownership uncertain")
-                response = self.conn.recv()
+                response = _conn_recv(self.conn)
             else:
                 env = dict(os.environ)
                 env.pop(INVITE, None)
                 self.process = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--guardian"],
                                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
-                                                encoding="utf-8", env=env, cwd=self.wt)
+                                                encoding="utf-8", env=env, cwd=self.wt,
+                                                start_new_session=os.name != "nt",
+                                                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0)
                 _send(self.process.stdin, {"worktree": str(self.wt), "owner": {
                     "pid": os.getpid(), "command": subprocess.list2cmdline(sys.argv),
                     "source": str(Path(sys.argv[0]).resolve())}})
@@ -358,7 +398,7 @@ class Lease:
             return self
         except BaseException as exc:
             self._close()
-            if isinstance(exc, (OSError, ValueError, KeyError, EOFError)):
+            if isinstance(exc, (OSError, ValueError, KeyError, TypeError, EOFError)):
                 raise LeaseError(f"build/check: invalid/stale delegation or failed guardian: {exc}") from exc
             raise
 
@@ -366,9 +406,14 @@ class Lease:
         if self.conn:
             self.conn.close()
         if self.process:
-            self.process.stdin.close()
-            self.process.wait()  # guardian drains any live command before releasing ownership
-            self.process.stdout.close()
+            try:
+                self.process.stdin.close()
+            except OSError:
+                pass
+            try:
+                self.process.wait()  # guardian drains any live command before releasing ownership
+            finally:
+                self.process.stdout.close()
 
     def __exit__(self, *exc):
         _current.reset(self.token)
@@ -380,8 +425,8 @@ class Lease:
         try:
             request = {"cmd": cmd, "kwargs": kwargs, "log": log, "append": append, "delegate": delegate}
             if self.conn:
-                self.conn.send(_unwire(_wire(request)))
-                response = self.conn.recv()
+                _conn_send(self.conn, request)
+                response = _conn_recv(self.conn)
             else:
                 _send(self.process.stdin, request)
                 response = _recv(self.process.stdout)
