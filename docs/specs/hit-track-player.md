@@ -668,18 +668,18 @@ address `0x0093E0F9` to the exception runtime. This body does not perform a Kill
 clear the wait/error/active fields. The target's instructions are absent from the
 export; exact continuation behavior, exception-type matching and runtime dispatch
 remain a shared SEH boundary, not a claimed portable exception implementation.
-Command encodings and individual command state changes remain HT1.
+Command encodings and individual command state changes follow in §7.1–7.4.
 
-### 7.1 Verified command envelope and selected opcodes (partial body)
+### 7.1 Command envelope, basic wait/end and direct properties
 
-DoCommand (`0x0093C229`, **6754 bytes, still open**) begins with current cursor
+DoCommand (`0x0093C229`, **6754 bytes**) begins with current cursor
 C=P+0x6C. Fetch one **unsigned byte** opcode, save C locally, and immediately
 store C+1 in P+0x6C. Test unsigned (opcode-1) against 96. Values 1–97 dispatch
 through the absolute jump table at `0x0093DC8B`; opcode 0 and 98–255 go to
 the `Illegal Instruction` diagnostic and return true. The diagnostic itself
 does not restore the cursor or directly clear active/wait/error fields. The
-envelope contains no end-pointer or available-length check. The following rows
-are verified subcontracts, **not** full-body or opcode-set completion credit.
+envelope contains no end-pointer or available-length check. The tables in
+§7.1–7.3 together partition all 97 in-range values; §7.4 states common failures.
 
 | Opcode / encoded length | Verified action |
 |---|---|
@@ -700,7 +700,7 @@ Evidence: envelope `0x0093C237–0x0093C24C`; wait/end/poll
 operations `0x0093C45A–0x0093C4D3`; diagnostic/true tail
 `0x0093DC72–0x0093DC8A`. Raw jump-table words verify the listed opcode labels,
 including all five no-op destinations `0x0093DC84`; decompiler case labels alone
-are not the mapping authority. All other opcode contracts remain HT1.
+are not the mapping authority. The remaining opcode families follow below.
 
 ### 7.2 Integer, property and comparison-wait families
 
@@ -775,9 +775,147 @@ bound comparisons `0x0093D370–0x0093D3C3`; wait tests/rewind
 `0x0093C980–0x0093C98C`, `0x0093CA68–0x0093CA71`,
 `0x0093CADC–0x0093CAE5`, `0x0093CB50–0x0093CB59`,
 `0x0093CBC4–0x0093CBCD`; return tail `0x0093DC84–0x0093DC8A`.
-Jump-table entries at `0x0093DC8B` fix the opcode identities; these are native
-subcontracts and still carry **zero whole-DoCommand credit** until all other
-families and failure paths are reconciled.
+Jump-table entries at `0x0093DC8B` fix the opcode identities.
+
+### 7.3 Control flow, sources, services and Hit lists
+
+Use §7.2's operand notation. `C` is the saved opcode address, `B` is track
+base P+0x68, and `H` is the Hit-list reference at P+0xB0. All address additions
+wrap to 32 bits. Primary slot +0x0C obtains this player's sound identity.
+Explicit service temporaries acquire before the actions shown and release on
+normal exit; they do not imply a service-null check. Raw slot numbers below
+are intentional external call contracts, without inferred provider internals.
+
+| Opcodes (hex) / native entry | Operands; length | Action / call order |
+|---|---|---|
+| `01` / `0x0093C32D` | note:b, count:b; 3 | Translate both keys without the extra 127 guards. Read note property **before fetching count**, then read count; store count word at P+0x48 and call NoteOn(note value). If NoteOn is false, read R(0xFFAEC905), discard it, then diagnose missing patch/resource. |
+| `02` / `0x0093C391` | note:b; 2 | Call NoteOn(unsigned immediate), ignoring result. No register translation. |
+| `03` / `0x0093C3A4` | unused byte; 2 | Advance past the byte without reading it. If main sound P+0x80 is null return true; otherwise call its +0x20 with no arguments and return that call's boolean directly. |
+| `07` / `0x0093C839` | target:w; 5 | Acquire HitMan; fetch word, store advanced cursor, push that cursor value onto P+0x78 return stack, set cursor=B+target, release HitMan. |
+| `08` / `0x0093C88F` | none; 1 | If return stack is nonempty, copy front value, erase front, then assign cursor from the copy. Otherwise perform 0C's end action, including active clear before primary Release. |
+| `0A` / `0x0093C85D` | track:w; 5 | Acquire HitMan; fetch word, advance cursor, push advanced cursor; call that service's +0x38(track), assign returned pointer directly to cursor, then release service. No null/result guard, and B is unchanged. |
+| `1A` / `0x0093DC72` | none; 1 | Illegal Instruction diagnostic, then true. |
+| `20` / `0x0093D465` | none; 1 | Assign cursor=P+0x74, with no stack action or null check. |
+| `21` / `0x0093D46F` | none; 1 | Save the envelope's C+1 at P+0x74. Subsequent 20 returns to that saved position. |
+| `22` / `0x0093D477` | a:b, b:b; 3 | Read R(a), then R(b); call HitMan +0x6C(first value,second value), ignoring result. |
+| `23` / `0x0093D7E0` | s:b; 2 | Read R(s); call H slot **+0x10(value)**, ignoring result. Diagnostic says SmartAdd; do not substitute a guessed insertion implementation. No H null check. |
+| `24` / `0x0093D816` | s:b; 2 | Read R(s); H +0x14(value), ignoring result, without null check. |
+| `25` / `0x0093D852` | none; 1 | H +0x18(), ignoring result, without null check. |
+| `26` / `0x0093D862` | s:b; 2 | Read R(s); H +0x1C(value), ignoring result, without null check. |
+| `27` / `0x0093D89E` | d:b; 2 | Diagnose HitList is NULL if H is null. Otherwise call H +0x24(); zero diagnoses empty list. For nonzero count call H +0x20(), then W(d,return word), ignoring W result. |
+| `31` / `0x0093D9C9` | s:b; 2 | Read R(s), discard return. No output/print call follows; diagnostic name PrintReg does not imply one. |
+| `32` / `0x0093D9F9` | s:b; 2 | Read R(s); zero diagnoses Attempt to playtrack 0. Otherwise StartSndDependent(value), ignoring its boolean. |
+| `33` / `0x0093DA44` | s:b; 2 | Read R(s); zero calls **this** sound view +0x24 (Kill). Otherwise acquire sound system and call +0x80(visitor 0x0093AB4B,value,0), then release system. Visitor contract is §6.6. |
+| `34`–`3D` / `0x0093DC72` | none; 1 each | All ten values diagnose Illegal Instruction, then true; there are no hidden operands. |
+| `3E` / `0x0093CD2C` | target:w; 5 | Consume target, then branch to B+target if equal byte P+0x9C is nonzero. |
+| `3F` / `0x0093CD4A` | target:w; 5 | Branch if equal byte is zero. |
+| `40` / `0x0093CD53` | target:w; 5 | Branch if greater byte P+0x9D is nonzero **and equal byte is zero**. |
+| `41` / `0x0093CD61` | target:w; 5 | Branch if less byte P+0x9E is nonzero **and equal byte is zero**. |
+| `42` / `0x0093CD84` | target:w; 5 | Branch if greater byte is nonzero **or equal byte is nonzero**. |
+| `43` / `0x0093CD92` | target:w; 5 | Branch if less byte is nonzero **or equal byte is nonzero**. |
+| `44` / `0x0093D4EE` | s:b; 2 | Read R(s). Nonzero: clear/release old P+0xB0, then call HitMan retained at P+0x8C slot +0x40(value,0xDB1ACFB2,address of P+0xB0). Zero: assign P+0xAC reference to P+0xB0 with retain-before-release. Afterwards null P+0xB0 diagnoses Undefined Hit List. No local check of +0x40's boolean. |
+| `45` / `0x0093D56D` | s:b; 2 | Sequence-group fade/claim action detailed below. |
+| `46`, `47` / `0x0093D6BB` | s:b; 2 | Identical group-return/claim action detailed below. |
+| `48` / `0x0093DAD9` | d:b, unused:b, parm:b; 4 | Check d, translate unused and discard result, check parm. Read R(0xFFB4335C) as object ID; zero diagnoses absent game object. Otherwise read R(parm), call HitMan +0x80(object ID,parameter value,&output). False diagnoses Illegal source parameter request; success W(d,output), ignoring W result. Unused byte can itself diagnose during translation. |
+| `49` / `0x0093D754` | group:b, d:b; 3 | Check group, translate d without extra guard; then read R(group). Zero diagnoses Illegal sequence group ID. Otherwise HitMan +0x98(group value,&sound); if boolean true and sound nonnull, call sound +0x30() and W(d,result); otherwise W(d,0). Returned sound is not locally retained/released. |
+| `4B` / `0x0093C54D` | d:b, s:b; 3 | Read R(s), even if target provider P+0x84 is null. If null return true; else target +0x0C(d,value,0); false diagnoses SetLocalTarget. |
+| `4C` / `0x0093C5CC` | d:b, s:b; 3 | W(d,R(s)) on P+4, exactly the local getter and setter, despite SetTargetLocal diagnostic. False W diagnoses. |
+| `53` / `0x0093C2E5` | none; 1 | Acquire HitMan, read R(0xFFAE9DDB), then call service +0x9C(P+12,value), ignore result and release service. |
+| `54` / `0x0093C312` | none; 1 | Acquire HitMan, call +0x9C(P+12,0), ignore result and release. |
+| `55` / `0x0093CC05` | value:b, min:b, max:b; 4 | Check first two keys; translate third without extra guard. Read all three properties in order as signed x,lo,hi. Store greater byte=(x<hi), then less byte=(x>lo), then equal byte=(x<lo or x>hi). These are the actual stores, not conventional compare flags; equality with an endpoint counts as inside. No sorting of reversed bounds. |
+| `56` / `0x0093C641` | key:b, value:b; 3 | Read R(key) **before fetching value**, then read R(value). Acquire sound system; +0xAC(&cache), cache initially null. If service call succeeds, cache +0x2C(key value,value value); false outcomes diagnose. Release nonnull cache then system on normal exit. |
+| `57` / `0x0093C6F5` | d:b, global key:w; 6 | Check d, fetch full immediate key (no register translation), acquire sound system, initialize integer property value to zero. Obtain cache via +0xAC; on success cache +0x34(key,&integer-value object). Diagnose either failure, but **still W(d,integer payload)**, initially zero unless provider changed it; diagnose false W too. Destroy local value, release nonnull cache then system. |
+| `58` / `0x0093C253` | d:b, s:b; 3 | First diagnose Track threw an exception (throw instruction); if diagnostic returns, **fall through into 5B decoding/action**. No local throw instruction, active clear or return occurs at the diagnostic. |
+| `59` / `0x0093DB80` | value:b, unused:b, parm:b; normally 4 | Check value, read R(value); translate unused, discard result; read object ID R(0xFFB4335C). If zero diagnose and return at **C+3 without consuming parm**. Otherwise consume/check parm and read R(parm). Acquire sound system, obtain cache +0xAC, then cache +0x18(object ID,parameter value,value word). Diagnose false outcomes; release nonnull cache then system. |
+| `5A` / `0x0093DA92` | s:b; 2 | Read R(s); zero is a no-op. Nonzero acquires sound system, +0x80(visitor 0x0093ABD4,value,0), releases it. Visitor contract §6.6; no local Kill of this player for zero. |
+| `5B` / `0x0093C265` | d:b, s:b; 3 | Translate both without extra guards, read R(s), then call **main primary P+0x7C** slot +0x0C(d,value,0). No null check and no setter-result diagnostic. |
+| `5C` / `0x0093C29C` | none; 1 | Capture main sound P+0x80 and its vtable without null check. Read properties 0xFF1885BE, 0xFF9EC945, 0xFF9250B3, 0xFF141C48 in that order, then main sound +0x14 with arguments in reverse property order: (141C48 value,9250B3 value,9EC945 value,1885BE value). Ignore result. |
+| `5F` / `0x0093D904` | d:b, index:b; 3 | Null H diagnoses; H +0x24()==0 diagnoses empty index. Otherwise read R(index), call H +0x24() again; signed index>=count calls count a **third** time and substitutes that last count−1. Negative index passes unchanged. Call H +0x2C(index,&output), ignore boolean, then W(d,output), ignoring W result. No local initialization of output or lower clamp. |
+
+The return stack is a circular doubly linked list with sentinel at *(P+0x78).
+07/0A insert a 12-byte node **before the current front**; its payload is a
+copy of the advanced cursor, not a pointer to the cursor field. 08 removes
+that same front, giving LIFO behavior. Existing nodes/sentinel remain stable
+on insertion; the erased node alone becomes invalid on pop. Insertion does
+not AddRef the bytecode address; pop performs no payload Release. Evidence:
+`0x0093C841–0x0093C8A2`, wrapper `0x009D74D9`, insertion
+`0x00897C8D–0x00897CAD`, allocation/copy `0x0094B33A–0x0094B351`,
+pop wrappers `0x009D6185`, unlink/free `0x00949259–0x00949275`.
+Allocation goes through external `0x0090CF54(12)`; no local null/failure
+recovery exists. Target lookup in 0A does not replace track base or definition,
+and a failed lookup does not undo the pushed return position.
+
+For **45**, read group value, initialize lookup output null, and call HitMan
++0x98(group,&sound), ignoring its boolean. If output is null, equals this
+player's primary +0x0C result, or its IsPlaying (+0x1C) is false: call HitMan
++0x94(group,this sound identity) and return. Otherwise query the other sound
+for `0xBB1BE367`, output initially null, then call that returned view's +0x18
+to obtain a property provider. Neither query success nor null is checked;
+neither returned pointer is locally released. Read its 0xFF53DBF3. Zero calls
+the **other** sound's +0x24 (Kill) and returns. Nonzero reads fade-enable
+0xFF0AD592; only when nonzero also read fade-key 0xFF47F685. Unless the fade
+is already enabled for 0xFF53DBF3, write rate 0xFFD1C82F=50000, then fade-key
+0xFF47F685=0xFF53DBF3, then enable 0xFF0AD592=1, each with suppression zero,
+ignoring write results. Do not write the fade target here. Set cursor to
+saved C, set wait=2 and return, including when the fade was already configured.
+
+For **46/47**, zero group diagnoses No group ID. Nonzero calls HitMan
++0x98(group,&sound), ignoring boolean; the output is **not initialized to null
+by this handler**. Null output or equality with this player's sound identity
+calls HitMan +0x94(group,this identity). A distinct sound with IsPlaying false
+just returns; IsPlaying true calls **this** sound's +0x24 (Kill). No local
+Release of the group lookup result occurs. Native group proofs:
+`0x0093D598–0x0093D6B9`, `0x0093D6E6–0x0093D74F`.
+
+Additional byte/order proofs: 03's skipped byte and boolean return
+`0x0093C3A4–0x0093C3BA`; 55 signed stores `0x0093CC87–0x0093CCAE`;
+six branch predicates `0x0093CD2C–0x0093CDA2`; immediate global key
+`0x0093C71A–0x0093C724`; 57's write-after-failure
+`0x0093C749–0x0093C7A4`; unused operands and object gate
+`0x0093DAF3–0x0093DB78`, `0x0093DBB0–0x0093DC6D`;
+5C's four pushes `0x0093C2A7–0x0093C2DD`; signed upper-only list index
+`0x0093D988–0x0093D9C4`. Reference assignment/clear in 44 is verified by
+`0x00969FEA`, `0x0094909A–0x009490C8`, `0x00874DA3–0x00874DB7`.
+
+### 7.4 Decode, diagnostic, timing and failure rules
+
+The native dispatch table has exactly 97 dword entries (1–0x61) at
+`0x0093DC8B–0x0093DE0E`. Its aliases are 06=4A, 46=47 and the five
+one-byte no-ops 0F/1D/1E/5D/5E. Eleven in-range illegal values are
+1A and 34–3D; outside-range values 00 and 62–FF use the same diagnostic.
+This partition includes every byte value. There is no second extension opcode
+table, operand alignment, bytecode length limit, instruction budget, or target
+validation inside DoCommand.
+
+Except 03's provider boolean and a propagated exception, every normal path
+returns boolean true, including diagnostics and failed provider setters. The
+native tail sets **AL=1**, not an independently prescribed 32-bit return word.
+Only the explicit commands above change player fields; the generic diagnostic
+calls HitMan +0x74(P,text), but does not itself locally clear active, pause,
+wait or error, pop a return frame, rewind, Kill, or roll back provider effects.
+Diagnostic and other callbacks may have external effects; later reads observe
+them. For example 58 continues after its diagnostic and 57 continues after a
+cache failure. There is no invented universal error exit.
+
+Operand reads are unchecked memory accesses. A truncated operand may read bytes
+beyond the intended stream or fault; an inaccessible opcode faults before
+its first cursor store, while an inaccessible operand retains earlier cursor
+stores. 03 alone skips its unused byte without loading it. A branch/call target
+may be null, point outside the definition, or point inside an operand; execution
+does not predecode or reject it. Address addition and saved loops do not prevent
+cycles. Zero wait allows another command in the same timer callback; 09 may
+install any signed word as wait, and the retry commands install exactly 2.
+07/08/0A/0D/20/21/3E–43 have no implicit wait. Timer §7's repeated-instruction
+diagnostic remains advisory, not a cap.
+
+IDIV exceptions and provider/allocation/access exceptions escape this body;
+there is no local catch frame in its prologue `0x0093C229–0x0093C234`.
+The timer's shared SEH continuation is specified separately in §8 and may not
+be replaced by a guessed DoCommand false return. Service-null dereferences,
+uninitialized provider outputs and unchecked query results above are explicit
+external preconditions/failure surfaces, not promises of graceful recovery.
+
+## 8. External boundaries and current limits
 
 ## 8. External boundaries and current limits
 

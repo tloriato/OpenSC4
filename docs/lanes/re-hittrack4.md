@@ -1,23 +1,33 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| re-hittrack4: cHitTrackPlayer behaviour | `re-hittrack4` / RE spec, detached worktree | in progress, final round 3/3; preserved 88/110 bodies, 7963/16012 bytes | Finish native opcode table, containers and external boundaries; park any exact residuals, no fourth round. |
+| re-hittrack4: cHitTrackPlayer behaviour | `re-hittrack4` / RE spec, detached worktree | parked incomplete, final round 3/3; 88/110 bodies, 7963/16012 bytes credited; native opcode draft awaiting reconciliation; guard stopped at 151k/150k | Preserve final-round evidence; no fourth round, restart or merge queue. Residual owned functions: DoCommand 1/6754 and containers 21/1295 bytes. |
 
 ## Handoff
 
-- Goal: finish DoCommand and 21 owned container bodies from native evidence only.
-- Baseline: `dbcb08ab`, 88/110 bodies, 7963/16012 bytes; all earlier evidence preserved.
-- Open owned partition: DoCommand 0x0093C229, 6754 bytes; containers 21/1295 bytes.
-- Done: §7.2 proves integer/property/comparison-wait families and six independent
-  vector groups (27–32), native widths and dispatch identities checked; no body credit yet.
-- Next: finish control-flow/stack, service/group/list commands and complete opcode
-  partition; then 21 containers and external cleanup/map/SEH boundaries.
-- External boundaries: cleanup 0x0093E60A; 80-word key table 0x00B169F8;
-  SEH continuation 0x0093E0F9. No credit for unresolved callees.
-- Existing scratch: build-runs/hittrack-command.asm.txt, hittrack-read.py,
-  hittrack-owned.tsv, hittrack-inventory.py, hittrack-validate.py.
-- Shell q.py cannot start Bash (E_ACCESSDENIED); use native PowerShell, bounded output.
-- Worktree is detached intentionally; no branch/ref changes, engine/tools/ABI edits.
-- Guard: C:/Users/tlori/FreeCity4/build-runs/run4-re-hittrack4-r3-manifest.json.
+- FINAL round 3/3 parked by context guard (151k/150k). No fourth round or self-restart.
+- Baseline `dbcb08ab` preserved. Credited totals remain 88/110 bodies, 7963/16012 bytes.
+- Milestone `281a8691`: substantive native arithmetic/property/wait families §7.2,
+  independent vector groups 27–32. Committed before call 30. No whole-body credit.
+- Final draft §7.3–7.4 maps the remaining opcode values from native dispatch/bytes;
+  covers control/return stack, groups, lists, cache calls and failure surfaces.
+- This draft is NOT final-owner completion: table partition, control/service/list
+  vectors, question archive/index and body inventory were not reconciled before denial.
+- Exact owned residual: 0x0093C229 / 6754 bytes (zero whole-body credit), plus all
+  21 / 1295 bytes listed by address/size in questions/hit-track-player.md HT5.
+- Next review action (not authorization for another round): audit draft opcode
+  partition and examples; reconcile HT1/public questions before any coverage promotion.
+- Container native asm was read for all 21 bodies but not contracted. In particular
+  DE99 growth selects size+max(size,n), E34F has alias-safe retained temporary.
+- External cleanup 0x0093E60A / 338 bytes was read: C0 Release; clear AC,B0,7C,80;
+  decrement B633B4; channel C8 cleanup F87C; B4 DE67; vector A0 DE49; list 98 BAEF;
+  Release 94,90,8C,88,84,80,7C; stack 78 96EDBC; Release 34; string 20 414250.
+- Raw SEH continuation 0x0093E0F9 bytes 8B 7D DC restore EDI from [EBP-0x24],
+  then fall through E0FC timer count/retry. Exception matching/runtime remains external.
+- Raw 80-word key map B169F8 was read but not yet published; HT3 stays open.
+- Scratch: hittrack-command.asm.txt, hittrack-owned.tsv, hittrack-read.py in build-runs.
+- No engine/tools/ABI changes, game runs, cargo/clippy/ctest or shadow claims.
+- Only diff --check ran for current draft; no final validation or question-index run.
+- Guard manifest: C:/Users/tlori/FreeCity4/build-runs/run4-re-hittrack4-r3-manifest.json.
 
 ## Preserved round-2 report
 
