@@ -15,7 +15,11 @@
 - Done `96fd83c4`: partial quarantine; no permission to promote. Focused provided-venv pytest `r3-cache-focused-01`: **10 passed in 19.62 s**, exit 0, dirty development source recorded.
 - Focused cases use actual qbuild/CLI/imported/nested/direct Lease dispatch, held OS ownership, BUSY contenders, unchanged sentinel logs/verdicts, and bounded uncached fixture recovery; no service writer is launched or claimed drained.
 - Fixed explicit `env={}` inheritance and retained clippy's wrapper removal. No cache env/hash/endpoint/idle policy changes.
-- Next: commit focused milestone, bounded isolated installed Rust/C++ capability evidence if feasible; service identity/bootstrap/restart and all-client dataflow protocol still missing. Then ONE final clean-source full pytest plus compile/diff/doccheck.
+- Done `c321ce7a`: actual-boundary regressions and empty-env fix committed; new pinned-binary regressions `r3-installed-mode-focused-01`: **2 passed in 8.25 s**, exit 0 (20 config cases, 4 handshake failures), development source recorded.
+- Isolated compiler attempts `r3-isolated-real-cache-01..04` all FAIL before any object compilation: vcvars access denied; extra live Job member; retained member proved conhost; no-console startup then native endpoint API load error 31. No exemptions/kills/replay or production daemon/cache use.
+- Owned failure-fixture named Jobs later absent and recorded startup PIDs unavailable; observation JSON explicitly retains the lost-handle proof limitation. Never use that as production owner-recovery authorization.
+- Missing: authenticated service-control/bootstrap/restart/classification, config snapshot/race enforcement, actual all-client Storage RPC dataflow, output-writer/crash matrix, real Rust/C++ cache miss+hit. Quarantine is NOT the root-reviewed repair.
+- Next: ONE final clean-source full pytest plus compile/diff/doccheck; then report WIP, preserving all failed labels. No more compiler attempts or new rounds.
 - Required final full pytest uses provided `C:/Users/tlori/FreeCity4/build-runs/pytest-venv/Scripts/python.exe` once on stable committed source after new focused tests.
 - No subagents, engine edits, current-daemon probes/mutations, shared cache/compiler checks, merge/ref edits or new rounds.
 
