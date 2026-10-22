@@ -500,6 +500,30 @@ def split_touch_keys(value):
     return [key for key in keys if key]
 
 
+def declared_touch_keys(texts, lane, canonical):
+    """Use validated claims from this lane's queue records; legacy/invalid claims fail closed.
+
+    More than one record can exist (worktree and coordinator); union their claims so a stale
+    copy cannot hide an overlap. Never borrow a different lane's declarations from its queue.
+    """
+    claims = set()
+    found = False
+    for path, _ in texts:
+        if path.suffix != ".json" or path.stem != lane:
+            continue
+        rec = read_json(path)
+        if not isinstance(rec, dict) or rec.get("lane") != lane or rec.get("branch", lane) != lane:
+            return None
+        keys = rec.get("touches")
+        if not isinstance(keys, list) or not keys:
+            return None
+        if any(not isinstance(k, str) or not k.strip() or k.strip().lower() not in canonical for k in keys):
+            return None
+        found = True
+        claims.update(k.strip().lower() for k in keys)
+    return claims if found else None
+
+
 def cmd_check(ctx, a):
     lane = a.lane
     reasons = []
@@ -565,13 +589,20 @@ def cmd_check(ctx, a):
             if spec in keys_l or spec in lane.lower():
                 reasons.append(f"{spec} is assigned to {who.strip()} until {until.strip()} "
                                f"(docs/assignments.tsv): pick other work")
-    # 3. possible duplicate work: another unmerged lane mentions a --touches key
+    # 3. explicit subsystem claims; use prose only for legacy/invalid declarations.
     try:
         keys = split_touch_keys(a.touches)
     except ValueError as exc:
         reasons.append(str(exc))
         keys = []
     if keys:
+        canonical = set()
+        map_path = ctx.main / "tools" / "coverage-map.tsv"
+        if map_path.is_file():
+            for row in read_text(map_path).splitlines():
+                columns = row.split("\t")
+                if not row.startswith("#") and len(columns) >= 2:
+                    canonical.add(columns[1].strip().lower())
         wts = {w["branch"]: w["path"] for w in list_worktrees(ctx) if w["branch"]}
         now = time.time()
         hits = {}
@@ -596,7 +627,12 @@ def cmd_check(ctx, a):
                     continue    # abandoned: not "active"
             elif not pending and not wt:
                 continue
+            declared = declared_touch_keys(texts, b, canonical)
             for k in keys:
+                if declared is not None:
+                    if k in declared:
+                        hits.setdefault(k, []).append(f"{b} (declared subsystem)")
+                    continue
                 for s, t in texts:
                     if t and k in t.lower():
                         hits.setdefault(k, []).append(f"{b} ({s.name})")
