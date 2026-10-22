@@ -6,7 +6,8 @@
 - Goal: first bounded production scene renderer from render3d sections 1–12 and view3d sections 3–4.
 - Done: reused reserved detached worktree; clean initial status; read lane rules and published renderer sections. Independent literal fixtures committed before production implementation (D1–D6, B1–B4, queue boxes, stable duplicates, S1–S6).
 - Done: first substantive production module implements owned dirty/list/backing algorithms, typed partial model queue, bounded shake state. Full draw/lifecycle and missing geometry remain Unsupported. Source not yet checked.
-- Next: inspect baseline result, add discriminating executable tests, format touched sources, quick then final all serially. Initial all session 3939 must be collected before a new gate.
+- Done: discriminating tests now cover dirty ties/penalty/deadline/threshold/area boundary, lists, backing failures/shared ownership, queue kinds/refs/box policy, typed record partial failures and bounded shake cases. Added typed camera reference operations and actual existing camera-control forwarding. RND5–RND7 appended. Rust sources formatted via rustfmt stdout applied with apply_patch.
+- Next: collect initial all session 3939 before starting quick; fix compiler/test/clippy failures, then serial final all and absolute touched-file fmt. Baseline compile took 18m16s; initial test log has progressed (do not overlap).
 - Scope: only new scene_renderer module/tests, additive lib declaration, this report, appended render3d questions.
 - No native/game/ABI/glue work; no whole-owner or byte-total credit; section 7 residual remains unsupported.
 - Required fixtures before implementation: D1–D6, B1–B4, model queue, stable duplicates, S1–S6.
