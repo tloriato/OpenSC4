@@ -1,18 +1,36 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| core-overlay-views-contracts4 (bounded OVV2/3/5/7) | Codex / core-overlay-views-contracts4 | in progress | Qualify corrected L10 and 37 scoped tests; one stable canonical all |
+| core-overlay-views-contracts4 (bounded OVV2/3/5/7) | Codex / core-overlay-views-contracts4 | WIP: corrected scoped37/37; workspace5466/0; clippy finished; canonical all blocked in new optional stats client; CTest unrun | ROOT collect SAME operation: session68529, qbuild30928/fc4164/stats20976; no second all or family allowance |
 
-## Handoff
+## Report
 - Same reserved detached child FINAL R2/2, logical family3/3; no further round/delegation.
 - Own manifest: C:/Users/tlori/FreeCity4/build-runs/run4-core-overlay-views-contracts4-r2-manifest.json.
 - Accepted ROOT host drain authority 06:38:48: own cwd/argv matches=[], inspectionerrors=[], port4476services=[], named outputs no existing write access. Named census copy is absent locally; the task supplies authoritative findings.
 - Earlier quick16588/fc19616/stats28064 absent06:34:40, terminal/cause UNKNOWN; do not wait session22068 or re-inventory global processes.
 - Source428a502a / engine15a6e05c / overlayc3891874; corrected focused qualification now PASS:37/37,3332 filtered, actual exit0. Log build-runs/overlay-r2-focused.log; existing qbuild.run/cargo_env quiet helper, no repeated quick/native build/cache RPC. R1 raw logs archived in build-runs/r1-evidence/.
 - Independent OVV7 arithmetic: 12*(2*4+1)=108 bytes=word54; 6*2=12 words; minimum66. At V4,n2,a4,b7,c1,W4, q1,2,6,2,7,6 rebases to4,5,7,5,8,7; q0 at V0 rebases modulo65536 to65535. OVV8 stays open; suffix zeros are chosen input only.
-- Next: formatter check actual owned files; commit milestone, then exactly one canonical all and actual terminal collection.
+- Formatter: quiet qbuild.step_fmt, seven actual owned Rust filenames with --config skip_children=true, exit0. Its printed files=9 counts two option operands; diff_lines=1 is the existing canonicalize-path warning, not a source diff. No stdout formatting/redirection or foreign module formatting. Qualified milestone8dfde6318fc96f1d39c71ff0659ee278bf905644.
 - ROOT first optional stats client28548 exited15 at06:12:19.821810, sourcef61bd/engined2b7; same parents+daemon, no native failure. ROOT-only readonly-client intervention; no worker/cache/validator/compiler restart. Evidence coordinator-optional-stats-20261023-061218.json (journal finite-stats-watch-20261023-060109).
 - Second stats28064 was a different operation; its later absence has UNKNOWN cause, unrelated to the first intervention.
 - No game/native execution, ABI/plugin/CAPI or other owners; OVV4/6,NOV2/3,region and remaining historical54-body claims held.
+
+### FINAL R2 canonical gate: incomplete, not ready
+
+- Exactly one canonical command launched: python C:/Users/tlori/FreeCity4/.claude/lane-bin/qbuild.py --wt C:/Users/tlori/FreeCity4/.claude/worktrees/core-overlay-views-contracts4 all. No pre-edit baseline, repeated wholesale quick, duplicate gate, cancellation, cache RPC, process termination/restart, or environment/configuration change.
+- Invocation and pre-gate full content hashes: build-runs/overlay-r2-all-terminal.json; quiet console build-runs/overlay-r2-all-console.log. terminal=false; actual wrapper exit and full native/CTest verdict are unavailable. The helper remains waiting, not cancelled.
+- Source at launch HEAD8dfde631, engine15a6e05ccae4afe1a0dfb21fe6859c41080d4885, overlayc3891874457abd30e60608b5363cd6477376cfe5; worktree clean. Same engine/overlay hashes and clean status rechecked after bounded collection. Only this final report changes afterwards; source/fixture semantics were unchanged throughout R2. If collected later, distinguish documentation HEAD changes from recorded engine/content hashes.
+- Workspace log build-runs/qbuild-test.log:26 complete summaries (passed/failed):540/0,3/0,1/0,31/0,27/0,40/0,7/0,2/0,1232/0,3369/0,21/0,13/0,19/0,147/0,0/0,2/0,1/0,3/0,1/0,1/0,1/0,5/0,0/0,0/0,0/0,0/0. Sum5466 passed/0 failed/0 ignored. The40 summary is unrelated to the37 scoped overlay tests.
+- Clippy --workspace --all-targets -- -D warnings log build-runs/qbuild-clippy.log: Finished dev profile53.03s, no error/warning diagnostics. Existing warn: could not canonicalize path C:/Users/tlori is retained. Parent quiet output remains buffered; no final qbuild PASS claimed.
+- Native log build-runs/fc4verify-build.log: release cargo finished1m38s, ABI entries unchanged185 interfaces, final links3/4 fc4_capi_smoke.exe and4/4 FreeCity4.dll. These are progress observations, NOT native-exit or CTest proof. fc4verify-ctest.log does not exist; CTest has not started.
+- New attributable operation captured at2026-10-23T06:13:56.458278+00:00: qbuild30928(parent28684,created1792735539.0199864) -> fc4verify4164(parent30928,created1792735698.2873971) -> optional sccache stats20976(parent4164,created1792735808.1624796). All cwd=this worktree. Exact stats argv C:/Users/tlori/.cargo/bin/sccache.EXE --show-stats --stats-format json; connection127.0.0.1:59969->127.0.0.1:4476 ESTABLISHED. Inspection errors=[]; no global process/cwd/open-files inventory.
+- Exact proof build-runs/overlay-r2-own-checker-proof.json records argv/cwd/parent/creation/port and all output sizes/mtime/SHA256. Native log1029 bytes, mtime1792735806.1699445, SHA256 dff08ecdbd39deb004eaeaaec66e74b2fafd0723a218d3923b174a16a273a0b0. Same unified session68529 was collected in <=60s waits, including another60s after that snapshot; still no terminal. ROOT must address/collect THIS operation; the old host drain is not terminal proof for it.
+- Diagnostic helper initially used unavailable psutil.Process.net_connections and failed AttributeError; corrected to this installed version's connections API, then captured only the known qbuild PID and its descendants. No daemon/cache/validator/compiler interaction or global census.
+- Prior patch-verification/missing-fmt/Bash failures remain historical, not successful checks. Existing Bash/Service/CreateInstance/E_ACCESSDENIED log build-runs/q/20261023-060626-37392.log retained; commits still emit packed-refs.lock permission errors but succeed. No Git ref/config repair or formatting retry loop.
+
+### Questions and next action
+
+- OVV8 remains in docs/specs/questions/overlay-views.md. No new native golden, unknown-suffix closure, runtime/shadow/ref_warnings, colour/lifecycle/terrain-manager/TR33-37/AddRegionCells/default/map/whole-owner credit. Primitive hosts supply raw data/calls only. network.rs unchanged against starting HEADa4f059a7; PathInfoView/TrainJunctionView remain held.
+- ROOT: collect the SAME new canonical operation (session68529, qbuild30928/fc4164/stats20976); preserve its actual terminal and then full CTest and source-engine/content comparison. No second all, self-restart, alias/fourth child, delegation, merge/rebase/push or process-control authority is granted. Normal own queue remains WIP until a complete stable gate exists. This report supersedes the process-status/next-action statements in the archived R1 report below.
 
 ## Historical R1 report (superseded process status; retained failures)
 - Goal: only newly published OVV2/3/5/7, portable Rust; no native/game/ABI or other owner promotion.
