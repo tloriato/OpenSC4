@@ -1,26 +1,59 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| verify-persist-keylist4: published KeyList owner and independent fixture | Codex / verify-persist-keylist4 | in progress | Baseline, contract and factory audit, literal tests, production operations, native controls |
+| verify-persist-keylist4: published KeyList owner and independent fixture | Codex / verify-persist-keylist4 | **WIP**: core/fixture complete; gate Rust 5332/0, clippy clean, CTest 68/68; native and literal40 each 235/238 with PR14; literal40 ref_warnings=4 fails required control | Resolve PR14 and the four literal40 shutdown reference warnings before qualification; no automatic extra round |
 
-## Handoff
-- Goal: finish authoritative persistence_manager::KeyList section 5 operations and independently verify original KeyList through the public typed factory.
-- Done: initial status clean; operating rules read. Authored three independent literal conformance tests before missing-method implementation.
-- Contract audit: persistence.md section 5; SDK cIGZPersistResourceKeyList.h publishes all eight operations and CLSID 656B8F2D/IID 656B8F12; cIGZCOM.h documents GetClassObject as class instantiation. No KeyList registration in plugin director/subsystems. No factory binding gap inferred.
-- Baseline all started once, exec session 37809; test phase completed, clippy phase started. No duplicate checker. Process enumeration works; Win32_Process command-line access denied.
-- Production milestone: insert_list, erase first, erase_all, is_present, valid get_key, enum_keys(copy) extend existing owner only. New private static-link transport retains two real production owners; config keylist_verify defaults off; pre-city synchronous fixture is wired.
-- Fixture: validates vtable and all 11 published interface method module owners on both created lists before scoring; compares literals, native and Rust; Insert(list) bool observed only; balanced AddRef/Release values unscored. No natural/full-owner promotion.
-- Baseline all session 37809 remains live after build completion; no CTest log/result yet, do not duplicate checker. Initial fmt invocation with relative paths failed; use absolute paths. New transport formatting corrections in progress.
-- Checker diagnosis: OS process command lines identified own qbuild PID 5912 -> fc4verify 2396 -> sccache stats-only child 34812 hung after build. Terminated only that stats child; CTest then started (PID 32232), presently progressing. No shared daemon/tool changes.
-- Scoped absolute-path fmt now passes (3 touched Rust files); engine source milestone eb96fcca; tests-first milestone 7f9459ed. Factory-owned/refaudit/extra-reference counters now separated for refusal accounting.
-- Baseline complete: Rust 5329/0, clippy clean, build success, CTest 67/68 (ret_channel_check failed on five newly written fixture uses; source changed during baseline). Logs preserved under build-runs/baseline. Local [abi-ret] comments now cite published scalar bool contracts; Insert(list) bool discarded entirely. No ABI table edits.
-- Quick started once: session 18211, qbuild PID 33712 / fc4verify PID 27796; Rust complete, CMake linked new fixture. Do not duplicate. Final all has not yet started.
-- Quick checker finished after terminating only its own hung stats child 38200; CMake build succeeded. Final all started on committed source 36d90ebf, engine tree b959b2e0ee25c3f9cfff8fb111c307a96d2dc333; session 7147, PID 13944. No further engine changes permitted for this gate/control set.
-- Pending controls (not submitted): vpkl4-r1-off-20261023-a, vpkl4-r1-native-on-20261023-a, vpkl4-r1-literal40-on-20261023-a. Exact baseline enable empty / disable budget / default simulator retained; literal40 is the task's exact 40-enable list plus infrastructure defaults. Same full-save script at 2031-12-01, all end 2032-01-01.
-- Final gate PASS: Rust 5332/0 (three new literal tests executed), clippy exit 0/zero diagnostics, CMake 4/4, CTest 68/68 in 72.39s. qbuild exit 0. Retain fc4verify's tree-changed flag: only lane documentation changed during this gate; git diff -- engine empty and engine tree b959b2e0ee25c3f9cfff8fb111c307a96d2dc333 unchanged. No extra all.
-- Frozen once: build-runs/keylist4-frozen/FreeCity4.dll SHA256 34A7848B1588263FC818F657D30689B0439262F636B05FA5ADB473926E0041C5; PDB SHA256 0FA615A407DA8FC2EC5EB2949B455B5ADAEA043140C54E32000072E141C2FC3A. Freeze HEAD 56b5ab4f; final engine code 36d90ebf.
-- OFF vpkl4-r1-off-20261023-a complete: clean, ref_warnings=0, foreign_exceptions/watchdog/rtc/overruns=0, verdict date 2032-01-01 (42.000s simulated run, 56s wall). Full save returned 1 in 11047ms at 2031-12-13, PostAppShutdown logged, frozen DLL hash prefix 34a7848b. Actual subsystem log: simulator enabled, budget disabled, every experimental subsystem off by default. Zero KeyList assertions as intended. Full verdict/log retained in build-runs/game-results.
-- Native ON vpkl4-r1-native-on-20261023-a complete: clean, ref_warnings=0, final 2032-01-10, full save returned 1 in 11016ms at 2031-12-03, full shutdown. Two distinct ORIGINAL interfaces, vtable 00AADA64 in identified SimCity 4.exe image 00400000, all 11 methods ORIGINAL each before scoring. Fixture 238 assertions: 235 exact / 3 DIFF / 0 refusal; positive205/negative33; methods FF; factory-owned/acquired/released 2/2/2, extra AddRef/Release 2/2. Absent Erase returns native1/Rust0/literal0 at assertions8/76/199; all tested effects match. PR14 appended to questions/persistence.md, expectations unchanged.
-- Next: literal40 ON vpkl4-r1-literal40-on-20261023-a with same frozen binary; block without qwait. No full-owner or exact-shadow credit; native return mismatch remains unresolved. No reload claim. Questions index regeneration belongs to coordinator (engine lanes cannot run tools/).
+## Report
+
+**Bounded WIP, first of at most three owner phases; no automatic continuation or ready promotion.** Published production algorithms, independent literal tests and the original-owner fixture are implemented and committed. The final build gate passes. The required literal40 control fails the zero-reference-warning condition, and absent-key Erase returns conflict with the current spec (PR14). These failures remain visible; no reroll, expectation fitting, resynchronization or other-owner fix was attempted.
+
+Only the authoritative `persistence_manager::KeyList` gained algorithms: append another list in enumeration order, erase the first exact three-word match, clear, presence, valid-index access and copied ordered enumeration. Existing new/insert/keys/size/reference semantics and manager consumers are preserved. Three literal conformance tests were committed first in `7f9459ed`; production/transport/fixture followed in `eb96fcca`, ownership accounting in `32460411`, and the final return-channel review in `36d90ebf`.
+
+The public SDK supplies the complete typed interface, CLSID 656B8F2D and IID 656B8F12; `cIGZCOM.h` documents GetClassObject as class instantiation. The plugin registration audit found no replacement KeyList registration. No missing-binding assumption or private layout was introduced. The new `keylist_verify` opt-in defaults off and runs synchronously at PostAppInit, before city simulation. C ABI public exports, tables, version and defaults are unchanged; the new transport functions are private static-link symbols with local C++ declarations.
+
+## Validation and immutable binaries
+
+- Baseline `all`: Rust **5329/0**, clippy zero diagnostics, CMake **216/216**, CTest **67/68**, qbuild exit 1. The failure was ret_channel_check on five newly added fixture boolean uses; source changed during this baseline. Preserved under `build-runs/baseline/`.
+- Focused `quick`: **5171 passed / 0 failed / 0 ignored** across 14 result lines for capi/conformance/core; formats dependents compiled with no-run; CMake **7/7**. PASS, with a retained tree-changed flag while the local return-channel comments were completed. Preserved under `build-runs/quick/`.
+- Scoped absolute-path fmt: PASS for the three touched Rust source/test files. Initial relative-path invocation failed to find the files; intermediate formatting differences were corrected without broad formatting.
+- Final `all`, once on committed engine source: Rust **5332/0**, including all three new literal tests; clippy **exit 0, zero diagnostics**; CMake **4/4**; full CTest **68/68**, 72.39s; qbuild **exit 0 / PASS**. Preserved under `build-runs/final/`.
+- Retain the final fc4verify **tree-changed** flag: only the lane documentation changed during the gate. `git diff -- engine` was empty and engine tree **b959b2e0ee25c3f9cfff8fb111c307a96d2dc333** remained identical through all controls. No extra all was run for documentation-only changes.
+
+The baseline, quick and final checkers each stalled in their own stats-only `sccache --show-stats` child after build completion. OS process metadata identified ownership, and only those children (34812, 38200, 18580) were terminated to let the existing checker proceed. No duplicate checker, shared daemon restart, tool edit or global-state change was used. q.py/Bash access and Win32_Process command-line access were denied; direct local PowerShell and OS process metadata supplied the needed local operations.
+
+One DLL/PDB pair was frozen once at HEAD `56b5ab4f`, with final engine code `36d90ebf` and the engine tree above. All requests use `build-runs/keylist4-frozen/FreeCity4.dll`; hashes were rechecked after the controls:
+
+| Artifact | SHA256 |
+|---|---|
+| FreeCity4.dll | 34A7848B1588263FC818F657D30689B0439262F636B05FA5ADB473926E0041C5 |
+| FreeCity4.pdb | 0FA615A407DA8FC2EC5EB2949B455B5ADAEA043140C54E32000072E141C2FC3A |
+
+## Game controls
+
+All three unique requests used Konradshohe, turbo=1, end_date=2032-01-01, seconds=600, timeout=800, popup_dialogs=0, refaudit=1, autotest_end=quit and the same full-save script at 2031-12-01. There was at most one request outstanding. Each was waited in one blocking local helper call without qwait; completed verdicts were retained. No requests remain outstanding.
+
+OFF and native ON: **enable empty, disable=budget**, with the default simulator retained. Actual subsystem logs show exactly simulator enabled and budget disabled. Their only control change was keylist_verify=0 versus 1. Literal40 ON enables exactly:
+
+`landvalue,weather,ordinance,demand,power,plumbing,flammability,pollution,protection,crime,aura,flora,landfill,residential,neighbors,zones,development,tract,history,clock24,commercial,industrial,civic,parks,lotdev,zonedev,traffic,automata,netmgr,netlot,nettool,demolition,occmgr,propmgr,lotcfg,citysit,propdev,simgrids,citydetail,ports`
+
+Literal40 keeps disable=budget and keylist_verify=1; actual logs show exactly those 40 enabled plus the default simulator, budget disabled, and no experimental extra opt-ins. Harness logs for every run identify staged DLL hash prefix **34a7848b**. All logs show PostAppShutdown and PostSystemServiceShutdown; foreign exceptions, watchdog stalls, RTC failures and overruns are zero.
+
+| Label | Harness verdict / qualification | Final date / run seconds | Full SaveCity | New KeyList comparisons |
+|---|---|---|---|---|
+| vpkl4-r1-off-20261023-a | clean, ref_warnings=0; OFF qualified | 2032-01-01 / 42.000 | ok=1, 11047ms, executed 2031-12-13 | 0 as intended, no exactness claim |
+| vpkl4-r1-native-on-20261023-a | clean, ref_warnings=0 | 2032-01-10 / 49.031 | ok=1, 11016ms, executed 2031-12-03 | 235 exact / 3 diff / 0 refusal of 238; PR14 |
+| vpkl4-r1-literal40-on-20261023-a | clean, **ref_warnings=4; required control unqualified** | 2032-01-01 / 120.500 | ok=1, 11079ms, executed 2031-12-01 | 235 exact / 3 diff / 0 refusal of 238; PR14 |
+
+Both ON controls independently created two distinct fresh empty ORIGINAL interfaces and logged their provenance before scoring: vtable **00AADA64**, module **SimCity 4.exe**, image base **00400000**, all **11/11 method addresses ORIGINAL** for each list. Native pointers were 03026814/03026894 in native ON and 02FE6814/02FE6894 in literal40 ON. No factory inference was borrowed from another DLL/control. Per control: 205 positive and 33 negative assertions; method mask FF; factory-owned/acquired/created-released **2/2/2**; extra AddRef/Release **2/2**; natural count **0**. Cleanup completed before city simulation.
+
+Per control, assertion categories are Size16, EnumKeys-count16, EnumKeys-copy-address16, IsPresent11, Erase-first5, EraseAll4, Insert-key14, GetKey-valid52, EnumKeys-ordered-copy52 and EnumKeys-retained-copy52. Insert(list) effects are included in literal snapshots; its unspecified SDK bool is discarded. Every assertion logs exact/diff and every refusal would log explicitly. The three differences in each ON control are assertions **8/76/199**, absent Erase returns **native=1 / Rust=0 / literal=0**. Tested sequence effects match throughout. No turbo-only cause is established: the same differences occur in the synchronous pre-city fixture in both profiles. No normal-speed or reload qualification is claimed.
+
+The four literal40 warnings are actual last-reference warnings at shutdown, all class **0xE990BFFC**, vtable **SimCity 4.exe+0x6B0EB0**: DropObject:144 twice (airport/seaport shutdown context), DropObject:126 (parks shutdown context), ReleaseToken:465 (landfill shutdown context). These are retained as a failed requirement, not excused using another DLL's control or assumed to be pre-existing. The KeyList fixture's own created and extra reference holds balance. Other-owner investigation/changes are outside this lane.
+
+## Question and next steps
+
+**PR14**, appended to `docs/specs/questions/persistence.md`, asks for the precise absent-key Erase return guarantee. Production and literal false-on-absence remain unchanged pending a published answer. PR1-13 were not reopened. The coordinator must regenerate the questions index; this engine lane did not run tools/ or edit the generated index.
+
+Before ready qualification: resolve PR14 through the published spec and separately resolve the four literal40 reference warnings, then schedule any further bounded phase explicitly. This round stops with committed source/report and a WIP queue entry. No full-owner/native-exact promotion, reroll, extra label or additional round is claimed.
 
 ## Method and body limits
 
