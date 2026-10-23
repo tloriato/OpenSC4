@@ -355,15 +355,16 @@ The group must have an AEMS sound set (group `+0x64`, or its parent's); otherwis
 
 - **Gear.** Throttle at least entry 33 → forward with the throttle; else reverse input at least entry 32 → reverse
   with −the input; else neutral.
-- **Speed.** The speed moves toward the gear's target (clamped to entries 6–7) by dt × entry 10 per tick, or by
-  dt × entry 10 × entry 0 when braking; the exact input mapping and crossing-zero behavior are in §6.2.1.
+- **Speed.** An accelerating speed moves toward the gear's target (clamped to entries 6–7) by dt × entry 10,
+  or dt × entry 10 × entry 0 for braking and reverse-from-zero; a weaker same-sign request preserves speed.
+  The exact input mapping and crossing-zero behavior are in §6.2.1.
   Same-sign acceleration and command-channel feedback are specified in §6.2.3.
-- **Steering.** Left and right inputs change the steering at rates from entries 1, 2 and 5 (entry 5 when steering
-  against the current turn), scaled by dt × entry 10 × entry 0, clamped to entries 8–9 *[summary]*; the turn
+- **Steering.** Elapsed left/right inputs and return/countersteer are processed in the order in §6.2.4,
+  then clamped to entries 8–9; the turn
   (`+0x2E0`) is the steering, and the rudder angle shown is −0.125 × the steering.
-- **Fire.** With the fire button, the effect `whalefire` is played; when it plays, the drive state's shot count
+- **Fire.** With the fire button, the AEMS event `whalefire` is requested; when accepted, the drive state's shot count
   grows and the button is cleared.
-- **Water skier** (group `0x4409`): a toggle starts the `waterski` effect behind the boat while it moves forward, or
+- **Water skier** (group `0x4409`): a toggle starts the `waterski` effect using the boat transform while it moves forward, or
   stops it; it also stops when the boat stops.
 - **Tow rope** (group `0x4410`, a tug): with the boat stopped and the tow button, a tug that tows nothing arms the
   tow (`+0x2D8`) and plays `tugropethrow` at the boat; one that tows ends the tow.
@@ -567,10 +568,10 @@ the old summary were misleading: p1 maps elapsed channel milliseconds to steerin
 | Phase | Condition | Ordered action |
 |---|---|---|
 | Right direct | R>=0 and S<=0 | If `S < -(p1*R)`, store `R=round32(-S/p1-dt)`. Then store `S=round32(-(p1*R))`. |
-| Right return | Otherwise, S<0 | Start with `b*p2`. If L>0 multiply this candidate by p5 and store L=0. Choose the larger of the candidate and `round32(b*p2)`. Add it to S, store32 the sum, then clamp a positive unrounded sum to zero. |
+| Right return | Otherwise, S<0 | Start with `b*p2`. If L>0 multiply this candidate by p5 and store L=0. Recompute baseline `b*p2`; if the unrounded baseline is greater than candidate, replace candidate with `round32(baseline)`. Add candidate to S, store32 the sum, then clamp a positive unrounded sum to zero. |
 | Right idle | Otherwise | No store. |
 | Left direct | L>=0 and S>=0 | If `p1*L < S`, store `L=round32(S/p1+dt)`. Then store `S=round32(L*p1)`. |
-| Left return | Otherwise, S>0 | Start with `b*p2`. If R>0 multiply the candidate by p5 and store R=0. Choose the larger of the candidate and `round32(b*p2)`. Subtract it from S, store32 the difference, then clamp a negative unrounded difference to zero. |
+| Left return | Otherwise, S>0 | Start with `b*p2`. If R>0 multiply the candidate by p5 and store R=0. Recompute baseline `b*p2`; if the unrounded baseline is greater than candidate, replace candidate with `round32(baseline)`. Subtract candidate from S, store32 the difference, then clamp a negative unrounded difference to zero. |
 | Left idle | Otherwise | No store. |
 
 Candidate products, comparisons and sums retain x87 precision except at the specified stores; the baseline
@@ -582,15 +583,80 @@ p1 nonzero; no zero-divisor fallback is present. Evidence `0x0056EBAE–0x0056ED
 
 After rope handling, clamp S to `[p8,p9]`, store it back to `+0x5C` and to owner Turn (`+0x2E0`).
 Set drive-state `+0x23C=0`, `+0x240=0x40C90FDB` (binary32 2π), and `+0x238=round32(S*(-0.125))`.
-The rudder/heading output precedes tween handling (`0x0056EEC2–0x0056EF87`). Its angle helper and degenerate
-heading semantics are still OPEN; these stores do not establish a full angle contract.
+The rudder/heading output precedes tween handling (`0x0056EEC2–0x0056EF87`). The heading rule is below.
 
 Compare binary32 `abs(Speed)` to the tween target at owner `+0x1A4`, using float equality, not a bit comparison.
 If equal, leave all four tween words alone, even when Speed changes sign. Otherwise call inherited
 `TweenStruct::GetCurrent` (`0x004FA960`), store its rounded result to `+0x1A0`, the new magnitude to `+0x1A4`,
 and zero both `+0x1A8` and `+0x1AC`. Then call inherited command translation (`0x00509070`) with the
 original drive-state pointer and dt and return its result (`0x0056EF8D–0x0056EFD9`). The inherited bodies
-are separate residuals, not foreign callbacks allowed to supply an owned command outcome.
+are specified below, not foreign callbacks allowed to supply an owned command outcome.
+
+#### 6.2.5 Command effects, heading, and inherited completion (round 2)
+
+The ordered owner stages are: group/AEMS availability gate; gear/command and speed; fire; skier; steering;
+rope; steering clamp and heading outputs; speed tween reset; inherited command completion. A failed group/
+AEMS gate returns false before those mutations. No owner-stage RNG draw is present. Effect internals and
+sound services may have their own behavior; they cannot compute the owned speed or steering outcome.
+
+- **Fire:** if drive-state `+0x98>=0`, call embedded sound object `owner+0x18C` slot 5 first. Only if byte
+  `drive+0x1FF` is nonzero, request named AEMS event `whalefire` with two zero arguments (slot 12). On a true
+  return, store `drive+0x1E0=0`, clear byte `+0x1FF`, and increment the 32-bit shot counter `+0x178` (wraps).
+  False return or inactive channel leaves these fields unchanged. There is **no fire output position or
+  offset computation in this body**. The earlier “effect” wording was too broad (`0x0056E8A0–0x0056E959`).
+- **Skier:** require group membership 0x4409 and a nonnull effect at `+0xDC4`. If toggle byte `drive+0xEB`
+  is set, query IsRunning: running → Stop(1); not running and Speed>0 → GetTransform, SetTransform, Start(0).
+  The toggle is not cleared here. Then independently: Speed<=0 and currently running → Stop(1); otherwise
+  Speed>0 and currently running → refresh its transform. All running queries occur at the indicated stages;
+  do not cache the pre-toggle result. It may be queried again after Start/Stop (`0x0056E959–0x0056EBAE`).
+  SetTransform receives the **whole current boat transform**, not a constructed point behind the boat:
+  the pointer passed at `0x0056EA7B` and `0x0056EBAB` is the same local transform filled by owner slot 12.
+  Any trailing distance intrinsic to the effect is outside this owner body. This corrects the old summary.
+- **Rope:** unconditionally snapshot the current transform after steering. A direct group id 0x4410,
+  Speed exactly zero, and byte `drive+0xED` nonzero gates the button action. With a towed reference, call
+  EndTowing. Otherwise set armed byte `+0x2D8=1`; if rope effect `+0xDBC` exists and is not running,
+  SetTransform(snapshot), Start(0). Then, irrespective of the button/group gate, a nonnull running rope
+  effect gets SetTransform(snapshot). A newly started effect can therefore receive two transform writes.
+  No button clear is present (`0x0056ED5A–0x0056EEC2`).
+
+For heading output, take **owner current transform heading** `h=(+0x58,+0x5C,+0x60)`, not steering and
+not a newly normalized local H. For finite h with h.z in [-1,1], set A=acos(h.z). If `-h.x<=0`, first store
+`round32(K-A)` to drive `+0x244`; otherwise first store `round32(A)`. Then replace that field with
+`round32(K-field)`, where K is binary32 `0x40C90FDB`. There is no wrapping after this second subtraction.
+Both +Z and -Z are covered: h=(0,0,1) yields 0 after the two stores; h=(0,0,-1) yields approximately π.
+The export's `cS3DTransform::TransformDirection` name at `0x009F0090` is misleading here: it consumes the
+x87 scalar and calls the acos path `0x009F00AD`, which computes atan2(sqrt((1+x)*(1-x)),x), with exact
+endpoint branches +1→0 and -1→π (`0x009F00C1–0x009F0118`). The caller supplies h.z, without a clamp or
+normalization. Out-of-domain/nonfinite math-library error handling remains OPEN.
+
+`TweenStruct::GetCurrent` at `0x004FA960` returns its target for duration<=0; otherwise it stores
+`q=round32(elapsed/duration)`, clamps q to [0,1], then returns `start+(target-start)*q` on the x87 stack
+(`0x004FA961–0x004FA9D6`). This supplies the actual start value used by §6.2.4, without a callback oracle.
+
+Inherited command completion (`0x00509070`, 187 bytes), after the owner mutations, processes 13 channels:
+
+| Channel i (0..12) field in drive-state | Meaning/operation |
+|---|---|
+| current `+0x7C+4i`, saved `+0xB0+4i`, edge byte `+0xE4+i` | Before copying, edge is true exactly when `0 < saved-current < 250` (binary32 250 constant, x87 subtraction); otherwise false. Then copy current's raw 32-bit word to saved. |
+| threshold `+0x128+4i`, count `+0x15C+4i` | Both are signed 32-bit integers. If threshold!=-1 and count>=threshold, clear latch byte `+0x1F8+i`. If current's bits differ from float -1, acquire AEMS events, call slot 6 with 0x14, reacquire, then call slot 5 with 0x14. |
+| latch `+0x1F8+i`, timer `+0x1C4+4i`, limit `+0x190+4i` | Otherwise, if latch already set, do nothing. If clear and timer<limit, store32 timer+dt; if timer>=limit, set latch and zero timer. There is no second check after adding dt. |
+
+The edge pass (`0x00505730–0x00505778`, 73 bytes) precedes **all** saved-word copies. Channel iteration is
+ascending. Return true after channel 12. Decompiled float treatment of the threshold/count is incorrect:
+`FILD` of the threshold plus a signed `JL` of count at `0x0050909C–0x005090B5` establish the integer rule.
+This explicitly refines automata.md §6's generic PlayerDrive channel summary for Windows watercraft;
+the vehicle command accumulator/speed integration described there is not substituted for this owner logic.
+Its row also attributes forced flags 0x2000000/2/0x10000 to `0x00508C50`: the Windows instructions traced here
+contain no such flag writes or setter calls. That attribution is not part of this watercraft tick contract;
+entry-time or other inherited flag changes require their own evidence. automata.md itself is outside this lane's edits.
+
+The preceding inherited drive tick (`0x00508C50`) first queries owner slot 31 with 1; true returns false.
+Otherwise obtain the current state with slot 56, advance each of 13 nonnegative current channel floats by dt,
+saturating to binary32 maximum when `current >= maxFloat-dt`, leave negative channels unchanged, then invoke
+owner slot 121 with (state,dt). Query global terrain service `0x00B43D0C` slot 17 with owner current x,z and
+output pointers `state+0x26C,+0x270`, then return true (`0x00508C50–0x00508CF1`). This explains how active
+elapsed input zero becomes dt before the translator; neither step changes dt to seconds. Base animation
+outside this drive tick and owner coasting/movement remain separate, partly open contracts.
 
 ### 6.3 Towing
 
@@ -655,6 +721,9 @@ The reproducible address/byte census and its discrepancy with the requested 79-f
 79-method signature inventory.
 
 ## 11. Conformance tests
+
+Round-2 independent branch/constant vectors and remaining numeric limitations are in
+[watercraft-command-vectors.md](watercraft-command-vectors.md). They are proposed expectations, not executed native results.
 
 Additional independent vectors for the traced lifecycle/input paths:
 

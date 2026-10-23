@@ -49,3 +49,21 @@ No entry is moved to answered while its remaining requested bodies or failure ca
 - WC7: §5.2 gives exact eight-direction signed cell deltas; §6.3 proves stern/bow coordinates, own-radius+10
   separation and instantaneous excess-distance correction, independent of dt/p39. Degenerate angle/normalization,
   route decoding, route selection/backtracking, dock ownership and nearest-boat ties remain open.
+
+## Partial evidence published 2026-10-23 (re-watercraft-completion4, original round 2/3)
+
+WC3–WC7 remain OPEN compound requests; no whole question is moved to answered on partial progress.
+
+- WC4: watercraft.md §§6.2.2a–b now publish the signed-speed turning-radius formula, turn-selected center,
+  sea-level primitive/query order, scratch-transform rotation and position publication; bank quaternion,
+  pitch clamp, basis reconstruction and nonzero-speed height addition. Full matrix spill rounding,
+  degenerate normalization, Engine_AIBoatMotion 00571880 and inherited animation remain unclosed.
+- WC6: §§6.2.3–5 now specify same-sign preservation/acceleration, signed inverse feedback, ordered right/left
+  elapsed-channel steering, neutral/countersteer, tween resets, fire/AEMS mutation gates, whole-transform
+  skier/rope effects, heading acos path, inherited integer channel latches and preceding elapsed-channel tick.
+  Corrected R1 acceleration rounding (FST retains the product), old trailing-skier claim and decompiler pointer
+  arithmetic. Nonfinite/library exception behavior and geometric spill precision remain OPEN, as do residual
+  owner coasting/movement and animation details. Independent vectors are in watercraft-command-vectors.md;
+  no native execution or engine conformance is claimed.
+- WC3 census is still 75/38073 versus 79/38556, four functions/483 bytes unexplained. WC5 crash/RNG and WC7
+  route/dock/tie residuals have not been closed by this round. Preserve the original round-1 evidence/status.

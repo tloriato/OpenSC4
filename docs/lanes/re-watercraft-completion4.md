@@ -8,7 +8,9 @@
 - Starting tip: a2f2b75c; R1 substantive commits bd529644 and 9267ce96 are already present.
 - Done: 45b12f3d publishes same-sign speed/inverse feedback, ordered right/left steering and tween reset; corrects R1 FST rounding.
 - Done: published turning-radius/center/sea-query algorithm and bank/pitch/lift geometry with explicit spill-rounding residuals.
-- Next: independent vectors and command side-effect/inherited-channel contract; final consistency check and bounded WIP report.
+- Done: new vector companion, command effects/heading and inherited edge/timer/tween algorithms; census per-body statuses added.
+- Checks: questions.py index/check PASS (index unchanged); git diff --check PASS. Whole new sections reviewed against instruction notes; corrected return-rate baseline comparison before final commit.
+- Next: commit bounded publication, write final WIP report/queue; do not start another round.
 - AI 00571880 (2779B) has heavily mistyped local decomp; only initial queries made; do not claim full AI interpolation.
 - Original executable hash equals export executable_sha256; no target-control tools or server admission capability exposed.
 - Export identity: SimCity 4.exe, SHA256 3bc5c7fe807fe5aa24a3abb06e40f13486670bc1150612c09baf4ecedafe1a4b, image base 00400000.

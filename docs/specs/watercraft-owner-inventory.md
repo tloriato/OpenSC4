@@ -12,6 +12,30 @@ interface thunks; attribution does not prove a distinct cSC4Watercraft method/si
 `name-high` comes from committed names; `reach`, `vtable` and `neighbour` are attribution rules. An unnamed row
 retains its address as its identifier. Sizes are exported body-byte counts, not subtraction of adjacent addresses.
 
+## Round-2 provenance and body status (2026-10-23)
+
+Canonical Windows export metadata: `program=SimCity 4.exe`, image base `00400000`, executable SHA256
+`3bc5c7fe807fe5aa24a3abb06e40f13486670bc1150612c09baf4ecedafe1a4b`. A fresh read-only hash of main's
+`bin/SimCity4.exe` matched that value. This establishes matching instruction/constant provenance for this
+round's supplied Windows 1.1.641 artifact; it does not independently identify its product-version resource.
+No new census input was found explaining 79/38556. The four-function/483-byte gap remains unchanged.
+
+| Body | Evidence status of this bounded publication |
+|---|---|
+| `00566E00`, `005671D0` | Finite-domain sign helper and signed inverse feedback specified; exceptional FP/library behavior open. |
+| `0056E5C0` | Ordered owner command branches, feedback, heading, event/effect and tween effects specified in §§6.2.3–5; no whole-owner qualification. |
+| `00569940` | Turning geometry, service calls, flags/publication specified; complete intermediate spill rounding and degenerate inputs open. |
+| `005682F0`, `00569E70` | Bank/pitch/basis/lift algorithms specified; exact spill-rounding closure and exceptional normalization open. |
+| `00571880` | Still OPEN: initial metadata/callee/pseudocode inspection does not close AI interpolation. |
+| `0056A310`, `0056A440`, `0056AF90` | Crash/bump residuals retained OPEN; no new crash/RNG closure this round. |
+| Route/backtracking/decoder/ferry/dock/tie bodies | Existing residuals retained OPEN. |
+
+Supporting bodies `004FA960` (tween), `00505730` (edge pass), `00508C50` (base drive tick), `00509070`
+(base command completion) are inherited/shared algorithms, specified only where this owner reaches them.
+`009F0090`/`009F00AD` is a shared acos path despite an automatic TransformDirection label. These are **not**
+newly invented owned methods or four missing census entries; no alias/folding explanation was proved.
+No table size is promoted to completed bytes by publishing a partial body. The 75-row census below remains R1's.
+
 | Address | Body bytes | Export/committed name | Attribution |
 |---|---|---|---|
 | `0x004FAF30` | 8 | unnamed | vtable |
