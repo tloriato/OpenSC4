@@ -1,6 +1,18 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| core-text-edit4: portable TextEdit owner | Codex / `core-text-edit4` (engine lane; detached HEAD) | WIP after original round 2/3; source 51a49003 unchanged; historical quick core 3047 passed, 0 failed; 37 scenarios still unproved; historical capi 536 passed, 1 failed; fresh process attribution denied; clippy/native/ctest unknown; ABI unchanged; TE5/TE8/TE9 retained; no game | 1. Coordinator must resolve live process/output ownership using retained diagnostics. 2. Separately review any original third round; no automatic continuation. 3. Only then archive old logs and validate stable source serially. |
+| core-text-edit4: portable TextEdit owner | Codex / `core-text-edit4` (engine lane; detached HEAD) | in progress: final original round 3/3; source 51a49003 unchanged; coordinator ownership resolution accepted; historical failures retained | Archive old evidence, verify seven hashes and fmt, collect one canonical all to actual completion. |
+
+## Handoff
+
+- Goal: final original round 3/3, actual stable-source validation; no fourth round.
+- Starting HEAD 678ab268f00e32cb9920afdc493906908cc379fc, engine tree abb4d4a34f18b60c28479bbed86533f353a8ef94, clean status.
+- Copied coordinator process-resolution and both exact JSON observations accepted; no repeated CIM/WMI/Bash discovery.
+- Done: six old logs archived byte-for-byte in build-runs/text-edit-r3-final/old-logs with SHA256/NUL manifest; all seven hashes match round-two observation; owned absolute-path qbuild fmt exited 0; shared lib.rs hash recorded unchanged.
+- Driver preparation first failed before any operation because working Python lacks psutil; replaced own-child creation measurement with Windows GetProcessTimes, no discovery or dependency installation.
+- Next: collect one canonical qbuild all through build-runs/text-edit-r3-driver.py gate; actual child PID/creation/stdout/stderr/completion and before/after hashes retained.
+- No new game request; no process/cache/policy/source changes authorized beyond measured in-scope fixes.
+- Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-core-text-edit4-r3-manifest.json.
+- Historical report and per-method limitations below remain evidence, not newly passing results.
 
 ## Original round 2/3 report and coordinator handoff
 
