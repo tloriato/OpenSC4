@@ -248,6 +248,7 @@ def main():
     ap.add_argument('--manifest', required=True)
     a = ap.parse_args()
     m = json.loads(Path(a.manifest).read_text(encoding='utf-8'))
+    lifetime = None
     try:
         # The launcher commits the reservation immediately after Popen; never run before it appears.
         for _ in range(50):
@@ -258,6 +259,8 @@ def main():
             time.sleep(.1)
         else:
             raise RuntimeError('No matching shared-ledger round reservation')
+        if m['kind'] == 're':
+            lifetime = rea_session.lease(m['rea_session'])
         code, line = laneguard.preflight(m['main'], m['lane'], m['kind'], session=m.get('rea_session'))
         if code:
             raise RuntimeError('Round not started: ' + line)
@@ -268,6 +271,8 @@ def main():
         result = dict(type='result', subtype='error', provider=m['provider'], is_error=True,
                       result=f'{type(e).__name__}: {e}')
     finally:
+        if lifetime is not None:
+            lifetime.close()
         rea_session.shutdown(m.get('rea_session'))
     if m['provider'] == 'codex' and m.get('git_base'):
         try:

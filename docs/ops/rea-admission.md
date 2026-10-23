@@ -90,7 +90,7 @@ python C:/Users/tlori/FreeCity4/tools/rea_session.py smoke --root C:/Users/tlori
 `inspect` initializes an owned server and lists metadata only. It prints tool
 names and selected input schemas/digests; its readiness is always UNKNOWN.
 `smoke` requires the reviewed contract and makes two independent owned sessions.
-Expected evidence: two different session IDs/child PIDs, exact expected identity
+Expected evidence: two different session IDs/transport PIDs, exact expected identity
 paths and SHA256, boolean ready `true`, exactly the two research tools, and
 `research_calls: 0`. Keep stdout as private build-runs evidence. This verifies
 typed readiness, not the success of a substantive procedure request. The real
@@ -102,8 +102,11 @@ the existing family caps; no automatic retries, extra rounds or provider fallbac
 Missing contract, wrong file hash, missing paths, unsupported APIs, malformed
 protocol, EOF and timeouts fail admission before queue/state/round mutation.
 Successful admission tickets in build-runs/manifests record typed identity,
-session/child/broker IDs and contract digest; their attach token is local/private.
+session/transport/broker IDs and contract digest; their attach token is local/private.
 They are not portable readiness attestations: every check contacts the live broker.
+`transport_pid` identifies the owned command process; a Python venv redirector
+can launch a different actual server PID. Neither PID is a readiness assertion.
+The fixture tests separately audit actual server-side open/identity/research PIDs.
 
 The broker owns only its child and descendants. On Windows it enters a private
 kill-on-close job **before** creating REA. Failure to establish that ownership
@@ -111,6 +114,8 @@ fails startup. EOF/cancellation, bootstrap failure and backend completion clean
 up owned processes. No process-name kills, keeper cleanup, global app close or
 reset occur. An unclaimed session expires after 120 seconds. Research calls have
 a 600-second transport deadline; the reviewed startup timeout is at most 120.
+The backend holds a lifetime socket; its EOF also cleans the owned session if
+the supervisor dies while a provider's client is still attached.
 Stdout stays newline JSON-RPC; diagnostics go to stderr. No pseudocode is logged
 by admission, inspection, smoke or the transport.
 Full child stderr is retained privately in `build-runs/rea-session-*-stderr.log`;

@@ -92,10 +92,15 @@ tools). These are the facts measured on 2026-10-20 (rea-agents 6.4.0, Ghidra 12.
   `%TEMP%\rea-ghidra-*` directories left over from 13, 14 and 16 October are the trace of such cleanups. From then on,
   every call through that server fails until a `close_binary` completes the cleanup.
 
-Safe pattern: one lane (or the coordinator) opens the exe once and warms it with one query. Other lanes only query and
-never call `open_binary` on another file or `close_binary`. A lane is not interrupted while the first query is
-importing. Whoever opened the session closes it when the batch is done. On "already started", call `close_binary` once
-and retry, and do not loop.
+These observations apply only to clients sharing the **same** MCP server process.
+A keeper opened by the coordinator cannot initialize a later independent worker.
+Reserved workers must use [same-client target admission](ops/rea-admission.md):
+the coordinator reviews the exact read-only target/API contract, admission retains
+the actual procedure-capable client, and the worker attaches to that client with
+only the two research tools. Claude RE workflow attachment is currently unsupported.
+No lane may open a different target, close/reset another session, or retry a round
+to hide a startup failure. Failed startup preserves its cause and cleans only
+owned processes; a tool list or server count must never produce target-ready GO.
 
 ## Rebuilding locally
 

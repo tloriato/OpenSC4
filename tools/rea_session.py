@@ -228,7 +228,7 @@ class Session:
                 not same_path(r.get(i['project_field']), c['project_path']):
             raise RuntimeError('REA wrong/preexisting target identity')
         return dict(label=c['label'], binary_path=c['binary_path'], binary_sha256=c['binary_sha256'],
-                    project_path=c['project_path'], ready=True, child_pid=self.client.p.pid)
+                    project_path=c['project_path'], ready=True, transport_pid=self.client.p.pid)
 
     def request(self, r):
         if not isinstance(r, dict) or r.get('jsonrpc') != '2.0':
@@ -318,6 +318,21 @@ def shutdown(ticket):
             pass  # already closed by EOF/cancellation/attach timeout
 
 
+def lease(ticket):
+    """Backend-owned lifetime socket: even supervisor death closes its REA job."""
+    sock = socket.create_connection(('127.0.0.1', ticket['port']), timeout=125)
+    try:
+        with sock.makefile('rwb') as f:
+            wire_send(f, dict(token=ticket['token'], op='lease', session_id=ticket['session_id']))
+            r = wire_read(f)
+            if r.get('leased') is not True or r.get('session_id') != ticket['session_id']:
+                raise RuntimeError('REA backend lease rejected: ' + str(r))
+        return sock
+    except BaseException:
+        sock.close()
+        raise
+
+
 def owned_windows_job():
     """Put this broker and future descendants in a kill-on-close job.
 
@@ -362,6 +377,7 @@ def serve(start):
     owned_job = owned_windows_job()  # retained until broker exit, including startup failure
     session = Session(start['config'], start['contract'])
     stop, attached = threading.Event(), threading.Event()
+    leased = threading.Event()
     attach_lock = threading.Lock()
     token, sid = secrets.token_hex(32), secrets.token_hex(16)
     listener = socket.socket()
@@ -379,6 +395,19 @@ def serve(start):
                 if not secrets.compare_digest(str(hello.get('token', '')), token) or hello.get('session_id') != sid:
                     raise ValueError('REA session authorization failed')
                 op = hello.get('op')
+                if op == 'lease':
+                    with attach_lock:
+                        if leased.is_set():
+                            raise ValueError('REA backend lifetime already leased')
+                        leased.set()
+                    sock.settimeout(None)
+                    wire_send(f, dict(session_id=sid, leased=True))
+                    try:
+                        while sock.recv(1):
+                            pass
+                    finally:
+                        stop.set()
+                    return
                 if op == 'shutdown':
                     wire_send(f, dict(session_id=sid, closed=True))
                     stop.set()
@@ -560,7 +589,7 @@ def smoke(root, lane):
         for number in range(2):
             ticket, p = acquire(root, lane+'-'+str(number+1), 'codex', 're', configured_server())
             sessions.append((ticket, p))
-        if len({t['identity']['child_pid'] for t, _ in sessions}) != 2:
+        if len({t['identity']['transport_pid'] for t, _ in sessions}) != 2:
             raise RuntimeError('REA smoke clients are not independent')
         for ticket, p in sessions:
             with socket.create_connection(('127.0.0.1', ticket['port']), timeout=125) as sock, sock.makefile('rwb') as f:

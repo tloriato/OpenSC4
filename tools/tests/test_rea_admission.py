@@ -63,6 +63,7 @@ class Admission(unittest.TestCase):
         self.cfg = config(FAKE_REA_AUDIT=str(self.audit))
         self.owned = []
         self.clients = []
+        self.fixture_pids = {}
 
     def tearDown(self):
         for p in self.clients:
@@ -87,9 +88,15 @@ class Admission(unittest.TestCase):
 
     def acquire(self, mode='', **env):
         self.contract()
+        before = len(self.calls())
         ticket, p = rs.acquire(self.root, 're-fixture', 'codex', 're',
                                self.cfg | {'env': self.cfg['env'] | {'FAKE_REA_MODE': mode} | env})
         self.owned.append((ticket, p))
+        # Windows venv executables can be redirector processes. Use the actual
+        # fixture audit witness, never Popen.pid, to prove same-server research.
+        witnesses = {a['pid'] for a in self.calls()[before:]}
+        self.assertEqual(len(witnesses), 1)
+        self.fixture_pids[ticket['session_id']] = witnesses.pop()
         return ticket
 
     def calls(self):
@@ -120,7 +127,7 @@ class Admission(unittest.TestCase):
 
     def test_two_independent_actual_clients_bootstrap_and_research_in_same_process(self):
         tickets = [self.acquire(), self.acquire()]
-        self.assertNotEqual(tickets[0]['identity']['child_pid'], tickets[1]['identity']['child_pid'])
+        self.assertNotEqual(self.fixture_pids[tickets[0]['session_id']], self.fixture_pids[tickets[1]['session_id']])
         for ticket in tickets:
             p = self.bridge(ticket)
             init = self.rpc(p, 'initialize', dict(protocolVersion='2025-06-18'))
@@ -129,8 +136,8 @@ class Admission(unittest.TestCase):
             self.assertEqual([t['name'] for t in tools], list(rs.RESEARCH))
             for name, args in [('procedure_pseudo_code', {'address':'fixture'}), ('batch_decompile', {'addresses':['fixture']})]:
                 reply = self.rpc(p, 'tools/call', dict(name=name, arguments=args))
-                self.assertEqual(reply['result']['structuredContent']['pid'], ticket['identity']['child_pid'])
-            opens = [a for a in self.calls() if a['pid'] == ticket['identity']['child_pid'] and a['name']=='open_binary']
+                self.assertEqual(reply['result']['structuredContent']['pid'], self.fixture_pids[ticket['session_id']])
+            opens = [a for a in self.calls() if a['pid'] == self.fixture_pids[ticket['session_id']] and a['name']=='open_binary']
             self.assertEqual(len(opens), 1)
             self.assertEqual(opens[0]['arguments'], self.c['open']['arguments'])
         print('FIXTURE VERIFIED: two independent admitted children; exact open and both research calls share each PID')
@@ -140,7 +147,7 @@ class Admission(unittest.TestCase):
         keeper = self.acquire(FAKE_REA_EXISTING=json.dumps(existing))
         other = self.acquire()
         opens = [a for a in self.calls() if a['name']=='open_binary']
-        self.assertEqual([a['pid'] for a in opens], [other['identity']['child_pid']])
+        self.assertEqual([a['pid'] for a in opens], [self.fixture_pids[other['session_id']]])
         self.assertNotEqual(keeper['session_id'], other['session_id'])
 
     def test_wrong_preexisting_never_opened_or_reset(self):
@@ -287,6 +294,45 @@ class Admission(unittest.TestCase):
                 p.stdin.close()
             self.owned[-1][1].wait(timeout=8)
             p.wait(timeout=8)
+
+    def test_supervisor_lifetime_loss_closes_attached_server_without_affecting_another(self):
+        ticket = self.acquire()
+        other = self.acquire()
+        lifetime = rs.lease(ticket)
+        try:
+            p = self.bridge(ticket)
+            self.rpc(p, 'tools/list')
+            with self.assertRaisesRegex(RuntimeError, 'already leased'):
+                rs.lease(ticket)
+        finally:
+            lifetime.close()  # same EOF as supervisor death; no child/process-name kills
+        self.owned[0][1].wait(timeout=8)
+        p.wait(timeout=8)
+        self.assertTrue(rs.require_ready(other)['ready'])
+
+    def test_backend_supervisor_establishes_real_lease_before_provider_and_cleans_it(self):
+        ticket = self.acquire()
+        manifest = self.root/'backend-manifest.json'
+        state = self.root/'build-runs/state.json'
+        result = self.root/'build-runs/result.json'
+        state.write_text(json.dumps(dict(lanes={'re-fixture':dict(pid=os.getpid(),rounds=1)})))
+        before = state.read_bytes()
+        manifest.write_text(json.dumps(dict(kind='re',provider='codex',lane='re-fixture',round=1,
+            main=str(self.root),worktree=str(self.root),state=str(state),result=str(result),rea_session=ticket)))
+        def provider(m):
+            # Only model execution/Git preparation are stubbed. Actual typed target
+            # admission, backend lifetime ownership and cleanup all run for real.
+            self.assertTrue(rs.require_ready(m['rea_session'], m['lane'])['ready'])
+            with self.assertRaisesRegex(RuntimeError, 'already leased'):
+                rs.lease(m['rea_session'])
+            return dict(type='result', is_error=False, result='fixture provider completed')
+        with patch.object(sys, 'argv', ['lane_backend.py','--manifest',str(manifest)]), \
+                patch('lane_backend.prepare_codex_git'), patch('lane_backend.run_codex', side_effect=provider):
+            self.assertEqual(lane_backend.main(), 0)
+        self.owned[0][1].wait(timeout=8)
+        self.assertEqual(state.read_bytes(), before)
+        self.assertEqual(json.loads(result.read_text())['result'], 'fixture provider completed')
+        self.assertFalse(laneguard.rea_check(session=ticket)[0])
 
     def test_prompt_explains_boundary_and_preserves_unknown(self):
         rendered = lane_backend.render(dict(kind='re',name='re-fixture',task='fixture',maxRounds=1), 'codex', 'manifest')
