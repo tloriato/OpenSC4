@@ -497,7 +497,7 @@ is distinguished; incidental return-register contents are not boolean promises.
 | GeneralResponse SetCurrentPoint 0x0066C060 | 277, owned | X/Y binary32 dwords, RET8 | formatted X then nested Y controls, no point store §5.2 |
 | Happiness formatter 0x0066BE40 | 327, owned | three stack dwords, RET0xC, AL=1 | unsigned low word text callback §8.1 |
 | GeneralResponse formatter 0x0066BF90 | 204, owned | same | clear/complete-pair formatting §8.1 |
-| Happiness Init 0x0066C5F0 | 1972, **partial** | ECX, AL guard known; final result unqualified | import prefix §4.1; UI creation/geometry/final init not fully qualified |
+| Happiness Init 0x0066C5F0 | 1972 metadata bytes, ordinary flow owned | ECX; flag AL; final base-Init AL, RET | §4.1 import; §12 controls/geometry/ref/normal failure prefixes; empty refresh and foreign primitives remain qualified boundaries |
 | GeneralResponse Init 0x0066D240 | 2715, **partial** | ECX, AL guard known; final result unqualified | flags/base-init/import prefix §4.2; UI creation/geometry/final selection not fully qualified |
 | GeneralResponse resize 0x0066D1E0 | 85, vector specialization | size dword, RET4 | zero pair growth/truncation request §4.2; foreign storage operations |
 | GeneralResponse paint 0x0066B1D0 | 71, owned wrapper | ECX; result foreign tail | AL surface gate and raw calls §7.3 |
@@ -516,9 +516,127 @@ coverage; the historical approximate 8000-byte number is not a denominator.
 
 Published behavior includes owner import/readback schedules, point mutation,
 button decision paths, both displays, formatting, destruction wrappers and
-Happiness's interpolation. Full Init control creation/geometry and its failure
-prefixes remain partial. Foreign variant alias/null behavior, x87 environment
+Happiness's interpolation and its finite ordinary Init control/geometry/failure
+prefixes (§12). GeneralResponse Init remains partial. Foreign variant alias/null behavior, x87 environment
 and callback reentry outside the normal domain are not silently filled in.
 The two remaining work packages and body-scoped questions live in
 [the question file](questions/curve-editor-views.md). No replacement source,
 test suite or native execution supplied expected values.
+
+## 12. Init: shared control boundary and Happiness ordinary flow
+
+The Init rules specify individual foreign operations, not a service that returns
+a completed editor. Window slots +0xA4/+0xA8 supply width/height, +0xE0 takes
+(x,y), +0xCC takes width, +0xDC takes (left,top,right,bottom), +0x100 takes
+the raw ID, +0x110 takes (flag,value), and owner +0x38 attaches a window.
+These names identify call inputs, not successful primitive effects. Unless a
+test is expressly stated, returned status registers do not affect owner flow.
+Normal flow requires each subsequently dereferenced pointer to remain valid;
+callbacks, nonreturns and invalid pointers are outside this finite contract.
+
+### 12.1 Shared helpers, counted once
+
+These helpers are shared property-view bodies, not extra bytes of either Init.
+They retain raw creation/text/ref/geometry boundaries. They do not authorize
+research into framework, resource-loader, screen, base-window or graph algorithms.
+
+| Helper | Raw request and local order | Returned-failure boundary |
+|---|---|---|
+| Button 0x0066E9F0, 313 metadata bytes | With the two resource-key words zero, request WCM +0x28 (kind 2, supplied ID, supplied text,0,0,0); store full EAX in caller output; call button +0x84; +0x14(0x100,1), (0x200,0), (0x400,0); +0x8C(text); free empty scratch string and destroy temporary resource buffer | No returned-pointer/status test before dereference. These Init callers always take the zero-resource branch, not the resource-loading alternative. Kind 2 is the raw creation selector, not a proved COM class/IID. |
+| Label 0x0066DDB0, 219 metadata bytes | Clear output; GZCOM +0xC(class 0x592,IID 0x212CDC1F,out); test AL. On nonzero, get window via label +0xC; obtain colour with window +0x1B0(0xE0,0xE0,0xE0); label +0x1C(2,0), (4,0); label +0x48(style); +0x28(font); window +0x1A8(colour); +0x128(text); label +0x14(0,0); window +0x110(0x10000,0) | AL=0 skips all configuration and returns with output as supplied by creation (initially cleared). Caller still uses it. Style zero requests WCM +0x14(0xC8963C5C); no status test on that result. |
+| Line input 0x0066DF60, 469 metadata bytes | GZCOM +0xC(class 0x231A1C58,IID 0x231A1C57,local out); test AL. Nonzero obtains two temporary screen-service references using (0xC416025C,0x0073283C), obtains colours with +0x88(0,0,0x80) then (0xFF,0xFF,0xFF), releasing each temporary after its colour call. Get input window via +0x14; compute bottom=y+18, then read parent width and compute right=width−10; window +0xDC(x,y,right,bottom). Request WCM +0x14(0xC8963C5C); input +0x24(result), +0x30(0,font), +0x48(font), +0x30(4,white), +0x30(5,dark colour), +0x5C(dark colour), +0xC0(text,0), +0x130(1), +0x130(0x200). Get window, set ID, get window, +0x110(0x10000,1), get window, parent attach, input release +8 | AL=0 returns without attachment. Framework lookup statuses and service pointer validity are not tested recovery paths. No line pointer is held in the owner by this helper. |
+
+Label caller arguments are (output,text,font,style); these Init calls pass
+owner +0xF0 as font and zero style. Line arguments are (x,y,parent,ID,text,font).
+Caller text temporaries are destroyed after each helper returns, before the
+next owner operation. For ordinary nonempty literals the owner allocates
+length+1 bytes, copies exactly length bytes, and stores a zero terminator;
+empty text still allocates eight bytes and writes its initial zero byte.
+The caller tests the saved string-buffer pointer solely to decide whether to
+free it; that test is not a widget-creation success test. Evidence:
+0x0066DDB0–0x0066DE8A, 0x0066DF60–0x0066E134,
+0x0066E9F0–0x0066EB28; only the button helper's reachable zero-key branch is
+part of these Init obligations.
+
+### 12.2 Happiness control and geometry ledger
+
+Init 0x0066C5F0–0x0066CDA3 first allocates an eight-byte empty scratch buffer,
+then tests the existing window init flag **AL**. Nonzero frees that buffer
+and returns AL=1; no import, flags, creation, refresh or base Init follows.
+Zero imports §4.1, then calls owner +0x110(0x800,0), (0x10000,1).
+There is no endpoint insertion, public addPoint call, point-count requirement,
+or empty-map guard anywhere between import and first refresh.
+
+Each button/label below is a temporary held interface: obtain its window with
++0xC separately for each window operation, attach through owner +0x38, release
+the held interface through +8, and clear the local pointer. Getter +0xC is not
+paired with a release of every returned window. There is no persistent owned
+control-pointer field written by this Init. Primitive attachment/reference
+effects remain foreign; the owner calls just listed are the handoff proof.
+
+Let A be Add's returned width; D be Delete's returned height; B and H be
+Bar Value label's returned width and height; K be Weight label's returned
+width; S be the empty status label's returned height. All geometry uses
+32-bit integer arithmetic, with no owner clamp or minimum-size test.
+
+| Step, instruction span | Control / raw inputs | Owner operation and saved geometry |
+|---|---|---|
+| H1, 0x0066C6AD–0x0066C768 | Button kind 2, ID 0x26C10A3B, text `Add`, resource words 0,0 | Free caller text; window position (5,5); read width A; save A+10; attach, release |
+| H2, 0x0066C769–0x0066C827 | Button kind 2, ID 0x26C10A3C, text `Delete`, resource words 0,0 | Free caller text; position (A+10,5); read height D; save y1=D+10; attach, release |
+| H3, 0x0066C828–0x0066C900 | Label class/IID §12.1, text `Bar Value:` | Free text; position (5,y1); read width B, save x1=B+10; read height H and save it separately; attach, release |
+| H4, 0x0066C901–0x0066C972 | Line class/IID §12.1, ID 0x26C10A3E, empty text | Helper receives (x1,y1,owner,ID,text,font); free text; save y2=y1+H+5 |
+| H5, 0x0066C973–0x0066CA2D | Label text `Weight:` | Free text; position (5,y2); read width K; save x2=K+10; attach, release. Its height is not read. |
+| H6, 0x0066CA2E–0x0066CAA3 | Line ID 0x26C10A3F, empty text | Helper receives (x2,y2,owner,ID,text,font); free text; save y3=y2+H+5, reusing **Bar Value** height |
+| H7, 0x0066CAA4–0x0066CB8C | Label empty text; window ID 0x26C10A3A | Free text; set ID, position (5,y3); read owner width W, request label width W−10; read label height S; save graphTop=y3+S+5; attach, release |
+| H8, 0x0066CB8D–0x0066CBF4 | Allocate 0x260, construct foreign line graph 0x009BA988 if allocation nonzero; graph ID 0x26C10A3D | Allocation zero selects null then immediately dereferences it; no normal failed-allocation return. Acquire graph primary +4; set ID; read owner height, save height−5 as bottom; read owner width, compute width−5 as right; graph +0xDC(5,graphTop,right,bottom) |
+
+Width/height reads occur at their steps, not from a snapshot. The two line
+helpers each read parent width independently. H7's owner width, H8's owner
+height and then width are later distinct calls. The spacing uses the named
+returned dimensions, not button right/bottom coordinates or assumed fonts.
+
+### 12.3 Happiness graph, completion and ordinary failure prefixes
+
+The graph interface is the constructed graph +0xD8; there is **no** QueryInterface
+or query-result gate in this Init. In order, it receives +0x4C(0,`Bar Value`,0),
+then +0x4C(1,`Weight`,0), freeing each caller string after the call; +0x58(1,1);
++0x3C(0,binary32 +0); +0x40(0,255 [0x437F0000]);
++0x3C(1,binary32 +0); +0x40(1,30 [0x41F00000]);
++0x60(1,5 [0x40A00000]). These are raw graph configuration calls, not proof of
+rendering, tick placement, interpolation or automatic endpoint generation.
+At 0x0066CD23–0x0066CD64 two separate WCM lookups pass
+(0x68963C4C,0x80000000) and (0xC8963C5C,0x80000000). The first returned word
+is passed to embedded graph +0x22C slot +0x10; the second to graph-interface
++0x9C. Their statuses are ignored. Then attach the primary graph; release its
+primary reference; call owner refresh +0x260; call base window Init 0x0099C2C3;
+save **AL**, free the initial scratch buffer, restore that byte and return
+(0x0066CD6A–0x0066CDA3). Upper EAX is not the Init result contract.
+
+There are only two ordinary returns: already-initialized AL=1 and this final
+base-Init AL, after all earlier effects. The import count loop and optional
+string frees reconverge; allocation's two paths reconverge at a dereference.
+No helper result, attach result, graph configuration status or refresh result
+is tested here. A line creation returning AL=0 skips that helper's effects
+and the owner continues with spacing and later controls. Label creation
+returning AL=0 with null output reaches a caller dereference after text cleanup,
+not a deterministic false return. Button null output is dereferenced inside
+its helper. Final base Init AL=0 preserves all preceding ordinary effects;
+there is no rollback or compensating detach in this body.
+
+First refresh still has §6's empty-map unsupported/crash boundary; Init does
+not repair it. An empty import with a preexisting nonempty live map retains
+that map, while an empty live map is not a safe successful Init example.
+
+### 12.4 Independent proposed Happiness Init traces (UNEXECUTED)
+
+These are primitive input/return proposals, not native goldens or an owner
+verdict supplied by a host. Primitive side effects are specified independently
+of returned register bits; all pointers below are valid unless stated.
+
+| Proposal | Independent inputs | Expected owner trace |
+|---|---|---|
+| H-asymmetric | Initial flag AL=0; import one packed word 0x00000064 into empty map (key 0, Y from signed 100 times binary32 0x3C23D70A); widths/heights A=31,D=17,B=43,H=11,K=29,S=13; every owner width read=317, height=193; label/line creations AL=1; no callback mutation | Buttons at (5,5),(41,5); Bar label (5,27); first line rect (53,27,307,45); Weight label (5,43); second line rect (39,43,307,61); status label (5,59), width 307; graph rect (5,77,312,188). Graph config order §12.3, attach/release, §6 refresh, base Init, scratch free, return its AL. No key 255 node inserted. |
+| H-status | Same inputs; primitives perform the same effects but return arbitrary distinct full words for ignored flag/position/attach/config/refresh statuses; final base Init returns 0x13572400 | Same calls/stores/ref handoffs, final AL=0. High register bits never convert ignored statuses into early exits. |
+| H-missing-lines | H-asymmetric, except first and/or second line GZCOM returns AL=0 and creates nothing | Zero or one line attaches, as selected independently; both labels, spacing, status and graph remain in the owner trace. No retry/default input creation. |
+| H-repeat | Flag getter returns 0x12345601; scratch allocator returns a valid eight-byte buffer | Allocate/zero scratch, query flag, free scratch, AL=1. No held-variant query, widget request or refresh. |
+| H-empty-import | Flag clear; held variant count 0; retain an already valid one-node map; other inputs H-asymmetric | No import iteration; existing node survives; controls and first refresh follow unchanged. If live map is also empty, no successful refresh/result is specified. |
