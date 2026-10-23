@@ -1,13 +1,26 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| core-model-effects-contractfix4 (portable model effects contracts) | Codex / core-model-effects-contractfix4 | in progress | Final phase 2: preserve old evidence, run one stable all, finish bounded report |
+| core-model-effects-contractfix4 (portable model effects contracts) | Codex / core-model-effects-contractfix4 | wip | Coordinator: triage excluded CAPI lock-test failure; final model-effects round is parked |
 
 ## Handoff
+- Guard OVER at the final report commit; its command was denied before execution. No merge-queue file written. The full report below is included in this handoff commit.
+- FINAL logical round 3/3: no fourth/reset/renaming or new model-effects work. Guard requires transport state continue; coordinator should close/park this bounded WIP, not restart implementation or rerun checks for documentation movement.
+- Goal: preserve supported portable corrections and finish truthful validation/report. Source remains 9fdea6f2, engine a6f8ca9f35d248ad366f0da9739a1ddc60af70b4. Last prior checkpoint 48efd6ae; this commit changes only the lane report.
+- DONE: one all, start 2026-10-23 00:26:42.054922+01 at 59e33eb6; end 01:06:53.535444+01 at 48efd6ae, exit 1 / qbuild FAIL. Both engine hashes identical; docs-only tree change. No retry.
+- First workspace stage 536 passed / 1 failed / 0 ignored, one summary: CAPI occupant_manager_tests::slot44_holds_the_lock_across_threads, line 714 lock_waits 0 versus 1. CAPI untouched; cause unverified. Required gate failed, so not ready.
+- Clippy exit 0 / diagnostics 0; native build PASS 4/4; full CTest PASS 68/68. Its configured Rust suite 5149/0 over 22 summaries, all 25 owner fixtures and one formats integration, four doctest suites. Later pass does not erase first failure.
+- Absolute four-file fmt exit 0, 01:06:57+01; wrapper diff_lines=1; engine working tree clean. No source edit/new test in this round. No game/ABI/shared defaults/native-owner promotion.
+- Artifacts: build-runs/final-all-{start,result}.json, final-all-stdout.log, final-fmt-{result.json,stdout.log}; full Rust output engine/build-x86/Testing/Temporary/LastTest.log. Old logs archived intact in build-runs/previous-validation/.
+- All driver and collectors completed; transport 84413 collected exit 1. Final OS snapshot 01:07:58+01 has only cache service 31276 and conhost 35196, no cargo/compiler/CMake/Ninja/CTest pipeline. Old stats client 28760 verified/terminated earlier; no daemon stop/manual cache RPC. Full identity/argv snapshots retained.
+- GF19-GF24 remain open; GF25 already appended. Numerical/native/unchecked/allocation/copy-helper boundaries remain unsupported. No new questions this round.
+- EXACT NEXT: coordinator review this report and the failed CAPI test; verify doctest per-suite counts directly from retained LastTest.log if needed, without new tests. Park WIP and arrange administrative closeout only; no queue was written because guard forbids it. Manifest is build-runs/run4-core-model-effects-contractfix4-r2-manifest.json in the main checkout.
+
+## Final report
 - FINAL logical round 3/3; phase 2 starts at clean a8b403fd. Engine tree a6f8ca9f35d248ad366f0da9739a1ddc60af70b4 equals final source 9fdea6f2. Documentation movement does not invalidate matching engine evidence.
-- CURRENT NEXT: ONE serial final all is ACTIVE, started 00:26:42.054922+01 at 59e33eb6, same engine tree. Driver 2256 / qbuild 30132; refresh identities before action. Read build-runs/final-all-result.json and final-all-stdout.log; do not duplicate all/quick. Collector awaits completion then runs four absolute touched-file fmt checks; see build-runs/final-round-state-r2.md. This milestone changes documentation only.
+- Final disposition: WIP. ONE final qbuild all ran 2026-10-23 00:26:42.054922 to 01:06:53.535444+01, exit 1 / qbuild FAIL. Its first workspace stage failed; the later full CTest workspace pass does not erase that failure. No retry or fourth model-effects round. Start HEAD 59e33eb6, end HEAD 48efd6ae; only this lane report changed between them. The native verifier's tree-changed annotation is documentation movement, with the identical engine hash verified before/after and a clean engine working tree.
 - Collected quick session 43478 file evidence: 3269 passed / 0 failed / 0 ignored over 11 test summaries; all 25 model_reg_effects fixtures passed; core/formats doctests 0/0. Dependency log is compilation-only. No surviving wrapper or recovered wrapper exit/stdout record: this is NOT complete quick acceptance.
 - Refreshed OS identities at 00:23:05+01: own old pipelines/cargo/compiler absent; 19336/21180 absent. Owned orphan stats client 28760 created 23:43:57.828985+01, parent 21180 absent, own cwd, exact --show-stats --stats-format json, CPU 0.03125s; verified handle/creation/argv/cwd and terminated ONLY that client. Cache daemon 35492 created 23:20:46.856140+01 has only conhost 7568, no compiler child; untouched. No direct cache RPC or claim about disappeared parents. Metadata fallback used after CIM access denied; descendants filtered by creation time to avoid reused PIDs.
-- Source complete for supported scope; report/inventory below is a working draft. Preserve GF19-GF24; GF25 appended. Final report must replace this Handoff after gates; no native/game/whole-owner credit.
+- Preserved the committed supported portable corrections and all source in this final round. The audit below is bounded to the published roles: no native/game/whole-owner credit or default promotion. GF19-GF24 remain open; GF25 is retained.
 - Goal: implement unambiguous graphics-formats 3.11 contracts; no native/glue/default promotion.
 - Reserved detached worktree reused; source remains unchanged in this final round.
 - First q.py attempt failed because Bash service access is denied; direct PowerShell reads work.
@@ -16,16 +29,16 @@
 - Implemented explicit reference primitives, shared record storage leases, CRT byte-table boundary, controls/recreation/failures and transform/motion updates; added independent core traces and adapted formats integration.
 - GF25 appended for unidentified empty-key-map check. Existing GF19-GF24 preserved open.
 - Rustfmt patches restricted to four touched Rust files; wrapper fmt needs absolute paths (relative attempt failed).
-- Published sections 3.11.1-4 and the existing 23-role audit reviewed; no model-effects defect diagnosed. Final workspace stage FAILED: fc4-capi occupant_manager_tests::slot44_holds_the_lock_across_threads, 536 passed / 1 failed. CAPI edits are excluded; no retry/new all. Next: finish collecting this gate/clippy/native/CTest/fmt, then report WIP with exact evidence.
+- Published sections 3.11.1-4 and the existing 23-role audit reviewed; no model-effects defect diagnosed. First workspace stage FAILED: fc4-capi occupant_manager_tests::slot44_holds_the_lock_across_threads, 536 passed / 1 failed, exit 101. At capi/src/occupant_manager_tests.rs:714, lock_waits expected 1 but observed 0. The test uses a 300 ms receive window; cause is unverified. CAPI edits are excluded and none were made.
 - Storage leases extend portable allocation lifetimes without native AddRef; destruction drops host wrappers without foreign Stop/Release. No native adapter or equivalence claimed.
 - Thin-address fixture fix and role inventory committed in 91f667d6; touched-file fmt passed. First quick E0502/configure failure preserved below; old native baseline is not final-source evidence.
 - At 00:34:20+01 final compiler 30584 still accumulated CPU; cache daemon 35492 was absent without any lane daemon-stop request. No inference about vanished processes. Full identity/argv snapshots are in build-runs/process-evidence-r2-*.json.
 - Added explicit manual-entry/null attachment transitions; core suite now 25 tests versus original 16. Comment boundary milestone 6755b875.
-- Attachment coverage committed a20a42ab; explicit unit scale committed 9fdea6f2. Clippy finished without reported diagnostics; native build started 00:42:09+01. At 00:49:43+01 actual port-4889 service 31276 had compiler child rustc 13064 (created 00:48:39+01, CPU 11.828125s) plus conhost 35196; client 32772 and cargo/CMake/Ninja pipeline remain owned/active. Full identity/argv JSON retained; no new cache RPC/daemon stop.
-- Native build completed: release Cargo 10m18s, Ninja 4/4 including FreeCity4.dll, generated ABI entries unchanged (185 interfaces). Full CTest started 00:52:38+01; at 00:54:01+01 its owned cargo/compiler children were active, including actual service child rustc 32360. Clippy log ends Finished dev profile in 4m33s, no lint diagnostics. These do not erase the workspace-stage failure.
-- Two collectors timed out without fmt; third collector awaits the SAME all (transport 94782), then four absolute-file fmt checks. Final all still one invocation, no retry. Final all/driver result: build-runs/final-all-result.json; previous native 214/214 was build progress, not CTest.
+- Attachment coverage committed a20a42ab; explicit unit scale committed 9fdea6f2. Actual port-4889 service 31276 and its compiler children were recorded during the build. Final OS snapshot at 01:07:58+01 found no remaining cargo/compiler/CMake/Ninja/CTest pipeline, only service 31276 and conhost 35196. No daemon stop or manual cache RPC was issued. Full creation/parent/cwd/argv records: build-runs/process-evidence-r2-*.json.
+- Native build PASS 4/4 edges (621.8 s), generated ABI entries unchanged (185 interfaces); full CTest PASS 68/68 (853.8 s). Its configured Rust suite passed 5149/0 over 22 summaries, all 25 owner fixtures and the existing formats integration test; all four crate doctest suites completed with zero tests/failures. Clippy exit 0, diagnostics 0. These do not erase the first workspace failure.
+- Three collectors timed out without fmt; the fourth collected the SAME all and then ran only four absolute-file fmt checks (exit 0, 01:06:57.548172 to 01:06:57.716633+01). No new tests or source edits. Durable command/start/end/exit/source: build-runs/final-all-start.json, final-all-result.json, final-fmt-result.json; summary stdout: final-all-stdout.log, final-fmt-stdout.log. Driver transport 84413 also collected exit 1, engine unchanged true.
 
-## Contract reconciliation (working)
+## Contract reconciliation
 
 The 23 attributed bodies / 8,406 bytes identify roles, not whole-owner or native completion. All named operations below are production core behavior; primitive providers supply no owner decisions or recorded owner outputs.
 
@@ -72,13 +85,29 @@ Shared bodies outside the count: attached-instance getter borrows without acquir
 
 GF19–GF24 remain open, unedited and unanswered. Remaining scope: inventory/helper/native-equivalence and independent native vectors (GF19), real foreign-reference/lifetime validation (GF20), current CRT locale and raw-byte/interface domains (GF21), exact numerical/transform behavior including GF13 choice (GF22), unchecked frame/address domain (GF23), and physical speed units/caller integration (GF24). Their original bracketed descriptions record the parent implementation and are not this correction's behavior. GF25 is appended in `docs/specs/questions/graphics-formats.md`; coordinator must regenerate the index because this lane cannot run `tools/` or edit the generated index.
 
-## Validation (pending)
+## Validation
+
+| Final stage | Measured result |
+|---|---|
+| qbuild all | FAIL, exit 1; one invocation, source/engine unchanged |
+| First cargo workspace stage | 536 passed / 1 failed / 0 ignored; 1 summary; stopped before core fixtures/doctests |
+| Clippy -D warnings | exit 0, 0 diagnostics; 4m33s |
+| CMake/native build | PASS 4/4 edges; 621.8s |
+| Full CTest | PASS 68/68; 853.8s |
+| CTest's configured cargo workspace suite | 5149 passed / 0 failed / 0 ignored; 22 summaries; 25 owner fixtures; one formats integration; four zero-test doctest suites |
+| Absolute touched-file fmt | exit 0, 4 files; wrapper diff_lines=1; engine working tree clean |
+
+CTest's workspace command was its configured test, not a separately requested retry: cargo test --workspace --target i686-pc-windows-msvc --target-dir engine/build-x86/cargo, with its CMake-provided sccache/debug settings. The first failed workspace run remains a failed required check. Full native Rust output is preserved in engine/build-x86/Testing/Temporary/LastTest.log; primary logs are in build-runs/qbuild-{test,clippy}.log and fc4verify-{configure,build,ctest}.log. No compatibility conclusion follows from these portable/shim tests.
 
 - First substantive correction committed at `5548319b`, before call 30; implementation milestone `20956ca7`.
 - Core fixtures currently 25 tests (parent 16), plus the existing one formats integration test, with independent expected traces/geometry derived from the published contract.
-- Initial `all` began on the clean baseline; workspace cargo tests completed, but clippy observed the in-flight test pointer borrow error. Final stable gate will supersede this mixed-source baseline attempt.
+- Initial `all` began on the clean baseline but became mixed-source: 5140/0 over 22 summaries with 16 owner fixtures, then clippy E0502. It remains a FAILED historical baseline, not final-source proof. Original logs are retained intact under build-runs/previous-validation/. Quick session 43478's completed focused tests are 3269/0 over 11 summaries including 25 owner fixtures and core/formats doctests; its dependency log is compilation-only, and transport collection returned Unknown process id 43478. No complete quick acceptance or reason for vanished parents is inferred.
 - First quick run: E0502 in same-pointer test fixture; dependents compiled. Fixed by comparing a thin address. Its CMake configure also hit Ninja recompaction permission denial while the baseline build was outstanding. No build-system changes made; serialize subsequent gates.
-- Touched-file fmt passes with absolute paths (four files); relative-path attempt could not resolve files. Final fmt/gate counts will be recorded here before ready.
+- Touched-file fmt passes with absolute paths (four files); relative-path attempt could not resolve files. Initial Bash E_ACCESSDENIED is retained as a tooling failure. This round's CIM access denial was handled with metadata-only process queries. Git emitted a shared packed-refs.lock permission warning, but the detached commits succeeded; shared refs/config/hooks were not changed.
 - No ABI exports, shared defaults, native glue, coverage maps, tools or game files changed. No game requests/runs; no native/shadow/whole-owner promotion.
 - GF19-GF24 remain open; no game runs, ABI edits, RE sources, subagents or other-worktree edits.
 - Final-round manifest: C:/Users/tlori/FreeCity4/build-runs/run4-core-model-effects-contractfix4-r2-manifest.json.
+
+## Next steps
+
+Coordinator: triage the excluded CAPI lock-test failure and its differing outcomes across the two configured workspace stages. This final logical round 3/3 is parked, with no fourth/reset/renaming. Regenerate the question index for GF25 as needed; retain GF19-GF24 and the explicit unsupported boundaries above. No game/native-owner validation or broader implementation is proposed here.
