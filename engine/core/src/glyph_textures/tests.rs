@@ -676,7 +676,8 @@ fn signed_original_renderer_dimensions_raw_uv_order_and_extended_subtraction() {
     let info = m.glyph(g).unwrap();
     assert_eq!(info.texture_size(), Some([0, 16]));
     assert_eq!(info.glyph_size(), Some([1, 9]));
-    assert_eq!(info.uv(), Some([0.0000152587890625, -0.140625, -256.0, 0.46875]));
+    // Exact 2^-16 as a float32 word, without an over-precise decimal spelling.
+    assert_eq!(info.uv(), Some([f32::from_bits(0x3780_0000), -0.140625, -256.0, 0.46875]));
 }
 
 #[test]
