@@ -26,7 +26,7 @@ No new census input was found explaining 79/38556. The four-function/483-byte ga
 | `0056E5C0` | Ordered owner command branches, feedback, heading, event/effect and tween effects specified in §§6.2.3–5; no whole-owner qualification. |
 | `00569940` | Turning geometry, service calls, flags/publication specified; complete intermediate spill rounding and degenerate inputs open. |
 | `005682F0`, `00569E70` | Bank/pitch/basis/lift algorithms specified; exact spill-rounding closure and exceptional normalization open. |
-| `00571880` | Still OPEN: initial metadata/callee/pseudocode inspection does not close AI interpolation. |
+| `00571880` | Final round 3: ordinary owned AI path published in watercraft-ai-motion.md; branch/query/waypoint/pose/history/approach order supported. Full coefficient spill equivalence, transcendental bits, zero-time exceptional feedback, shared setter effects and exceptional domains remain partial/unknown. |
 | `0056A310`, `0056A440`, `0056AF90` | Crash/bump residuals retained OPEN; no new crash/RNG closure this round. |
 | Route/backtracking/decoder/ferry/dock/tie bodies | Existing residuals retained OPEN. |
 

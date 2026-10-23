@@ -1,6 +1,21 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| re-watercraft-completion4: native watercraft contracts | Codex / `re-watercraft-completion4` (RE, reserved detached worktree) | WIP: original research round 2/3; bounded movement/control publication committed; questions and diff checks PASS; 75/38073 census unchanged; no ABI/game/shadow or owner qualification | AI interpolation, geometry spill rounding/degeneracy, inherited animation, crash/RNG and routes/docking remain open; at most one further original research round, coordinator decision only. |
+| re-watercraft-completion4: native watercraft contracts | Codex / `re-watercraft-completion4` (RE, reserved detached worktree) | in progress: original FINAL round 3/3; initial source 3d591dba; no ABI/game/shadow or owner qualification | Publish 00571880 normal AI path and directly required geometry precision; preserve compound residuals; no fourth round. |
+
+## Handoff
+
+- Goal: final original round 3/3, AI 00571880 plus directly necessary geometry precision; spec text only.
+- Initial source: 3d591dba41659df37f7d608c036832ee5c44ce25, clean detached HEAD.
+- Read coordinator-watercraft-final-host-proof.json and actual r3 manifest: own lane/RE/round3/WT/base match.
+- Host GO supplied; no detached-context spawnpreflight repeat. Normal runtime guard remains in force.
+- Original SHA256 freshly matches export 3bc5c7fe807fe5aa24a3abb06e40f13486670bc1150612c09baf4ecedafe1a4b.
+- Export confirms AI body 00571880, 2779B; callers 00572909 docking, 005731C5 animation.
+- R2 contracts/vectors retained, including 39C479FE/FD and FST correction; census 75/38073 unchanged.
+- Done: normal AI owned path, alignment/erase helpers, caller sequence, exact constants and proposed literal
+  branch/order vectors drafted; no native/engine result used. Milestone commit immediately follows.
+- Next: directly necessary movement geometry instruction precision/store/order audit, then consistency checks.
+- No live REA query, target action, engine access, builds, native execution, probes, ABI or agents.
+- WC3–WC7 remain open; core-watercraft4 park unchanged. No complete-owner/byte qualification.
 
 ## Report — original round 2/3, 2026-10-23
 

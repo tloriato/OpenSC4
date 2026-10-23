@@ -50,6 +50,19 @@ No entry is moved to answered while its remaining requested bodies or failure ca
   separation and instantaneous excess-distance correction, independent of dt/p39. Degenerate angle/normalization,
   route decoding, route selection/backtracking, dock ownership and nearest-boat ties remain open.
 
+## Partial evidence published 2026-10-23 (re-watercraft-completion4, original FINAL round 3/3)
+
+- WC4: §5.1a links watercraft-ai-motion.md, the owned ordinary finite path of 00571880: count/reset/query
+  and consume order, two midpoint targets, strict 0.1/7 distance and 2-degree alignment boundaries,
+  phase latch, owner turn/translation/Speed/Turn calculations, live callback and post-callback histories.
+  The alignment helper mutates H; reached-point consumption skips pose/history but still approaches
+  speed and turn. Callers explicitly continue into Movement_PositionNew. Full coefficient spill
+  equivalence, shared setter side effects, exceptional math and inherited-animation residuals remain open.
+- WC6: AI's approach rates and movement constants are distinguished from command acceleration and p4;
+  this does not replace or close remaining command/geometry precision and exceptional-domain residuals.
+- WC3/WC5/WC7 and all compound requests remain OPEN. No answered entry, census change or parked-lane
+  qualification is implied. Proposed/unexecuted AI traces are in watercraft-command-vectors.md.
+
 ## Partial evidence published 2026-10-23 (re-watercraft-completion4, original round 2/3)
 
 WC3–WC7 remain OPEN compound requests; no whole question is moved to answered on partial progress.

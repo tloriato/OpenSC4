@@ -216,6 +216,16 @@ tick; `(1000,1001)` tests retention before adding time. With still time 5000, B=
 the 5000-ms removal predicate is false. A base-false vector calls neither wakes nor lifetime nor motion, but calls
 slots 104 then 107 once and returns false. A still-time rejection calls neither final callback.
 
+### 5.1a Owned AI motion (`Engine_AIBoatMotion`, `0x00571880`, final round 3)
+
+The bounded instruction contract is in [watercraft-ai-motion.md](watercraft-ai-motion.md): waypoint query/
+erase order, midpoint geometry, strict alignment and distance tests, phase latch, heading turn/translation,
+Speed/Turn approach, live pose callback and history order. It also identifies exactly how the animation
+and docking callers follow AI with Movement_PositionNew, which reaches the R2 geometry helpers below.
+The owner computes motion itself; no foreign final-motion callback is substituted. Ordinary finite input
+support and residual precision/route/exceptional/shared-setter dependencies are listed separately there.
+WC4 remains open; this is no whole-owner, inherited-animation or engine qualification.
+
 ### 5.2 Picking cells (`Engine_AIPickLocation`, `0x00570620`)
 
 The travel points are topped up to 10 entries, starting from the last point, or from the boat's cell and the
