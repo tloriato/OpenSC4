@@ -103,7 +103,16 @@ class Admission(unittest.TestCase):
         m = dict(main=str(self.root), worktree=str(self.root), manifest=str(self.root/'manifest.json'),
                  kind='re', provider='codex', lane='re-fixture', rea_session=ticket,
                  git_common=str(self.root/'.git'), git_dir=str(self.root/'.git/worktrees/re-fixture'))
-        Path(m['manifest']).write_text(json.dumps(m))
+        m.update(round=1, guard_id='codex-'+'b'*32, source={'tip':'fixture'}, args={})
+        m['host_admission'] = lane_backend.lane_admission.issue(m,
+            [dict(name=n,verdict='GO') for n in ('dispatcher','lanes.check','supervisor')])
+        m['guard_manifest'] = str(lane_backend.lane_admission.registration_path(m))
+        registration = Path(m['guard_manifest'])
+        registration.parent.mkdir(parents=True, exist_ok=True)
+        registration.write_text(json.dumps(m))
+        # Deliberately corrupt the writable recovery. Attachment must still use
+        # the canonical host registration and its launch-pinned expected digest.
+        Path(m['manifest']).write_text(json.dumps(m | {'rea_session':None}))
         with patch('lane_backend.shutil.which', return_value='codex.exe'), \
                 patch('lane_backend.codex_defaults', return_value={}), \
                 patch('lane_backend.subprocess.run', return_value=subprocess.CompletedProcess([],0,'Logged in using ChatGPT','')):
@@ -112,6 +121,10 @@ class Admission(unittest.TestCase):
         self.assertEqual(json.loads(values['mcp_servers.rea.enabled_tools']), list(rs.RESEARCH))
         self.assertEqual(values['mcp_servers.rea.required'], 'true')
         self.assertNotIn('open_binary', str(values))
+        attach = json.loads(values['mcp_servers.rea.args'])
+        self.assertEqual(attach[attach.index('--manifest')+1], m['guard_manifest'])
+        self.assertEqual(attach[attach.index('--admission-sha256')+1],
+                         lane_backend.lane_admission.pin(m['host_admission']))
         p = subprocess.Popen([json.loads(values['mcp_servers.rea.command']),
                               *json.loads(values['mcp_servers.rea.args'])],
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

@@ -162,9 +162,9 @@ def handle(data, manifest, admission_digest=None):
         return decision
 
 
-def record_result(m, result):
+def record_result(m, result, admission_digest=None):
     """Same rounds ledger as Claude; switching providers never removes parking evidence."""
-    validate_manifest(m)
+    validate_manifest(m, admission_digest)
     path = Path(guard.rounds_path(m['main'], m['lane']))
     with locked(path.with_suffix('.lock')):
         if any(r.get('agent_id') == m['guard_id'] for r in guard.read_rounds(m['main'], m['lane'])):

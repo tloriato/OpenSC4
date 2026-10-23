@@ -3,6 +3,7 @@ import copy
 import json
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -12,6 +13,8 @@ sys.path.insert(0, str(ROOT/'tools'))
 sys.path.insert(0, str(ROOT/'.claude/lane-bin'))
 import lane_admission as admission
 import codexguard
+import lane_backend
+import laneguard
 
 
 class HostAdmission(unittest.TestCase):
@@ -93,3 +96,43 @@ class HostAdmission(unittest.TestCase):
         self.assertEqual(decision[0], 'deny')
         decision = codexguard.handle(request | {'tool_use_id':'role', 'tool_name':'mcp__rea__open_binary'}, self.m, self.pin)
         self.assertEqual(decision[0], 'deny')
+
+    def test_actual_run_codex_records_using_launch_held_pin_and_refuses_mutated_recovery(self):
+        self.m['args']['name'] = self.m['lane']
+        self.m['host_admission'] = admission.issue(self.m, self.checks)
+        self.pin = admission.pin(self.m['host_admission'])
+        self.m['guard_manifest'] = str(admission.registration_path(self.m))
+        registration = Path(self.m['guard_manifest'])
+        registration.parent.mkdir(parents=True)
+        registration.write_text(json.dumps(self.m))
+        manifest = Path(self.m['manifest'])
+        manifest.write_text(json.dumps(self.m))
+        Path(self.m['status_path']).write_text(json.dumps({'session_id':'fixture-client','tool_calls':1}))
+        final = {'lane':self.m['lane'],'state':'wip','summary':'fixture provider result'}
+        manifest.with_suffix('.final.json').write_text(json.dumps(final))
+        class FixtureProcess:
+            returncode = 0
+            def __init__(self, *args, **kwargs):
+                pass
+            def poll(self):
+                return 0
+        actual_popen = subprocess.Popen
+        def provider_only(argv, *args, **kwargs):
+            return FixtureProcess() if argv == ['no-model-fixture'] else actual_popen(argv, *args, **kwargs)
+        # Only external model creation/command discovery is substituted. Real
+        # rendering, admission validation, result validation and ledger IO run.
+        with patch('lane_backend.codex_command', return_value=['no-model-fixture']), \
+                patch('lane_backend.subprocess.Popen', provider_only):
+            outcome = lane_backend.run_codex(self.m)
+        self.assertFalse(outcome['is_error'])
+        rows = laneguard.read_rounds(str(self.root), self.m['lane'])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['state'], 'wip')
+        recovery = copy.deepcopy(self.m)
+        recovery['budget'] = 10**9
+        manifest.write_text(json.dumps(recovery))
+        with self.assertRaisesRegex(ValueError, 'provenance'):
+            codexguard.record_result(recovery, final, self.pin)
+        # Altering only the recovery copy cannot replace canonical registration.
+        with self.assertRaisesRegex(ValueError, 'canonical registration'):
+            lane_backend.run_codex(recovery)

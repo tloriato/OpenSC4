@@ -739,6 +739,7 @@ def main():
     a = argparse.ArgumentParser(description=__doc__)
     a.add_argument('mode', choices=('serve', 'connect', 'inspect', 'smoke'))
     a.add_argument('--manifest')
+    a.add_argument('--admission-sha256')
     a.add_argument('--root', type=Path)
     a.add_argument('--lane', default='re-readiness-smoke')
     a.add_argument('--identity-tool', default='binary_session')
@@ -749,6 +750,9 @@ def main():
             serve(wire_read(sys.stdin.buffer))
         elif args.mode == 'connect':
             m = json.loads(Path(args.manifest).read_text(encoding='utf-8'))
+            if m.get('host_admission') is not None or args.admission_sha256 is not None:
+                import lane_admission
+                lane_admission.verify(m, args.admission_sha256)
             if m['kind'] != 're' or m['provider'] != 'codex':
                 raise ValueError('non-RE/unsupported provider transport denied')
             require_ready(m['rea_session'], m['lane'])

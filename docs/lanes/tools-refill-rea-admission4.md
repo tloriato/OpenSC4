@@ -14,6 +14,9 @@
 - Focused first run: 67 passed / 1 failed (new test missing fixture directory), then corrected admission tests 3 passed; updated REA tests 20 passed. All actual fixtures, no production/native opens.
 - CIM denied; original venv psutil missing preserved; root installed shared validation deps. Current scoped psutil precheck prints scoped_live_helpers [] before each subsequent run; prior exact PIDs absent and old root cleanup adjudicated.
 - Next: commit source and revised root review request, ONE full tools suite on clean stable source. Actual sandbox/CLI/live native proof pending, not supplied by unit fixtures.
+- Full suite on clean 7c411798: 204 passed / 1 skipped, exit 0, 66.18s, log SHA256 719090cb4d414a175e4dd49bb45ca2929a8b157e5c381c87f70bdd29334428a5.
+- Subsequent root review found missing trusted digest at record_result and mutable recovery used for MCP attachment; fixing both invalidates full qualification of final source. No second full run under one-run instruction.
+- Result recording now uses launch-held pin/canonical registration; MCP connect uses same protected registration and literal pin. New run_codex ledger regression substitutes only model process; canonical attachment fixtures deliberately corrupt writable recovery.
 - Live startup and CLI/query proof UNKNOWN until root-only evidence; no production calls by worker.
 - Prior round report retained below as historical evidence, to be replaced by final report at finish.
 

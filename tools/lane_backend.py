@@ -150,7 +150,8 @@ def codex_command(m, schema, final, env):
         # Attach to the admitted child, never start another target-less REA server.
         args += ['-c', 'mcp_servers.rea.command=' + json.dumps(sys.executable),
                  '-c', 'mcp_servers.rea.args=' + json.dumps([
-                     str(REPO/'tools/rea_session.py'), 'connect', '--manifest', m['manifest']]),
+                     str(REPO/'tools/rea_session.py'), 'connect', '--manifest', registration,
+                     '--admission-sha256', lane_admission.pin(m['host_admission'])]),
                  '-c', 'mcp_servers.rea.required=true',
                  '-c', 'mcp_servers.rea.startup_timeout_sec=130']
         args += ['-c', 'mcp_servers.rea.enabled_tools=["procedure_pseudo_code","batch_decompile"]']
@@ -183,6 +184,14 @@ def validate_result(result, m):
 
 
 def run_codex(m):
+    # Capture only from this supervisor's launch-held registration, before the
+    # worker runs. Never reload expected authority from its writable recovery copy.
+    admission_digest = lane_admission.pin(m['host_admission']) if m.get('host_admission') else None
+    if admission_digest is not None:
+        registered = laneguard.read_json(m['guard_manifest'], {})
+        if registered != m:
+            raise ValueError('Host canonical registration differs from supervisor launch')
+        codexguard.validate_manifest(registered, admission_digest)
     manifest = Path(m['manifest'])
     rendered = render(m['args'], 'codex', manifest)
     prompt, schema = manifest.with_suffix('.prompt.txt'), manifest.with_suffix('.schema.json')
@@ -195,7 +204,7 @@ def run_codex(m):
         proc = subprocess.Popen(command, cwd=m['worktree'], stdin=inp, stdout=out,
                                 env=env, creationflags=NOWIN)
         while proc.poll() is None:
-            if manifest.with_suffix('.fatal.json').exists():
+            if Path(m.get('guard_manifest', manifest)).with_suffix('.fatal.json').exists():
                 proc.terminate()
                 proc.wait(timeout=20)
                 raise RuntimeError('Codex hook failed; round stopped. See manifest fatal diagnostic.')
@@ -216,7 +225,7 @@ def run_codex(m):
     if proc.returncode or errors:
         raise RuntimeError('Codex round failed: ' + '; '.join(errors or [str(proc.returncode)]))
     result = validate_result(json.loads(final.read_text(encoding='utf-8')), m)
-    codexguard.record_result(m, result)
+    codexguard.record_result(m, result, admission_digest)
     return dict(type='result', subtype='success', provider='codex', model=status.get('model'),
                 is_error=False, result=json.dumps(result), structured_output=result,
                 session_id=status['session_id'], usage=usage)
