@@ -89,7 +89,7 @@ struct Fixture {
     bool safe[2]{};
     void* rust = nullptr;
     uint32_t assertions = 0, exact = 0, diff = 0, refusal = 0, positive = 0, negative = 0;
-    uint32_t methods = 0, acquired = 0, released = 0;
+    uint32_t methods = 0, created = 0, acquired = 0, released = 0, extraAdds = 0, extraReleases = 0;
     ~Fixture() {
         if (rust) fc4_kl_destroy(rust);
         for (unsigned i = 0; i < 2; ++i) {
@@ -98,8 +98,8 @@ struct Fixture {
                 ++released;
             }
         }
-        Log("keylist-verify: summary assertions=%u exact=%u diff=%u refusal=%u positive=%u negative=%u methods_mask=%02X created_acquired=%u released=%u natural=0 owner_attribution=22/1071 full_owner=UNVERIFIED",
-            assertions,exact,diff,refusal,positive,negative,methods,acquired,released);
+        Log("keylist-verify: summary assertions=%u exact=%u diff=%u refusal=%u positive=%u negative=%u methods_mask=%02X factory_owned=%u created_acquired=%u released=%u extra_adds=%u extra_releases=%u natural=0 owner_attribution=22/1071 full_owner=UNVERIFIED",
+            assertions,exact,diff,refusal,positive,negative,methods,created,acquired,released,extraAdds,extraReleases);
     }
     void Refuse(const char* reason) {
         ++refusal; Log("keylist-verify: REFUSAL reason=%s",reason);
@@ -190,6 +190,7 @@ void KeyListVerify() {
         Log("keylist-verify: factory list=%u clsid=656B8F2D iid=656B8F12 success=%u pointer=%p",i,ok,out);
         f.lists[i] = static_cast<cIGZPersistResourceKeyList*>(out);
         if (!out) { f.Refuse("factory-unavailable-or-null"); return; }
+        ++f.created;
         const bool original = Provenance(f.lists[i],i,f.safe[i]);
         if (f.safe[i]) { FC4_ACQUIRED(f.lists[i],"KeyList GetClassObject created"); ++f.acquired; }
         if (!ok || !original) { f.Refuse("factory-failure-or-wrong-shape-or-module"); return; }
@@ -225,7 +226,9 @@ void KeyListVerify() {
     // Observe balanced reference operations without assuming constructor count.
     for (auto* list : f.lists) {
         const uint32_t added = FC4_ADDREF(list);
+        ++f.extraAdds;
         const uint32_t remaining = FC4_RELEASE(list);
+        ++f.extraReleases;
         Log("keylist-verify: balanced-reference observation add=%u release=%u unscored-native-initial-count",added,remaining);
     }
     Log("keylist-verify: fixture complete; constructor/QI/overflow/reentrant/self-insert/invalid-index/unknown-aliases UNVERIFIED");

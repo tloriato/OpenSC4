@@ -10,6 +10,8 @@
 - Production milestone: insert_list, erase first, erase_all, is_present, valid get_key, enum_keys(copy) extend existing owner only. New private static-link transport retains two real production owners; config keylist_verify defaults off; pre-city synchronous fixture is wired.
 - Fixture: validates vtable and all 11 published interface method module owners on both created lists before scoring; compares literals, native and Rust; Insert(list) bool observed only; balanced AddRef/Release values unscored. No natural/full-owner promotion.
 - Baseline all session 37809 remains live after build completion; no CTest log/result yet, do not duplicate checker. Initial fmt invocation with relative paths failed; use absolute paths. New transport formatting corrections in progress.
+- Checker diagnosis: OS process command lines identified own qbuild PID 5912 -> fc4verify 2396 -> sccache stats-only child 34812 hung after build. Terminated only that stats child; CTest then started (PID 32232), presently progressing. No shared daemon/tool changes.
+- Scoped absolute-path fmt now passes (3 touched Rust files); engine source milestone eb96fcca; tests-first milestone 7f9459ed. Factory-owned/refaudit/extra-reference counters now separated for refusal accounting.
 - Next: scoped fmt and serial quick after baseline resolves, then commit frozen engine source before one final stable all; freeze DLL/PDB and run OFF first. No requests yet.
 - Constraints: no RE sources, no duplicated list algorithms, no public ABI table/version changes; original provenance required for both lists in both ON controls.
 - Native controls required in sequence: OFF through 2032 with save/shutdown, native ON, literal40 ON using one frozen DLL/PDB. No requests outstanding.
