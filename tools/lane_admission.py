@@ -1,14 +1,12 @@
-"""Host-issued admission provenance. Never reruns host discovery in a worker.
+"""Host-issued admission, pinned in the host-launched hook command.
 
-The registered host hook verifies the MAC using a host-only key; no key or
-authority is exported to the isolated worktree. Normal per-call guard remains
-mandatory. This assertion attests admission, not successful live research.
+No signing secret exists on disk or in worker metadata. The trust anchor is the
+expected SHA256 literal in the host's per-process CLI hook configuration, never
+a hash taken from the worker-readable manifest. Normal guard remains mandatory.
 """
 import hashlib
-import hmac
 import json
 from pathlib import Path
-import secrets
 import time
 
 
@@ -19,41 +17,38 @@ def canonical(value):
 def subject(m):
     ticket = m.get('rea_session')
     return dict(lane=m['lane'], round=m['round'], kind=m['kind'], provider=m['provider'],
+                main=str(Path(m['main']).resolve()),
                 worktree=str(Path(m['worktree']).resolve()), guard_id=m['guard_id'],
                 manifest=str(Path(m['manifest']).resolve()), source=m['source'],
+                runtime={k:m.get(k) for k in ('budget','max_calls','status_path','state','git_common',
+                                             'git_dir','git_base','git_ref','codex')},
                 args_sha256=hashlib.sha256(canonical(m['args'])).hexdigest(),
                 session_sha256=hashlib.sha256(canonical(ticket)).hexdigest())
 
 
-def key_path(m):
-    return Path(m['main'])/'build-runs/lane-guard/host-admission.key'
+def registration_path(m):
+    return Path(m['main'])/'.claude/lane-admissions'/(m['guard_id']+'.json')
+
+
+def pin(proof):
+    return hashlib.sha256(canonical(proof)).hexdigest()
 
 
 def issue(m, checks, now=None):
     """Host only, after full dispatch checks and before isolated execution."""
     if not checks or any(c.get('verdict') != 'GO' for c in checks):
         raise ValueError('Full host GO evidence required')
-    p = key_path(m)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    if not p.exists():
-        try:
-            with p.open('xb') as f:
-                f.write(secrets.token_bytes(32))
-        except FileExistsError:
-            pass
     at = time.time() if now is None else now
-    body = dict(version=1, subject=subject(m), checks=checks, issued=at, expires=at+24*3600)
-    return dict(body=body, mac=hmac.new(p.read_bytes(), canonical(body), hashlib.sha256).hexdigest())
+    return dict(version=2, subject=subject(m), checks=checks, issued=at, expires=at+24*3600)
 
 
-def verify(m, now=None):
+def verify(m, expected_digest=None, now=None):
     """Registered host guard only; no npm checks, Git refs or new preflight."""
     proof = m.get('host_admission', {})
     try:
-        body = proof['body']
-        expected = hmac.new(key_path(m).read_bytes(), canonical(body), hashlib.sha256).hexdigest()
+        body = proof
         at = time.time() if now is None else now
-        if not hmac.compare_digest(expected, proof['mac']) or body['version'] != 1 or \
+        if not isinstance(expected_digest, str) or pin(body) != expected_digest or body['version'] != 2 or \
                 body['subject'] != subject(m) or not body['issued'] <= at < body['expires'] or \
                 not 0 < body['expires']-body['issued'] <= 24*3600 or \
                 {c['name'] for c in body['checks']} != {'dispatcher', 'lanes.check', 'supervisor'} or \

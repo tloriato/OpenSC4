@@ -153,6 +153,24 @@ class Admission(unittest.TestCase):
             self.acquire(FAKE_REA_EXISTING=json.dumps(existing))
         self.assertEqual([a['name'] for a in self.calls()], ['binary_session'])
 
+    def test_target_digest_format_architecture_and_kind_are_exact(self):
+        for change in ({'sha256':'0'*64}, {'architecture':'x86_64'}, {'format':'elf'}, {'kind':'database'}):
+            before = len(self.calls())
+            with self.subTest(change=change), self.assertRaisesRegex(RuntimeError, 'wrong/preexisting'):
+                self.acquire(FAKE_REA_EXISTING=json.dumps(self.existing() | change))
+            self.assertEqual([a['name'] for a in self.calls()[before:]], ['binary_session'])
+
+    def test_provider_server_and_run_drift_fail_before_dispatch(self):
+        for kind in ('provider','server','run'):
+            marker = self.root/('drift-'+kind)
+            ticket = self.acquire(FAKE_REA_DRIFT_FILE=str(marker), FAKE_REA_DRIFT_KIND=kind)
+            p = self.bridge(ticket)
+            self.rpc(p, 'tools/list')
+            marker.write_text('fixture drift')
+            reply = self.rpc(p, 'tools/call', dict(name='procedure_pseudo_code', arguments={'procedure':'fixture'}))
+            self.assertIn('identity drift', reply['error']['message'])
+        self.assertFalse(any(a['name'] in rs.RESEARCH for a in self.calls()))
+
     def existing(self):
         return dict(open=True, path=str(self.binary), sha256=self.c['binary_sha256'],
                     architecture='x86', format='pe', kind='executable')
@@ -301,6 +319,28 @@ class Admission(unittest.TestCase):
                 p.stdin.close()
             self.owned[-1][1].wait(timeout=8)
             p.wait(timeout=8)
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows suspended-child ownership')
+    def test_failed_start_cleans_suspended_owned_descendant(self):
+        import ctypes
+        from ctypes import wintypes as w
+        other = self.acquire()
+        with self.assertRaisesRegex(RuntimeError, 'schema'):
+            self.acquire('unsupported', FAKE_REA_SPAWN_CHILD='1', FAKE_REA_SUSPENDED_CHILD='1')
+        pid = next(a['grandchild_pid'] for a in self.calls() if a['name'] == 'spawn_child')
+        k = ctypes.WinDLL('kernel32', use_last_error=True)
+        k.OpenProcess.argtypes, k.OpenProcess.restype = [w.DWORD,w.BOOL,w.DWORD], w.HANDLE
+        k.WaitForSingleObject.argtypes = [w.HANDLE,w.DWORD]
+        k.CloseHandle.argtypes = [w.HANDLE]
+        handle = k.OpenProcess(0x100000, False, pid)
+        if handle:
+            try:
+                self.assertEqual(k.WaitForSingleObject(handle, 5000), 0)
+            finally:
+                k.CloseHandle(handle)
+        else:
+            self.assertEqual(ctypes.get_last_error(), 87)  # absent, not access denied
+        self.assertTrue(rs.require_ready(other)['ready'])
 
     def test_supervisor_lifetime_loss_closes_attached_server_without_affecting_another(self):
         ticket = self.acquire()

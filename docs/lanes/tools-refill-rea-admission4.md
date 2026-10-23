@@ -8,8 +8,12 @@
 - Read both copied installed schema reviews and exact binary attestation (path-only open, PE/x86 SHA pinned).
 - Root coordinator-rea-old-fixture-cleanup.json reports exact old processes absent after adjudication; no worker cleanup.
 - Implemented v2 path-only contract, typed binary_session identity/provider/server binding, input/output pins and argument validation; captured installed schemas are metadata-only test fixture.
-- Implemented host MAC admission assertion and worker prompt distinction; tests not run yet, source qualification pending.
-- Next: isolated host assertion tests and focused relevant suite; exact old PIDs absent by Get-Process; CIM enumeration denied, preserve limitation and use scoped psutil check if available.
+- b181451d implements actual API and first host assertion; root SOURCE_REVIEW_REFUSED correctly rejected worker-accessible MAC authority. No key exploit/native action executed. Retain critical review and response.
+- Replaced persisted signing secret entirely: host CLI hook pins assertion SHA256 literal; public manifest cannot supply authority. Registration outside writable roots; actual sandbox boundary/root review remains UNKNOWN.
+- Added suspended-from-birth child ownership job and failed-start suspended-grandchild regression; no inference about cause of original orphan.
+- Focused first run: 67 passed / 1 failed (new test missing fixture directory), then corrected admission tests 3 passed; updated REA tests 20 passed. All actual fixtures, no production/native opens.
+- CIM denied; original venv psutil missing preserved; root installed shared validation deps. Current scoped psutil precheck prints scoped_live_helpers [] before each subsequent run; prior exact PIDs absent and old root cleanup adjudicated.
+- Next: commit source and revised root review request, ONE full tools suite on clean stable source. Actual sandbox/CLI/live native proof pending, not supplied by unit fixtures.
 - Live startup and CLI/query proof UNKNOWN until root-only evidence; no production calls by worker.
 - Prior round report retained below as historical evidence, to be replaced by final report at finish.
 

@@ -27,6 +27,10 @@ def sample(s, root=None):
     if kind == 'array':
         return []
     if kind == 'string':
+        if s.get('format') == 'uuid':
+            return '00000000-0000-0000-0000-000000000000'
+        if s.get('format') == 'date-time':
+            return '2026-10-23T00:00:00Z'
         return '0'*64 if '64' in s.get('pattern', '') else 'fixture'
     return {'boolean': False, 'integer': 1, 'number': 1, 'null': None}.get(kind)
 
@@ -50,7 +54,8 @@ def main():
     mode = os.environ.get('FAKE_REA_MODE', '')
     target = json.loads(os.environ.get('FAKE_REA_EXISTING', 'null'))
     if os.environ.get('FAKE_REA_SPAWN_CHILD'):
-        child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'])
+        child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'],
+                                 creationflags=4 if os.environ.get('FAKE_REA_SUSPENDED_CHILD') and os.name == 'nt' else 0)
         with open(os.environ['FAKE_REA_AUDIT'], 'a', encoding='utf-8') as f:
             f.write(json.dumps(dict(name='spawn_child', pid=os.getpid(), arguments={}, grandchild_pid=child.pid))+'\n')
     for line in sys.stdin:
@@ -94,7 +99,15 @@ def main():
                     value['analysis_provider_binding'] = None
                 drift = os.environ.get('FAKE_REA_DRIFT_FILE')
                 if drift and os.path.exists(drift) and target:
-                    value = value | {'path': target['path']+'-wrong'}
+                    kind = os.environ.get('FAKE_REA_DRIFT_KIND', 'path')
+                    if kind == 'provider':
+                        value['analysis_provider_binding']['analysis_profile']['digest'] = 'f'*64
+                    elif kind == 'server':
+                        value['server_identity']['server']['started_at'] += '-changed'
+                    elif kind == 'run':
+                        value['analysis_run']['run_id'] = '11111111-1111-4111-8111-111111111111'
+                    else:
+                        value = value | {'path': target['path']+'-wrong'}
             elif name == 'open_binary':
                 value = dict(path=args['path'], format='pe', kind='executable', architecture='x86',
                              sha256=hashlib.sha256(Path(args['path']).read_bytes()).hexdigest())

@@ -82,9 +82,9 @@ def handoff_allowed(tool, tin, wt, lane):
     return guard.call_allowed_when_tripped(tool, tin, wt, lane)
 
 
-def validate_manifest(m):
+def validate_manifest(m, admission_digest=None):
     if m.get('host_admission') is not None or m.get('kind') == 're':
-        lane_admission.verify(m)
+        lane_admission.verify(m, admission_digest)
     if m.get('provider') != 'codex' or not re.fullmatch(r'[a-z0-9][a-z0-9_-]*', m.get('lane', '')):
         raise ValueError('Invalid Codex lane registration')
     if Path(m['worktree']).resolve() != Path(guard.worktree(m['main'], m['lane'])).resolve():
@@ -101,8 +101,8 @@ def bootstrap_command(m):
     return f'git -C "{Path(m["worktree"]).as_posix()}" rev-parse --show-toplevel'
 
 
-def handle(data, manifest):
-    validate_manifest(manifest)
+def handle(data, manifest, admission_digest=None):
+    validate_manifest(manifest, admission_digest)
     m = manifest
     status_path = Path(m['status_path'])
     with locked(status_path.with_suffix('.lock')):
@@ -184,6 +184,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('command', choices=('hook', 'status'))
     ap.add_argument('--manifest', required=True)
+    ap.add_argument('--admission-sha256')
     a = ap.parse_args()
     try:
         m = json.loads(Path(a.manifest).read_text(encoding='utf-8'))
@@ -193,7 +194,7 @@ def main():
             print(f"context {value if value is not None else 'unavailable'} / {m['budget']}; "
                   f"{'OVER' if value and value > m['budget'] else 'within budget'}")
             return 0
-        decision, message = handle(json.load(sys.stdin), m)
+        decision, message = handle(json.load(sys.stdin), m, a.admission_sha256)
         if decision == 'deny':
             guard.emit_deny(message)
     except Exception as e:

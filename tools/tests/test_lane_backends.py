@@ -133,8 +133,10 @@ class CodexGuard(unittest.TestCase):
         self.m['kind'] = 'engine'
         self.assertEqual(self.call('mcp__rea__procedure_pseudo_code')[0], 'deny')
         self.m['kind'] = 're'
-        self.assertEqual(self.call('mcp__rea__open_binary')[0], 'deny')
-        self.assertEqual(self.call('mcp__rea__procedure_pseudo_code')[0], 'deny')
+        with self.assertRaisesRegex(ValueError, 'provenance'):
+            self.call('mcp__rea__open_binary')
+        with self.assertRaisesRegex(ValueError, 'provenance'):
+            self.call('mcp__rea__procedure_pseudo_code')
 
 
 class Launcher(unittest.TestCase):

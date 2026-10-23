@@ -148,10 +148,28 @@ class Client:
     """One owned actual procedure-capable child; strict newline JSON-RPC."""
     def __init__(self, cfg, diagnostics=False):
         self.diagnostics = diagnostics
+        self.job = None
         self.p = subprocess.Popen([cfg['command'], *cfg.get('args', [])], stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=dict(os.environ, **cfg.get('env', {})),
-            creationflags=NOWIN)
-        self.q, self.errors, self.seq = queue.Queue(), bytearray(), 0
+            creationflags=NOWIN | (0x4 if os.name == 'nt' else 0))  # CREATE_SUSPENDED
+        if os.name == 'nt':
+            try:
+                # Own the launcher BEFORE it can create a redirector/server child.
+                self.job = owned_windows_job(self.p._handle)
+                import ctypes
+                resume = ctypes.WinDLL('ntdll').NtResumeProcess
+                resume.argtypes = [ctypes.c_void_p]
+                if resume(int(self.p._handle)) != 0:
+                    raise RuntimeError('REA cannot resume owned transport child')
+            except BaseException:
+                if self.job:
+                    close_windows_job(self.job)
+                self.p.kill()
+                self.p.wait(timeout=3)
+                for stream in (self.p.stdin, self.p.stdout, self.p.stderr):
+                    stream.close()
+                raise
+        self.q, self.errors, self.seq = queue.Queue(maxsize=64), bytearray(), 0
         self.lock = threading.RLock()
         self.threads = [threading.Thread(target=self._read, daemon=True),
                         threading.Thread(target=self._stderr, daemon=True)]
@@ -183,7 +201,8 @@ class Client:
                     raise RuntimeError('REA malformed JSON-RPC')
                 if 'id' in r and ('result' in r) == ('error' in r):
                     raise RuntimeError('REA malformed response envelope')
-                self.q.put(r)
+                if 'id' in r:
+                    self.q.put_nowait(r)
         except Exception as e:
             self.q.put(e)
 
@@ -214,6 +233,12 @@ class Client:
         return payload(self.rpc('tools/call', dict(name=name, arguments=args), deadline))
 
     def close(self):
+        # EOF first; then close only this child's job. Closing before reader
+        # joins also handles launcher exit with a pipe held by its descendant.
+        self.p.stdin.close()
+        if self.job:
+            close_windows_job(self.job)
+            self.job = None
         if self.p.poll() is None:
             self.p.terminate()
         try:
@@ -294,7 +319,9 @@ class Session:
             raise RuntimeError('REA provider selection differs from reviewed deterministic auto policy')
         if server['negotiated_protocol_version'] != '2025-06-18':
             raise RuntimeError('REA server protocol identity mismatch')
-        binding = dict(provider=provider, server=server)
+        run = r.get('analysis_run')
+        binding = dict(provider=provider, server=server,
+                       analysis_run_id=run['run_id'] if run is not None else None)
         if self.binding is not None and self.binding != binding:
             raise RuntimeError('REA provider/server identity drift')
         self.binding = binding
@@ -352,6 +379,7 @@ class Session:
                     raise RuntimeError('REA live schema drift')
                 self.identity(time.monotonic()+self.contract.get('startup_timeout', 45))
                 reply = self.client.rpc('tools/call', params, time.monotonic()+600)
+                self.identity(time.monotonic()+self.contract.get('startup_timeout', 45))
             return reply | {'id': r['id']}
         else:
             raise ValueError('REA capability denied: ' + str(method))
@@ -416,7 +444,15 @@ def lease(ticket):
         raise
 
 
-def owned_windows_job():
+def close_windows_job(job):
+    import ctypes
+    close = ctypes.WinDLL('kernel32', use_last_error=True).CloseHandle
+    close.argtypes = [ctypes.c_void_p]
+    if not close(job):
+        raise RuntimeError('REA cannot close owned process job')
+
+
+def owned_windows_job(process=None):
     """Put this broker and future descendants in a kill-on-close job.
 
     Must run BEFORE launching REA. Closing/killing the broker then cannot leave
@@ -446,7 +482,7 @@ def owned_windows_job():
     limits = Limits()
     limits.basic.flags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE; no breakaway
     if not job or not k.SetInformationJobObject(job, 9, ctypes.byref(limits), ctypes.sizeof(limits)) \
-            or not k.AssignProcessToJobObject(job, k.GetCurrentProcess()):
+            or not k.AssignProcessToJobObject(job, process if process is not None else k.GetCurrentProcess()):
         error = ctypes.get_last_error()
         if job:
             k.CloseHandle(job)
@@ -563,10 +599,10 @@ def serve(start):
         session.client.close()
 
 
-def acquire(root, lane, provider, kind, cfg):
+def acquire(root, lane, provider, kind, cfg, contract_path=None):
     if kind != 're' or provider != 'codex':
         raise ValueError('REA bootstrap supports only Codex RE; Claude RE unsupported')
-    path = Path(root)/'build-runs/rea-target.json'
+    path = Path(contract_path) if contract_path else Path(root)/'build-runs/rea-target.json'
     if not path.is_file():
         raise ValueError('REA reviewed exact-target contract missing: ' + str(path))
     contract = validate_contract(json.loads(path.read_text(encoding='utf-8')))
@@ -644,7 +680,7 @@ def configured_server():
     return cfg
 
 
-def inspect_metadata(identity_tool):
+def inspect_metadata(identity_tool='binary_session'):
     """No target open and no procedure calls. Prints only protocol/schema metadata."""
     child = Client(configured_server())
     try:
@@ -659,18 +695,19 @@ def inspect_metadata(identity_tool):
             raise RuntimeError('REA tools/list error: ' + str(listing['error']))
         for t in listing['result']['tools']:
             if t['name'] in (*RESEARCH, 'open_binary', identity_tool):
-                print(json.dumps(dict(name=t['name'], schema=t['inputSchema'], sha256=digest(t['inputSchema']))))
+                print(json.dumps(dict(name=t['name'], input_schema_sha256=digest(t['inputSchema']),
+                                      output_schema_sha256=digest(t.get('outputSchema')))))
         print(json.dumps(dict(tool_names=[t['name'] for t in listing['result']['tools']], target_readiness='UNKNOWN')))
     finally:
         child.close()
 
 
-def smoke(root, lane):
+def smoke(root, lane, contract_path=None):
     """Two independent owned clients; metadata/typed identity only, zero research."""
     sessions = []
     try:
         for number in range(2):
-            ticket, p = acquire(root, lane+'-'+str(number+1), 'codex', 're', configured_server())
+            ticket, p = acquire(root, lane+'-'+str(number+1), 'codex', 're', configured_server(), contract_path)
             sessions.append((ticket, p))
         if len({t['identity']['transport_pid'] for t, _ in sessions}) != 2:
             raise RuntimeError('REA smoke clients are not independent')
@@ -704,7 +741,8 @@ def main():
     a.add_argument('--manifest')
     a.add_argument('--root', type=Path)
     a.add_argument('--lane', default='re-readiness-smoke')
-    a.add_argument('--identity-tool', default='')
+    a.add_argument('--identity-tool', default='binary_session')
+    a.add_argument('--contract', type=Path)
     args = a.parse_args()
     try:
         if args.mode == 'serve':
@@ -721,7 +759,7 @@ def main():
         else:
             if not args.root:
                 raise ValueError('smoke requires explicit --root')
-            smoke(args.root, args.lane)
+            smoke(args.root, args.lane, args.contract)
     except Exception as e:
         if args.mode == 'serve':
             wire_send(sys.stdout.buffer, {'error': str(e)[:2000]})

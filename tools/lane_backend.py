@@ -124,7 +124,12 @@ def codex_command(m, schema, final, env):
         raise RuntimeError('Codex requires ChatGPT subscription login; run codex login. API fallback is disabled.')
     guard_script = (REPO/'.claude/lane-bin/codexguard.py').as_posix()
     # Forward slashes are required here: Windows hook commands are interpreted by a shell.
-    command = f'python "{guard_script}" hook --manifest "{Path(m["manifest"]).as_posix()}"'
+    # The recovery manifest lives under writable build-runs. Hook authority
+    # instead comes from the host-only registration outside that permission root.
+    registration = m.get('guard_manifest', m['manifest'])
+    command = f'python "{guard_script}" hook --manifest "{Path(registration).as_posix()}"'
+    if m.get('host_admission'):
+        command += ' --admission-sha256 ' + lane_admission.pin(m['host_admission'])
     hook = '[{hooks=[{type="command",command=' + json.dumps(command) + ',timeout=15}]}]'
     args = [cli, '--no-daemon', '--dangerously-bypass-hook-trust', '--enable', 'hooks',
             '-c', 'hooks.PreToolUse=' + hook, '-c', 'hooks.SessionStart=' + hook,
@@ -268,6 +273,8 @@ def main():
         if m['provider'] == 'codex':
             prepare_codex_git(m)
         m['host_admission'] = lane_admission.issue(m, m['host_checks'] + [dict(name='supervisor', verdict='GO')])
+        m['guard_manifest'] = str(lane_admission.registration_path(m))
+        write_json(m['guard_manifest'], m)
         write_json(m['manifest'], m)
         result = run_codex(m) if m['provider'] == 'codex' else run_claude(m)
     except Exception as e:

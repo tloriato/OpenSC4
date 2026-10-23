@@ -101,6 +101,11 @@ only the two research tools. Claude RE workflow attachment is currently unsuppor
 No lane may open a different target, close/reset another session, or retry a round
 to hide a startup failure. Failed startup preserves its cause and cleans only
 owned processes; a tool list or server count must never produce target-ready GO.
+Host admission is inherited from the registered manifest and pinned host hook;
+isolated workers must not repeat coordinator installation/dependency checks from
+detached scoped refs. Normal per-call guards remain mandatory. Static export and
+instruction research do not require successful live pseudocode. Actual CLI/live
+support requires independent host evidence; binary metadata alone is insufficient.
 
 ## Rebuilding locally
 
