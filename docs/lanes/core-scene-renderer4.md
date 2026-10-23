@@ -1,8 +1,21 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| core-scene-renderer4 (first portable cSC43DRender owner) | Codex / `core-scene-renderer4` (engine lane, detached HEAD) | wip: current wrapper waits on readonly cache query; core3113/0/0 incl13/13 owner tests and native4/4 verified; final all/clippy/CTest pending; fmt8 fails; denominator130, bytes UNKNOWN; ABI unchanged | Collect qbuild38324 -> fc4verify9384 -> stats36584 (created01:12:10 BST); preserve terminal evidence before any check/source edit; then scoped formatting, committed stable source and final all. |
+| core-scene-renderer4 (first portable cSC43DRender owner) | Codex / `core-scene-renderer4` (engine lane, detached HEAD) | in progress: R3 reconciled old operation; terminal/cache UNKNOWN; reused core3113/0/0 incl13 owner tests and native4/4; formatting and final all pending; denominator130, bytes UNKNOWN; ABI unchanged | Apply scoped formatting to six owner files, validate seven absolute owner paths, commit stable engine source, then one captured final qbuild all. |
 
-## Report: round 2 verification, WIP
+## Handoff
+
+- Goal: original same-name final round3/3; finish bounded renderer validation without scope expansion.
+- Done: start651a2297/engine b1124501f2deef4b5315970a855e970d4f74aec7; R2 actual quick evidence retained, not repeated.
+- At01:27:46/01:28:10 BST, Toolhelp/NT process inspection found old38324/9384/36584/23512 absent; no same-WT output writer/checker.
+- Full cwd/argv/creation/parent and output-path evidence: build-runs/final-r3/process-details{,-followup}.json. No candidate command inspection unknowns.
+- Cache server35784 has only conhost25092 as child; both service cwd reads denied5, commands/images inspected. Other output paths belong to train-integration/core-legacy-control4. No process/cache action taken. Netstat found no4584 row.
+- No genuine old terminal completion recovered from local artifacts/copied coordinator evidence; terminal/cache outcome remains UNKNOWN. Dated absence does not explain disappearance.
+- Raw R2 logs archived byte-for-byte as base64 in build-runs/final-r3/archived-r2-*.b64; four hashes match the historical report below. Earlier baseline remains distinct.
+- Raw transport stderr: `2026-10-23T00:21:20.005747Z ERROR codex_core::session: failed to record rollout items: thread 01a165fd-6a9c-72d0-b2cc-88de0ce8717d not found`. This is not a compiler/native diagnostic or proof of fatal execution/cause; structured result/report/queue exist. No root cause/fix claimed.
+- Next: run existing format-scene-renderer4.py with explicit engine config; apply generated patch, validate seven absolute owner paths; leave lib.rs ordering alone. Commit before ONE captured final all.
+- No game requests, native-owner/default/whole-owner credit, ABI or fixture expectation changes; RND1/RND2/RND4/RND5-7 and all residuals retained.
+
+## Historical report: round 2 verification, WIP
 
 The previously committed bounded renderer now has meaningful source-corresponding test evidence: all **13 owner tests passed**, within **3113 passed / 0 failed / 0 ignored** core tests. This round changed the support inventory and preserved evidence; it did not expand production algorithms, alter fixtures or add tests. Production source remains 93a6fc20, engine tree `b1124501f2deef4b5315970a855e970d4f74aec7`. The full final gate is incomplete because the authorized focused wrapper is waiting on an ancillary read-only cache query.
 
