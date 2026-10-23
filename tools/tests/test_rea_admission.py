@@ -155,6 +155,7 @@ class Admission(unittest.TestCase):
                             ('untyped_ready','not typed ready'),
                             ('string_success','untyped'), ('unsupported','schema'), ('identity_error','identity unavailable'),
                             ('wrong_after_open','wrong/preexisting'), ('malformed','Expecting value'),
+                            ('stderr_eof','fixture server startup diagnostic'),
                             ('timeout','timeout'), ('eof','EOF')]:
             with self.subTest(mode=mode), self.assertRaisesRegex(RuntimeError, cause):
                 self.acquire(mode)
@@ -243,8 +244,33 @@ class Admission(unittest.TestCase):
                 patch('lane_launch.shutil.disk_usage', return_value=__import__('collections').namedtuple('Disk','total used free')(100,50,50)):
             with self.assertRaisesRegex(RuntimeError, 'deliberate open failure'):
                 lane_launch.launch(self.root, state_path, spec_path, 'codex')
-        after = {p.relative_to(self.root):p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
+        # Private diagnostic logs are the only admitted failure artifact, never a
+        # ledger, queue, result/manifest, round or worktree mutation.
+        after = {p.relative_to(self.root):p.read_bytes() for p in self.root.rglob('*') if p.is_file()
+                 and not (p.name.startswith('rea-session-') and p.name.endswith('-stderr.log'))}
         self.assertEqual(before, after)
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows live target ownership uses nested job objects')
+    def test_broker_exit_cleans_owned_descendant_without_killing_other_sessions(self):
+        import ctypes
+        from ctypes import wintypes as w
+        first = self.acquire(FAKE_REA_SPAWN_CHILD='1')
+        grandchild = next(a['grandchild_pid'] for a in self.calls() if a['name'] == 'spawn_child')
+        second = self.acquire()
+        k = ctypes.WinDLL('kernel32', use_last_error=True)
+        k.OpenProcess.argtypes, k.OpenProcess.restype = [w.DWORD, w.BOOL, w.DWORD], w.HANDLE
+        k.WaitForSingleObject.argtypes = [w.HANDLE, w.DWORD]
+        k.CloseHandle.argtypes = [w.HANDLE]
+        handle = k.OpenProcess(0x100000, False, grandchild)  # SYNCHRONIZE only
+        self.assertTrue(handle)
+        try:
+            broker = self.owned[0][1]
+            broker.terminate()  # this test's own broker: exercises job-on-crash cleanup
+            broker.wait(timeout=8)
+            self.assertEqual(k.WaitForSingleObject(handle, 5000), 0)
+            self.assertTrue(rs.require_ready(second)['ready'])
+        finally:
+            k.CloseHandle(handle)
 
     def test_disconnect_cancellation_and_single_attachment_cleanup(self):
         for cancellation in (False, True):

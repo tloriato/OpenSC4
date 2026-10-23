@@ -1,6 +1,7 @@
 """Harmless process-local MCP fixture. No original binary/code is read."""
 import json
 import os
+import subprocess
 import sys
 import time
 
@@ -19,6 +20,10 @@ TOOLS = [dict(name='open_binary', inputSchema=OPEN_SCHEMA),
 def main():
     mode = os.environ.get('FAKE_REA_MODE', '')
     target = json.loads(os.environ.get('FAKE_REA_EXISTING', 'null'))
+    if os.environ.get('FAKE_REA_SPAWN_CHILD'):
+        child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'])
+        with open(os.environ['FAKE_REA_AUDIT'], 'a', encoding='utf-8') as f:
+            f.write(json.dumps(dict(name='spawn_child', pid=os.getpid(), arguments={}, grandchild_pid=child.pid))+'\n')
     for line in sys.stdin:
         r = json.loads(line)
         if 'id' not in r:
@@ -26,6 +31,9 @@ def main():
         if mode == 'timeout':
             time.sleep(10)
         if mode == 'eof':
+            return
+        if mode == 'stderr_eof':
+            print('fixture server startup diagnostic', file=sys.stderr, flush=True)
             return
         if mode == 'malformed':
             print('not JSON', flush=True)

@@ -89,7 +89,8 @@ def payload(reply):
 
 class Client:
     """One owned actual procedure-capable child; strict newline JSON-RPC."""
-    def __init__(self, cfg):
+    def __init__(self, cfg, diagnostics=False):
+        self.diagnostics = diagnostics
         self.p = subprocess.Popen([cfg['command'], *cfg.get('args', [])], stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=dict(os.environ, **cfg.get('env', {})),
             creationflags=NOWIN)
@@ -102,12 +103,15 @@ class Client:
 
     def _stderr(self):
         while True:
-            data = self.p.stderr.read(1)
+            data = os.read(self.p.stderr.fileno(), 4096)
             if not data:
                 return
             self.errors.extend(data)
             if len(self.errors) > 4096:
                 del self.errors[:-4096]
+            if self.diagnostics:
+                sys.stderr.buffer.write(data)
+                sys.stderr.buffer.flush()
 
     def _read(self):
         try:
@@ -142,6 +146,7 @@ class Client:
                 except queue.Empty as e:
                     raise RuntimeError('REA timeout waiting for ' + method) from e
                 if isinstance(r, Exception):
+                    self.threads[1].join(timeout=.1)
                     raise RuntimeError(str(r) + '; stderr: ' + self.errors.decode(errors='replace')[-1000:]) from r
                 if r.get('id') == self.seq:
                     return r
@@ -168,7 +173,7 @@ class Client:
 class Session:
     def __init__(self, cfg, contract):
         self.contract = validate_contract(contract)
-        self.client = Client(cfg)
+        self.client = Client(cfg, diagnostics=True)
         try:
             deadline = time.monotonic() + contract.get('startup_timeout', 45)
             self.initial = self.client.rpc('initialize', dict(protocolVersion='2025-06-18', capabilities={},
@@ -188,6 +193,17 @@ class Session:
             for name, pin in contract['schemas'].items():
                 if name not in self.tools or digest(self.tools[name]['inputSchema']) != pin:
                     raise RuntimeError('REA missing/unsupported reviewed schema: ' + name)
+            op = contract['open']
+            schema = self.tools[op['name']]['inputSchema']
+            properties = schema.get('properties', {})
+            for key, kind in [(op['binary_argument'], 'string'), (op['project_argument'], 'string'),
+                              (op['read_only_argument'], 'boolean')]:
+                if properties.get(key, {}).get('type') != kind:
+                    raise RuntimeError('REA open schema lacks explicit reviewed path/read-only option: ' + key)
+            if set(op['arguments']) - set(properties) or set(schema.get('required', [])) - set(op['arguments']):
+                raise RuntimeError('REA open arguments do not match reviewed schema')
+            if self.tools[contract['identity']['name']]['inputSchema'].get('required'):
+                raise RuntimeError('REA identity schema requires unsupported arguments')
             identity = self.identity(deadline, allow_empty=True)
             if identity is None:
                 opened = self.client.call(contract['open']['name'], contract['open']['arguments'], deadline)
@@ -442,8 +458,12 @@ def acquire(root, lane, provider, kind, cfg):
     if not path.is_file():
         raise ValueError('REA reviewed exact-target contract missing: ' + str(path))
     contract = validate_contract(json.loads(path.read_text(encoding='utf-8')))
-    p = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), 'serve'], stdin=subprocess.PIPE,
-                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=NOWIN)
+    # Keep full server stderr privately, including startup failures. Never mix it
+    # with MCP stdout or discard it when the launcher transfers ownership.
+    diagnostic_path = Path(root)/'build-runs'/('rea-session-'+secrets.token_hex(12)+'-stderr.log')
+    with diagnostic_path.open('wb') as diagnostics:
+        p = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), 'serve'], stdin=subprocess.PIPE,
+                             stdout=subprocess.PIPE, stderr=diagnostics, creationflags=NOWIN)
     q = queue.Queue()
     def receive():
         try:
@@ -461,6 +481,7 @@ def acquire(root, lane, provider, kind, cfg):
         if isinstance(ticket, Exception) or 'error' in ticket:
             raise RuntimeError('REA admission failed: ' + str(ticket))
         require_ready(ticket, lane)
+        ticket['diagnostics_path'] = str(diagnostic_path)
         return ticket, p
     except BaseException:
         if p.poll() is None:
@@ -469,7 +490,6 @@ def acquire(root, lane, provider, kind, cfg):
         raise
     finally:
         p.stdout.close()
-        p.stderr.close()
 
 
 def connect(ticket):
@@ -540,6 +560,9 @@ def smoke(root, lane):
         for number in range(2):
             ticket, p = acquire(root, lane+'-'+str(number+1), 'codex', 're', configured_server())
             sessions.append((ticket, p))
+        if len({t['identity']['child_pid'] for t, _ in sessions}) != 2:
+            raise RuntimeError('REA smoke clients are not independent')
+        for ticket, p in sessions:
             with socket.create_connection(('127.0.0.1', ticket['port']), timeout=125) as sock, sock.makefile('rwb') as f:
                 wire_send(f, dict(token=ticket['token'], op='attach', session_id=ticket['session_id']))
                 ack = wire_read(f)

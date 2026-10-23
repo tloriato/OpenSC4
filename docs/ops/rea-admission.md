@@ -113,3 +113,5 @@ reset occur. An unclaimed session expires after 120 seconds. Research calls have
 a 600-second transport deadline; the reviewed startup timeout is at most 120.
 Stdout stays newline JSON-RPC; diagnostics go to stderr. No pseudocode is logged
 by admission, inspection, smoke or the transport.
+Full child stderr is retained privately in `build-runs/rea-session-*-stderr.log`;
+the ticket records its path. Do not publish these private diagnostics as RE output.
