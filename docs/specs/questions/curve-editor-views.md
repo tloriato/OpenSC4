@@ -4,10 +4,10 @@ These are remaining portions of the initial research questions, not reopened
 prior-owner questions. Proven subsets now live in the named spec sections;
 none of the original broad questions is claimed completely answered.
 
-## Remaining work package 1 — Init UI and observable prefixes
+## Remaining Init exceptional boundaries (ordinary contracts proved)
 
 - **CEV-1 — Happiness Init exceptional/reentrant boundary.** §12 now proves the entire ordinary Init path through 0x0066CDA3: raw creation IDs, geometry, acquire/attach/release, graph configuration, refresh then base Init, final AL and ordinary returned-failure prefixes. There is no endpoint enforcement before first refresh; empty live-map refresh remains unsupported. Still open: invalidating/reentrant primitive callbacks and nonreturn/exception prefixes beyond this normal-domain contract; no rollback or safe null recovery is implied. Packed import/readback and interpolation remain §4.1/§6.
-- **CEV-2 — GeneralResponse Init suffix, 0x0066D395–0x0066DCDA.** Complete control creation IDs/geometry, graph type/interfaces, initial SetCurrentPoint and refresh ordering, local bounds setup and final Init result channel. §4.2/§5.2/§7 now prove import/readback, point controller/events and display, but not this creation suffix. Distinguish an early base-Init success flag from subsequent creation/query failure prefixes; no rollback is established.
+- **CEV-2 — GeneralResponse Init exceptional/reentrant boundary.** §13 now proves the entire ordinary Init through 0x0066DCDA: raw control creation/geometry, direct graph interfaces, local extrema overwritten before graph use, early base-Init AL ignored, no owner SetCurrentPoint during Init, final refresh then unconditional AL=1. Ordinary failed-creation/query prefixes are specified without rollback. Still open: invalidating/reentrant callbacks during creation/configuration/refresh and nonreturn/exception prefixes; early base effects can survive such prefixes, and repeated entry follows the observed flag rather than an assumed successful first completion. Import/readback, point controller and display remain §4.2/§5.2/§7.
 
 ## Remaining work package 2 — primitive aliasing, reentry and numeric environment
 
