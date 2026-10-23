@@ -2,13 +2,20 @@
 use super::*;
 use std::sync::{Arc, Mutex};
 
-mod contracts { include!("contracts.rs"); }
+mod contracts {
+    include!("contracts.rs");
+}
 
 const RED: Colour = Colour([211, 19, 73, 129]);
 const OUTLINE: Colour = Colour([7, 59, 101, 233]);
 // Historical 27 tests retained. Changed expectations below follow the published
 // DIFFERS answers OVV2/3/5/7, not observed portable output.
-fn no_texture() -> Factory { Factory { binding: Arc::new(Binding), fail: true } }
+fn no_texture() -> Factory {
+    Factory {
+        binding: Arc::new(Binding),
+        fail: true,
+    }
+}
 fn p(x: f32, y: f32, z: f32) -> Point {
     Point::new(x, y, z)
 }
@@ -454,7 +461,11 @@ impl VertexBuffer for Buffer {
         self.log.lock().unwrap().unlocks += 1;
     }
     fn draw_triangles(&mut self, indices: &[u16]) -> bool {
-        self.log.lock().unwrap().draws.push(indices.iter().map(|&v| u32::from(v)).collect());
+        self.log
+            .lock()
+            .unwrap()
+            .draws
+            .push(indices.iter().map(|&v| u32::from(v)).collect());
         self.draw_ok
     }
 }
@@ -589,10 +600,7 @@ fn vertex_flush_relock_exact_fit_lock_failure_and_no_implicit_draw_on_release() 
         .unwrap();
     let source = indices(3, 2);
     b.set_index_buffer(&source, 1);
-    assert_eq!(
-        b.create_buffer(),
-        Err(Error::LockFailed)
-    );
+    assert_eq!(b.create_buffer(), Err(Error::LockFailed));
     assert!(!b.is_locked());
     assert!(d.log.lock().unwrap().writes.is_empty());
 }
@@ -751,11 +759,12 @@ fn empty_and_invalid_inputs_do_not_submit_or_change_state() {
     assert!(context.draws.is_empty());
     assert!(context.states.is_empty());
     assert!(context.offsets.is_empty());
-    assert!(matches!(cSC4PathView::new(0.0), Err(Error::InvalidInput)));
+    // OVV2/5 published DIFFERS: stores accept zero; portable Draw is checked separately.
+    assert_eq!(cSC4PathView::new(0.0).unwrap().thickness(), 0.0);
     let mut v = marked();
-    let old = v.cell_size();
-    assert_eq!(v.set_cell_size([1.0, 0.0]), Err(Error::InvalidInput));
-    assert_eq!(v.cell_size(), old);
+    assert_eq!(v.set_cell_size([1.0, 0.0]), Ok(()));
+    assert_eq!(v.cell_size(), [1.0, 0.0]);
+    assert_eq!(v.inverse_cell_size(), [1.0, f32::INFINITY]);
 }
 
 struct TrainFactory {

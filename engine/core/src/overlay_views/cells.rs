@@ -9,7 +9,11 @@ pub(super) fn lower_vertex(coordinate: f32) -> Result<u32, Error> {
     }
     let biased = ((f64::from(coordinate) - 0.5) + 12_582_912.0) as f32;
     let candidate = biased.to_bits().wrapping_sub(0x4B400000);
-    Ok(if f64::from(coordinate) == f64::from(candidate) + 1.0 { candidate + 1 } else { candidate })
+    Ok(if f64::from(coordinate) == f64::from(candidate) + 1.0 {
+        candidate + 1
+    } else {
+        candidate
+    })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -151,9 +155,13 @@ impl SC4MarkedCellView {
     }
 
     pub fn draw_cells(&self, terrain: &dyn CellTerrain, override_colour: Option<Colour>) -> Result<Vec<Draw>, Error> {
-        if self.cells.is_empty() { return Ok(Vec::new()); }
+        if self.cells.is_empty() {
+            return Ok(Vec::new());
+        }
         // Setter accepts every float; checked portable Draw cannot promise native unchecked access.
-        if self.cell_size.iter().any(|v| !v.is_finite() || *v < 0.0) { return Err(Error::UnsupportedDomain); }
+        if self.cell_size.iter().any(|v| !v.is_finite() || *v < 0.0) {
+            return Err(Error::UnsupportedDomain);
+        }
         let dims = terrain.dimensions();
         let standard = self.cell_size == [16.0, 16.0];
         let mut draws = Vec::new();
@@ -167,7 +175,9 @@ impl SC4MarkedCellView {
             let (mut corners, split) = if standard {
                 let cx = cell.x as u32;
                 let cz = cell.z as u32;
-                if cx >= dims[0] || cz >= dims[1] { continue; }
+                if cx >= dims[0] || cz >= dims[1] {
+                    continue;
+                }
                 let corners = [
                     terrain.vertex(cx, cz),
                     terrain.vertex(cx, cz + 1),
@@ -177,11 +187,14 @@ impl SC4MarkedCellView {
                 (corners, terrain.split(cx, cz))
             } else {
                 let mut corners = [Point::new(0.0, 0.0, 0.0); 4];
-                for (out, [dx, dz]) in corners.iter_mut().zip([[0,0], [0,1], [1,1], [1,0]]) {
-                    let px = (i64::from(cell.x)+dx).clamp(0, i64::from(dims[0])) as f32 * self.cell_size[0];
-                    let pz = (i64::from(cell.z)+dz).clamp(0, i64::from(dims[1])) as f32 * self.cell_size[1];
-                    let vx = lower_vertex(px/16.0)?; let vz = lower_vertex(pz/16.0)?;
-                    if vx > dims[0] || vz > dims[1] { return Err(Error::UnsupportedDomain); }
+                for (out, [dx, dz]) in corners.iter_mut().zip([[0, 0], [0, 1], [1, 1], [1, 0]]) {
+                    let px = (i64::from(cell.x) + dx).clamp(0, i64::from(dims[0])) as f32 * self.cell_size[0];
+                    let pz = (i64::from(cell.z) + dz).clamp(0, i64::from(dims[1])) as f32 * self.cell_size[1];
+                    let vx = lower_vertex(px / 16.0)?;
+                    let vz = lower_vertex(pz / 16.0)?;
+                    if vx > dims[0] || vz > dims[1] {
+                        return Err(Error::UnsupportedDomain);
+                    }
                     *out = Point::new(px, terrain.vertex(vx, vz).y, pz);
                 }
                 (corners, Split::Unflipped)
@@ -189,10 +202,14 @@ impl SC4MarkedCellView {
             if self.use_water {
                 let water = terrain.water_altitude();
                 for p in &mut corners {
-                    if water > p.y { p.y = water; }
+                    if water > p.y {
+                        p.y = water;
+                    }
                 }
             }
-            if !terrain.in_frustum(corners[0]) && !terrain.in_frustum(corners[2]) { continue; }
+            if !terrain.in_frustum(corners[0]) && !terrain.in_frustum(corners[2]) {
+                continue;
+            }
             if standard {
                 if let (Some(filter), Some(lot)) = (&self.filter, terrain.lot_at(cell.x as u32, cell.z as u32)) {
                     if filter.accepts(lot) {

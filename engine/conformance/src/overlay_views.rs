@@ -8,7 +8,9 @@ use std::cell::Cell as Counter;
 
 struct Unbound;
 impl TextureFactory for Unbound {
-    fn bind(&self, _: u32) -> Option<std::sync::Arc<dyn Texture>> { None }
+    fn bind(&self, _: u32) -> Option<std::sync::Arc<dyn Texture>> {
+        None
+    }
 }
 
 pub(crate) fn exec(_host: &HostRef, name: &str, op: &Json) -> Option<R<()>> {

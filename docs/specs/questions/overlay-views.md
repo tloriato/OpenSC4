@@ -39,3 +39,10 @@
   OVV6 remains partial for historical inventory membership, additional public setters/interface
   completeness and caller Shutdown discipline. Two newly traced train cleanup addresses do not by
   themselves identify the historical 54 entries. §3.3 supplies the per-owner method ledger.
+
+<!-- from: core-overlay-views-contracts4 (2026-10-23) -->
+- **OVV8 - §7.1 OV-L10 source extent:** L10 submits [1,3) (n=2), but lists only six source words and six
+  appended indices. §3.1 requires 6n=12 words/indices. Are the six printed entries a prefix, or should
+  this discriminator use a one-cell range? [Portable fixture treats the published six values as the
+  specified prefix, supplies six explicit zero words as backing, and asserts all twelve are consumed.
+  The six published rebased values remain unchanged; no original execution is claimed.]
