@@ -124,7 +124,14 @@ def handle(data, manifest):
             return tuple(status['last_decision'])
         tool = data.get('tool_name', '')
         tin = data.get('tool_input') or {}
-        if tool in ('spawn_agent', 'Agent', 'Workflow'):
+        if tool.startswith('mcp__') and (m['kind'] != 're' or tool not in (
+                'mcp__rea__procedure_pseudo_code', 'mcp__rea__batch_decompile')):
+            decision = ('deny', 'REA capability denied: only the two research tools in a reserved RE session.')
+        elif tool.startswith('mcp__') and (not m.get('rea_session') or
+                m['rea_session'].get('lane') != m['lane'] or
+                m['rea_session'].get('identity', {}).get('ready') is not True):
+            decision = ('deny', 'REA target admission missing; no research without the retained typed-ready client.')
+        elif tool in ('spawn_agent', 'Agent', 'Workflow'):
             decision = ('deny', 'Lanes cannot spawn workers; only the guarded coordinator reserves rounds.')
         else:
             try:

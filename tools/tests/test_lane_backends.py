@@ -128,6 +128,14 @@ class CodexGuard(unittest.TestCase):
             codexguard.handle(self.data('SessionStart') | {'session_id':'other'}, self.m)
         self.assertEqual(self.call('spawn_agent')[0], 'deny')
 
+    def test_rea_role_and_capability_boundary(self):
+        self.assertEqual(self.call('mcp__rea__procedure_pseudo_code')[0], 'deny')
+        self.m['kind'] = 'engine'
+        self.assertEqual(self.call('mcp__rea__procedure_pseudo_code')[0], 'deny')
+        self.m['kind'] = 're'
+        self.assertEqual(self.call('mcp__rea__open_binary')[0], 'deny')
+        self.assertEqual(self.call('mcp__rea__procedure_pseudo_code')[0], 'deny')
+
 
 class Launcher(unittest.TestCase):
     def setUp(self):

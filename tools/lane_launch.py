@@ -15,6 +15,7 @@ import tarfile
 import uuid
 
 import lane_backend as backend
+import rea_session
 
 
 def alive(pid):
@@ -52,7 +53,7 @@ def provider_pause(root, provider):
     return None
 
 
-def retire_completed(state, root):
+def retire_completed(state, root, write_queues=True):
     for name, entry in state['lanes'].items():
         p = Path(entry.get('result', ''))
         completed = backend.laneguard.read_json(str(p), None) if p.is_file() else None
@@ -67,7 +68,7 @@ def retire_completed(state, root):
         for qp in [root/'build-runs/merge-queue'/f'{name}.json',
                    root/'.claude/worktrees'/name/'build-runs/merge-queue'/f'{name}.json']:
             q = backend.laneguard.read_json(str(qp), None)
-            if isinstance(q, dict) and entry.get('touches') and q.get('touches') != entry['touches']:
+            if write_queues and isinstance(q, dict) and entry.get('touches') and q.get('touches') != entry['touches']:
                 q['touches'] = entry['touches']
                 backend.write_json(qp, q)
 
@@ -113,6 +114,16 @@ def checked(command, root):
 
 
 def launch(root, state_path, spec_path=None, provider=None):
+    sessions = []
+    try:
+        return _launch(root, state_path, spec_path, provider, sessions)
+    finally:
+        for ticket, process in sessions:
+            rea_session.shutdown(ticket)
+            process.wait(timeout=10)
+
+
+def _launch(root, state_path, spec_path, provider, sessions):
     # Reject bad sources before even retiring completed lanes or writing coordinator state.
     import lane_evidence
     spec = json.loads(spec_path.read_text(encoding='utf-8')) if spec_path is not None else None
@@ -120,10 +131,10 @@ def launch(root, state_path, spec_path=None, provider=None):
         lane_evidence.preflight(root, spec, spec_path)
     with backend.codexguard.locked(root/'build-runs/run4-coordinator.lock'):
         state = json.loads(state_path.read_text(encoding='utf-8'))
-        retire_completed(state, root)
-        backend.write_json(state_path, state)
+        retire_completed(state, root, write_queues=spec_path is None)
         live = [n for n, e in state['lanes'].items() if alive(e.get('pid'))]
         if spec_path is None:
+            backend.write_json(state_path, state)
             print(f"rounds {state['rounds']}; live {len(live)}/{state['concurrency']}; "
                   f"glue {sum(state['lanes'][n].get('role') == 'glue' for n in live)}/{state.get('glue_limit',3)}")
             for n in live:
@@ -145,7 +156,20 @@ def launch(root, state_path, spec_path=None, provider=None):
             check.append('--resume')
         if args.get('deps'):
             check += ['--deps', ','.join(args['deps']) if isinstance(args['deps'], list) else args['deps']]
+        ticket = None
+        if args['kind'] == 're':
+            # STOP/parking/capacity first. No ledger/queue/worktree/round mutation
+            # until the exact actual worker client has a typed target identity.
+            code, line = backend.laneguard.preflight(str(root), name, 'tool')
+            if code:
+                raise ValueError(line)
+            ticket, owned = rea_session.acquire(root, name, provider, 're', backend.laneguard.rea_config())
+            sessions.append((ticket, owned))
+            admission = root/'build-runs'/f'rea-admission-{ticket["session_id"]}.json'
+            backend.write_json(admission, ticket)
+            check += ['--rea-session', str(admission)]
         checked(check, root)
+        retire_completed(state, root)
         sources = lane_evidence.preflight(root, spec, spec_path)
         wt = root/'.claude/worktrees'/name
         if not spec.get('resume'):
@@ -178,6 +202,8 @@ def launch(root, state_path, spec_path=None, provider=None):
                  kind=args['kind'], round=number, args=args, budget=args['ctxBudget'], max_calls=args['maxCalls'],
                  guard_id='codex-'+uuid.uuid4().hex, manifest=str(manifest), result=str(result),
                  status_path=str(stem)+'-codex-status.json', codex=spec.get('codex', {}))
+        if ticket:
+            m['rea_session'] = ticket
         backend.write_json(manifest, m)
         # Supervisor stays alive until the CLI ends; it writes one atomic, compatible completion result.
         with stderr.open('wb') as err:
@@ -190,6 +216,8 @@ def launch(root, state_path, spec_path=None, provider=None):
         state['lanes'][name] = entry
         state['history'].append(dict(round=state['rounds'], lane=name, lane_round=number, pid=p.pid, provider=provider))
         backend.write_json(state_path, state)
+        # The supervisor now owns cleanup. Failed admission never reaches here.
+        sessions.clear()
         print(f"LAUNCHED run4 round {state['rounds']}; {name} round {number}/{entry.get('round_limit',3)}; "
               f"provider {provider}; pid {p.pid}", flush=True)
 

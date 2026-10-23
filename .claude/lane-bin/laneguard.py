@@ -303,6 +303,10 @@ def rea_handshake(cfg, timeout=45):
         p.kill()
     except OSError:
         pass
+    p.wait(timeout=5)
+    th.join(timeout=2)
+    p.stdin.close()
+    p.stdout.close()
     if th.is_alive():
         return False, f"no MCP reply within {timeout} s"
     if "err" in box:
@@ -311,38 +315,28 @@ def rea_handshake(cfg, timeout=45):
     missing = need - set(box.get("tools") or [])
     if missing:
         return False, f"server answers but lacks {', '.join(sorted(missing))}"
-    return True, f"{len(box['tools'])} tools"
+    return True, f"{len(box['tools'])} tools; metadata only, target readiness UNKNOWN"
 
 
-def rea_check(handshake=True):
-    """(ok, line) for an RE lane's pre-flight: configured, a coordinator-side server running, and a server that
-    answers an MCP handshake. It cannot see the coordinator's own Ghidra session: a broken session ("Ghidra client
-    is already started") still passes; see docs/re-workspace.md."""
-    cfg = rea_config()
-    if not cfg or not cfg.get("command"):
-        return False, "REA-DOWN no 'rea' server in ~/.claude.json mcpServers"
-    for k in ("GHIDRA_INSTALL_DIR", "JAVA_HOME"):
-        v = (cfg.get("env") or {}).get(k)
-        if v and not os.path.isdir(v):
-            return False, f"REA-DOWN {k} {v} does not exist"
-    for a in [cfg["command"], *(cfg.get("args") or [])[:1]]:
-        if (os.path.isabs(a)) and not os.path.exists(a):
-            return False, f"REA-DOWN {a} does not exist"
-    n = rea_processes()
-    if n == 0:
-        return False, ("REA-DOWN no rea.mjs mcp process is running: the coordinator session has no REA server "
-                       "(reconnect it with /mcp, or start the session again)")
-    if handshake:
-        ok, detail = rea_handshake(cfg)
-        if not ok:
-            return False, f"REA-DOWN handshake failed: {detail}"
-        return True, f"REA ok ({'?' if n is None else n} server(s) running; handshake {detail})"
-    return True, f"REA ok ({'?' if n is None else n} server(s) running)"
+def rea_check(handshake=True, session=None, lane=None):
+    """Only a retained actual research client can establish target admission.
+
+    Legacy handshake=False and keeper/process counts cannot bypass this gate.
+    """
+    if not session:
+        return False, "REA-DOWN no admitted same-client target; use lane_launch with a reviewed target contract (Claude RE unsupported)"
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(HERE)), 'tools'))
+    try:
+        import rea_session
+        result = rea_session.require_ready(session, lane)
+        return True, f"REA target ready (same client {result['session_id']}; typed identity verified)"
+    except Exception as e:
+        return False, f"REA-DOWN target admission failed: {e}"
 
 
 # ----------------------------------------------------------------------------------------------- preflight / status
 
-def preflight(main, lane, kind, handshake=True):
+def preflight(main, lane, kind, handshake=True, session=None):
     """(code, line): the single verdict line the workflow's gate agent returns."""
     st = read_stop(main)
     if st:
@@ -351,7 +345,7 @@ def preflight(main, lane, kind, handshake=True):
     if pr:
         return 1, f"PARK {pr} (python tools/lanes.py unpark {lane} releases it)"
     if kind == "re":
-        ok, line = rea_check(handshake)
+        ok, line = rea_check(handshake, session=session, lane=lane)
         if not ok:
             return 1, line
     return 0, "GO"

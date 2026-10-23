@@ -537,7 +537,8 @@ def cmd_check(ctx, a):
         reasons.append(f"lane parked: {pr} (lanes.py unpark {lane})")
     kind = a.kind or ("re" if lane.startswith("re-") else "engine")
     if kind == "re":
-        ok, line = lg.rea_check(handshake=not a.no_rea_handshake)
+        session = lg.read_json(a.rea_session, {}) if a.rea_session else None
+        ok, line = lg.rea_check(handshake=not a.no_rea_handshake, session=session, lane=lane)
         if not ok:
             reasons.append(line + " (an RE lane without REA explores without output: re-answers35, 2,789 calls)")
     allb, merged = branch_sets(ctx)
@@ -1574,7 +1575,8 @@ def main(argv=None):
     p.add_argument("--stale-days", type=float, default=3, help="an unmerged lane idle longer than this is ignored")
     p.add_argument("--kind", choices=("engine", "re", "tool", "mech"),
                    help="lane kind (default: re for lanes named re-*, else engine); re adds the REA pre-flight")
-    p.add_argument("--no-rea-handshake", action="store_true", help="re: skip starting a probe REA server")
+    p.add_argument("--no-rea-handshake", action="store_true", help="legacy flag; never bypasses target readiness")
+    p.add_argument("--rea-session", help="owned exact-target admission ticket (RE launcher only)")
 
     p = sub.add_parser("stop", help="set the STOP flag: no lane starts or restarts until 'go'")
     p.add_argument("reason")

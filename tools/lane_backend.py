@@ -18,6 +18,7 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / '.claude/lane-bin'))
 import codexguard
 import laneguard
+import rea_session
 
 NOWIN = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
 
@@ -139,14 +140,13 @@ def codex_command(m, schema, final, env):
         if options.get(key):
             args += ['-c', key + '=' + json.dumps(options[key])]
     if m['kind'] == 're':
-        cfg = laneguard.rea_config()
-        if not cfg:
-            raise RuntimeError('REA configuration is missing')
-        # The same real server as Claude, with only the two lane-approved tools.
-        for key in ('command', 'args'):
-            args += ['-c', 'mcp_servers.rea.' + key + '=' + json.dumps(cfg.get(key, []))]
-        for key, value in (cfg.get('env') or {}).items():
-            args += ['-c', 'mcp_servers.rea.env.' + json.dumps(key) + '=' + json.dumps(value)]
+        rea_session.require_ready(m.get('rea_session'), m['lane'])
+        # Attach to the admitted child, never start another target-less REA server.
+        args += ['-c', 'mcp_servers.rea.command=' + json.dumps(sys.executable),
+                 '-c', 'mcp_servers.rea.args=' + json.dumps([
+                     str(REPO/'tools/rea_session.py'), 'connect', '--manifest', m['manifest']]),
+                 '-c', 'mcp_servers.rea.required=true',
+                 '-c', 'mcp_servers.rea.startup_timeout_sec=130']
         args += ['-c', 'mcp_servers.rea.enabled_tools=["procedure_pseudo_code","batch_decompile"]']
     args += ['exec', '--ignore-user-config', '--strict-config', '--json',
              '-C', m['worktree'],
@@ -217,6 +217,8 @@ def run_codex(m):
 
 
 def run_claude(m):
+    if m['kind'] == 're':
+        raise RuntimeError('Claude RE unsupported: saved workflow cannot attach the admitted REA client')
     candidate = Path(os.environ.get('APPDATA', ''))/'npm/node_modules/@anthropic-ai/claude-code/bin/claude.exe'
     cli = m.get('claude_cli') or (str(candidate) if candidate.is_file() else shutil.which('claude'))
     if not cli:
@@ -256,7 +258,7 @@ def main():
             time.sleep(.1)
         else:
             raise RuntimeError('No matching shared-ledger round reservation')
-        code, line = laneguard.preflight(m['main'], m['lane'], m['kind'])
+        code, line = laneguard.preflight(m['main'], m['lane'], m['kind'], session=m.get('rea_session'))
         if code:
             raise RuntimeError('Round not started: ' + line)
         if m['provider'] == 'codex':
@@ -265,6 +267,8 @@ def main():
     except Exception as e:
         result = dict(type='result', subtype='error', provider=m['provider'], is_error=True,
                       result=f'{type(e).__name__}: {e}')
+    finally:
+        rea_session.shutdown(m.get('rea_session'))
     if m['provider'] == 'codex' and m.get('git_base'):
         try:
             publish_codex_git(m)

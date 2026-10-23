@@ -10,6 +10,9 @@ const marker = '// A restart starts a fresh agent';
 if (!source.includes(marker)) throw new Error('Workflow prompt boundary changed; update renderer tests');
 source = source.split(marker)[0].replace('export const meta', 'const meta');
 const rendered = new Function('args', source + '\nreturn {prompt, schema: RESULT};')(request.args);
+if (request.args.kind === 're') {
+  rendered.prompt += '\n\nREA admission: only the retained, admitted exact-target client may perform research. The transport exposes procedure_pseudo_code and batch_decompile only. Never open/close/reset targets, add servers or fall back to another REA process. A tool list or keeper process is not target readiness. If the transport reports target failure, preserve its actual cause and stop blocked; do not retry a worker round. Claude RE workflow startup is unsupported and must fail admission.\n';
+}
 if (request.provider === 'codex') {
   // Provider-specific transport instructions only; the behaviour brief and clean-room rules are shared.
   rendered.prompt = rendered.prompt
