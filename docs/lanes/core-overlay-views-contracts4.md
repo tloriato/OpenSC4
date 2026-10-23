@@ -1,8 +1,20 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| core-overlay-views-contracts4 (bounded OVV2/3/5/7) | Codex / core-overlay-views-contracts4 | WIP: algorithms committed; quick wrapper stalled in sccache stats; canonical gate unrun | Collect session22068 without cancellation; verify corrected fixture; run one canonical all |
+| core-overlay-views-contracts4 (bounded OVV2/3/5/7) | Codex / core-overlay-views-contracts4 | in progress | Qualify corrected L10 and 37 scoped tests; one stable canonical all |
 
-## Report
+## Handoff
+- Same reserved detached child FINAL R2/2, logical family3/3; no further round/delegation.
+- Own manifest: C:/Users/tlori/FreeCity4/build-runs/run4-core-overlay-views-contracts4-r2-manifest.json.
+- Accepted ROOT host drain authority 06:38:48: own cwd/argv matches=[], inspectionerrors=[], port4476services=[], named outputs no existing write access. Named census copy is absent locally; the task supplies authoritative findings.
+- Earlier quick16588/fc19616/stats28064 absent06:34:40, terminal/cause UNKNOWN; do not wait session22068 or re-inventory global processes.
+- Source428a502a / engine15a6e05c / overlayc3891874; corrected focused qualification now PASS:37/37,3332 filtered, actual exit0. Log build-runs/overlay-r2-focused.log; existing qbuild.run/cargo_env quiet helper, no repeated quick/native build/cache RPC. R1 raw logs archived in build-runs/r1-evidence/.
+- Independent OVV7 arithmetic: 12*(2*4+1)=108 bytes=word54; 6*2=12 words; minimum66. At V4,n2,a4,b7,c1,W4, q1,2,6,2,7,6 rebases to4,5,7,5,8,7; q0 at V0 rebases modulo65536 to65535. OVV8 stays open; suffix zeros are chosen input only.
+- Next: formatter check actual owned files; commit milestone, then exactly one canonical all and actual terminal collection.
+- ROOT first optional stats client28548 exited15 at06:12:19.821810, sourcef61bd/engined2b7; same parents+daemon, no native failure. ROOT-only readonly-client intervention; no worker/cache/validator/compiler restart. Evidence coordinator-optional-stats-20261023-061218.json (journal finite-stats-watch-20261023-060109).
+- Second stats28064 was a different operation; its later absence has UNKNOWN cause, unrelated to the first intervention.
+- No game/native execution, ABI/plugin/CAPI or other owners; OVV4/6,NOV2/3,region and remaining historical54-body claims held.
+
+## Historical R1 report (superseded process status; retained failures)
 - Goal: only newly published OVV2/3/5/7, portable Rust; no native/game/ABI or other owner promotion.
 - Start HEAD a4f059a743adb400d8f21df1d60c8656cc388e72; engine tree 55578d1626b94dc9cd93784ab1e646d5e5bf3f5a; clean worktree.
 - Detached HEAD reserved by supervisor; do not switch refs.
