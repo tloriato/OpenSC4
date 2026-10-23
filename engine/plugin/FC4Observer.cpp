@@ -15,6 +15,7 @@
 #include "FC4IndustrialShadow.h"
 #include "FC4FontSysVerify.h"
 #include "FC4PropOccupantVerify.h"
+#include "FC4FontRendererVerify.h"
 
 #include "FC4AuraShadow.h"
 #include "FC4Autoload.h"
@@ -638,12 +639,14 @@ public:
                 monthsSinceLoad_ = 0;
                 IndustrialShadowProbe(CurrentCity(), "load");
                 FontSysVerify("load");
+                FontRendererVerify("load");
                 PropOccupantVerify();  // Opt-in constructed scalar fixture, native factory only.
                 break;
             case kMsgPreSave:
                 PropLotShadowPreSave(CurrentCity());  // the records just before the save writes them
                 IndustrialShadowProbe(CurrentCity(), "presave");
                 FontSysVerify("presave");
+                FontRendererVerify("presave");
                 break;
             case kMsgConnectionsReady:
                 PopupDialogsOnConnectionsReady();
@@ -689,6 +692,7 @@ public:
                 NetToolRegistry::CityShutdown();  // the glue29 lane: the shared replacement tools
                 IndustrialShadowProbe(CurrentCity(), "shutdown");
                 FontSysVerify("shutdown");
+                FontRendererVerify("shutdown");
                 AutotestOnCityShutdown(false);
                 DatesProbeSummary("city-shutdown");
                 fc4::FeatureShadowShutdown();

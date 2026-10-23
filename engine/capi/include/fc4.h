@@ -12862,4 +12862,7 @@ bool fc4_dbpf_read_record(const fc4_dbpf* p, uint32_t type, uint32_t group, uint
 }
 #endif
 
+/* Constructed small renderer transport; additive, no ABI version bump here. */
+#include "fc4_font_renderer_verify.h"
+
 #endif /* FC4_H */

@@ -1138,3 +1138,6 @@ pub mod feature_manager;
 
 // Resource-only public-manager verification transport; actual production core.
 pub mod persist_manager_verify;
+
+// Bounded constructed small-font-renderer comparison transport.
+mod font_renderer_verify;

@@ -550,7 +550,11 @@ if(FC4_IS_WIN32_X86)
         plugin/FC4PropOccupantVerify.h
         plugin/FC4PropOccupantFixtures.h
         plugin/FC4PropOccupantCompare.h
-        plugin/compat/FC4PropOccupantAuthority.h)
+        plugin/compat/FC4PropOccupantAuthority.h
+        # Small renderer bounded original/production comparison.
+        plugin/FC4FontRendererVerify.cpp
+        plugin/FC4FontRendererVerify.h
+        plugin/FC4FontRendererFixtures.h)
     target_include_directories(FreeCity4 PRIVATE "${FC4_GZCOM_DIR}/include" plugin)
     target_compile_definitions(FreeCity4 PRIVATE
         _CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN
@@ -974,6 +978,15 @@ if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 4)
     target_compile_definitions(fc4_port_props_test PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
     target_compile_options(fc4_port_props_test PRIVATE /W3 /permissive- /utf-8 /EHsc)
     add_test(NAME port_props_test COMMAND fc4_port_props_test)
+endif()
+
+# Independent public-SDK packed DBPF transport comparison.
+if(TARGET FreeCity4)
+    add_executable(fc4_font_renderer_verify_test tests/font_renderer_verify_test.cpp)
+    target_include_directories(fc4_font_renderer_verify_test PRIVATE "${FC4_GZCOM_DIR}/include" plugin capi/include)
+    target_link_libraries(fc4_font_renderer_verify_test PRIVATE fc4_capi)
+    target_compile_options(fc4_font_renderer_verify_test PRIVATE /W3 /permissive- /utf-8 /EHsc)
+    add_test(NAME font_renderer_verify_test COMMAND fc4_font_renderer_verify_test)
 endif()
 
 # Independent public-SDK packed DBPF transport comparison.
