@@ -58,8 +58,13 @@ No entry is moved to answered while its remaining requested bodies or failure ca
   The alignment helper mutates H; reached-point consumption skips pose/history but still approaches
   speed and turn. Callers explicitly continue into Movement_PositionNew. Full coefficient spill
   equivalence, shared setter side effects, exceptional math and inherited-animation residuals remain open.
-- WC6: AI's approach rates and movement constants are distinguished from command acceleration and p4;
-  this does not replace or close remaining command/geometry precision and exceptional-domain residuals.
+- WC4/WC6: §6.2.2c now identifies selected x87 retained versus float-spilled geometry intermediates,
+  zero/reverse-time and signed-zero gates, both-nonzero turning selection, exact matrix/translation store
+  order, byte revision wrap and callback mutation/lifetime boundaries. A rational translation-publication
+  witness distinguishes retained x from spilled y,z; finite zero/reverse/lift vectors are proposed only.
+  AI's approach rates and movement constants are distinguished from command acceleration and p4. R2's
+  FST acceleration correction and 39C479FE/FD witness are retained. Complete coefficient bit-equivalence,
+  control word and exceptional-domain residuals remain open; no compound question is closed.
 - WC3/WC5/WC7 and all compound requests remain OPEN. No answered entry, census change or parked-lane
   qualification is implied. Proposed/unexecuted AI traces are in watercraft-command-vectors.md.
 

@@ -131,3 +131,40 @@ Callback order witness: if a valid pose dispatch changes live P.x to 2 before re
 records 2, not the pre-call 1; desired Speed remains the already computed value. This is a conditional
 mutation/lifetime-order trace, not a claim that the unresolved native setter actually makes that change.
 No object-destruction tolerance is inferred. R2's rational FST witness 39C479FE/FD above remains unchanged.
+
+## Geometry precision boundaries (final round 3)
+
+These are also **proposed, unexecuted**, with no engine/native oracle. They supplement the R2 formulas.
+
+- Turning translation publication **stage** witness: old stored P=(1,1,1), previously computed position
+  output=(2^-25,2^-25,2^-25), all ordinary finite floats. This fixes the inputs to the publication stage;
+  it does not assert a full-helper geometry fixture reaches this triple. Under round-to-nearest-even
+  and x87 precision at least 53 bits, each exact delta is `-33554431/33554432`. x remains retained;
+  y,z spill to float -1 (`BF800000`). Re-add old P: transform translation becomes
+  `(2^-25,0,0)`, words `(33000000,00000000,00000000)`, stored **z,x,y**. A uniform float delta-vector
+  would give `(0,0,0)`; copying the position output would give three `33000000` words. This is an
+  independent rational derivation of the instruction boundaries, not a measured x87-control-word result.
+- For the later Movement_PositionNew call alone, use current/live P=(0,5,0), current H=(1,0,0),
+  Speed=1/4, Turn=0, p4=1/2, p6=-1/4, p7=1/4, p8=-2,p9=2, p17=0,p18=1/4, ordinary nonzero bank
+  denominators, and slot12 returning identity matrix/scale1/translation P/flags0/revision254. Slot75
+  preserves stored pose; final callbacks preserve lifetime/fields. With dt=8, straight candidate P is
+  (1,5,0); with dt=0, it is (0,5,0); with direct dt=-8 it is (-1,5,0). All are exact rational
+  displacement expectations. In **each** case orientation still adds 1/8 to transform y, yielding
+  5.125 (`40A40000`), while published stored/live P.y remains 5 (`40A00000`). Pitch is deliberately
+  isolated at zero; no nonzero-angle trig bits are asserted. Four owned byte revision increments
+  (straight, bank matrix, orientation matrix, translation) wrap 254 to 2; flags become 5.
+- With the same setup, Speed=-1/4, dt=8, p17=1: candidate P=(-1,5,0); pitch clamps to zero and bank
+  writes nothing. Lift is again 1/8; three owned revision increments wrap 254 to 1. This distinguishes
+  reverse Speed's skipped bank from reverse dt with positive Speed's executed bank.
+- Speed=0, Turn=1, arbitrary finite dt: neither straight nor turning helper executes, although the wrapper
+  queries state16 and requests orientation. Orientation returns without transform writes, so there is no
+  owned bank/pitch/lift or geometry revision increment. This corrects an overly broad nonzero-Turn-only
+  selection reading. Both signed zero Speeds take that gate.
+- Sea-query threshold comparison stage: abs(output.z-center.z)=0 performs no second query;
+  a difference exactly 2^-16 performs one (2^-16>binary64 1e-5). Its sea reply is discarded and cannot
+  replace output.y. No exact binary32 difference is presumed equal to that binary64 threshold.
+
+Remaining numeric status: operand/store widths and the specific retained/spilled paths above are supported;
+not all matrix/quaternion coefficient expressions have complete bit-equivalence proofs. Control-word,
+nonfinite/underflow/overflow, degenerate norms, callback destruction/reentrancy and transcendental faults
+remain partial/unknown. No safe-default result is branded native.

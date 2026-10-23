@@ -24,8 +24,8 @@ No new census input was found explaining 79/38556. The four-function/483-byte ga
 |---|---|
 | `00566E00`, `005671D0` | Finite-domain sign helper and signed inverse feedback specified; exceptional FP/library behavior open. |
 | `0056E5C0` | Ordered owner command branches, feedback, heading, event/effect and tween effects specified in §§6.2.3–5; no whole-owner qualification. |
-| `00569940` | Turning geometry, service calls, flags/publication specified; complete intermediate spill rounding and degenerate inputs open. |
-| `005682F0`, `00569E70` | Bank/pitch/basis/lift algorithms specified; exact spill-rounding closure and exceptional normalization open. |
+| `00569940` | Turning geometry, service calls, flags/publication specified. R3 §6.2.2c supports selected retained/spilled norms/products, z/x/y translation store order and byte revisions; full coefficient equivalence and exceptional inputs remain partial/unknown. |
+| `005682F0`, `00569E70` | Bank/pitch/basis/lift algorithms specified. R3 supports zero/reverse selection, norm/quaternion storage asymmetry, matrix store order and lift/publication; full coefficient equivalence and exceptional normalization remain partial/unknown. |
 | `00571880` | Final round 3: ordinary owned AI path published in watercraft-ai-motion.md; branch/query/waypoint/pose/history/approach order supported. Full coefficient spill equivalence, transcendental bits, zero-time exceptional feedback, shared setter effects and exceptional domains remain partial/unknown. |
 | `0056A310`, `0056A440`, `0056AF90` | Crash/bump residuals retained OPEN; no new crash/RNG closure this round. |
 | Route/backtracking/decoder/ferry/dock/tie bodies | Existing residuals retained OPEN. |
@@ -35,6 +35,16 @@ Supporting bodies `004FA960` (tween), `00505730` (edge pass), `00508C50` (base d
 `009F0090`/`009F00AD` is a shared acos path despite an automatic TransformDirection label. These are **not**
 newly invented owned methods or four missing census entries; no alias/folding explanation was proved.
 No table size is promoted to completed bytes by publishing a partial body. The 75-row census below remains R1's.
+
+Final-round checklist: `00571880` **supported** ordinary branch/waypoint/owned motion/order; **partial**
+rotation coefficient precision and shared setter effects; **unknown** exceptional/library/control-word domains.
+`00567ED0` **supported** normalizing side effects and strict <2-degree comparison; **partial** exact acos bits;
+**unknown** degenerate norms. `0056BD50`/`007257C0` **supported** valid-vector forward copies/end decrement
+and empty-range end=begin; **unknown** invalid vector memory. `0056C430`/`00568230` **supported** finite
+movement selection, selected precision and callback/publication order; **partial** shared callback effects;
+**unknown** destructive callback lifetime. `00569940`/`005682F0`/`00569E70` **supported** the §6.2.2c
+listed width/spill/store boundaries; **partial** unlisted coefficient equivalence; **unknown** exceptional
+normalization/control word. No body is promoted to whole-owner or full-byte completion by these checklists.
 
 | Address | Body bytes | Export/committed name | Attribution |
 |---|---|---|---|

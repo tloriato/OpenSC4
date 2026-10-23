@@ -440,15 +440,15 @@ transform; copy current position/heading into base fields `+0x40/+0x58`; slot 10
 Even zero-Speed, zero-Turn performs this publication, but skips `0x00569E70`; it also queries slot 57 with state 16
 and ignores that result. Evidence: `0x0056C4C4–0x0056C5D6`, `0x0056C74A–0x0056C84A`.
 
-This covers straight translation and outer publication; the orientation/height and turning helper internals
-remain open. Independent vector before the height helper: heading `(3,4,0)`, position `(10,20,30)`, Speed 0.25,
+This covers straight translation and outer publication; §§6.2.2a–c give the bounded turning/orientation
+contracts and their remaining precision limits. Independent vector before the height helper: heading `(3,4,0)`, position `(10,20,30)`, Speed 0.25,
 p4 0.2, dt 100 gives approximately `(15,20,30)`. Heading `(0,5,4)` gives approximately `(10,20,35)`. Zero dt leaves
 the candidate unchanged but still publishes and calls the height helper when Speed is nonzero.
 
 #### 6.2.2a Turning geometry (`0x00569940`, round 2)
 
 This helper takes dt by value, the output transform, a three-float position output, and a scratch transform.
-The wrapper selects it for nonzero Turn; straight translation remains §6.2.2. Inputs below are the wrapper's
+The wrapper selects it when **both Turn and Speed are nonzero**; straight translation remains §6.2.2. Inputs below are the wrapper's
 already-clamped Speed/Turn, heading H at `+0x30C`, and old position P at `+0x2F4`. The following geometric
 contract is supported for finite, nondegenerate headings and nonzero radius/divisors. Intermediate x87
 spill rounding is **partially traced**, not a promise that reassociated vector expressions are bit exact.
@@ -527,9 +527,102 @@ translation publication `0x0056A26F–0x0056A2FA`; lift branch `0x0056A19C–0x0
 
 These matrix formulas specify the owned geometric computation, not all its bitwise spill behavior.
 Zero H, vertical H, zero scale, parallel U/F and invalid tuning are unprotected normalization/division cases;
-their exceptional outputs remain OPEN. Nonfinite propagation and all matrix-product rounding boundaries
-need further instruction work before full numeric closure. Engine_AIBoatMotion and inherited animation
-remain OPEN too: these helper rules do not delegate their outcomes to a foreign callback.
+their exceptional outputs remain OPEN. Nonfinite propagation and remaining matrix-product rounding boundaries
+need further instruction work before full numeric closure. The new AI ordinary path is in §5.1a;
+inherited-animation residuals remain OPEN. These helper rules do not delegate their outcomes to a foreign callback.
+
+#### 6.2.2c Movement precision and publication boundaries (final round 3)
+
+This supplements, rather than reassociates, the R2 geometry equations. Float memory operands and stores
+below are binary32 unless explicitly called binary64. Retained means an x87 stack value; neither the active
+control word nor exact transcendental implementation bits were established. Ordinary supported inputs are
+finite coordinates/tuning, nonzero normalization/division operands and live transforms/objects with no
+overflow, underflow or math faults. It is not a contract for nonfinite, degenerate or uninitialized objects.
+
+**Entry selection and time.** Movement_PositionNew clamps Turn and Speed before testing either against
+floating zero; +0 and -0 compare equal. Both nonzero select turning. Turn=0, Speed!=0 selects straight.
+Speed=0 selects neither movement helper, even when Turn!=0; that branch queries state 16 before continuing
+publication (`0056C571–0056C5A1`, `0056C733–0056C761`). Orientation is requested later when either Speed
+or Turn is nonzero, but orientation's own Speed=0 gate returns without writing. No epsilon is used.
+There is no dt<=0 gate in either geometry helper: zero dt still executes normalization, transform stores,
+dirty/revision writes and, for nonzero Speed, orientation/lift. Negative dt reverses the signed distance
+and turning angle without changing the radius's Speed-sign branch; it is not converted to absolute time.
+This states finite arithmetic/control flow, not exceptional division results for invalid headings/radii.
+
+**Straight helper, 00568230–005682E8.** The horizontal norm/reciprocal is retained. Normalized x and the
+explicit zero y pop to float slots; normalized z stays retained. Distance is `(float p4 * float Speed)`
+then `*float dt`, retained throughout. Each displacement pops to float before adding old P. Candidate
+outputs store x,y,z. Transform translation then stores x from the retained addition, copies y,z from
+the candidate outputs, ORs flags with 1 and increments the **8-bit** revision modulo 256. This helper
+does not normalize a float-rounded full direction vector: its z component was not first spilled.
+
+**Turning, 00569940.** The following selected precision points are supported by the instruction stream;
+unlisted coefficient equivalences remain partial.
+
+| Stage | Required operation/storage boundary and evidence |
+|---|---|
+| Side and distance | The positive-turn side's reciprocal horizontal norm is popped to float at 005699E5 before multiplication. The opposite side uses a retained reciprocal, then spills its x,z components at 00569A23/00569A2D. D pops to float at 00569A43 after the ordered p4*Speed*dt product. |
+| Radius | Speed>0 selects forward radius; equality zero selects reverse tuning. All radius loads/divides/adds/multiply use float operands, with final float spill 00569ACC. Reverse-path FST scratch writes at 00569AA6/00569AB2 do not replace the retained absolute-value operands for division. |
+| Center query | Center z is rounded before calling GetSeaLevel; sea result is rounded before later geometry. Center x addition remains retained. The subsequent owner P.x/y/z loads occur after the query (00569AE3–00569B67), so callback mutation cannot be modeled as an immutable pre-call owner snapshot. |
+| Radial normalization | x and y differences remain retained; z difference is stored with FST at 00569B67 and its retained value multiplies its float reload in the square. Reciprocal is stored with FST at 00569B83; normalized x uses that retained reciprocal, y and z use float reloads. Normalized components are then spilled. |
+| Angle and rotation | Reload D and radius for division; negate only for Turn<=0. FCOS is popped to float (00569C1E); FSIN remains retained. First/third column stores occur at offsets 1C,04,10,24,0C,18, in that order; second column is untouched. Products at 00569C36/40/50/5C and 00569C8D/99/A5/AD/B3 are explicit float spills; replacing them with a fused matrix expression is not proved equivalent. Flags OR 4 then revision increment follow. |
+| Transform radial V | Each row product sum is accumulated z product plus y product, then x product (00569CF5–00569D45). The unscaled z sum pops to float; scaled x pops to float; scaled y stays retained; z is reloaded and scaled retained. Normalize using that mixed set, not three float-rounded scaled components (00569D47–00569D8F). |
+| Position and sea threshold | Normalized x,y pop to floats; normalized z remains retained. Multiply by float radius. x's radius product remains retained until adding retained center x; y,z products pop to float before center additions. Position outputs store x,y,z. Compare abs(output.z-rounded center.z) against **binary64** 1e-5, call sea again only if strictly greater, and discard its return (00569D91–00569DF6). |
+| Transform translation | Compute output.x-old P.x retained; compute output.y-old P.y and output.z-old P.z with float spills. Add old P back, retaining the x and y additions until final stores. Translation stores **z,x,y** at offsets 30,28,2C; then flags OR 1 and revision increment (00569DF8–00569E5A). It need not equal the earlier position output. |
+
+The first column rotation's reset is conditional on the scratch transform's **flags byte**, not its
+revision. Reset writes identity matrix, scale=1, zero translation, flags=0, then increments revision;
+rotation increments revision again. With already-zero flags there is no reset. All revision increments
+here are byte operations, with no saturation or wider integer carry. The output transform translation's
+flags/revision are separate from the scratch rotation transform's flags/revision.
+
+**Bank and orientation.** Bank rejects Speed<=0 before touching the transform. Its positive-speed
+bank-angle division, multiplies and clamp stay retained, then multiply by float 0.5. It rounds H's norm
+to float, reloads it for reciprocal, and stores that reciprocal with FST. Normalized x uses the retained
+reciprocal and is spilled; y,z use reloads (0056839B–005683C5). Quaternion x,y pop to float after sine
+multiplication; quaternion z and cosine stay retained. The matrix is not computed from four rounded
+float quaternion values. Diagonal stores occur at offsets 24,14,04, then off-diagonals 08,0C,10,18,1C,20;
+flags OR 4 and the byte revision increment occur last (`005683C9–005684B8`). This publishes the storage
+asymmetry/order; complete cross-product coefficient rounding equivalence remains partial.
+
+Orientation returns for Speed=+0 or -0. It computes H-cross-up components into float scratch before that
+gate, but makes no output transform write on that zero-speed return. For nonzero Speed, bank happens
+first. Its old-up construction explicitly adds row entries 04+0C, multiplies by float zero, then adds 08;
+similarly 10+18 then zero then 14, and 1C+24 then zero then 20. For ordinary finite arithmetic this selects
+the second column, but dropping those operations is not an exceptional-domain rule. The unscaled z sum
+and scaled x component spill before normalization; y,z scaled components remain retained
+(`00569EE1–00569F69`). Pitch clamp uses the retained p17*Speed product and float bounds 0,p18;
+the negative half-angle uses float -0.5. Quaternion x,y spill; z/cosine remain retained, as in bank
+(`00569F6F–0056A0B5`).
+
+The pitched heading product sums are x product plus z product, then y product for its x and y results;
+z uses z product plus x product, then y product. z and x sums pop to float before first normalization,
+but y stays retained (`0056A0FD–0056A19A`). After that normalization all three components are float.
+The second normalization stores reciprocal with FST: F.x uses retained reciprocal, F.y/F.z use reloads;
+F.z is itself stored with FST and used retained in the following cross product. The right-vector norm
+reciprocal is **popped to float** before its products (`0056A1C5–0056A267`). Those boundaries distinguish
+this path from repeatedly applying a uniform float vector-normalize operation.
+
+Final orientation matrix stores occur at offsets **1C,04,10,08,14,20,0C,24,18**, then flags OR 4 and
+byte revision increment. Translation stores 28,2C,30, then flags OR 1 and a second byte increment
+(`0056A26F–0056A2FA`). For nonzero Speed the y addition is retained `incoming_y+(float p18*float 0.5)`
+until its final float store, including reverse Speed. It is not added to the separately stored current
+position vector, and it does not consume dt. Zero dt thus still permits lift.
+
+**Outer publication and callback lifetime.** After turning, the wrapper rotates stored current heading
+with the scratch matrix, accumulating each row z,y,x and storing heading z,x,y, then normalizes x,y,z
+with a retained reciprocal (`0056C62D–0056C72B`). It shifts current position to previous, installs candidate
+position, optionally applies orientation, and dispatches slot 75 with a pointer to the local output
+transform. Only **after** that callback returns does it reload stored current position/heading into
+live P/H, in x,y,z order, then call slots 100(1,1),104(),107() (`0056C761–0056C83A`). The transform
+lift therefore need not appear in P.y. Callback mutations of stored current pose are observed; no stale
+pre-call snapshot is substituted. The transform pointer is to this invocation's stack storage; retention
+beyond the call is not an owned lifetime extension. There is no revalidation after callbacks. This normal
+contract assumes they preserve the owner; native destruction/reentrancy tolerance remains unknown.
+
+The finite precision counterexample and zero/reverse/equality vectors are in
+[watercraft-command-vectors.md](watercraft-command-vectors.md#geometry-precision-boundaries-final-round-3).
+All geometry-body byte counts remain attribution metadata, not completed numeric coverage.
 
 #### 6.2.3 Same-sign speed and inverse input feedback (round-2 instruction contract)
 

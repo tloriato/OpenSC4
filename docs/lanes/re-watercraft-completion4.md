@@ -11,9 +11,10 @@
 - Original SHA256 freshly matches export 3bc5c7fe807fe5aa24a3abb06e40f13486670bc1150612c09baf4ecedafe1a4b.
 - Export confirms AI body 00571880, 2779B; callers 00572909 docking, 005731C5 animation.
 - R2 contracts/vectors retained, including 39C479FE/FD and FST correction; census 75/38073 unchanged.
-- Done: normal AI owned path, alignment/erase helpers, caller sequence, exact constants and proposed literal
-  branch/order vectors drafted; no native/engine result used. Milestone commit immediately follows.
-- Next: directly necessary movement geometry instruction precision/store/order audit, then consistency checks.
+- Done 16864867: normal AI owned path, alignment/erase helpers, caller sequence, exact constants and proposed
+  literal branch/order vectors. No native/engine result used.
+- Done: geometry selected spill/width/store/branch/callback audit and rational publication witness drafted.
+- Next: consistency/link/question/diff checks; review new claims; final report/commit/normal docs queue.
 - No live REA query, target action, engine access, builds, native execution, probes, ABI or agents.
 - WC3–WC7 remain open; core-watercraft4 park unchanged. No complete-owner/byte qualification.
 
