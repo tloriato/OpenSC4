@@ -1,6 +1,17 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| tools-refill-rea-admission4: per-worker REA startup/admission | Codex, `tools-refill-rea-admission4` | wip: tooling implemented; installed REA API/live readiness UNKNOWN; full qualification outstanding | Coordinator inspect/review actual read-only startup/identity API, qualify contract and owned smoke, then validate tools before landing. No automatic worker round. |
+| tools-refill-rea-admission4: per-worker REA startup/admission | Codex, `tools-refill-rea-admission4` | in progress: round 2 actual API repair | Implement supported contract, inherited host admission, qualify isolated tests and request root proof |
+
+## Handoff
+- Goal: final round actual installed API repair; no engine/native study or worker target open.
+- Preserved clean 5d6b8092 history and old 194 passed / 1 skipped / 2 failed full log; focused followups are not final qualification.
+- Read both copied installed schema reviews and exact binary attestation (path-only open, PE/x86 SHA pinned).
+- Root coordinator-rea-old-fixture-cleanup.json reports exact old processes absent after adjudication; no worker cleanup.
+- Implemented v2 path-only contract, typed binary_session identity/provider/server binding, input/output pins and argument validation; captured installed schemas are metadata-only test fixture.
+- Implemented host MAC admission assertion and worker prompt distinction; tests not run yet, source qualification pending.
+- Next: isolated host assertion tests and focused relevant suite; exact old PIDs absent by Get-Process; CIM enumeration denied, preserve limitation and use scoped psutil check if available.
+- Live startup and CLI/query proof UNKNOWN until root-only evidence; no production calls by worker.
+- Prior round report retained below as historical evidence, to be replaced by final report at finish.
 
 ## Result and scope
 

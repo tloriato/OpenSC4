@@ -11,6 +11,7 @@ import ntpath
 import os
 from pathlib import Path
 import queue
+import re
 import secrets
 import socket
 import subprocess
@@ -33,38 +34,102 @@ def same_path(a, b):
 
 
 def validate_contract(c):
-    if c.get('version') != 1 or c.get('reviewed') is not True or c.get('label') != 'Windows 1.1.641':
+    if c.get('version') != 2 or c.get('reviewed') is not True or c.get('label') != 'Windows 1.1.641':
         raise ValueError('REA target contract requires reviewed Windows 1.1.641 identity')
-    binary, project = Path(c['binary_path']), Path(c['project_path'])
-    if not binary.is_absolute() or not binary.is_file() or not project.is_absolute() or not project.exists():
-        raise ValueError('REA target binary/project missing or not absolute')
+    binary = Path(c['binary_path'])
+    if not binary.is_absolute() or not binary.is_file():
+        raise ValueError('REA target binary missing or not absolute')
     with binary.open('rb') as f:
         actual = hashlib.file_digest(f, 'sha256').hexdigest()
     if actual != c['binary_sha256']:
         raise ValueError('REA target binary SHA256 mismatch')
-    op = c['open']
-    if op['name'] != 'open_binary' or not same_path(op['arguments'][op['binary_argument']], str(binary)):
-        raise ValueError('REA open must bind open_binary to the reviewed exact binary')
-    if not same_path(op['arguments'][op['project_argument']], str(project)):
-        raise ValueError('REA open must bind the reviewed exact project')
-    if op['arguments'].get(op['read_only_argument']) is not True:
-        raise ValueError('REA open requires an explicit reviewed read-only option')
-    ident = c['identity']
-    if not isinstance(ident['name'], str) or ident['name'] in (*RESEARCH, 'open_binary'):
-        raise ValueError('REA identity must be a separate reviewed read-only metadata tool')
-    # Bootstrap identity takes no caller arguments. The coordinator must review
-    # this tool's effect as well as its pinned schema; no worker can choose it.
-    for key in ('ready_field', 'state_field', 'binary_field', 'project_field'):
-        if not isinstance(ident[key], str) or not ident[key]:
-            raise ValueError('REA identity fields must be explicit')
-    for name in (*RESEARCH, op['name'], ident['name']):
-        pin = c['schemas'][name]
-        if not isinstance(pin, str) or len(pin) != 64:
-            raise ValueError('REA requires reviewed schema SHA256 for ' + name)
+    # Narrow reviewed PE contract: automatic provider selection is documented;
+    # bind its actual result below. Snapshot/document selection is not reviewed.
+    if c.get('format') != 'pe' or c.get('architecture') != 'x86' or c.get('kind') != 'executable':
+        raise ValueError('REA requires reviewed PE/x86 executable identity')
+    if c.get('open_arguments') != {'path': c['binary_path']}:
+        raise ValueError('REA open requires exact path-only reviewed arguments')
+    if c.get('provider_selection') != 'auto-single-candidate':
+        raise ValueError('REA requires reviewed deterministic provider selection')
+    names = {*RESEARCH, 'open_binary', 'binary_session'}
+    if set(c['schemas']) != names:
+        raise ValueError('REA requires exactly four reviewed schemas')
+    for name, pin in c['schemas'].items():
+        if set(pin) != {'input', 'output'} or any(not isinstance(v, str) or not re.fullmatch('[a-f0-9]{64}', v)
+                                                 for v in pin.values()):
+            raise ValueError('REA requires input/output schema SHA256 for ' + name)
     timeout = c.get('startup_timeout', 45)
     if type(timeout) not in (int, float) or not 0 < timeout <= 120:
         raise ValueError('REA startup timeout must be in (0,120] seconds')
     return c
+
+
+def schema_check(value, schema, root=None):
+    """Validate the installed JSON-schema vocabulary; no third-party dependency.
+
+    Schemas are pinned before use. Unknown assertion keywords fail closed so a
+    future schema cannot silently weaken validation. Descriptive keywords and
+    formats (identity comparisons are stricter) are annotations.
+    """
+    root = schema if root is None else root
+    allowed = {'$ref', '$defs', '$schema', '$id', 'title', 'description', 'examples', 'default',
+               'format', 'type', 'const', 'enum', 'required', 'properties', 'additionalProperties',
+               'propertyNames', 'items', 'anyOf', 'oneOf', 'minLength', 'maxLength', 'pattern',
+               'minimum', 'maximum', 'minItems', 'maxItems'}
+    if set(schema) - allowed:
+        raise ValueError('unsupported schema assertions')
+    if '$ref' in schema:
+        ref = schema['$ref']
+        if not ref.startswith('#/$defs/'):
+            raise ValueError('unsupported schema reference')
+        schema_check(value, root['$defs'][ref[8:]], root)
+    for key in ('anyOf', 'oneOf'):
+        if key in schema:
+            matches = 0
+            for branch in schema[key]:
+                try:
+                    schema_check(value, branch, root)
+                    matches += 1
+                except ValueError:
+                    pass
+            if not matches or key == 'oneOf' and matches != 1:
+                raise ValueError('schema union/type mismatch')
+    kinds = {'object': dict, 'array': list, 'string': str, 'boolean': bool, 'integer': int,
+             'number': (int, float), 'null': type(None)}
+    if 'type' in schema:
+        kind = schema['type']
+        if kind not in kinds or not isinstance(value, kinds[kind]) or kind in ('number', 'integer') and isinstance(value, bool):
+            raise ValueError('schema scalar/type mismatch')
+    if 'const' in schema and (type(value) is not type(schema['const']) or value != schema['const']):
+        raise ValueError('schema const mismatch')
+    if 'enum' in schema and not any(type(value) is type(x) and value == x for x in schema['enum']):
+        raise ValueError('schema enum mismatch')
+    if isinstance(value, dict):
+        if set(schema.get('required', [])) - set(value):
+            raise ValueError('schema required field missing')
+        props = schema.get('properties', {})
+        for key, item in value.items():
+            if 'propertyNames' in schema:
+                schema_check(key, schema['propertyNames'], root)
+            if key in props:
+                schema_check(item, props[key], root)
+            elif schema.get('additionalProperties') is False:
+                raise ValueError('schema additional property')
+            elif isinstance(schema.get('additionalProperties'), dict):
+                schema_check(item, schema['additionalProperties'], root)
+    if isinstance(value, list) and 'items' in schema:
+        for item in value:
+            schema_check(item, schema['items'], root)
+    if isinstance(value, str) and 'pattern' in schema and not re.search(schema['pattern'], value):
+        raise ValueError('schema string pattern mismatch')
+    for key, actual in [('minLength', len(value) if isinstance(value, str) else None),
+                        ('maxLength', len(value) if isinstance(value, str) else None),
+                        ('minItems', len(value) if isinstance(value, list) else None),
+                        ('maxItems', len(value) if isinstance(value, list) else None),
+                        ('minimum', value if type(value) in (int, float) else None),
+                        ('maximum', value if type(value) in (int, float) else None)]:
+        if key in schema and actual is not None and (actual < schema[key] if key.startswith('min') else actual > schema[key]):
+            raise ValueError('schema bound mismatch')
 
 
 def payload(reply):
@@ -74,14 +139,6 @@ def payload(reply):
     if not isinstance(r, dict) or r.get('isError', False) is not False:
         raise RuntimeError('REA tool error: ' + str(r)[:500])
     value = r.get('structuredContent')
-    if value is None:
-        content = r.get('content', [])
-        if len(content) != 1 or content[0].get('type') != 'text':
-            raise RuntimeError('REA bootstrap requires one typed JSON object')
-        try:
-            value = json.loads(content[0]['text'])
-        except (ValueError, KeyError) as e:
-            raise RuntimeError('REA bootstrap returned non-JSON text') from e
     if not isinstance(value, dict) or 'error' in value:
         raise RuntimeError('REA bootstrap negative/error reply: ' + str(value)[:500])
     return value
@@ -191,44 +248,62 @@ class Session:
             if len(self.tools) != len(tools) or listing.get('result', {}).get('nextCursor'):
                 raise RuntimeError('REA duplicate/paginated schemas unsupported')
             for name, pin in contract['schemas'].items():
-                if name not in self.tools or digest(self.tools[name]['inputSchema']) != pin:
+                if name not in self.tools or any(digest(self.tools[name].get(key+'Schema')) != pin[key]
+                                                  for key in ('input', 'output')):
                     raise RuntimeError('REA missing/unsupported reviewed schema: ' + name)
-            op = contract['open']
-            schema = self.tools[op['name']]['inputSchema']
-            properties = schema.get('properties', {})
-            for key, kind in [(op['binary_argument'], 'string'), (op['project_argument'], 'string'),
-                              (op['read_only_argument'], 'boolean')]:
-                if properties.get(key, {}).get('type') != kind:
-                    raise RuntimeError('REA open schema lacks explicit reviewed path/read-only option: ' + key)
-            if set(op['arguments']) - set(properties) or set(schema.get('required', [])) - set(op['arguments']):
-                raise RuntimeError('REA open arguments do not match reviewed schema')
-            if self.tools[contract['identity']['name']]['inputSchema'].get('required'):
-                raise RuntimeError('REA identity schema requires unsupported arguments')
+            self.binding = None
             identity = self.identity(deadline, allow_empty=True)
             if identity is None:
-                opened = self.client.call(contract['open']['name'], contract['open']['arguments'], deadline)
-                if opened.get(contract['open']['success_field']) is not True:
-                    raise RuntimeError('REA open_binary negative or untyped success reply: ' + str(opened)[:500])
+                self.target(self.metadata('open_binary', contract['open_arguments'], deadline))
                 self.identity(deadline)
         except BaseException:
             self.client.close()
             raise
 
+    def metadata(self, name, args, deadline):
+        schema_check(args, self.tools[name]['inputSchema'])
+        value = self.client.call(name, args, deadline)
+        try:
+            schema_check(value, self.tools[name]['outputSchema'])
+        except ValueError as e:
+            raise RuntimeError('REA malformed typed metadata: ' + str(e)) from e
+        if not isinstance(value.get('result'), dict):
+            raise RuntimeError('REA unsupported metadata result')
+        return value['result']
+
+    def target(self, r):
+        c = self.contract
+        if not same_path(r.get('path'), c['binary_path']) or any(r.get(k) != c[k]
+                for k in ('format', 'kind', 'architecture')) or r.get('sha256') != c['binary_sha256']:
+            raise RuntimeError('REA wrong/preexisting target identity')
+
     def identity(self, deadline, allow_empty=False):
-        c, i = self.contract, self.contract['identity']
-        r = self.client.call(i['name'], {}, deadline)
-        if allow_empty and r.get(i['state_field']) == 'empty' and r.get(i['ready_field']) is False:
-            # An occupied target must NEVER be overwritten, even if not ready.
-            if r.get(i['binary_field']) or r.get(i['project_field']):
+        c = self.contract
+        r = self.metadata('binary_session', {}, deadline)
+        if r.get('open') is False and allow_empty:
+            if any(k in r for k in ('path', 'sha256', 'architecture', 'format', 'kind')):
                 raise RuntimeError('REA empty state carries a preexisting target')
             return None
-        if r.get(i['state_field']) != 'ready' or r.get(i['ready_field']) is not True:
-            raise RuntimeError('REA target not typed ready: ' + str(r)[:500])
-        if not same_path(r.get(i['binary_field']), c['binary_path']) or \
-                not same_path(r.get(i['project_field']), c['project_path']):
-            raise RuntimeError('REA wrong/preexisting target identity')
+        if r.get('open') is not True:
+            raise RuntimeError('REA target not typed open')
+        self.target(r)
+        provider, server = r['analysis_provider_binding'], r['server_identity']
+        if provider is None:
+            raise RuntimeError('REA provider binding UNKNOWN (not observed)')
+        if provider['selection_source'] != 'auto-single-candidate':
+            raise RuntimeError('REA provider selection differs from reviewed deterministic auto policy')
+        if server['negotiated_protocol_version'] != '2025-06-18':
+            raise RuntimeError('REA server protocol identity mismatch')
+        binding = dict(provider=provider, server=server)
+        if self.binding is not None and self.binding != binding:
+            raise RuntimeError('REA provider/server identity drift')
+        self.binding = binding
+        availability = {a['name']: a for a in r['tool_availability']}
+        if any(availability.get(n, {}).get('available') is not True for n in RESEARCH):
+            raise RuntimeError('REA research capability unavailable in binary_session')
         return dict(label=c['label'], binary_path=c['binary_path'], binary_sha256=c['binary_sha256'],
-                    project_path=c['project_path'], ready=True, transport_pid=self.client.p.pid)
+                    format=c['format'], architecture=c['architecture'], kind=c['kind'],
+                    binding=binding, ready=True, live_query='UNKNOWN', transport_pid=self.client.p.pid)
 
     def request(self, r):
         if not isinstance(r, dict) or r.get('jsonrpc') != '2.0':
@@ -251,9 +326,10 @@ class Session:
             if set(params) - {'name', 'arguments'}:
                 raise ValueError('unreviewed research call parameter')
             name, args = params['name'], params.get('arguments', {})
-            properties = self.tools[name]['inputSchema'].get('properties', {})
-            if not isinstance(args, dict) or set(args) - set(properties):
+            allowed = {'procedure'} if name == 'procedure_pseudo_code' else {'addresses'}
+            if not isinstance(args, dict) or set(args) - allowed:
                 raise ValueError('unreviewed research argument')
+            schema_check(args, self.tools[name]['inputSchema'])
             def check(value):
                 if isinstance(value, dict):
                     for k, v in value.items():
@@ -267,6 +343,13 @@ class Session:
                     raise ValueError('arbitrary path argument denied')
             check(args)
             with self.client.lock:
+                listing = self.client.rpc('tools/list', {}, time.monotonic()+self.contract.get('startup_timeout', 45))
+                listed = listing.get('result', {}).get('tools', [])
+                if 'error' in listing or listing.get('result', {}).get('nextCursor') or \
+                        len(listed) != len(self.tools) or \
+                        {t['name']: (t.get('inputSchema'), t.get('outputSchema')) for t in listed} != \
+                        {n: (t.get('inputSchema'), t.get('outputSchema')) for n, t in self.tools.items()}:
+                    raise RuntimeError('REA live schema drift')
                 self.identity(time.monotonic()+self.contract.get('startup_timeout', 45))
                 reply = self.client.rpc('tools/call', params, time.monotonic()+600)
             return reply | {'id': r['id']}

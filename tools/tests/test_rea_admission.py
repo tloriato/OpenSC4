@@ -33,7 +33,7 @@ class Reproduce(unittest.TestCase):
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         try:
             request = dict(jsonrpc='2.0', id=1, method='tools/call',
-                           params=dict(name='procedure_pseudo_code', arguments={'address': 'fixture'}))
+                           params=dict(name='procedure_pseudo_code', arguments={'procedure': 'fixture'}))
             out, err = p.communicate(json.dumps(request)+'\n', timeout=3)
             self.assertEqual(json.loads(out)['result']['structuredContent']['error'], 'No app is open')
             print('REPRODUCED: tools/list succeeds; independent research client: No app is open')
@@ -52,14 +52,11 @@ class Admission(unittest.TestCase):
         self.binary.write_bytes(b'Harmless fixture, not a game file')
         self.project.mkdir()
         self.audit = self.root/'calls.jsonl'
-        self.c = dict(version=1, reviewed=True, label='Windows 1.1.641', binary_path=str(self.binary),
+        self.c = dict(version=2, reviewed=True, label='Windows 1.1.641', binary_path=str(self.binary),
             binary_sha256=__import__('hashlib').sha256(self.binary.read_bytes()).hexdigest(),
-            project_path=str(self.project), startup_timeout=2,
-            open=dict(name='open_binary', arguments=dict(path=str(self.binary), project=str(self.project), read_only=True),
-                      binary_argument='path', project_argument='project', read_only_argument='read_only', success_field='opened'),
-            identity=dict(name='app_identity', state_field='state', ready_field='ready',
-                          binary_field='binary', project_field='project'),
-            schemas={t['name']:rs.digest(t['inputSchema']) for t in TOOLS if t['name'] != 'close_app'})
+            format='pe', architecture='x86', kind='executable', startup_timeout=2,
+            open_arguments=dict(path=str(self.binary)), provider_selection='auto-single-candidate',
+            schemas={t['name']:{k:rs.digest(t[k+'Schema']) for k in ('input', 'output')} for t in TOOLS})
         self.cfg = config(FAKE_REA_AUDIT=str(self.audit))
         self.owned = []
         self.clients = []
@@ -134,16 +131,16 @@ class Admission(unittest.TestCase):
             self.assertNotIn('error', init)
             tools = self.rpc(p, 'tools/list')['result']['tools']
             self.assertEqual([t['name'] for t in tools], list(rs.RESEARCH))
-            for name, args in [('procedure_pseudo_code', {'address':'fixture'}), ('batch_decompile', {'addresses':['fixture']})]:
+            for name, args in [('procedure_pseudo_code', {'procedure':'fixture'}), ('batch_decompile', {'addresses':['fixture']})]:
                 reply = self.rpc(p, 'tools/call', dict(name=name, arguments=args))
                 self.assertEqual(reply['result']['structuredContent']['pid'], self.fixture_pids[ticket['session_id']])
             opens = [a for a in self.calls() if a['pid'] == self.fixture_pids[ticket['session_id']] and a['name']=='open_binary']
             self.assertEqual(len(opens), 1)
-            self.assertEqual(opens[0]['arguments'], self.c['open']['arguments'])
+            self.assertEqual(opens[0]['arguments'], self.c['open_arguments'])
         print('FIXTURE VERIFIED: two independent admitted children; exact open and both research calls share each PID')
 
     def test_already_correct_is_idempotent_and_keeper_does_not_contaminate_new_client(self):
-        existing = dict(state='ready', ready=True, binary=str(self.binary), project=str(self.project))
+        existing = self.existing()
         keeper = self.acquire(FAKE_REA_EXISTING=json.dumps(existing))
         other = self.acquire()
         opens = [a for a in self.calls() if a['name']=='open_binary']
@@ -151,43 +148,49 @@ class Admission(unittest.TestCase):
         self.assertNotEqual(keeper['session_id'], other['session_id'])
 
     def test_wrong_preexisting_never_opened_or_reset(self):
-        existing = dict(state='ready', ready=True, binary=str(self.binary)+'-wrong', project=str(self.project))
+        existing = self.existing() | {'path': str(self.binary)+'-wrong'}
         with self.assertRaisesRegex(RuntimeError, 'wrong/preexisting'):
             self.acquire(FAKE_REA_EXISTING=json.dumps(existing))
-        self.assertEqual([a['name'] for a in self.calls()], ['app_identity'])
+        self.assertEqual([a['name'] for a in self.calls()], ['binary_session'])
+
+    def existing(self):
+        return dict(open=True, path=str(self.binary), sha256=self.c['binary_sha256'],
+                    architecture='x86', format='pe', kind='executable')
 
     def test_failures_preserve_actual_causes(self):
         for mode, cause in [('open_error','deliberate open failure'), ('negative','negative'),
                             ('open_rpc_error','deliberate RPC open failure'), ('wrong_protocol','unsupported protocol'),
-                            ('untyped_ready','not typed ready'),
-                            ('string_success','untyped'), ('unsupported','schema'), ('identity_error','identity unavailable'),
+                            ('untyped_ready','typed metadata'), ('provider_missing','binding UNKNOWN'),
+                            ('string_success','typed metadata'), ('unsupported','schema'), ('identity_error','identity unavailable'),
                             ('wrong_after_open','wrong/preexisting'), ('malformed','Expecting value'),
                             ('stderr_eof','fixture server startup diagnostic'),
-                            ('timeout','timeout'), ('eof','EOF')]:
+                            ('timeout','timeout'), ('notifications','timeout'), ('eof','EOF')]:
             with self.subTest(mode=mode), self.assertRaisesRegex(RuntimeError, cause):
                 self.acquire(mode)
 
     def test_missing_path_wrong_hash_unreviewed_and_wrong_open_are_denied_before_process(self):
         original = json.loads(json.dumps(self.c))
         for update in [dict(binary_path=str(self.binary)+'-absent'), dict(binary_sha256='0'*64), dict(reviewed=False),
-                       dict(open=original['open'] | {'arguments':original['open']['arguments'] | {'path':'C:/arbitrary.exe'}}),
-                       dict(open=original['open'] | {'name':'execute'}),
-                       dict(open=original['open'] | {'arguments':original['open']['arguments'] | {'read_only':False}})]:
+                       dict(open_arguments={'path':'C:/arbitrary.exe'}),
+                       dict(open_arguments=original['open_arguments'] | {'provider_id':'other'}),
+                       dict(open_arguments=original['open_arguments'] | {'snapshot_path':str(self.project)}),
+                       dict(open_arguments=original['open_arguments'] | {'read_only':False})]:
             self.c = original | update
             with self.subTest(update=update), self.assertRaises(ValueError):
                 self.acquire()
         self.assertFalse(self.audit.exists())
 
     def test_unreviewed_schema_never_opens_and_nonready_preexisting_never_replaces(self):
-        self.c['schemas']['open_binary'] = '0'*64
+        original = self.c['schemas']['open_binary']
+        self.c['schemas']['open_binary'] = original | {'input': '0'*64}
         with self.assertRaisesRegex(RuntimeError, 'schema'):
             self.acquire()
         self.assertFalse(self.audit.exists())
-        self.c['schemas']['open_binary'] = rs.digest(TOOLS[0]['inputSchema'])
-        existing = dict(state='loading', ready=False, binary=str(self.binary), project=str(self.project))
-        with self.assertRaisesRegex(RuntimeError, 'not typed ready'):
+        self.c['schemas']['open_binary'] = original
+        existing = self.existing() | {'open': 'loading'}
+        with self.assertRaisesRegex(RuntimeError, 'typed metadata'):
             self.acquire(FAKE_REA_EXISTING=json.dumps(existing))
-        self.assertEqual([a['name'] for a in self.calls()], ['app_identity'])
+        self.assertEqual([a['name'] for a in self.calls()], ['binary_session'])
 
     def test_identity_drift_fails_before_research_with_framed_error(self):
         drift = self.root/'drift'
@@ -195,7 +198,7 @@ class Admission(unittest.TestCase):
         p = self.bridge(ticket)
         self.rpc(p, 'tools/list')
         drift.write_text('fixture drift')
-        reply = self.rpc(p, 'tools/call', dict(name='procedure_pseudo_code', arguments={'address':'fixture'}))
+        reply = self.rpc(p, 'tools/call', dict(name='procedure_pseudo_code', arguments={'procedure':'fixture'}))
         self.assertEqual(reply['jsonrpc'], '2.0')
         self.assertEqual(reply['id'], 10)
         self.assertIn('wrong/preexisting', reply['error']['message'])
@@ -213,9 +216,13 @@ class Admission(unittest.TestCase):
     def test_exact_capability_boundary_in_actual_configured_transport(self):
         ticket = self.acquire()
         p = self.bridge(ticket)
-        for name, args in [('open_binary', self.c['open']['arguments']), ('close_app', {}), ('app_identity', {}),
+        for name, args in [('open_binary', self.c['open_arguments']), ('close_app', {}), ('binary_session', {}),
                            ('execute', {}), ('procedure_pseudo_code', {'path':'C:/arbitrary'}),
                            ('procedure_pseudo_code', {'address':'C:/arbitrary'}),
+                           ('procedure_pseudo_code', {'procedure':1}),
+                           ('procedure_pseudo_code', {'procedure':'fixture', 'document':'other'}),
+                           ('procedure_pseudo_code', {}),
+                           ('batch_decompile', {'addresses':[True]}),
                            ('batch_decompile', {'addresses':[], 'target':'other'})]:
             with self.subTest(name=name):
                 self.assertIn('error', self.rpc(p, 'tools/call', dict(name=name, arguments=args)))
@@ -318,7 +325,9 @@ class Admission(unittest.TestCase):
         state.write_text(json.dumps(dict(lanes={'re-fixture':dict(pid=os.getpid(),rounds=1)})))
         before = state.read_bytes()
         manifest.write_text(json.dumps(dict(kind='re',provider='codex',lane='re-fixture',round=1,
-            main=str(self.root),worktree=str(self.root),state=str(state),result=str(result),rea_session=ticket)))
+            main=str(self.root),worktree=str(self.root),state=str(state),result=str(result),rea_session=ticket,
+            manifest=str(manifest), guard_id='codex-'+'a'*32, args={}, source={'tip':'fixture'},
+            host_checks=[dict(name=n, verdict='GO') for n in ('dispatcher','lanes.check')])) )
         def provider(m):
             # Only model execution/Git preparation are stubbed. Actual typed target
             # admission, backend lifetime ownership and cleanup all run for real.

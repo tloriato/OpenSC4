@@ -204,6 +204,10 @@ def _launch(root, state_path, spec_path, provider, sessions):
                  status_path=str(stem)+'-codex-status.json', codex=spec.get('codex', {}))
         if ticket:
             m['rea_session'] = ticket
+        m['host_checks'] = [dict(name='dispatcher', verdict='GO'), dict(name='lanes.check', verdict='GO')]
+        m['source'] = dict(tip=subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'],
+                          text=True, creationflags=backend.NOWIN).strip(),
+                          spec_sha256=rea_session.digest(spec))
         backend.write_json(manifest, m)
         # Supervisor stays alive until the CLI ends; it writes one atomic, compatible completion result.
         with stderr.open('wb') as err:

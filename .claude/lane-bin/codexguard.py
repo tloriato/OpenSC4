@@ -10,6 +10,8 @@ import sys
 import time
 
 import laneguard as guard
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]/'tools'))
+import lane_admission
 
 
 @contextlib.contextmanager
@@ -81,6 +83,8 @@ def handoff_allowed(tool, tin, wt, lane):
 
 
 def validate_manifest(m):
+    if m.get('host_admission') is not None or m.get('kind') == 're':
+        lane_admission.verify(m)
     if m.get('provider') != 'codex' or not re.fullmatch(r'[a-z0-9][a-z0-9_-]*', m.get('lane', '')):
         raise ValueError('Invalid Codex lane registration')
     if Path(m['worktree']).resolve() != Path(guard.worktree(m['main'], m['lane'])).resolve():

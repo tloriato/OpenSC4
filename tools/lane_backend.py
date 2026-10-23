@@ -19,6 +19,7 @@ sys.path.insert(0, str(REPO / '.claude/lane-bin'))
 import codexguard
 import laneguard
 import rea_session
+import lane_admission
 
 NOWIN = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
 
@@ -266,6 +267,8 @@ def main():
             raise RuntimeError('Round not started: ' + line)
         if m['provider'] == 'codex':
             prepare_codex_git(m)
+        m['host_admission'] = lane_admission.issue(m, m['host_checks'] + [dict(name='supervisor', verdict='GO')])
+        write_json(m['manifest'], m)
         result = run_codex(m) if m['provider'] == 'codex' else run_claude(m)
     except Exception as e:
         result = dict(type='result', subtype='error', provider=m['provider'], is_error=True,
