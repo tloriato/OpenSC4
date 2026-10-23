@@ -1,30 +1,65 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| re-watercraft-completion4: native watercraft contracts | Codex / `re-watercraft-completion4` (RE, reserved detached worktree) | in progress: original research round 2/3; R1 evidence preserved; no owner qualification | Trace movement and command residuals from canonical Windows instructions; publish bounded algorithms and retain unknowns. |
+| re-watercraft-completion4: native watercraft contracts | Codex / `re-watercraft-completion4` (RE, reserved detached worktree) | WIP: original research round 2/3; bounded movement/control publication committed; questions and diff checks PASS; 75/38073 census unchanged; no ABI/game/shadow or owner qualification | AI interpolation, geometry spill rounding/degeneracy, inherited animation, crash/RNG and routes/docking remain open; at most one further original research round, coordinator decision only. |
 
-## Handoff
+## Report — original round 2/3, 2026-10-23
 
-- Goal: original round 2/3, movement/command first; no implementation, runtime calls or owner credit.
-- Starting tip: a2f2b75c; R1 substantive commits bd529644 and 9267ce96 are already present.
-- Done: 45b12f3d publishes same-sign speed/inverse feedback, ordered right/left steering and tween reset; corrects R1 FST rounding.
-- Done: published turning-radius/center/sea-query algorithm and bank/pitch/lift geometry with explicit spill-rounding residuals.
-- Done: new vector companion, command effects/heading and inherited edge/timer/tween algorithms; census per-body statuses added.
-- Checks: questions.py index/check PASS (index unchanged); git diff --check PASS. Whole new sections reviewed against instruction notes; corrected return-rate baseline comparison before final commit.
-- Next: commit bounded publication, write final WIP report/queue; do not start another round.
-- AI 00571880 (2779B) has heavily mistyped local decomp; only initial queries made; do not claim full AI interpolation.
-- Original executable hash equals export executable_sha256; no target-control tools or server admission capability exposed.
-- Export identity: SimCity 4.exe, SHA256 3bc5c7fe807fe5aa24a3abb06e40f13486670bc1150612c09baf4ecedafe1a4b, image base 00400000.
-- 00569940 is 1314B, 00569E70 1172B; forward bank helper 005682F0 464B; 005671D0 inverse feedback 312B.
-- 009F0090 export TransformDirection is actually acos-like math (009F00AD: sqrt((1+x)*(1-x)), FPATAN; endpoints 0/pi).
-- Turning calls water global B43CF4 slot29 GetSeaLevel, not spatial water query; second conditional query return is discarded.
-- Census remains 75/38073 versus old 79/38556, four functions/483 bytes unexplained.
-- Local q.py Bash wrapper failed with CreateInstance/E_ACCESSDENIED; use bounded PowerShell commands.
-- Only configured REA tools are procedure_pseudo_code and batch_decompile; no target-control tools permitted.
-- No games, ABI changes, tests, builds, engine reads, agents, refs changes, merge or push.
-- Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-re-watercraft-completion4-r2-manifest.json.
-- Prior round report below is preserved until the final round-2 report replaces this handoff.
+**Bounded WIP publication, not complete movement/control or whole-owner closure.** This is exactly the second
+original research round in the existing family. No restart, renamed family, automatic third round, implementation
+qualification, byte promotion or change to core-watercraft4's parked WC3–WC7 status is implied.
 
-## Report
+### New publication
+
+- `45b12f3d`: same-sign acceleration/preservation and signed inverse feedback, ordered right/left steering,
+  neutral/countersteer, tween reset. Corrects R1's intermediate-rounding formula using the FST instruction.
+- `adff3bd7`: turning radius/center/sea-level query/rotation and output geometry; bank/pitch/basis/lift
+  algorithms. Exact intermediate spill precision and degenerate normalization remain explicitly partial.
+- `0bb56d6c`: command fire/AEMS, skier/rope full-transform ordering, heading acos path and inherited
+  edge/timer/tween/channel tick contracts. Added watercraft-command-vectors.md and per-body statuses in
+  watercraft-owner-inventory.md; refined compound question residuals without moving any to answered.
+- Explicitly reconciled old summary conflicts: weaker same-sign requests do not decelerate; reverse feedback
+  is signed; steering's channel adjustment uses raw milliseconds with asymmetric +/-dt; skier uses the current
+  whole transform, not an owned trailing-point formula; whalefire is an AEMS request. automata.md's vehicle
+  accumulator is not watercraft control, and its forced-flag attribution to Windows 00508C50 lacks those writes
+  in that body. automata.md itself was not edited.
+
+### Evidence, checks and limits
+
+- Canonical main-checkout re_query.py function/callee/instruction queries came first. Existing bounded local
+  decompilation supported the trace; numerical/branch/store claims were checked against instruction bytes.
+  No decompiler/assembly text is committed. No engine or other contributor implementation was read.
+- Export program SimCity 4.exe, base 00400000, SHA256
+  `3bc5c7fe807fe5aa24a3abb06e40f13486670bc1150612c09baf4ecedafe1a4b`; read-only original hash matched.
+  This matches the supplied Windows artifact/export, not an independent product-version-resource audit.
+- Actual sizes: turning 00569940=1314B, orientation 00569E70=1172B, bank 005682F0=464B,
+  inverse feedback 005671D0=312B; AI 00571880=2779B remains OPEN. Shared/inherited helpers are identified
+  separately from owned algorithms, with no fabricated missing four-function census entries.
+- Independent local arithmetic derivation produced signed inverse examples about +1.80980265/-1.14554119
+  at +/-1/8 speed, and a rational retained-vs-reloaded product witness 39C479FE versus 39C479FD. Published
+  exact rational/power-of-two branch vectors distinguish near-zero/reverse/cross-zero speed, neutral and
+  simultaneous steering, clamps, equal-magnitude tween, sea-level boundary, repeated reverse lift, event
+  failure and inherited latch equality. No RNG draws occur in these owner command/geometry bodies;
+  crash RNG order remains OPEN. These are **proposed, unexecuted** conformance vectors, not native goldens.
+- Reviewed the whole new published sections and vector companion against the trace, including the subtle
+  unrounded baseline comparison in steering. `python tools/questions.py index` and `check`: PASS;
+  generated index unchanged. `git diff --check`: PASS. Cargo/clippy/ctest n/a; no game requests, runtime
+  original calls, builds, tests, shadow qualification or ABI changes. No ABI proposal file needed.
+- REA tool discovery exposed only procedure_pseudo_code/batch_decompile. Live NoApp capability and server
+  admission remain UNKNOWN; no successful full server handshake or live admission is claimed or used.
+  No live procedure retry, open/close/retarget/new server or cache/target-control RPC occurred. Canonical
+  existing export/original evidence sufficed for the bounded publication; no REA failure was invented.
+- q.py failed at Bash CreateInstance/E_ACCESSDENIED; subsequent commands used bounded PowerShell. Git
+  emitted packed-refs.lock permission errors but created detached-HEAD commits; no shared ref/config repair.
+
+### Residuals and next steps
+
+WC3–WC7 remain open in docs/specs/questions/watercraft.md. Census is still 75/38073 versus 79/38556,
+four functions/483 bytes unexplained. AI interpolation (00571880), all geometric spill/exceptional cases,
+inherited animation/remaining owner-drive details, crash/bump/RNG (0056A310/0056A440/0056AF90), routes,
+decoder/backtracking/ferry/dock/nearest ties and other R1 residuals prevent a complete owner contract.
+Further work needs a coordinator decision within the one remaining original round; this lane does not restart.
+
+## Prior round-1 report (preserved)
 
 This is a **partial evidence-backed contract**, not complete cSC4Watercraft ownership or an implementation-ready
 79-method closure. One guarded round; no agents, restart, merge, push or external traffic.
