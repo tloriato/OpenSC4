@@ -1,6 +1,26 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| verify-font-renderer4: bounded native small renderer verification | Codex, verify-font-renderer4 (detached HEAD, supervisor publishes branch) | wip: R2 writer visibility incomplete; corrected bridge and final gate unexecuted; no game proof | Obtain host-visible writer clearance, run corrected focused bridge, then one stable all and matched game profiles. |
+| verify-font-renderer4: bounded native small renderer verification | Codex, verify-font-renderer4 (detached HEAD, supervisor publishes branch) | in progress: final R3 host clearance accepted; corrected bridge pending | Run corrected fixtures, one stable all, then frozen matched game controls. |
+
+## Handoff
+
+- Goal: final original R3; corrected independent bridge, one stable all, frozen OFF-first controls.
+- Reused clean detached ab2bbe75; engine tree 2e94fea473c79636e71162fd453fd3d7b278e505.
+- R3 manifest matches lane, kind engine, round 3, worktree and git_base; codexguard status within budget.
+- Copied HOST clearance at 2026-10-23T05:57:53.938146+01:00 accepted under explicit root authority.
+- Proof SHA256 25F448804C2C92716E5A5099DA8E5F66C114CF72581611251F9D5742965EE395.
+- Host references/open_outputs/errors empty; root confirms no conflicting Font operation.
+- No isolated global process/CIM/WMI/cache visibility audit repeated; historical 41 denials retained below.
+- q.py Bash startup remains AccessDenied; bounded PowerShell reads used. No fallback build performed.
+- qbuild supported steps: test, clippy, quick, verify, fmt, all; native is refused without a build.
+- Independently rechecked published sections 5/6 and literal ledger: D=11223344/F=FFEEDDCC/a=128 gives 88888888.
+- Separate D=0/F=FFFFFFFF inputs retain 80808080 and FEFEFEFE. No expected values changed.
+- Next: canonical supported native verification to execute corrected bridge; record actual terminal and counts.
+- Original quick 34799 terminal/exit remain UNKNOWN; 540 Rust / 220 native observations do not imply PASS.
+- Initial independent bridge 643 checks / 2 FAIL preserved; corrected suite still unexecuted at this point.
+- No R3 source/fixture changes, no frozen artifacts, no game request outstanding; both profiles unqualified.
+
+## Retained R2/R1 evidence
 
 ## R2 measured report (2026-10-23)
 
