@@ -12,6 +12,8 @@
 - Baseline all session 37809 remains live after build completion; no CTest log/result yet, do not duplicate checker. Initial fmt invocation with relative paths failed; use absolute paths. New transport formatting corrections in progress.
 - Checker diagnosis: OS process command lines identified own qbuild PID 5912 -> fc4verify 2396 -> sccache stats-only child 34812 hung after build. Terminated only that stats child; CTest then started (PID 32232), presently progressing. No shared daemon/tool changes.
 - Scoped absolute-path fmt now passes (3 touched Rust files); engine source milestone eb96fcca; tests-first milestone 7f9459ed. Factory-owned/refaudit/extra-reference counters now separated for refusal accounting.
+- Baseline complete: Rust 5329/0, clippy clean, build success, CTest 67/68 (ret_channel_check failed on five newly written fixture uses; source changed during baseline). Logs preserved under build-runs/baseline. Local [abi-ret] comments now cite published scalar bool contracts; Insert(list) bool discarded entirely. No ABI table edits.
+- Quick started once: session 18211, qbuild PID 33712 / fc4verify PID 27796; Rust complete, CMake linked new fixture. Do not duplicate. Final all has not yet started.
 - Next: scoped fmt and serial quick after baseline resolves, then commit frozen engine source before one final stable all; freeze DLL/PDB and run OFF first. No requests yet.
 - Constraints: no RE sources, no duplicated list algorithms, no public ABI table/version changes; original provenance required for both lists in both ON controls.
 - Native controls required in sequence: OFF through 2032 with save/shutdown, native ON, literal40 ON using one frozen DLL/PDB. No requests outstanding.

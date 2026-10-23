@@ -159,14 +159,18 @@ struct Fixture {
         if (!fc4_kl_op(rust,list,op,key,&result)) { Refuse("rust-op-transport"); return false; }
         uint32_t native = 0;
         switch (op) {
+        // [abi-ret] persistence.md section 5: Insert(key) returns true.
         case 0: native = lists[list]->Insert(Native(key)); methods |= 1 << 0; break;
+        // [abi-ret] persistence.md section 5: Erase returns whether first equal key was removed.
         case 1: native = lists[list]->Erase(Native(key)); methods |= 1 << 2; break;
+        // [abi-ret] persistence.md section 5: EraseAll returns true.
         case 2: native = lists[list]->EraseAll(); methods |= 1 << 3; break;
+        // [abi-ret] persistence.md section 5: IsPresent returns whether an equal key exists.
         case 3: native = lists[list]->IsPresent(Native(key)); methods |= 1 << 5; break;
         case 5:
-            // SDK bool is observable, but section 5 promises effects only.
-            native = lists[list]->Insert(*lists[1-list]); methods |= 1 << 1;
-            Log("keylist-verify: Insert(list) bool=%u observed-only; score appended effects",native);
+            // Section 5 promises effects only: discard the SDK bool channel.
+            lists[list]->Insert(*lists[1-list]); methods |= 1 << 1;
+            Log("keylist-verify: Insert(list) bool discarded/unverified; score appended effects");
             return true;
         default: Refuse("invalid-fixture-op"); return false;
         }
