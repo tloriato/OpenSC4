@@ -2,10 +2,10 @@
   "format": 1,
   "name": "overlay_views_strip",
   "spec": ["overlay-views.md §1.1", "overlay-views.md §7.2"],
-  "description": "Three straight vertices yield six strip vertices of width 2t. [choice OVV3] positive x segment has positive-z u=0 side.",
+  "description": "OVV3 published DIFFERS: plus normal is negative z, UV longitudinal then side. Supersedes historical provisional winding/UV. Original execution PROPOSED/UNEXECUTED.",
   "steps": [{"op": "ov_strip", "thickness": 2, "repeat": 3,
     "points": [[3, 7, 5], [6, 7, 5], [12, 7, 5]],
-    "expect": [[[3, 7, 7], [0, 0]], [[3, 7, 3], [1, 0]],
-      [[6, 7, 7], [0, 2.25]], [[6, 7, 3], [1, 2.25]],
-      [[12, 7, 7], [0, 6.75]], [[12, 7, 3], [1, 6.75]]]}]
+    "expect": [[[3, 7, 3], [0, 0]], [[3, 7, 7], [0, 1]],
+      [[6, 7, 3], [2.25, 0]], [[6, 7, 7], [2.25, 1]],
+      [[12, 7, 3], [6.75, 0]], [[12, 7, 7], [6.75, 1]]]}]
 }

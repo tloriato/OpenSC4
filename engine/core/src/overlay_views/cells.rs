@@ -2,6 +2,16 @@
 use super::*;
 use std::sync::Arc;
 
+/// OVV5 lower-vertex bias/store conversion in its bounded nonnegative domain.
+pub(super) fn lower_vertex(coordinate: f32) -> Result<u32, Error> {
+    if !coordinate.is_finite() || !(0.0..4_194_304.0).contains(&coordinate) {
+        return Err(Error::UnsupportedDomain);
+    }
+    let biased = ((f64::from(coordinate) - 0.5) + 12_582_912.0) as f32;
+    let candidate = biased.to_bits().wrapping_sub(0x4B400000);
+    Ok(if f64::from(coordinate) == f64::from(candidate) + 1.0 { candidate + 1 } else { candidate })
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Cell {
     pub x: i32,
@@ -23,6 +33,9 @@ pub trait Lot: Send + Sync {
 pub trait LotFilter: Send + Sync {
     fn accepts(&self, lot: &dyn Lot) -> bool;
 }
+
+/// Public filter construction input; acceptance remains a raw foreign query.
+pub const LOT_FILTER_MASK: u32 = 0x1F4F;
 
 /// Raw foreign terrain/camera/occupant queries, never precomputed marked-cell quads.
 pub trait CellTerrain {
@@ -127,12 +140,6 @@ impl SC4MarkedCellView {
     }
 
     pub fn set_cell_size(&mut self, size: [f32; 2]) -> Result<(), Error> {
-        if size
-            .iter()
-            .any(|v| !v.is_finite() || *v <= 0.0 || !v.recip().is_finite())
-        {
-            return Err(Error::InvalidInput);
-        }
         self.cell_size = size;
         self.inverse_size = [size[0].recip(), size[1].recip()];
         Ok(())
@@ -144,6 +151,9 @@ impl SC4MarkedCellView {
     }
 
     pub fn draw_cells(&self, terrain: &dyn CellTerrain, override_colour: Option<Colour>) -> Result<Vec<Draw>, Error> {
+        if self.cells.is_empty() { return Ok(Vec::new()); }
+        // Setter accepts every float; checked portable Draw cannot promise native unchecked access.
+        if self.cell_size.iter().any(|v| !v.is_finite() || *v < 0.0) { return Err(Error::UnsupportedDomain); }
         let dims = terrain.dimensions();
         let standard = self.cell_size == [16.0, 16.0];
         let mut draws = Vec::new();
@@ -154,45 +164,36 @@ impl SC4MarkedCellView {
             indices: Vec::new(),
         };
         for (cell, colour) in &self.cells {
-            let x = cell.x as f32 * self.cell_size[0];
-            let z = cell.z as f32 * self.cell_size[1];
-            let max_x = dims[0] as f32 * 16.0;
-            let max_z = dims[1] as f32 * 16.0;
-            // Literal lower-corner bounds and edge-clamped partial cells (OVV5).
-            if x < 0.0 || z < 0.0 || x >= max_x || z >= max_z {
-                continue;
-            }
             let (mut corners, split) = if standard {
                 let cx = cell.x as u32;
                 let cz = cell.z as u32;
+                if cx >= dims[0] || cz >= dims[1] { continue; }
                 let corners = [
                     terrain.vertex(cx, cz),
-                    terrain.vertex(cx + 1, cz),
-                    terrain.vertex(cx + 1, cz + 1),
                     terrain.vertex(cx, cz + 1),
+                    terrain.vertex(cx + 1, cz + 1),
+                    terrain.vertex(cx + 1, cz),
                 ];
-                if !terrain.in_frustum(corners[0]) && !terrain.in_frustum(corners[2]) {
-                    continue;
-                }
                 (corners, terrain.split(cx, cz))
             } else {
-                let x1 = (x + self.cell_size[0]).min(max_x);
-                let z1 = (z + self.cell_size[1]).min(max_z);
-                let corners = [(x, z), (x1, z), (x1, z1), (x, z1)].map(|(px, pz)| {
-                    // Nearest vertex, half-way ties upward: literal rounding, OVV5.
-                    let vx = (px / 16.0).round() as u32;
-                    let vz = (pz / 16.0).round() as u32;
-                    Point::new(px, terrain.vertex(vx.min(dims[0]), vz.min(dims[1])).y, pz)
-                });
+                let mut corners = [Point::new(0.0, 0.0, 0.0); 4];
+                for (out, [dx, dz]) in corners.iter_mut().zip([[0,0], [0,1], [1,1], [1,0]]) {
+                    let px = (i64::from(cell.x)+dx).clamp(0, i64::from(dims[0])) as f32 * self.cell_size[0];
+                    let pz = (i64::from(cell.z)+dz).clamp(0, i64::from(dims[1])) as f32 * self.cell_size[1];
+                    let vx = lower_vertex(px/16.0)?; let vz = lower_vertex(pz/16.0)?;
+                    if vx > dims[0] || vz > dims[1] { return Err(Error::UnsupportedDomain); }
+                    *out = Point::new(px, terrain.vertex(vx, vz).y, pz);
+                }
                 (corners, Split::Unflipped)
             };
-            if standard {
-                if self.use_water {
-                    let water = terrain.water_altitude();
-                    for p in &mut corners {
-                        p.y = p.y.max(water);
-                    }
+            if self.use_water {
+                let water = terrain.water_altitude();
+                for p in &mut corners {
+                    if water > p.y { p.y = water; }
                 }
+            }
+            if !terrain.in_frustum(corners[0]) && !terrain.in_frustum(corners[2]) { continue; }
+            if standard {
                 if let (Some(filter), Some(lot)) = (&self.filter, terrain.lot_at(cell.x as u32, cell.z as u32)) {
                     if filter.accepts(lot) {
                         if lot.flags() & 0x100000 != 0 && !lot.shows_marks() {
@@ -224,8 +225,8 @@ impl SC4MarkedCellView {
             }));
             // Corner order matches terrain-view §4.2, without taking on terrain-owner flag logic.
             let indices = match split {
-                Split::Unflipped => [0, 3, 2, 0, 2, 1],
-                Split::Flipped => [0, 3, 1, 1, 3, 2],
+                Split::Unflipped => [0, 1, 2, 0, 2, 3],
+                Split::Flipped => [0, 1, 3, 3, 1, 2],
             };
             batch.indices.extend(indices.map(|i| base + i));
         }

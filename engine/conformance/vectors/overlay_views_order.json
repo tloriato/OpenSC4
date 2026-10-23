@@ -2,6 +2,6 @@
   "format": 1,
   "name": "overlay_views_order",
   "spec": ["overlay-views.md §1", "overlay-views.md §7.1"],
-  "description": "Stable ascending priority with two equal-priority paths.",
-  "steps": [{"op": "ov_order", "paths": [[31, 2], [17, 1], [43, 2]], "expect": [17, 31, 43]}]
+  "description": "OVV2 published DIFFERS: binary32 equal-newest-first supersedes historical oldest-first. Original execution PROPOSED/UNEXECUTED.",
+  "steps": [{"op": "ov_order", "paths": [[31, 2], [17, 1], [43, 2]], "expect": [17, 43, 31]}]
 }

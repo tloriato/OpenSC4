@@ -2,8 +2,13 @@
 use super::*;
 use std::sync::{Arc, Mutex};
 
+mod contracts { include!("contracts.rs"); }
+
 const RED: Colour = Colour([211, 19, 73, 129]);
 const OUTLINE: Colour = Colour([7, 59, 101, 233]);
+// Historical 27 tests retained. Changed expectations below follow the published
+// DIFFERS answers OVV2/3/5/7, not observed portable output.
+fn no_texture() -> Factory { Factory { binding: Arc::new(Binding), fail: true } }
 fn p(x: f32, y: f32, z: f32) -> Point {
     Point::new(x, y, z)
 }
@@ -75,10 +80,8 @@ fn path_view() -> cSC4PathView {
     v
 }
 fn add_path(v: &mut cSC4PathView, id: u32, priority: i32, points: &[Point]) {
-    v.new_path(id, priority, 0)
-        .unwrap()
-        .supply_attributes(RED, 3.0)
-        .unwrap();
+    v.new_path(id, priority as f32, 0).unwrap();
+    v.set_path_texture(0, 3.0, &no_texture()).unwrap();
     for &point in points {
         assert!(v.add_path_vertex(point).unwrap());
     }
@@ -92,10 +95,10 @@ fn prescribed_order_and_newest_survives_priority_insertion_and_duplicate_ids() {
     add_path(&mut v, 7, 2, &[p(7.0, 8.0, 9.0)]);
     assert_eq!(
         v.paths().iter().map(|p| (p.id(), p.priority())).collect::<Vec<_>>(),
-        [(9, 1), (9, 2), (7, 2)]
+        [(9, 1.0), (7, 2.0), (9, 2.0)] // OVV2 DIFFERS: equal-newest-first
     );
     assert!(v.add_path_vertex(p(8.0, 100.0, 9.0)).unwrap());
-    assert_eq!(v.paths()[2].points().len(), 2);
+    assert_eq!(v.paths()[1].points().len(), 2);
     assert_eq!(v.paths()[0].points().len(), 1);
 }
 
@@ -106,35 +109,35 @@ fn prescribed_straight_strip_width_and_asymmetric_height_uv_distance() {
     let draw = v.draw_path(&v.paths()[0]).unwrap().unwrap();
     assert_eq!(draw.format, Some(10));
     assert_eq!(draw.vertices.len(), 6);
-    assert_eq!(draw.vertices[0].position, p(3.0, 7.0, 7.0));
-    assert_eq!(draw.vertices[1].position, p(3.0, 7.0, 3.0));
-    assert_eq!(draw.vertices[2].uv, [0.0, 3.75]);
-    assert_eq!(draw.vertices[5].uv, [1.0, 8.25]);
-    assert!(draw.vertices.iter().all(|v| v.colour == RED));
+    assert_eq!(draw.vertices[0].position, p(3.0, 7.0, 3.0));
+    assert_eq!(draw.vertices[1].position, p(3.0, 7.0, 7.0));
+    assert_eq!(draw.vertices[2].uv, [3.75, 0.0]);
+    assert_eq!(draw.vertices[5].uv, [8.25, 1.0]);
+    assert!(draw.vertices.iter().all(|v| v.colour == Colour(1u32.to_le_bytes())));
 }
 
 #[test]
 fn joint_bisector_and_doubleback_are_independently_expected() {
     let n = cSC4PathView::joint_normal(p(0.0, 0.0, 0.0), p(3.0, 8.0, 0.0), p(3.0, 9.0, 4.0)).unwrap();
-    near(n[0], -std::f32::consts::FRAC_1_SQRT_2);
-    near(n[1], std::f32::consts::FRAC_1_SQRT_2);
+    near(n[0], 1.0); // OVV3 DIFFERS: squared miter, published handedness
+    near(n[1], -1.0);
     assert_eq!(
         cSC4PathView::joint_normal(p(0.0, 0.0, 0.0), p(3.0, 0.0, 0.0), p(0.0, 9.0, 0.0)),
-        Ok([-0.0, -1.0])
+        Ok([0.0, 1.0])
     );
 }
 
 #[test]
 fn prescribed_duplicate_ignores_height_and_no_current_path_is_an_error() {
     let mut v = path_view();
-    assert_eq!(v.add_path_vertex(p(1.0, 2.0, 3.0)), Err(Error::NoCurrentPath));
+    assert_eq!(v.add_path_vertex(p(1.0, 2.0, 3.0)), Ok(false));
     add_path(&mut v, 1, 0, &[p(0.0, 3.0, 0.0)]);
     assert!(!v.add_path_vertex(p(0.001, 900.0, 0.0)).unwrap());
     assert!(v.add_path_vertex(p(0.004, 900.0, 0.0)).unwrap());
-    assert_eq!(v.add_path_vertex(p(f32::NAN, 0.0, 0.0)), Err(Error::InvalidInput));
+    assert_eq!(v.add_path_vertex(p(f32::NAN, 0.0, 0.0)), Ok(true));
     v.clear_paths();
     assert!(v.paths().is_empty());
-    assert_eq!(v.add_path_vertex(p(1.0, 2.0, 3.0)), Err(Error::NoCurrentPath));
+    assert_eq!(v.add_path_vertex(p(1.0, 2.0, 3.0)), Err(Error::UnsupportedDomain));
 }
 
 #[test]
@@ -144,22 +147,21 @@ fn paths_capture_texture_refs_and_binding_failure_preserves_current_texture() {
         fail: false,
     };
     let mut v = path_view();
-    v.set_path_texture(Some(0xFEED0193), &factory).unwrap();
     add_path(&mut v, 1, 0, &[]);
-    assert_eq!(Arc::strong_count(&factory.binding), 3);
+    v.set_path_texture(0xFEED0193, 4.0, &factory).unwrap();
+    assert_eq!(Arc::strong_count(&factory.binding), 2);
     let failing = Factory {
         binding: factory.binding.clone(),
         fail: true,
     };
-    assert_eq!(v.set_path_texture(Some(0), &failing), Err(Error::ResourceUnavailable));
+    assert_eq!(v.set_path_texture(0, 7.0, &failing), Ok(()));
+    assert!(v.paths()[0].texture().is_none());
+    assert_eq!(v.paths()[0].repeat(), Some(7.0));
     add_path(&mut v, 2, 0, &[]);
-    assert!(Arc::ptr_eq(
-        v.paths()[0].texture().unwrap(),
-        v.paths()[1].texture().unwrap()
-    ));
+    assert!(v.paths()[0].texture().is_none()); // OVV2: no view-wide capture
     drop(failing);
-    v.set_path_texture(None, &factory).unwrap();
-    assert_eq!(Arc::strong_count(&factory.binding), 3);
+    v.set_path_texture(1, 1.0, &factory).unwrap();
+    assert_eq!(Arc::strong_count(&factory.binding), 2);
     v.clear_paths();
     assert_eq!(Arc::strong_count(&factory.binding), 1);
 }
@@ -171,8 +173,8 @@ fn path_update_identity_texture_state_order_and_depth_restore_on_failure() {
         fail: false,
     };
     let mut v = path_view();
-    v.set_path_texture(Some(7), &factory).unwrap();
     add_path(&mut v, 1, 0, &[p(1.0, 2.0, 3.0), p(4.0, 2.0, 3.0)]);
+    v.set_path_texture(7, 3.0, &factory).unwrap();
     let mut context = Context {
         offset: -7.0,
         fail_at: Some(1),
@@ -191,16 +193,17 @@ fn path_update_identity_texture_state_order_and_depth_restore_on_failure() {
 #[test]
 fn unspecified_path_attributes_and_arrows_fail_before_device_changes() {
     let mut v = path_view();
-    v.new_path(1, 0, 0x80000000).unwrap();
+    v.new_path(1, 0.0, 0x80000000).unwrap();
     v.add_path_vertex(p(0.0, 0.0, 0.0)).unwrap();
     v.add_path_vertex(p(5.0, 0.0, 0.0)).unwrap();
     let mut context = Context::default();
     assert_eq!(v.update(&mut context), Err(Error::Gap(Gap::PathAttributesOvv2)));
     assert!(context.offsets.is_empty());
-    v.new_path(2, 0, 1).unwrap().supply_attributes(RED, 1.0).unwrap();
+    v.new_path(2, 0.0, 1).unwrap();
+    v.set_path_texture(0, 1.0, &no_texture()).unwrap();
     v.add_path_vertex(p(0.0, 0.0, 0.0)).unwrap();
     v.add_path_vertex(p(5.0, 0.0, 0.0)).unwrap();
-    assert_eq!(v.draw_path(&v.paths()[1]), Err(Error::Gap(Gap::ArrowheadGeometryOvv3)));
+    assert_eq!(v.path_draws(&v.paths()[0]).unwrap().len(), 2); // OVV3 now settled
 }
 
 struct TestLot {
@@ -297,18 +300,18 @@ fn cell_heights_colours_and_both_splits_have_independent_expected_values() {
         d.vertices.iter().map(|v| v.position).collect::<Vec<_>>(),
         [
             p(32.0, 13.0, 16.0),
-            p(48.0, 16.0, 16.0),
+            p(32.0, 18.0, 32.0),
             p(48.0, 21.0, 32.0),
-            p(32.0, 18.0, 32.0)
+            p(48.0, 16.0, 16.0)
         ]
     );
-    assert_eq!(d.indices, [0, 3, 2, 0, 2, 1]);
+    assert_eq!(d.indices, [0, 1, 2, 0, 2, 3]); // OVV5 DIFFERS
     assert!(d.vertices.iter().all(|v| v.colour == OUTLINE));
     let terrain = Terrain {
         flipped: true,
         ..terrain
     };
-    assert_eq!(v.draw_cells(&terrain, None).unwrap()[0].indices, [0, 3, 1, 1, 3, 2]);
+    assert_eq!(v.draw_cells(&terrain, None).unwrap()[0].indices, [0, 1, 3, 3, 1, 2]);
 }
 
 #[test]
@@ -368,7 +371,7 @@ fn cell_bounds_frustum_and_non_square_clamp_nearest_vertex() {
         .draw_cells(
             &Terrain {
                 dims: [2, 2],
-                visible: false,
+                visible: true,
                 ..Terrain::default()
             },
             None,
@@ -379,9 +382,9 @@ fn cell_bounds_frustum_and_non_square_clamp_nearest_vertex() {
         d.vertices.iter().map(|v| v.position).collect::<Vec<_>>(),
         [
             p(21.0, 10.0, 22.0),
-            p(32.0, 13.0, 22.0),
-            p(32.0, 18.0, 32.0),
-            p(21.0, 15.0, 32.0)
+            p(21.0, 10.0, 22.0),
+            p(42.0, 13.0, 22.0),
+            p(42.0, 13.0, 22.0)
         ]
     );
 }
@@ -422,6 +425,7 @@ struct BufferLog {
     drops: usize,
     writes: Vec<(usize, Vec<[u8; 32]>)>,
     draws: Vec<Vec<u32>>,
+    lock_results: Vec<bool>,
 }
 struct Buffer {
     log: Arc<Mutex<BufferLog>>,
@@ -438,8 +442,10 @@ impl VertexBuffer for Buffer {
         self.capacity
     }
     fn lock(&mut self) -> bool {
-        self.log.lock().unwrap().locks += 1;
-        self.lock_ok
+        let mut log = self.log.lock().unwrap();
+        let at = log.locks;
+        log.locks += 1;
+        log.lock_results.get(at).copied().unwrap_or(self.lock_ok)
     }
     fn write_vertices(&mut self, offset: usize, vertices: &[[u8; 32]]) {
         self.log.lock().unwrap().writes.push((offset, vertices.to_vec()));
@@ -447,8 +453,8 @@ impl VertexBuffer for Buffer {
     fn unlock(&mut self) {
         self.log.lock().unwrap().unlocks += 1;
     }
-    fn draw_triangles(&mut self, indices: &[u32]) -> bool {
-        self.log.lock().unwrap().draws.push(indices.to_vec());
+    fn draw_triangles(&mut self, indices: &[u16]) -> bool {
+        self.log.lock().unwrap().draws.push(indices.iter().map(|&v| u32::from(v)).collect());
         self.draw_ok
     }
 }
@@ -494,12 +500,13 @@ impl TerrainRows for Rows {
         bytes
     }
 }
-fn indices(w: usize, h: usize) -> Vec<[u32; 6]> {
+fn indices(w: usize, h: usize) -> Vec<u16> {
     (0..h)
         .flat_map(|r| {
-            (0..w).map(move |c| {
-                let a = (r * (w + 1) + c) as u32;
-                let b = a + w as u32 + 1;
+            (0..w).flat_map(move |c| {
+                let _ = r; // OVV7 DIFFERS: row-pair-relative u16 source
+                let a = c as u16;
+                let b = a + w as u16 + 1;
                 [a, b, b + 1, a, b + 1, a + 1]
             })
         })
@@ -535,7 +542,9 @@ fn vertex_rows_compact_rebase_nonzero_column_and_second_append() {
         .unwrap()
         .unwrap();
     assert_eq!(b.index_capacity(), 90);
-    b.set_index_buffer(indices(5, 3)).unwrap();
+    let source = indices(5, 3);
+    b.set_index_buffer(&source, 1);
+    b.create_buffer().unwrap();
     b.draw_prims_indexed_using_vert_buf(&Rows, 1, 2, 2).unwrap();
     assert_eq!(b.pending_indices(), [0, 3, 4, 0, 4, 1, 1, 4, 5, 1, 5, 2]);
     b.draw_prims_indexed_using_vert_buf(&Rows, 2, 1, 1).unwrap();
@@ -556,7 +565,9 @@ fn vertex_flush_relock_exact_fit_lock_failure_and_no_implicit_draw_on_release() 
     let mut b = cSTEVertBufExtn::get_vertex_buffer_extension(&d, true, 3, 4)
         .unwrap()
         .unwrap();
-    b.set_index_buffer(indices(3, 4)).unwrap();
+    let source = indices(3, 4);
+    b.set_index_buffer(&source, 1);
+    b.create_buffer().unwrap();
     b.draw_prims_indexed_using_vert_buf(&Rows, 0, 0, 3).unwrap();
     assert!(d.log.lock().unwrap().draws.is_empty());
     b.draw_prims_indexed_using_vert_buf(&Rows, 1, 0, 1).unwrap();
@@ -567,7 +578,7 @@ fn vertex_flush_relock_exact_fit_lock_failure_and_no_implicit_draw_on_release() 
     b.release_vertex_buffer_extension();
     {
         let l = d.log.lock().unwrap();
-        assert_eq!((l.unlocks, l.drops, l.draws.len()), (2, 1, 1));
+        assert_eq!((l.unlocks, l.drops, l.draws.len()), (1, 1, 1)); // Release never unlocks
     }
     let d = Driver {
         lock_ok: false,
@@ -576,9 +587,10 @@ fn vertex_flush_relock_exact_fit_lock_failure_and_no_implicit_draw_on_release() 
     let mut b = cSTEVertBufExtn::get_vertex_buffer_extension(&d, true, 3, 2)
         .unwrap()
         .unwrap();
-    b.set_index_buffer(indices(3, 2)).unwrap();
+    let source = indices(3, 2);
+    b.set_index_buffer(&source, 1);
     assert_eq!(
-        b.draw_prims_indexed_using_vert_buf(&Rows, 0, 0, 1),
+        b.create_buffer(),
         Err(Error::LockFailed)
     );
     assert!(!b.is_locked());
@@ -594,20 +606,16 @@ fn vertex_failures_leave_no_duplicate_unlock_or_partial_write() {
     let mut b = cSTEVertBufExtn::get_vertex_buffer_extension(&d, true, 3, 2)
         .unwrap()
         .unwrap();
+    b.create_buffer().unwrap();
     assert_eq!(
         b.draw_prims_indexed_using_vert_buf(&Rows, 0, 0, 1),
         Err(Error::MissingIndexSource)
     );
     assert!(d.log.lock().unwrap().writes.is_empty());
-    b.set_index_buffer(vec![[999; 6]; 6]).unwrap();
-    assert_eq!(
-        b.draw_prims_indexed_using_vert_buf(&Rows, 0, 0, 1),
-        Err(Error::OutOfBounds)
-    );
-    assert_eq!(d.log.lock().unwrap().locks, 0);
-    b.set_index_buffer(indices(3, 2)).unwrap();
+    let source = indices(3, 2);
+    b.set_index_buffer(&source, 1);
     b.draw_prims_indexed_using_vert_buf(&Rows, 0, 0, 1).unwrap();
-    assert_eq!(b.flush_buffer(), Err(Error::DrawFailed));
+    assert_eq!(b.flush_buffer(), Ok(())); // OVV7 DIFFERS: ignored raw draw failure
     b.flush_buffer().unwrap();
     drop(b);
     assert_eq!(d.log.lock().unwrap().unlocks, 1);
@@ -844,16 +852,14 @@ fn train_chord_fallback_and_cross_product_boundaries() {
 #[test]
 fn arrow_flags_on_short_path_are_suppressed_and_other_bits_remain_opaque() {
     let mut view = path_view();
-    view.new_path(0xFEDCBA98, -17, 0xA5000003)
-        .unwrap()
-        .supply_attributes(RED, -3.0)
-        .unwrap();
+    view.new_path(0xFEDCBA98, -17.0, 0xA5000003).unwrap();
+    view.set_path_texture(0, -3.0, &no_texture()).unwrap();
     view.add_path_vertex(p(3.0, 7.0, 11.0)).unwrap();
     view.add_path_vertex(p(4.0, 7.0, 11.0)).unwrap();
     assert_eq!(view.paths()[0].flags(), 0xA5000003);
     let draw = view.draw_path(&view.paths()[0]).unwrap().unwrap();
-    assert_eq!(draw.vertices[2].uv[1], -0.75);
-    assert_eq!(draw.vertices[2].position, p(4.0, 7.0, 13.0));
+    assert_eq!(draw.vertices[2].uv[0], -0.75);
+    assert_eq!(draw.vertices[2].position, p(4.0, 7.0, 9.0));
 }
 
 #[test]

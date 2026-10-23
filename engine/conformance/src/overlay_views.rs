@@ -6,6 +6,11 @@ use crate::scalar::{check_expect, jf, ji, R};
 use fc4_core::overlay_views::*;
 use std::cell::Cell as Counter;
 
+struct Unbound;
+impl TextureFactory for Unbound {
+    fn bind(&self, _: u32) -> Option<std::sync::Arc<dyn Texture>> { None }
+}
+
 pub(crate) fn exec(_host: &HostRef, name: &str, op: &Json) -> Option<R<()>> {
     let rest = name.strip_prefix("ov_")?;
     Some(run(rest, op))
@@ -58,14 +63,15 @@ fn run(name: &str, op: &Json) -> R<()> {
                     return Err("path needs id and priority".into());
                 }
                 let id = u32::try_from(integer(&path[0])?).map_err(|_| "id out of range")?;
-                let priority = i32::try_from(integer(&path[1])?).map_err(|_| "priority out of range")?;
+                let priority = number(&path[1])?;
                 core(view.new_path(id, priority, 0))?;
             }
             jarray(view.paths().iter().map(|p| ji(p.id())))
         }
         "strip" => {
             let mut view = core(cSC4PathView::new(number(field(op, "thickness")?)?))?;
-            core(core(view.new_path(1, 0, 0))?.supply_attributes(Colour([255; 4]), number(field(op, "repeat")?)?))?;
+            core(view.new_path(u32::MAX, 0.0, 0))?;
+            core(view.set_path_texture(0, number(field(op, "repeat")?)?, &Unbound))?;
             for p in points(field(op, "points")?)? {
                 core(view.add_path_vertex(p))?;
             }
@@ -78,7 +84,7 @@ fn run(name: &str, op: &Json) -> R<()> {
         }
         "duplicate" => {
             let mut view = core(cSC4PathView::new(1.0))?;
-            core(view.new_path(1, 0, 0))?;
+            core(view.new_path(1, 0.0, 0))?;
             let mut accepted = Vec::new();
             for p in points(field(op, "points")?)? {
                 accepted.push(Json::Bool(core(view.add_path_vertex(p))?));

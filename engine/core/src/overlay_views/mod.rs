@@ -12,7 +12,7 @@ mod network;
 mod path;
 mod vertex_buffer;
 
-pub use cells::{Cell, CellTerrain, Lot, LotFilter, SC4MarkedCellView, Split};
+pub use cells::{Cell, CellTerrain, Lot, LotFilter, SC4MarkedCellView, Split, LOT_FILTER_MASK};
 pub use network::{
     Network, NetworkOccupant, NetworkPath, RouteSet, SC4PathInfoView, SC4TrainJunctionView, TrainResourceFactory,
     TrainResources,
@@ -44,6 +44,8 @@ pub enum Error {
     LockFailed,
     DrawFailed,
     Overflow,
+    /// Portable safety boundary, not a native false return.
+    UnsupportedDomain,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -163,3 +165,4 @@ impl CellRect {
 
 #[cfg(test)]
 mod tests;
+
