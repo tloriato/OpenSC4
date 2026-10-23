@@ -1,6 +1,6 @@
 # Curve entry views
 
-Status: WIP, first dedicated native behavior publication, 2026-10-23, lane re-curve-editor-views4.
+Status: bounded ordinary-flow publication, 2026-10-23, lane re-curve-editor-views4; exceptional domains remain open.
 Evidence: Windows SimCity 4 Deluxe 1.1.641 native export queried with `re_query.py`;
 instruction bytes govern widths and predicates. Local pseudocode is navigation only.
 This is a bounded specification, not whole-family coverage of an approximate byte count.
@@ -560,7 +560,7 @@ free it; that test is not a widget-creation success test. Evidence:
 0x0066E9F0–0x0066EB28. The resource-loading branch requires two nonzero keys
 and is excluded by these callers' literal zeros. Both buffer-pointer branches
 are described without assuming a constructor/provider result. The canonical
-resource-editor §13 identifies button class 0x22DEC92D; that identity is not
+resource-editor §9 identifies button class 0x22DEC92D; that identity is not
 an extra class/IID argument at this Init's WCM call.
 
 ### 12.2 Happiness control and geometry ledger
@@ -795,12 +795,12 @@ Both owners' normal returned-failure prefixes can be compared explicitly:
 | Flag/geometry/attach/configuration returns any word while effects and pointers stay valid | Continue all steps; final base AL governs | Continue all steps; final AL=1 |
 | Line creation AL=0, no output/effects | Free caller text; advance spacing; continue; final result as above if refresh normal | Same continuation; final AL=1 if refresh normal |
 | Label creation AL=0 with output null | Free caller text; next +0xC dereference is unsupported; no normal false return | Same; early base Init already called |
-| Creation/query status low byte zero, independently returns usable acquired pointer | Pointer-driven continuation; ignore status except helper creation AL gates in §12.1 | Same, with two refresh graph queries before first output use |
+| Unchecked refresh query returns AL=0, independently supplies usable acquired output | Pointer-driven continuation, including release; no query-status gate | Same, with two refresh graph queries before first output use |
 | Graph allocation null or constructor returns null | Prior controls/ref handoffs retained; graph dereference unsupported | Same, also prior base Init/import |
 | Base Init returns AL=0, with independent ordinary effects | All controls and refresh already happened; scratch free; AL=0 | Base result ignored before import/UI; final AL=1 on normal completion |
 
-The usable-pointer row concerns unchecked button/refresh-query returns; it does
-not override the explicit label/line creation AL tests. Null pointers and
+The query-output row does not override the explicit label/line creation AL tests.
+Button creation instead returns its pointer directly in EAX. Null pointers and
 nonreturn/exception paths do not promise scratch cleanup or a result.
 
 ### 13.5 Evidence extent and ordinary CFG closure

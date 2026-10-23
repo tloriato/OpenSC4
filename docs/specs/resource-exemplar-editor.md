@@ -543,7 +543,7 @@ row shows `<property name> (L)` and the three hex words 0x1000, 0x6534284A, 0x20
 ## 13. Open points
 
 Happiness and general response curve editors (0x071E971B, 0xE8DDA013): this document retains identity only;
-their first dedicated value/point/event/display contracts and partial Init attribution are in
+their dedicated value/point/event/display contracts and finite ordinary Init ledgers are in
 [curve-editor-views.md](curve-editor-views.md), with [body-scoped questions](questions/curve-editor-views.md).
 Also open:
 the other text editors' GetValue range checks, who opens `cSCEditValueDlg`, who reads the ExemplarFilters map
@@ -560,7 +560,7 @@ column-0 property ID source (+0xEC vs +0xF4, §12).
 | cSCUint32ComboBoxEntryView, cSCUint8ComboBoxEntryView | 1177 + 1133 named (+ GetValue 0x00687AE0, 0x00687CA0 unnamed) | specified (§10), identity of 0x87C34EDA proven |
 | typed text editors (8 classes) | ~3700 | layout and Init specified, SINT64 read-back specified (§8.1) |
 | cSCUint32SpinnerEntryView, cSC16ColumnGridEntryView, cSCColorSequenceEntryView, cSCResKeyTableEntryView | named Init/GetValue/handlers | specified round 3 (§11.1-11.3, §12) incl. unnamed SetValue/GetValue/DoMessage slots |
-| cSCHappinessCurveEntryView, cSCGeneralResponseCurveEntryView | ~8000 historical identity estimate | identity only here; [dedicated behavior/body ledger](curve-editor-views.md#10-per-body-attribution-ledger), Init still partial; no whole-byte credit |
+| cSCHappinessCurveEntryView, cSCGeneralResponseCurveEntryView | ~8000 historical identity estimate | identity only here; [dedicated behavior/body ledger](curve-editor-views.md#10-per-body-attribution-ledger), ordinary Init contracts published with exceptional/foreign domains open; no whole-byte credit |
 | cSCResourceCatalogView, cSCResCatBaseView, cSCResCatalogPickerView, cSCResKeyInputView | 16686 | identity only in this spec; separate partial contracts and body attribution in [resource-catalog.md](resource-catalog.md), no byte-total completion credit |
 
 Proposed coverage-map entries (exact owners, no wildcard credit): `spec` = `resource-exemplar-editor.md` for
