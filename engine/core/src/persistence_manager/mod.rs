@@ -85,6 +85,38 @@ impl KeyList {
         self.keys.push(key);
         true
     }
+    /// Section 5 specifies append effects, but no Insert(list) return guarantee.
+    /// Distinct borrowed owners only; native self-insertion remains unverified.
+    pub fn insert_list(&mut self, source: &Self) {
+        source.enum_keys(|key| {
+            self.insert(key);
+        });
+    }
+    pub fn erase(&mut self, key: Key) -> bool {
+        if let Some(index) = self.keys.iter().position(|candidate| *candidate == key) {
+            self.keys.remove(index);
+            true
+        } else {
+            false
+        }
+    }
+    pub fn erase_all(&mut self) -> bool {
+        self.keys.clear();
+        true
+    }
+    pub fn is_present(&self, key: Key) -> bool {
+        self.keys.contains(&key)
+    }
+    /// Valid indices only. Native invalid-index behaviour is not emulated.
+    pub fn get_key(&self, index: u32) -> Key {
+        self.keys[index as usize]
+    }
+    /// Copies, in order; no mutating/reentrant callback contract is assumed.
+    pub fn enum_keys(&self, mut callback: impl FnMut(Key)) {
+        for key in &self.keys {
+            callback(*key);
+        }
+    }
     pub fn keys(&self) -> &[Key] {
         &self.keys
     }

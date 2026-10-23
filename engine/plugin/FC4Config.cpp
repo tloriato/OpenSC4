@@ -352,6 +352,8 @@ const char* const kOtherKeys[] = {"disable", "enable", "budget_default", "refaud
                                   "persist_manager_verify",
                                   // verify-dbpf-native4: read-only public packed-file comparison.
                                   "dbpf_native", "dbpf_native_fixtures", "dbpf_native_file",
+                                  // Opt-in independent original KeyList owner fixture.
+                                  "keylist_verify",
 };
 // The switches that are off, for lock-free readers (autotest verdict).
 char g_offList[512] = "-";

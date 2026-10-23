@@ -69,6 +69,7 @@
 #include <cstring>
 #include "FC4CmdLineProbe.h"  // opt-in public, read-only command-line probe
 #include "FC4PersistManagerVerify.h"
+#include "FC4KeyListVerify.h"
 
 #ifndef FC4_VERSION_STRING
 #define FC4_VERSION_STRING "0.1.0"
@@ -365,6 +366,7 @@ public:
         fc4::CmdLineProbe(FrameWork());  // opt-in public borrowed process query evidence
         fc4::Span8Start();
         fc4::PersistManagerVerify(); // Opt-in scoped fixtures, all removed before city load.
+        fc4::KeyListVerify(); // Opt-in independent owned lists, destroyed before city load.
         fc4::FpuLog("hook PostAppInit (exit)");
         return true;
     }

@@ -1138,3 +1138,6 @@ pub mod feature_manager;
 
 // Resource-only public-manager verification transport; actual production core.
 pub mod persist_manager_verify;
+
+// Private retained production KeyList fixture transport (no DLL ABI entries).
+mod keylist_verify;
