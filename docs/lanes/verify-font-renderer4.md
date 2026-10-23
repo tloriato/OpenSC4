@@ -1,24 +1,109 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| verify-font-renderer4: bounded native small renderer verification | Codex, verify-font-renderer4 (detached HEAD, supervisor publishes branch) | in progress: final R3 host clearance accepted; corrected bridge pending | Run corrected fixtures, one stable all, then frozen matched game controls. |
+| verify-font-renderer4: bounded native small renderer verification | Codex, verify-font-renderer4 (detached HEAD, supervisor publishes branch) | wip: corrected bridge 678/0; new own verify blocked in stats; no full gate or game qualification | Coordinator collect session 38541 / own stats PID 22680; no duplicate build or fourth lane round. |
 
-## Handoff
+## Final R3 report (2026-10-23)
 
-- Goal: final original R3; corrected independent bridge, one stable all, frozen OFF-first controls.
-- Reused clean detached ab2bbe75; engine tree 2e94fea473c79636e71162fd453fd3d7b278e505.
-- R3 manifest matches lane, kind engine, round 3, worktree and git_base; codexguard status within budget.
-- Copied HOST clearance at 2026-10-23T05:57:53.938146+01:00 accepted under explicit root authority.
-- Proof SHA256 25F448804C2C92716E5A5099DA8E5F66C114CF72581611251F9D5742965EE395.
-- Host references/open_outputs/errors empty; root confirms no conflicting Font operation.
-- No isolated global process/CIM/WMI/cache visibility audit repeated; historical 41 denials retained below.
-- q.py Bash startup remains AccessDenied; bounded PowerShell reads used. No fallback build performed.
-- qbuild supported steps: test, clippy, quick, verify, fmt, all; native is refused without a build.
-- Independently rechecked published sections 5/6 and literal ledger: D=11223344/F=FFEEDDCC/a=128 gives 88888888.
-- Separate D=0/F=FFFFFFFF inputs retain 80808080 and FEFEFEFE. No expected values changed.
-- Next: canonical supported native verification to execute corrected bridge; record actual terminal and counts.
-- Original quick 34799 terminal/exit remain UNKNOWN; 540 Rust / 220 native observations do not imply PASS.
-- Initial independent bridge 643 checks / 2 FAIL preserved; corrected suite still unexecuted at this point.
-- No R3 source/fixture changes, no frozen artifacts, no game request outstanding; both profiles unqualified.
+The corrected bridge is now executed and passing. Full-gate and game qualification remain
+unmeasured because a **new, positively attributed own verification operation** is waiting in
+sccache statistics. This is not the historical R2 global-visibility prerequisite. No fourth round,
+reset, duplicate build, cancellation, cache RPC, restart or game request was used.
+
+### Admission and source identity
+
+Reused clean detached `ab2bbe75d2000e731462f553bf330c4aa71e0129`; engine tree
+`2e94fea473c79636e71162fd453fd3d7b278e505`. R3 manifest matches this lane, kind engine,
+round 3, worktree and git_base; codexguard accepted it. Accepted copied HOST clearance
+`build-runs/evidence-run4/coordinator-native-font-final-host-process-proof.json`, timestamp
+`2026-10-23T05:57:53.938146+01:00`, under explicit root authority. Its references,
+open_outputs and errors are empty; root confirms no conflicting Font operation. Proof SHA256:
+`25F448804C2C92716E5A5099DA8E5F66C114CF72581611251F9D5742965EE395`.
+No isolated global process inventory, CIM/WMI, inaccessible-cwd/cache-environment clearance
+or global spawn preflight was repeated. Historical R2 41 denials remain unchanged below.
+
+Commit `6b4ba195` records this admission and source review. The actual verification started
+from that clean commit; at 06:14:25 +01:00 HEAD and engine tree still match, with clean tracked
+status. No production, fixture, dependency or build configuration changes in R3. No old build
+terminal or baseline PASS is inferred. q.py still fails Bash startup with AccessDenied, so reads
+use bounded PowerShell. An unsupported `qbuild native` was refused without executing a build.
+
+### Corrected bridge: actual measurements
+
+Independently reviewed published sections 5/6 and the ledger: D=11223344, F=FFEEDDCC,
+a=128 gives 88888888 by the published modulo-32-bit formula. Separate D=0/F=FFFFFFFF
+fixtures retain 80808080/FEFEFEFE. Neither expected literals nor production changed.
+
+Executed canonical `qbuild.py --wt <WT> verify` once, not another quick or baseline all.
+The new build log reaches 118/118, including the rebuilt bridge link and plugin link.
+Direct execution of that rebuilt `engine/build-x86/fc4_font_renderer_verify_test.exe` returns:
+
+`font renderer bridge operations=51 pixels=84 callbacks=187 checks=678 failed=0 native-original=0`
+
+The executable's exit is 0. Those are **actual**, previously planned denominators. Its checks
+include all corrected literal fixtures, immutable input hashes, intentionally mutated pixel and
+extra-trace rejection, same-IID wrong-holder/foreign-image/typed-entry refusal, OFF zero
+mocks/owner calls, portable invalid source/target backing, count limit and trace-capacity
+refusal. Portable unsafe-input cases are never sent to native. Target entry tests exercise the
+plugin raw primitive host, not the original buffer owner or original renderer. The 187 count
+is the expected callback-entry denominator; literal equality also validates actual Rust traces.
+Pixels are designated positions; full supplied windows and guards are checked separately.
+This is no original-native execution or source-read/same-value-store observability claim.
+
+The initial 49/80/175, **643 checks / 2 failures** remains historical raw failure. Original quick
+34799 and its exit remain **UNKNOWN**; historical 540 Rust and 220 linked native observations
+are not a passing old terminal. R2 performed no build. No current all/clippy/68-CTest terminal
+result exists; the link count does not qualify a gate.
+
+### New own operation: preserve for coordinator collection
+
+Actual current operation: unified execution session **38541**, command
+`python <MAIN>/.claude/lane-bin/qbuild.py --wt <WT> verify`. It remains active without terminal
+output after bounded output collection. No second build was started. The supported wrapper
+invokes `fc4verify.py --wt <WT> build ctest`; no current ctest log has been produced.
+
+`build-runs/collect-r3-operation.py` traverses only this Codex process's tool descendants,
+matches the explicit own worktree/qbuild command and captures its descendants. It does not
+enumerate global processes or establish global clearance. Full evidence is retained in
+`build-runs/r3-operation-collection.json` (duplicate ancestry matches are not separate operations).
+
+| Process | PID | Creation epoch | Parent | Actual arguments / status |
+|---|---|---|---|---|
+| qbuild | 25112 | 1792732144.3912296 | 35928 | qbuild.py --wt this worktree verify |
+| fc4verify | 32908 | 1792732144.4300804 | 25112 | fc4verify.py --wt this worktree build ctest |
+| stats | 22680 | 1792732194.48161 | 32908 | sccache.EXE --show-stats --stats-format json |
+
+All three cwd values are this reserved worktree. Stats has an ESTABLISHED TCP connection
+127.0.0.1:64327 to 127.0.0.1:4597. Open-file lists and full argv/ancestry are preserved in JSON;
+they expose only system resource files for these waiting processes, not open build outputs.
+The build log stops at link 118/118 (06:09:52 +01:00); wrapper exit/native build exit remain
+UNKNOWN. This is concrete new stats blockage, not an inference from old R2 errors. The lane
+has not killed any process, changed cache configuration, queried cache RPC, restarted anything
+or manufactured success. Root must collect this same operation before any subsequent build.
+
+### Content hashes and unqualified game scope
+
+SHA256 values captured at 06:14:25 +01:00 (not a frozen artifact manifest):
+
+- Fixtures.h: `446706499F58067AE4E861FC63321ADCC0CF80BA416AFC3F18044211452E6AB4`
+- Ledger.md: `AFA64E33D59ABF53E16228D93CD00D3D4E2AD41657F355D163705AC167674C10`
+- Verify.cpp: `F8D5D9BFE6538A855206737DFEE708FC906A7D76AD38190156324279BFB2685F`
+- bridge test.cpp: `011F630DDE5345BA7F26C4CA96FBD2DACEE85A67D6645FA681F581BDF0674629`
+- CAPI adapter.rs: `D2E8C40AD88417A37AD72B3ED88BA537E8310BFF81EDAB664A4E7F641047EC1B`
+- rebuilt bridge exe: `ED7D008BC02A2A4FEB2F0BC3410501985309CCD08046A3808A8AA6D37DE6153D`
+- current build log: `59621DF3F01CB8D35DBFA7D0B6A90C04BA2418FDBA12054C503273367C6B5693`
+
+No DLL/PDB pair frozen, game requests submitted or discarded, native-original operations,
+game verdicts, literal CURRENT40/provider counts/defaults, phase/lifecycle/ref/foreign/stall/
+shutdown results, 2032 or save/reload measurements. Every such field is **unmeasured**, not zero.
+Both matched OFF-first profiles remain unqualified. FR1-3, natural cache/layout/palette producer,
+larger holder/span renderer, original buffer owner and invalid-native-backing exclusions remain.
+No new spec questions: corrected operands pass; the remaining obstacle is runtime tooling.
+ABI exports changed in the original implementation; no ABI version bump or R3 ABI change.
+
+Next: coordinator collects session 38541 and the identified stats child without attributing a
+passing terminal. Only a real supported full-gate PASS permits freezing artifacts and the
+authorized bounded matched game controls. This final original R3 does not request another lane
+round. The retained R2/R1 pending instructions below are historical, superseded by this report.
 
 ## Retained R2/R1 evidence
 
