@@ -1,6 +1,6 @@
 # Curve entry views
 
-Status: first dedicated native behavior publication, 2026-10-23, lane re-curve-editor-views4.
+Status: WIP, first dedicated native behavior publication, 2026-10-23, lane re-curve-editor-views4.
 Evidence: Windows SimCity 4 Deluxe 1.1.641 native export queried with `re_query.py`;
 instruction bytes govern widths and predicates. Local pseudocode is navigation only.
 This is a bounded specification, not whole-family coverage of an approximate byte count.
