@@ -1,22 +1,71 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| re-watercraft-completion4: native watercraft contracts | Codex / `re-watercraft-completion4` (RE, reserved detached worktree) | in progress: original FINAL round 3/3; initial source 3d591dba; no ABI/game/shadow or owner qualification | Publish 00571880 normal AI path and directly required geometry precision; preserve compound residuals; no fourth round. |
+| re-watercraft-completion4: native watercraft contracts | Codex / `re-watercraft-completion4` (RE, reserved detached worktree) | WIP: original FINAL round 3/3 finished; 16864867 AI path and 5ebe4c84 numeric boundaries; questions/links/diff PASS; 75/38073 unchanged; no ABI/game/shadow or owner qualification | Coordinator review bounded publication; WC3–WC7 remain open and core-watercraft4 remains parked. Original three rounds exhausted; no fourth round or family reset. |
 
-## Handoff
+## Report — original FINAL round 3/3, 2026-10-23
 
-- Goal: final original round 3/3, AI 00571880 plus directly necessary geometry precision; spec text only.
-- Initial source: 3d591dba41659df37f7d608c036832ee5c44ce25, clean detached HEAD.
-- Read coordinator-watercraft-final-host-proof.json and actual r3 manifest: own lane/RE/round3/WT/base match.
-- Host GO supplied; no detached-context spawnpreflight repeat. Normal runtime guard remains in force.
-- Original SHA256 freshly matches export 3bc5c7fe807fe5aa24a3abb06e40f13486670bc1150612c09baf4ecedafe1a4b.
-- Export confirms AI body 00571880, 2779B; callers 00572909 docking, 005731C5 animation.
-- R2 contracts/vectors retained, including 39C479FE/FD and FST correction; census 75/38073 unchanged.
-- Done 16864867: normal AI owned path, alignment/erase helpers, caller sequence, exact constants and proposed
-  literal branch/order vectors. No native/engine result used.
-- Done: geometry selected spill/width/store/branch/callback audit and rational publication witness drafted.
-- Next: consistency/link/question/diff checks; review new claims; final report/commit/normal docs queue.
-- No live REA query, target action, engine access, builds, native execution, probes, ABI or agents.
-- WC3–WC7 remain open; core-watercraft4 park unchanged. No complete-owner/byte qualification.
+**Meaningful bounded WIP publication.** The newly published ordinary AI path and selected movement precision
+rules do not qualify a complete owner, complete byte coverage, default behavior, native equivalence or engine.
+This is the original family's final authorized research round; there is no automatic fourth round/name reset.
+The historical R2/R1 reports below describe earlier work, not additional work claimed by this round.
+
+### New publication and source
+
+- `16864867`: added [watercraft-ai-motion.md](../specs/watercraft-ai-motion.md), linked from watercraft §5.1a.
+  Owned 00571880 branch/reset/waypoint/query/consume order; midpoint geometry; phase latch; mutable
+  alignment helper; turn/translation and speed/turn approach; live pose and post-callback history order.
+  The alignment threshold is strictly <2 degrees, near-point threshold strictly <7, and short-distance
+  threshold strictly <float 0.1. First versus second turn feedback retains the native sign asymmetry.
+  Native callers pass one float time and continue into Movement_PositionNew; no foreign final-motion
+  callback, Automaton accumulator or implementation algorithm replaces owner computation.
+- `5ebe4c84`: watercraft §6.2.2c specifies selected float loads/FST/FSTP/retained arithmetic boundaries,
+  both-nonzero turning selection, signed-zero/zero/reverse-time behavior, exact matrix/translation store
+  order, byte revision wrap, lift versus live position, and callback mutation/lifetime consequences.
+  This supplements R2 equations; its supported/partial/unknown body checklist is in the owner inventory.
+- Added independent proposed/unexecuted AI next/no-next/short/reached/equality/zero-distance/turn/clamp
+  cases, explicit primitive query replies and history/order expectations. dt=400 gives float D=1,T=40;
+  dt=12800 gives D=32 and a 16-unit cap with desired Speed=1/8. Exact 2-degree geometric-input bits
+  are explicitly unknown: the equality case is a comparison-stage trace, not a fabricated native golden.
+- New rational publication-stage witness: old P=(1,1,1), output=(2^-25,2^-25,2^-25), delta
+  -33554431/33554432. At nearest-even and x87 precision>=53, retained x gives 33000000, spilled y,z
+  give zero; native translation stores z,x,y. This is a derived stage case, not proof a whole helper
+  reaches that triple. R2's separate 39C479FE/FD acceleration witness and FST correction are retained.
+- Source starts at clean detached 3d591dba41659df37f7d608c036832ee5c44ce25. Read supplied host proof and
+  actual round-3 manifest; lane/RE/round/WT/initial source match. Supplied canonical host GO accepted;
+  no detached/scoped spawnpreflight repeat, permission expansion or guard bypass.
+- Fresh read-only original SHA256 matches export metadata, program SimCity 4.exe, base 00400000:
+  `3bc5c7fe807fe5aa24a3abb06e40f13486670bc1150612c09baf4ecedafe1a4b`. This matches the supplied Windows
+  1.1.641 artifact/export, not an independent version-resource audit. AI bounds 00571880–0057235A,
+  2779B; geometry 00569940=1314B, 00569E70=1172B, 005682F0=464B. Census remains 75/38073, not 79/38556.
+
+### Validation and limits
+
+- Canonical main-checkout func/callers/callees/vtable/instruction-byte queries first; only necessary local
+  decomp supports. Constants decoded from the matching original. No engine/tests, other contributor WT,
+  private implementation, crash/RNG, route/dock expansion, scheduler or forbidden documents were read.
+- `python tools/questions.py index`: PASS, generated index unchanged. `python tools/questions.py check`:
+  PASS. Relative file links: 15 checked, zero missing. Both new vector section anchors: PASS.
+  `git diff --check`: PASS. Scope review: only own report and five watercraft spec/question files changed.
+- Cargo/clippy/ctest/builds/game/native probes/shadow: n/a, none run. No runtime original execution, game
+  request, cache/target-control RPC, process action, external message, agent, merge, rebase or push.
+  No C ABI/export/version/table changes or ABI proposal file. Scripts/commit messages remain ignored local
+  build-runs artifacts; no decompiler/assembly listing or game content is committed.
+- No live REA request was needed. Live target readiness/server admission remains UNKNOWN; there was no
+  retry, open/close/retarget/new server or invented REA failure/fallback claim. Existing canonical evidence
+  sufficed. Normal runtime guard status remained within the 150000 budget, with no STOP/OVER observed.
+- Git printed packed-refs.lock permission errors but created both detached-HEAD milestone commits and
+  left a clean tracked tree. No shared refs/config/hooks repair or maintenance was attempted.
+
+### Questions and remaining gaps
+
+No question filed or moved to answered. WC4/WC6 subpart progress is recorded in
+[questions/watercraft.md](../specs/questions/watercraft.md); WC3–WC7 all remain OPEN, and core-watercraft4's
+park is unchanged. Remaining AI/geometry limits include complete coefficient spill equivalence, exact
+acos/FSIN/FCOS bits, active x87 control word, shared pose-setter effects/lifetime, direct zero-time
+exceptional feedback, nonfinite/underflow/overflow/degenerate/library-fault inputs and inherited animation.
+Existing census/constructor/destructor, crash/bump/RNG and route/decoder/backtracking/ferry/tow/dock/tie
+residuals are retained; none is silently closed. Ordinary callback preservation is an explicit domain,
+not a native safety fallback. Next is coordinator review of this bounded WIP docs publication only.
 
 ## Report — original round 2/3, 2026-10-23
 
