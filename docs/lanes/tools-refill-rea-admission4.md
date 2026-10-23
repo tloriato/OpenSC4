@@ -1,6 +1,6 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| tools-refill-rea-admission4: per-worker REA startup/admission | Codex, `tools-refill-rea-admission4` | in progress: round 2 actual API repair | Implement supported contract, inherited host admission, qualify isolated tests and request root proof |
+| tools-refill-rea-admission4: per-worker REA startup/admission | Codex, `tools-refill-rea-admission4` | capped continuation: final child2/2, original family3/3 exhausted | Coordinator-only final validation and host proof outstanding; no fourth implementation round |
 
 ## Handoff
 - Goal: final round actual installed API repair; no engine/native study or worker target open.
@@ -27,6 +27,10 @@
 - Result recording now uses launch-held pin/canonical registration; MCP connect uses same protected registration and literal pin. New run_codex ledger regression substitutes only model process; canonical attachment fixtures deliberately corrupt writable recovery.
 - Live startup and CLI/query proof UNKNOWN until root-only evidence; no production calls by worker.
 - Prior round report retained below as historical evidence, to be replaced by final report at finish.
+
+## Preserved first-round report (historical source and API assumptions)
+
+The following first-round account is retained verbatim as historical evidence. Its project/read_only/version1 assumptions were superseded by the final-round real installed API work above; it is not the current supported contract or final qualification.
 
 ## Result and scope
 
@@ -120,3 +124,5 @@ binary/project identity, boolean ready true, exactly two research capabilities,
 and zero research calls. Preserve UNKNOWN until that actual evidence exists.
 Then qualify the final full tools suite before changing this lane to ready.
 No automatic extra/reset/fourth worker round; inherited family caps are unchanged.
+
+Coordinator report-only clarification identifies the preserved first-round account as historical and the original family as capped. The apparent literal patch-control tail was actually in the retained stderr output, not the tracked report; that raw diagnostic remains unchanged. No production/test source, source qualification, round accounting, raw continue result, stale request hashes or live UNKNOWN status changed. Final source remains7c0ff65b; coordinator validation is planned separately and is not claimed complete here.
