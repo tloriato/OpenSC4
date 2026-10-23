@@ -26,7 +26,7 @@ Lock/unlock: 18/1C, flags 8080, returned AL 0 or 1 as supplied.
 | dword a=0 D=11223344 | 11223344 unchanged; store itself unobservable |
 | mode 4 depth16, full coverage | A5A5 unchanged; default format3, no format callback |
 | 5x3 clip: target8x6 pitch36, dest(-2,-1,7,5), clip(1,1,6,4), src pitch12 | source27..31,39..43,51..55 filled 255; 89ABCDEF at bytes40..59,76..95,112..131 only |
-| fresh origins | two dest 1x1 records use their own source[0]; copied width/height (1,1) do not restrict the preceding 5x3 case |
+| fresh origins | first dest(-1,-1,1,1) clips to pixel(0,0), source13=0 preserves A5; second dest(1,0,2,1) restarts at source0=255 and writes 89ABCDEF; copied width/height (1,1) do not restrict the preceding 5x3 case |
 | zero count null records/target; character1F | true, zero callbacks, no pixels |
 | empty/reversed/outside, unsupported depth8 | width,height,depth then format only for mode3; no pitch/base |
 | odd pitch16=11 / depth24,32=19 | row stride10 /16; unchanged padding |

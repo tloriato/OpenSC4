@@ -1,21 +1,101 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| verify-font-renderer4: bounded native small renderer verification | Codex, verify-font-renderer4 | in progress | Establish typed acquisition and target callback contracts, then implement comparator if safe. |
+| verify-font-renderer4: bounded native small renderer verification | Codex, verify-font-renderer4 (detached HEAD, supervisor publishes branch) | wip: quiet build wrapper has not terminated; no game proof | Collect original quick operation, validate latest fixtures, run one final all, then freeze and test matched profiles. |
 
-## Handoff
-- Goal: opt-in original small renderer versus production Rust constructed-raster comparison.
-- Worktree reserved, detached HEAD reused; initial tree clean.
-- Baseline all deliberately omitted per specific brief: main already gated.
-- Read published sections 1–6, FR1–3, public SDK COM/Unknown/Buffer, harness.
-- Implemented default-OFF flag, typed small interface, raw primitive target, provenance gate,
-  production Rust draw/lock/unlock C API, independent literal ledger and bounded fixture comparator.
-- Bridge initial execution: 49 operations, 80 pixel positions, 175 callbacks, 643 checks; two literal
-  failures due to fixture F=FFFFFFFF instead of published F=FFEEDDCC. Split operand pairs;
-  no expected value was derived from production output. Now 51 planned fixtures.
-- Negative tests reject altered pixel/trace, same-IID holder identity, foreign module, and OFF calls.
-- quick command session 34799 is still outstanding: Rust 540/540; build log reached 220/220
-  at 05:17:37 but wrapper has not returned. Collect actual terminal; do not duplicate build.
-- Rust adapter fmt passed (absolute path required by wrapper).
-- Next: collect session 34799, rerun targeted bridge after corrected fixture build, then single final all.
-- No native execution or game requests yet. One additive C ABI export; ABI version unchanged.
-- Do not read prohibited sources; no original addresses may be invoked.
+## Changes
+
+First implementation milestone: `fee9594d`. The latest source additionally strengthens
+dispatch provenance, fresh-origin discrimination, safe transport refusal checks, and documentation.
+The reserved detached worktree was reused without switching branches or updating shared refs.
+Baseline `all` was omitted as explicitly required by this brief; main was already gated.
+
+`font_renderer_verify` / `FC4_FONT_RENDERER_VERIFY` defaults OFF. Its gate precedes fixture
+construction and SDK factory acquisition. Load, presave and shutdown hooks run a bounded
+constructed comparison when enabled. No natural rendering or city target is intercepted.
+
+The factory route is SDK GetClassObject(08CDA30B,A8BC2A75), with the public SDK's factory/QI
+ownership convention and published small-renderer QI reference behavior. All owner calls use
+typed compiler-generated i686 virtual dispatch. Immediately before each dispatch, the gate checks
+the exact published vtable identity, table image allocation, and the specific typed entry's
+published identity and executable original-image allocation. Published addresses are comparisons
+only. The larger holder, foreign modules, unknown slots, and changed method entries are refused.
+Failure of provenance withholds unsafe dispatch, including Release, and is explicitly reported.
+Ordinary owned factory, QI and AddRef references are released through the reference audit.
+No count field is modified, no overflow is manufactured, and no original body is called by address.
+
+`FC4FontRendererFixtures.h` defines the native 0x24 record and typed raw primitive target with
+32-bit field/slot assertions. Unreachable other target slots abort rather than emulate a buffer
+owner. Target methods only expose raw dimensions/depth/format/pitch/base and AL lock results,
+and record typed callback tuples. Production Rust owns raster computation through its existing
+draw/lock/unlock functions, reached by additive C export `fc4_font_renderer_verify` and a typed
+header included from fc4.h. ABI version and generated abi_entries.inc were not edited.
+
+Each implementation receives separate pixel storage and immutable source/palette/record copies.
+Per-run input hashes are checked before/after; final bytes, guard bytes, callback sequence and
+arguments, and AL results are checked against the independent literal ledger and each other.
+Combined input hashes include each run's own pointer-valued record fields, so the two hashes
+need not match. No native output initializes Rust. Internal Rust Event reads/stores are never
+used as native observations. Same-value stores and initial palette reads remain unobservable.
+
+## Measured validation and remaining gate
+
+- Initial quick build: `python <MAIN>/.claude/lane-bin/qbuild.py --wt <WT> quick`.
+  **Still outstanding**, unified execution session **34799**. No terminal exit has been returned.
+  `build-runs/fc4verify-quick-test.log` records **540 passed, 0 failed**, plus 0 doc tests.
+  `fc4verify-build.log` reached **220/220**, including DLL and bridge-test links, at local
+  2026-10-23 05:17:37. These are stage observations, not a passing wrapper result.
+  Output collection still returned the same active session at 05:32; no duplicate quick/all,
+  process kill, or RPC/WMI process discovery was used. OS PID was not exposed by the tool;
+  no guessed process ID is claimed as the operation owner.
+- Initial bridge executable: **49 operations, 80 designated pixel positions, 175 expected target
+  callback entries, 643 checks, 2 failures**. This executable did not execute the original renderer.
+  Both failures were the dword asymmetric literal: fixture foreground FFFFFFFF was accidentally
+  paired with the published expected value for FFEEDDCC. The ledger records the correction;
+  expected values were not changed or derived from production. The corrected two operand pairs
+  are now separate fixtures. This corrected suite has **not been rebuilt or rerun**.
+- In that initial run, all intentionally changed-pixel/extra-trace checks rejected the mutation;
+  holder-vtable, foreign-image and OFF-zero-mocks/zero-owner-call checks passed. Later typed-entry
+  refusal and portable-only invalid-backing/capacity checks are source-only until rebuilt.
+- Current planned suite: **51 operations, 84 designated pixel positions, 187 expected callback
+  entries** per phase. These are planned denominators, not measurements of the current source.
+  Each operation compares the entire supplied pixel window and its two 16-byte guards in addition
+  to those designated positions; guard bytes are separate checks, not pixel-algorithm credit.
+  Callback counts include lock/unlock. Repeated phases do not add algorithm coverage.
+- Adapter rustfmt check passed. Checking touched lib.rs recursively reports existing formatting
+  differences in other modules (first advisors.rs:2598; 645 diff lines); no mass formatting applied.
+  `git diff --check` passed. Relative paths do not work for this wrapper's fmt step; use absolute paths.
+- `q.py` could not start Bash (`Bash/Service/CreateInstance/E_ACCESSDENIED`); the bridge executable
+  was collected directly in PowerShell with bounded output. This did not authorize any fallback build.
+- **Final all not run, clippy not measured, full CTest not measured.** Starting another build while
+  the original operation lacks a terminal result would violate the explicit collection-first rule.
+  Current source includes changes after the compiled artifact and is not gate-qualified.
+
+## Game evidence and limits
+
+**No requests, no native-original operations, no verdicts, no frozen DLL/PDB/source hashes.**
+The native optional-provider-none profile and literal CURRENT40 profile are both unqualified.
+No 0/0 OFF result is called exactness. No save/reload, 2032, reference-warning, foreign-pointer,
+stall or shutdown-result claims are made. There is no outstanding game request.
+
+The ledger covers published clipping/source offsets, fresh record origins, source width not bounding
+extent, threshold/palette cases including a full 256-entry palette, 16/24/32-bit packing, dyadic
+asymmetry, odd pitch, emptiness/query order, and ignored lock modes/AL forwarding. Safe transport
+refusal vectors are Rust-only and never sent to native unchecked pointers. FR1–3 and all natural
+font/cache/layout/producer, larger-holder, span-renderer and original buffer-owner coverage remain
+excluded. No new spec question is filed: the observed failures were fixture transcription errors,
+not a measured native/spec disagreement.
+
+## Next steps
+
+1. Collect the actual terminal output of original quick session **34799** before starting any build.
+   Logs alone do not establish terminal success. Resolve the wrapper stall through the coordinator;
+   this lane did not kill processes, restart tools or request a second operation.
+2. Rebuild and run the corrected bridge and portable-only negative cases. Its original binary is stale.
+3. Commit stable source, run **one** final `qbuild.py ... all`, collect actual terminal cargo/clippy/
+   native build/full CTest counts, and retain source hashes. Only then freeze durable DLL/PDB copies.
+4. Under the queue policy, submit OFF then ON matched optional-provider-none / explicit-budget-ON
+   runs, and OFF then ON matched literal CURRENT40 / explicit-budget-ON runs, unique labels,
+   one outstanding request, same frozen artifacts/settings within each pair. Establish/log the
+   actual explicit 40-provider list and defaults; no guessed profile or new save/reload claims.
+5. Preserve all mismatches/refusals; file numbered questions for actual contract differences.
+   Keep the merge queue WIP until the final gate and required real-game evidence exist.

@@ -11,6 +11,24 @@ int main() {
     check(!OriginalIdentity(0xac14bc,0x400000,0x400000)); // same IID, wrong holder
     check(!OriginalIdentity(0xac55b4,0x500000,0x400000));
     check(!OriginalIdentity(0xac55b4,0x400000,0));
+    check(OriginalEntry(0x89620d,0x400000,0x400000,0));
+    check(!OriginalEntry(0x89620d,0x500000,0x400000,0));
+    check(!OriginalEntry(0x89620d,0x400000,0x400000,7));
+    check(!OriginalEntry(0x91559a,0x400000,0x400000,3));
+    // Safe transport refusals, deliberately never sent to the native renderer.
+    {
+        Fixture f("portable-only-refusals"); Run r(f); uint8_t result=0xff;
+        r.records[0].source_len=0; check(r.Rust(result)==1);
+        Run over(f); over.input.count=17; check(over.Rust(result)==1);
+        Run shortTarget(f); shortTarget.host.raw.pixel_len=0;
+        check(shortTarget.Rust(result)==1);
+        std::array<fc4_fr_trace,1> trace{}; uint32_t count=0;
+        Run capacity(f);
+        check(fc4_font_renderer_verify(0,&capacity.host.raw,capacity.records.data(),1,1,
+            reinterpret_cast<const uint8_t*>(capacity.input.colours.data()),1024,nullptr,
+            trace.data(),1,&count,&result)==2);
+        check(count==5);
+    }
     unsigned operations=0,pixels=0,callbacks=0;
     for(const auto& f:Fixtures()) {
         Run r(f); auto before=r.ImmutableHash(); uint8_t result=0xff;

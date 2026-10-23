@@ -2394,3 +2394,18 @@ detail 14 records (8 bytes, 403 saves have none), all identical.
   through a hidden result pointer; from the ABI table: `cIGZVariant` slot 41 and `cISC4Lot` slot 15 return in
   ST0, `cISC4BudgetSimulator` slots 20–23 in EAX only). Such interfaces are declared in `FC4Interfaces.h`, and the slot tests check
   the x87 stack and the stack balance: only slots the spec says return a float may leave a value there.
+
+### Constructed small font renderer verification
+
+`font_renderer_verify = 1` (environment `FC4_FONT_RENDERER_VERIFY`, default 0)
+opts into bounded comparisons at load, presave and shutdown. It requests owned
+class 08CDA30B / interface A8BC2A75 through the SDK and checks the original image
+and published small-renderer vtable before every renderer dispatch. The larger
+holder sharing that IID is refused. There are no internal-address calls.
+
+The plugin supplies a raw primitive target, not the game's buffer owner. Each
+implementation receives independent pixel/input copies and is checked against
+the literals in `plugin/FC4FontRendererLedger.md`. Only final bytes and typed
+target callbacks are comparable; source reads and same-value stores are not
+observed natively. This verifies no natural font producer, cache, layout,
+holder, span renderer, or city target. FR1's unnamed slots are never called.

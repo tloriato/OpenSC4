@@ -609,4 +609,6 @@ const char* SwitchesOffList();
 // Full path of FreeCity4.ini (next to the DLL).
 std::string IniPath();
 
+// font_renderer_verify / FC4_FONT_RENDERER_VERIFY: default-OFF constructed
+// original small renderer / production Rust comparison (no replacement).
 }  // namespace fc4

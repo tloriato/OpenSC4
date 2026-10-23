@@ -38,6 +38,21 @@ public:
     virtual bool Draw(void*, RawTarget*, const NativeRecord*, uint32_t, uint32_t,
                       const uint32_t*, const fc4_fr_rect*) = 0;
 };
+struct RendererSlots {
+    bool(__thiscall* query)(SmallRenderer*,uint32_t,void**);
+    uint32_t(__thiscall* addRef)(SmallRenderer*);
+    uint32_t(__thiscall* release)(SmallRenderer*);
+    bool(__thiscall* unknown3)(SmallRenderer*,uint32_t);
+    bool(__thiscall* unknown4)(SmallRenderer*,uint32_t);
+    bool(__thiscall* lock)(SmallRenderer*,void*,RawTarget*,uint32_t);
+    bool(__thiscall* unlock)(SmallRenderer*,void*,RawTarget*,uint32_t);
+    bool(__thiscall* draw)(SmallRenderer*,void*,RawTarget*,const NativeRecord*,uint32_t,uint32_t,
+                           const uint32_t*,const fc4_fr_rect*);
+};
+static_assert(sizeof(RendererSlots)==0x20);
+static_assert(offsetof(RendererSlots,query)==0 && offsetof(RendererSlots,addRef)==4);
+static_assert(offsetof(RendererSlots,release)==8 && offsetof(RendererSlots,lock)==0x14);
+static_assert(offsetof(RendererSlots,unlock)==0x18 && offsetof(RendererSlots,draw)==0x1c);
 struct Format { uint32_t format, depth; };
 static_assert(sizeof(Format) == 8);
 // Layout assertions describe typed i686 thiscall entries. No raw slot calls.
@@ -91,6 +106,21 @@ inline bool OriginalIdentity(uintptr_t table, uintptr_t module, uintptr_t image)
     // Published 00AC55B4 minus preferred image base 00400000. Comparison only.
     return image != 0 && module == image && table == image + 0x006c55b4;
 }
+inline uintptr_t EntryRva(unsigned slot) {
+    // Published identities, comparison only. FR1's unnamed slots stay refused.
+    switch(slot) {
+        case 0: return 0x49620d;
+        case 1: return 0x568b60;
+        case 2: return 0x4961f6;
+        case 5: return 0x496232;
+        case 6: return 0x496243;
+        case 7: return 0x497246;
+        default: return 0;
+    }
+}
+inline bool OriginalEntry(uintptr_t entry,uintptr_t module,uintptr_t image,unsigned slot) {
+    return image!=0 && module==image && EntryRva(slot)!=0 && entry==image+EntryRva(slot);
+}
 template<class F> bool WhenEnabled(bool enabled, F&& run) {
     if (!enabled) return false;
     run(); return true;
@@ -132,6 +162,8 @@ struct Fixture {
         Put(initial,offset,value,bytes); Put(expected,offset,value,bytes);
     }
     void Queries(unsigned rasters=1,bool backing=true) {
+        // Public SDK buffer colour-type depth agrees with the raw depth getter.
+        target.format_depth=target.depth;
         for(unsigned i=0;i<rasters;++i) {
             callbacks.push_back({0x24,uint32_t(target.width),0});
             callbacks.push_back({0x28,uint32_t(target.height),0});
@@ -192,9 +224,11 @@ inline std::vector<Fixture> Fixtures() {
       // Distinct uncovered source bytes make a wrong clipping origin visible.
       x.source.fill(0); for(uint32_t row:{27u,39u,51u}) for(unsigned p=0;p<5;++p) x.source[row+p]=255;
       x.Queries(); f.push_back(x); }
-    { Fixture x("fresh-record-origins"); x.count=2; x.pixelChecks=2; x.source[0]=255;
-      x.records[0].destination={0,0,1,1}; x.records[1]=x.records[0]; x.records[1].destination={1,0,2,1};
-      x.Expected(0,0x89abcdef,4); x.Expected(4,0x89abcdef,4); x.Queries(2); f.push_back(x); }
+    { Fixture x("fresh-record-origins"); x.count=2; x.pixelChecks=2; x.source.fill(0); x.source[0]=255;
+      // First record acquires source origin (1,1), reading zero at 13. The
+      // next record must restart at (0,0), reading 255, not retain that origin.
+      x.records[0].destination={-1,-1,1,1}; x.records[1]=x.records[0]; x.records[1].destination={1,0,2,1};
+      x.Expected(4,0x89abcdef,4); x.Queries(2); f.push_back(x); }
     for(uint32_t depth:{16u,24u,32u}) {
         Fixture x("odd-pitch"); x.target.depth=depth; x.target.pitch=depth==16?11:19;
         x.source.fill(255); x.records[0].destination={0,0,1,2}; x.pixelChecks=2;
