@@ -434,6 +434,92 @@ remain open. Independent vector before the height helper: heading `(3,4,0)`, pos
 p4 0.2, dt 100 gives approximately `(15,20,30)`. Heading `(0,5,4)` gives approximately `(10,20,35)`. Zero dt leaves
 the candidate unchanged but still publishes and calls the height helper when Speed is nonzero.
 
+#### 6.2.2a Turning geometry (`0x00569940`, round 2)
+
+This helper takes dt by value, the output transform, a three-float position output, and a scratch transform.
+The wrapper selects it for nonzero Turn; straight translation remains §6.2.2. Inputs below are the wrapper's
+already-clamped Speed/Turn, heading H at `+0x30C`, and old position P at `+0x2F4`. The following geometric
+contract is supported for finite, nondegenerate headings and nonzero radius/divisors. Intermediate x87
+spill rounding is **partially traced**, not a promise that reassociated vector expressions are bit exact.
+
+| Quantity | Native rule |
+|---|---|
+| Distance D | `round32((p4*Speed)*dt)`; dt is milliseconds, no 0.001 factor here |
+| Radius for Speed>0 | `round32(((Speed/p7 + 0.5) + (1-abs(Turn)/p9))*p11)` |
+| Radius for Speed<=0 | `round32(((abs(Speed)/abs(p6) + 0.5) + (1-abs(Turn)/abs(p8)))*p12)` |
+| Center side for Turn>0 | Normalize `up cross H`, with up=(0,1,0) |
+| Center side otherwise | Normalize `H cross up` |
+| Center C | x,z = P.x,z plus radius times that side; y = a sea-level query rounded to binary32 |
+| Radial V | Normalize P-C; the vertical component is retained |
+| Angle θ | D/radius, negated when Turn<=0; no angular clamp in this helper |
+
+Evidence: D `0x00569A33–0x00569A43`, radius `0x00569A47–0x00569ACC`, center/normalization
+`0x00569AD0–0x00569B9F`, angle `0x00569BA3–0x00569BBE`. The center query is global water service
+`0x00B43CF4`, vtable byte offset 0x74, **GetSeaLevel**, not terrain height or GetWaterLevel(x,z)
+(compare terrain.md §5 water interface). No coordinates are passed.
+
+If the scratch transform's flags byte is nonzero, reset its matrix to identity, scale to 1, translation to
+zero and flags to zero; increment its revision byte (`0x00569BC0–0x00569BFC`). Then rotate its first and
+third columns by θ: new first = old first*cosθ − old third*sinθ, new third = old first*sinθ + old third*cosθ.
+Its second column is unchanged. cosθ is explicitly stored as binary32; sinθ remains on the x87 stack;
+there are additional binary32 product spills before matrix stores. Set flags bit 4 and increment revision.
+Transform V with that matrix and scale, normalize the result, multiply by radius and add C, publishing
+three binary32 position outputs in x,y,z order (`0x00569BFE–0x00569DD2`). This is a circular displacement,
+not forward displacement followed by a heading rotation. Speed's sign reverses θ without changing the
+Turn-selected side; radius still uses the reverse tuning for Speed<=0.
+
+Compare `abs(publishedZ-C.z)` to the **binary64** constant 1e-5 at `0x00A95620` (strictly greater only).
+If greater, call GetSeaLevel again, then discard that return (`0x00569DD5–0x00569DF6`). In particular this
+call does not overwrite the published y. Compute position deltas against P, add them back to P and publish
+translation to the output transform, set bit 1 and increment its revision byte (`0x00569DF8–0x00569E5A`).
+The extra subtract/add and float spills mean that transform translation need not be a bitwise copy of the
+position output. There are no RNG draws in this helper.
+
+No normalization epsilon, radius floor, zero-heading fallback or antiparallel correction occurs here.
+The division/sqrt path is executed even for a degenerate horizontal heading; do not invent a valid direction
+for it. Exact exceptional floating-point/control-word behavior and all spill boundaries remain OPEN.
+
+#### 6.2.2b Bank, pitch and height (`0x005682F0`, `0x00569E70`, round 2)
+
+The old description “orientation/height” did not specify these algorithms. Neither helper queries terrain
+or water. Both take an in/out transform; neither consumes dt or RNG. The matrix offsets, in rows, are
+`(04,08,0C; 10,14,18; 1C,20,24)`, scale is `+34`, translation is `+28,+2C,+30`.
+
+Bank helper `0x005682F0` (464 bytes) returns without writing when Speed<=0. For Speed>0 it computes
+`β=clamp(((Speed/p7)*p19)*Turn, -p20, p20)`, normalizes H, and builds quaternion
+`(x,y,z,w)=(normalize(H)*sin(β/2), cos(β/2))`. It **replaces**, rather than multiplies into, the nine
+matrix elements with the row matrix below; preserves translation and scale; sets flags bit 4 and increments
+revision. Native clamp and branch `0x005682F0–0x00568359`, normalization/quaternion and matrix stores
+`0x00568359–0x005684B8`.
+
+| Row | Three matrix values |
+|---|---|
+| 1 | `1-2y²-2z²`, `2xy+2zw`, `2xz-2yw` |
+| 2 | `2xy-2zw`, `1-2x²-2z²`, `2yz+2xw` |
+| 3 | `2xz+2yw`, `2yz-2xw`, `1-2x²-2y²` |
+
+Orientation helper `0x00569E70` (1172 bytes) returns without writing when Speed=0, **including nonzero
+Turn with zero Speed**. Otherwise it calls the bank helper first, then takes U as the normalized second
+column of the resulting transform times its scale. Reverse motion therefore uses the incoming matrix for U,
+because bank has returned without changing it. Compute `α=clamp(p17*Speed,0,p18)` and normalize `H cross up`.
+Build the same quaternion matrix using that normalized axis times `sin(-α/2)` and `cos(-α/2)`; multiply it
+by H and normalize the result F. Normalize F a second time; compute R=normalize(U cross F), then U'=F cross R.
+Replace matrix columns with R,U',F; set bit 4 and increment revision. Preserve translation x,z, add
+`p18*0.5` to translation y, set bit 1 and increment revision. The y addition is performed for **reverse as
+well as forward**, even though α is zero for reverse under positive ordinary tuning. Repeated calls add
+the lift repeatedly; no absolute water-height clamp or division by dt exists here.
+
+Evidence: zero-speed gate/bank `0x00569EBA–0x00569EDC`, old-up normalization and pitch clamp
+`0x00569EE1–0x00569FA3`, quaternion `0x00569FA3–0x0056A0F9`, heading rotation/first normalization
+`0x0056A0FD–0x0056A19A`, second normalization/cross products `0x0056A1C5–0x0056A26B`, ordered matrix/
+translation publication `0x0056A26F–0x0056A2FA`; lift branch `0x0056A19C–0x0056A1C5`.
+
+These matrix formulas specify the owned geometric computation, not all its bitwise spill behavior.
+Zero H, vertical H, zero scale, parallel U/F and invalid tuning are unprotected normalization/division cases;
+their exceptional outputs remain OPEN. Nonfinite propagation and all matrix-product rounding boundaries
+need further instruction work before full numeric closure. Engine_AIBoatMotion and inherited animation
+remain OPEN too: these helper rules do not delegate their outcomes to a foreign callback.
+
 #### 6.2.3 Same-sign speed and inverse input feedback (round-2 instruction contract)
 
 This section covers finite inputs with ordered limits `p6<0<p7`, `p30<0<p31`, nonnegative dt/p10/p0,

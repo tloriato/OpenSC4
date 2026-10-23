@@ -7,7 +7,10 @@
 - Goal: original round 2/3, movement/command first; no implementation, runtime calls or owner credit.
 - Starting tip: a2f2b75c; R1 substantive commits bd529644 and 9267ce96 are already present.
 - Done: 45b12f3d publishes same-sign speed/inverse feedback, ordered right/left steering and tween reset; corrects R1 FST rounding.
-- Next: finish turning/orientation publication and independent vectors; retain AI and inherited residuals if unclosed.
+- Done: published turning-radius/center/sea-query algorithm and bank/pitch/lift geometry with explicit spill-rounding residuals.
+- Next: independent vectors and command side-effect/inherited-channel contract; final consistency check and bounded WIP report.
+- AI 00571880 (2779B) has heavily mistyped local decomp; only initial queries made; do not claim full AI interpolation.
+- Original executable hash equals export executable_sha256; no target-control tools or server admission capability exposed.
 - Export identity: SimCity 4.exe, SHA256 3bc5c7fe807fe5aa24a3abb06e40f13486670bc1150612c09baf4ecedafe1a4b, image base 00400000.
 - 00569940 is 1314B, 00569E70 1172B; forward bank helper 005682F0 464B; 005671D0 inverse feedback 312B.
 - 009F0090 export TransformDirection is actually acos-like math (009F00AD: sqrt((1+x)*(1-x)), FPATAN; endpoints 0/pi).
