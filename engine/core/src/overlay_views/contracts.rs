@@ -281,7 +281,9 @@ fn l8_l9_grid_clamp_water_frustum_then_lot_and_lower_vertex() {
 #[test]
 fn l10_l11_byte_flag_rebase_wrap_capacity_equality_and_raw_rows() {
     for flag in [0, 1] {
-        let mut source = vec![0u16; 60];
+        // byteFlag=1 starts at 108 bytes = word54; n=2 consumes 12
+        // words, so the checked raw backing must contain at least 66 words.
+        let mut source = vec![0u16; 66];
         let start = if flag == 0 { 6 } else { 54 };
         source[start..start + 6].copy_from_slice(&[1, 2, 6, 2, 7, 6]);
         let d = driver(10);
