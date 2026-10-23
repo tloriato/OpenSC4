@@ -4,6 +4,14 @@
 
 ## Handoff
 - Goal: final round actual installed API repair; no engine/native study or worker target open.
+- STOP: context guard reached 150k; handoff-only stop, no merge queue. No automatic extra/fourth family round is authorized; coordinator adjudicates this continuation state.
+- Latest production source 7c0ff65b includes both root-reviewed boundary repairs: run_codex result recording uses launch-held expected pin and canonical registration; MCP argv/connect selects that same protected registration/pin. Fatal hook diagnostic selection follows canonical registration.
+- Final focused command (supplied pytest-venv Python): -m pytest tools/tests/test_lane_admission.py tools/tests/test_rea_admission.py -q --tb=short printed 24 passed in 40.51s. Actual preceding/following psutil liveness checks printed scoped_live_helpers [].
+- New result regression initially had two fixture errors (Popen substitution also caught node rendering, then misplaced role assertion); both corrected. Actual model creation/discovery alone substituted; real rendering/admission/result validation/ledger IO exercised. Attachment fixtures deliberately corrupt writable recovery and still attach canonical retained child.
+- Full suite remains 204 passed / 1 skipped on clean 7c411798, NOT final 7c0ff65b. No second full run under one-full-run instruction. Historical 194 passed / 1 skipped / 2 failed and initial round-2 67 passed / 1 failed retained in own logs.
+- Exact next step: coordinator review 7c0ff65b source and current hashes (ignored request still points to older 7c411798 and MUST be refreshed before host execution), then adjudicate final full qualification and actual sandbox/CLI/live proof. No source-native calls by successor tooling lane.
+- Root response coordinator-rea-r2-response.json remains SOURCE_REVIEW_REFUSED for older source; followups identify result/attachment defects now repaired. No actual root smoke/canary/CLI/query proof received; live support UNKNOWN/WIP.
+- Root minimal-model clarification accepts readable public immutable registration in principle; no secret key remains. Actual WRITE/replace/redirect/forged-copy sandbox proof still required. Preserve all root reviews and limitations.
 - Preserved clean 5d6b8092 history and old 194 passed / 1 skipped / 2 failed full log; focused followups are not final qualification.
 - Read both copied installed schema reviews and exact binary attestation (path-only open, PE/x86 SHA pinned).
 - Root coordinator-rea-old-fixture-cleanup.json reports exact old processes absent after adjudication; no worker cleanup.
