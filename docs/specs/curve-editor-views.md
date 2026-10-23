@@ -4,6 +4,9 @@ Status: first dedicated native behavior publication, 2026-10-23, lane re-curve-e
 Evidence: Windows SimCity 4 Deluxe 1.1.641 native export queried with `re_query.py`;
 instruction bytes govern widths and predicates. Local pseudocode is navigation only.
 This is a bounded specification, not whole-family coverage of an approximate byte count.
+The working PE SHA-256 and `ghidra/export/windows/export-summary.txt` both give
+`3bc5c7fe807fe5aa24a3abb06e40f13486670bc1150612c09baf4ecedafe1a4b`, image base
+0x00400000; the PE timestamp is 0x4C12BFB7. No native execution was performed.
 
 ## 1. Owner and interface boundary
 
@@ -94,7 +97,15 @@ node's value pointer for an equal key, or calls insert-unique with a temporary
 key/zero-value pair, then returns node +0x14 (0x0066C570–0x0066C5E8).
 Consequently later imported duplicates overwrite earlier values. Node key is
 at +0x10 and value at +0x14; traversal for readback is ascending signed key.
-Tree balancing/allocation are container primitives, not editor policy.
+Tree balancing/allocation are container primitives, not editor policy. The
+key-only slot +0x268's helper 0x0066B710 finds the equal-key range via
+0x0066B440 (signed lower/upper bounds), counts its successors with 0x0046F860,
+erases that range through 0x0066B380, then returns the saved full-dword count.
+For a valid unique-key map that is 0 for absent or 1 for present. The owner
+therefore refreshes after successful removal, not after an absent key. Its
+export name `cSCStandardTypeEntryView::SetValue` is folded container attribution,
+not an entry-value setter. Node unlink/free/rebalance is a foreign primitive;
+0x0066B42C–0x0066B432 decrements the container's count after each removed node.
 
 Entry GetValue +0x1C is 0x0066BD70 (receiver object +0xD8). It allocates four
 bytes per map entry, traverses from sentinel +8 in successor order, and for
@@ -169,7 +180,7 @@ Action 0x26C10A3C first compares the map count at +0x108 **unsigned** against
 There is no protected-endpoint test in the handler. Other actions have no
 point effect. Unlike GeneralResponse, this handler returns AL=1 even for
 unknown actions, missing controls, or a blocked delete (tail 0x0066BB21).
-The key-only helper's precise erase/returned-count primitive remains open.
+The key-only helper's removal/count behavior is specified in §4.1.
 
 ### 5.2 GeneralResponse
 
@@ -251,7 +262,156 @@ a zero denominator. Empty maps and advancing beyond the final usable key can
 read sentinel key/value storage; no fabricated empty-graph result is specified.
 Summary serialization occurs before this potentially unsupported sampling suffix.
 
-## 7. Independent literal ledger — PROPOSED / UNEXECUTED
+## 7. GeneralResponse display and paint
+
+### 7.1 Summary and graph primitive calls
+
+0x0066C180 has the same ordered summary prefix as Happiness: lookup
+0x26C10A3A, own GetValue into temporary variant, foreign property formatter
+with +0xFC, query 0x212CDC1F, text +0x10, Release, variant destruction,
+string destruction. Graph lookup 0x26C10A3D follows even when summary is
+absent. If graph is absent, return. If present, query graph interfaces
+0x32CF2351 then 0x02CF2351, with no success/pointer tests before use.
+
+On 0x32CF2351, call +0x18(-1), +0x14(-1), +0x2C(1,-1), +0x1C(0x2B,-1)
+in that order. Initialize a temporary service pointer to null; call framework
+getter 0x008793EC; if framework non-null, call its +0x14 with
+(0xC416025C,0x0073283C,&service). The body subsequently dereferences service
+even if framework was null or service acquisition failed. Call service +0x88
+with (0,0,0,-1); pass its full EAX to graph 0x32CF2351 slot +0x24; release
+the temporary service through 0x004495C0 (0x0066C2BA–0x0066C300).
+No integer/pointer interpretation of that service result is imposed here.
+
+After bounds setup (§7.2), set interface 0x02CF2351 slots in order:
++0x60(1,Y tick), +0x60(0,X tick), +0x3C(0,X lower), +0x40(0,X upper),
++0x3C(1,Y lower), +0x40(1,Y upper). For each record in current stored order,
+call graph 0x32CF2351 +0x3C(X raw dword,Y raw dword,-1,-1). Recompute the
+count after each callback (0x0066C52E–0x0066C540); no snapshot is taken.
+Finally call that graph's +0x6C(0), release 0x32CF2351, then release
+0x02CF2351. The owner supplies records; rendering/interpolation within these
+foreign graph calls is not specified. There is no owned resampling loop here.
+
+### 7.2 Native bounds schedule
+
+The valid vector domain is begin/end/capacity describing integral 8-byte
+records. Empty is tested by `(end-begin) & 0xFFFFFFF8` equal zero, not a
+variant-type predicate. Empty starts X lower=0, X upper=1, Y lower=0,
+Y upper=1 (binary32 one at 0x00A81228). Nonempty initializes all four from
+the first record. Then visit remaining records in order, selecting X upper,
+Y upper, X lower, Y lower in that order. Each ordered extremum test uses
+FCOMP, FNSTSW, TEST AH,5 and JNP: upper is replaced only when old upper is
+strictly less than candidate; lower only when candidate is strictly less
+than old lower. Ties/unordered comparisons retain the earlier value. X
+choices and Y-lower choices are raw dword copies; Y upper is carried through
+x87 FLD and FST binary32, with an extended copy retained on the stack
+(0x0066C380–0x0066C3E2). No global probability/range assumption is used.
+
+Compare Y lower and the carried Y upper using FUCOMPP, FNSTSW, TEST AH,0x44,
+JP. Ordered equality follows the non-jump path and adds binary32 1 to the
+carried upper, then FST-stores a binary32 copy while retaining the extended
+value. Other ordered results and unordered skip the increment. Apply the same
+equality test to X lower/upper and, on equality, FLD X upper, FADD binary32 1,
+FSTP binary32 X upper (0x0066C3FC–0x0066C430). This widens equal extrema;
+it does not change the records.
+
+For Y tick: retained Y upper minus binary32 Y lower, times binary32
+0x3E4CCCCD (approximately 0.2 at 0x00A94D54), FSTP binary32 directly into
+the callback argument. For X tick: FLD binary32 X upper, FSUB binary32 X
+lower, FMUL the same constant, FSTP binary32 callback argument. Tick callbacks
+precede padding. The extended Y value after its equality increment is used
+for tick arithmetic; the later padding reloads the stored binary32 copy.
+
+For Y lower, FCOMP against +0, TEST AH,0x41: if zero (strictly greater),
+replace with raw +0. Otherwise FLD the stored lower, FMUL binary32 0x3F8CCCCD
+(approximately 1.1 at 0x00A8FAF4), FSTP binary32 lower. For Y upper, compare
+against +0 with the same predicate, reload upper, multiply by 0x3F8CCCCD
+if strictly greater or 0x3F666666 (approximately 0.9 at 0x00A88218) otherwise,
+then FSTP binary32 upper (0x0066C469–0x0066C4B9). X extrema get no corresponding
+padding. These compare/store rules, not algebraically rearranged expressions,
+govern floating-point exceptions, signed zeros and unusual PC/RC modes.
+
+### 7.3 Paint wrapper
+
+0x0066B1D0 loads the pointer at +0x68 without a null test, calls its +0x18
+with 0x8001 and tests **AL**. If nonzero, it calls owner virtual +0x19C(),
+passes that EAX, the address of object +0x24 and zero to the +0x68 object's
+slot +0x50, then calls its +0x1C(0x8001). Both branches tail-delegate to
+0x00949ADE. That export's unrelated name does not establish paint return
+semantics. This is a raw surface/window primitive boundary, not an editor
+point mutation or a rewrite of the shared painting algorithm.
+
+## 8. Formatting and lifetime boundaries
+
+### 8.1 Formatting callbacks
+
+Both formatter bodies consume three stack dwords (RET 0xC); the first is
+unused in these bodies, second is input variant pointer, third is output
+string pointer. They do not consult receiver curve state. Both return AL=1
+and do not test output-string primitive results.
+
+Happiness 0x0066BE40 builds a temporary accumulated string. It checks variant
+count +0x10 as an unsigned full dword and, for each index, obtains +0x19C
+twice. From the first buffer it masks the record's low word to **unsigned**
+0..65535, FILD-loads that nonnegative dword, FMULs binary32 0x3C23D70A,
+FSTP-stores binary64 for the formatting argument. From the second buffer it
+sign-extends the high word. It formats `(%d,%.2f) ` with signed key then
+promoted scaled value (0x0066BECC–0x0066BF12), appends to the accumulator,
+destroys each item string, and obtains count again for the next unsigned
+comparison. Finally it assigns accumulator through output +0x38 and destroys
+the accumulator. Empty input assigns an empty string. **This unsigned low
+word formatting differs from Init's signed low word import.** The unreachable
+negative-dword adjustment after masking does not alter the normal rule.
+
+GeneralResponse 0x0066BF90 first calls output +0x58(0,-1), obtains variant
+buffer via +0x1BC once, then count +0x10, unsigned-shifts count right one,
+and visits that many pairs. For each, FLD binary32 Y, FSTP binary64 argument;
+FLD binary32 X, FSTP binary64 argument; format `(%.2f,%.2f) ` and append with
+output +0x40. Destroy the reusable temporary string on exit. Empty count clears
+the output via the initial call; an odd positive count formats only the
+complete pairs. This differs from its Init odd-count overrun, not a safe
+malformed-value import policy. Decimal conversion itself is the raw formatter
+primitive; locale, exceptional spelling and formatting failure remain foreign.
+
+### 8.2 References and destruction
+
+Primary AddRef/Release slots are shared jumps 0x007BE160 → 0x0094C47C and
+0x007BE170 → 0x0099B7A3. Entry thunks 0x007BE550/0x007BE560 subtract 0xD8;
+formatter-interface thunks 0x00664890/0x0066B6A0 subtract 0x100, then use those
+same shared primitives. Formatter QueryInterface thunks subtract 0x100
+(0x00664880/0x0066B690). No independent curve reference counter is evidenced.
+The special-interface query writes the output **before** invoking AddRef;
+there is no replacement-release of the caller's previous output pointer.
+Same-output queries therefore still acquire a reference. Unsupported/null
+output storage is outside the proven normal domain. Full shared refcount
+algorithm and interface behavior on delegated IDs are not re-specified here.
+
+Happiness deleting destructor 0x006648A0 rewrites its three vtable pointers,
+destroys the map at +0x104 via 0x006647A0, calls base destructor 0x00663FE0,
+then tests bit 0 of its stack flag's **low byte**; if set, free the complete
+object with 0x005E5620. It returns the original object address in full EAX.
+The base destructor resets base vtables, destroys held variant +0xDC, then
+tail-delegates to foreign window destructor 0x0099E1A2.
+
+GeneralResponse deleting wrapper 0x0066B990 calls 0x0066B6B0 first, applies
+the same low-byte flag-bit/free test, returns original address. The inner
+body resets all three owner vtables, conditionally frees vector begin +0x104
+through 0x0090CF63 if non-null, resets base vtables, destroys held variant
++0xDC, then tail-delegates to 0x0099E1A2. No per-record reference Release
+occurs; the records are raw two-dword values. The symbol naming that deallocation
+as a string destructor does not make vector records strings.
+
+All collection stores precede refresh callbacks; no rollback is evidenced.
+Summary text changes and graph setup are observable prefixes before later
+unchecked graph/service dereferences. GeneralResponse delete saves an erase
+iterator across refresh and then uses it; graph enumeration rereads count after
+callbacks; Happiness retains node pointers across graph callbacks. There is
+no proved reentry guard or stable snapshot. A callback that mutates/deletes
+owner state is outside the normal non-mutating callback domain; do not claim
+safe cancellation or iterator repair. Variant assignment owns no wrapper-level
+same/null branch: such input semantics belong to its foreign assignment
+primitive, while subsequent imports require the valid-buffer domains in §4.
+
+## 9. Independent literal ledger — PROPOSED / UNEXECUTED
 
 Expected effects below are derived from the instruction predicates, not from
 running the original or an implementation. Refresh means the owner virtual
@@ -265,7 +425,7 @@ call, without a claim about its foreign drawing primitive.
 | H-D | key 0, value +0; key 255, value 30 | both boundary calls admitted; each stores original bits then refreshes |
 | H-E | key 17, value -0.5; key 17, value 30.5 | each rejects before container mutation |
 | H-F | key 17, value -0 (0x80000000) | admitted; original negative-zero bits stored, then refresh |
-| H-G | key-only slot +0x268 key 17; helper returns 0, then separately 2 | no refresh for 0; one refresh for 2; helper effects remain its boundary |
+| H-G | key-only slot +0x268 key 17; absent then separately present in valid map | helper returns0 then1; first has no refresh, second erases before refresh |
 | C-A | selector 0x287259F5, action 0x26C10A3B | both owners return AL=0, no button dispatch |
 
 Additional independently derived traces use ordinary finite values and assume
@@ -298,12 +458,67 @@ primitive returns conventional six-place decimal text.
 | G-C1 | SetCurrentPoint(3.5,-6.25), X child absent | no Y lookup/set, no collection change |
 | G-C2 | same, X valid and Y absent | format/set X to `3.500000`, release X; Y lookup fails; no undo of X set |
 | G-F1 | X child exists but query leaves a null output pointer | next interface dereference is unsupported; no claimed parser/default/rollback result |
+| G-V1 | GetValue on empty vector | output slot +0x1B8 with count0, free buffer; no point read |
+| G-V2 | stored pairs (8,3),(-2,9),(8,-4) | output words 0x41000000,0x40400000,0xC0000000,0x41100000,0x41000000,0xC0800000, count6 |
+| G-P1 | graph valid, empty vector, valid service | X bounds0..1; Y lower +0 and upper binary32 0x3F8CCCCD; both ticks0x3E4CCCCD; no per-record calls; +0x6C(0), release graph then axes |
+| G-P2 | graph valid, one point(4,-6) | X bounds4..5; Y extrema first -6..-6 widen upper to-5; both ticks FSTP32(1*0x3E4CCCCD); Y bounds FSTP32(-6*0x3F8CCCCD)..FSTP32(-5*0x3F666666); one raw point callback |
+| H-T1 | formatter input word 0xFFFEFF85 | key -2 and unsigned low65413; formatted scaled value rounds to654.13 under ordinary formatter/nearest mode, rather than Init's negative1.23 |
+| G-T1 | formatter words for (3.5,-6.25), extra unmatched float7; count3 | clear then append `(3.50,-6.25) `; third word ignored by formatter; AL=1 |
+| R-Q1 | same receiver/output storage, two successful special-interface queries | output assigned object+0x100 twice; two AddRef calls, zero replacement Release calls |
+| R-D1 | destructor flag0x100 vs0x101, normal live owner | both destroy own collection then held variant/window prefix; flag0x100 does not free object; flag0x101 does |
 
-## 8. Coverage and open work
+## 10. Per-body attribution ledger
+
+`Owned` means the body-specific normal contract above is published, not that
+every hostile pointer/exception path is supported. `Partial` explicitly keeps
+the unread suffix or foreign primitive open. All native `this` receivers below
+are complete primary pointers unless an adjustment is named. Full EAX or AL
+is distinguished; incidental return-register contents are not boolean promises.
+
+| Owner/body | Bytes / attribution | Args and result channel | Published state/effects; boundary |
+|---|---|---|---|
+| Happiness factory 0x006648F0 / constructor 0x006647F0 | 37 / 118, owned wrappers | factory pointer EAX; ctor ECX→EAX | allocation test, +0xD8 interface return; base ctor foreign, map sentinel state §1 |
+| GeneralResponse factory 0x006642A0 / constructor 0x0066B630 | 37 / 68, owned wrappers | same | distinct zeroed vector state §1 |
+| Happiness QI 0x0066B110 | 69, owned | ID dword/output pointer, RET8, AL | +0x100 write/acquire; delegated IDs foreign §1 |
+| GeneralResponse QI 0x0066B190 | 64, owned | same | own match and unchecked null-receiver branch §1 |
+| Happiness command 0x0066B160 | 30, folded/shared name cSCEditValueDlg | selector/action dwords, RET8, AL | selector gate/virtual dispatch §3; no exclusive owner byte credit |
+| GeneralResponse command 0x0066DCE0 | 28, owned | selector/action dwords, RET8, AL | selector/direct button dispatch §3 |
+| Happiness button 0x0066B9B0 | 406, owned | action dword, RET4, AL=1 | parse/control/action/count gates §5.1; text and parser primitives foreign |
+| GeneralResponse button 0x0066CE10 | 970, owned | action dword, RET4, AL | insert/replace/delete/wrap sequencing §5.2; vector memory helpers foreign |
+| Happiness add 0x0066CDB0 | 89, owned | key low signed word/Y binary32, RET8, no boolean guarantee | comparisons/raw store/refresh §2 |
+| Happiness key-only mutation 0x0066BD30 | 53, owned, misleading SetValue name | low signed key word, RET4 | erase count/refresh §2/§4.1 |
+| Happiness map lookup 0x0066C570 / erase wrapper 0x0066B710 | 121 / 83, container specialization/folded | key pointer; value pointer EAX / count EAX | signed comparisons/equal-key association; helper algorithms foreign §4.1 |
+| Happiness GetValue 0x0066BD70 | 193, owned | entry ECX=object+0xD8, output pointer, RET4 | bias conversion, packed order/count, free schedule §4.1 |
+| GeneralResponse GetValue 0x0066B220 | 286, owned | same | raw two-dword records/doubled count/free §4.2 |
+| Both SetValue 0x0066B180→0x00687950 | 5→8, shared thunk/base wrapper | entry ECX, variant input pointer, foreign assignment result | held variant +0xDC only §4; foreign assignment alias/null/copy rules |
+| Both metadata 0x00664010 / 0x00664020 | 10 / 12, shared | input dword / output pointer, RET4 | raw store/load +0xFC; no owner ref semantics |
+| Happiness display 0x0066BB50 | 477, owned | ECX, no result contract | summary then 256 samples; unsafe missing-endpoint domains §6 |
+| GeneralResponse display 0x0066C180 | 998, owned | ECX, no result contract | summary/service/bounds/record callbacks/release §7; graph drawing foreign |
+| GeneralResponse SetCurrentPoint 0x0066C060 | 277, owned | X/Y binary32 dwords, RET8 | formatted X then nested Y controls, no point store §5.2 |
+| Happiness formatter 0x0066BE40 | 327, owned | three stack dwords, RET0xC, AL=1 | unsigned low word text callback §8.1 |
+| GeneralResponse formatter 0x0066BF90 | 204, owned | same | clear/complete-pair formatting §8.1 |
+| Happiness Init 0x0066C5F0 | 1972, **partial** | ECX, AL guard known; final result unqualified | import prefix §4.1; UI creation/geometry/final init not fully qualified |
+| GeneralResponse Init 0x0066D240 | 2715, **partial** | ECX, AL guard known; final result unqualified | flags/base-init/import prefix §4.2; UI creation/geometry/final selection not fully qualified |
+| GeneralResponse resize 0x0066D1E0 | 85, vector specialization | size dword, RET4 | zero pair growth/truncation request §4.2; foreign storage operations |
+| GeneralResponse paint 0x0066B1D0 | 71, owned wrapper | ECX; result foreign tail | AL surface gate and raw calls §7.3 |
+| Happiness destructor 0x006648A0 | 69, owned | low-byte flag bit0, RET4, original pointer EAX | map then base then optional object free §8.2 |
+| GeneralResponse destructor 0x0066B990 / inner 0x0066B6B0 | 30 / 83, owned | flag as above / ECX | vector buffer then held variant/window then optional object free §8.2 |
+| Both ref/QI adjusted thunks | individual 11-byte adjustments, shared where stated | ECX−0xD8 or −0x100, result delegated | no independent curve counter; §1/§8.2 |
+| Base ctor/dtor and window/variant/ref primitives | foreign/shared, no owner body credit | raw call channels cited above | inherited behavior is not reset or republished as curve-owned |
+
+Direct caller evidence: 0x0066D1B0 is the export's single direct caller of
+SetCurrentPoint; addPoint has zero direct callers because the button invokes
+primary virtual +0x264. Vtable dispatch, not direct-call absence, establishes
+that inventory. These per-body sizes are identifiers, not summed whole-family
+coverage; the historical approximate 8000-byte number is not a denominator.
+
+## 11. Coverage and open work
 
 Published behavior includes owner import/readback schedules, point mutation,
-button decision paths and Happiness's interpolation. Full Init control geometry,
-GeneralResponse graph bounds/paint, formatting and destruction/reference
-contracts are not yet complete. Precise body-scoped obligations live in
+button decision paths, both displays, formatting, destruction wrappers and
+Happiness's interpolation. Full Init control creation/geometry and its failure
+prefixes remain partial. Foreign variant alias/null behavior, x87 environment
+and callback reentry outside the normal domain are not silently filled in.
+The two remaining work packages and body-scoped questions live in
 [the question file](questions/curve-editor-views.md). No replacement source,
 test suite or native execution supplied expected values.

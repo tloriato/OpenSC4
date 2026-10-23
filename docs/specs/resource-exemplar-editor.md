@@ -241,8 +241,8 @@ The editors are GZCOM classes registered by `cSC4ResourceLibCOMDirector`'s const
 | 0x8739DFC1 | 0x00687F40 | cSCUint32ComboBoxEntryView |
 | 0x87C34EDA | 0x00687FA0 | cSCUint8ComboBoxEntryView (proven §10; vtable 0x00AB0428 not in docs/abi) |
 | 0xCA0CB10F | 0x00665C80 | cSCColorSequenceEntryView |
-| 0x071E971B | 0x006648F0 | cSCHappinessCurveEntryView |
-| 0xE8DDA013 | 0x006642A0 | cSCGeneralResponseCurveEntryView |
+| 0x071E971B | 0x006648F0 | cSCHappinessCurveEntryView — [dedicated behavior, partial Init](curve-editor-views.md) |
+| 0xE8DDA013 | 0x006642A0 | cSCGeneralResponseCurveEntryView — [dedicated behavior, partial Init](curve-editor-views.md) |
 | 0x671E972A | 0x006642D0 | cSCStringEntryView |
 | 0x490E01A7 | 0x00664310 | cSCSint64TextEntryView |
 | 0xC71E972F | 0x00664350 | cSCUint32TextEntryView |
@@ -542,7 +542,10 @@ row shows `<property name> (L)` and the three hex words 0x1000, 0x6534284A, 0x20
 
 ## 13. Open points
 
-Happiness and general response curve editors (0x071E971B, 0xE8DDA013): identity and method names only. Also open:
+Happiness and general response curve editors (0x071E971B, 0xE8DDA013): this document retains identity only;
+their first dedicated value/point/event/display contracts and partial Init attribution are in
+[curve-editor-views.md](curve-editor-views.md), with [body-scoped questions](questions/curve-editor-views.md).
+Also open:
 the other text editors' GetValue range checks, who opens `cSCEditValueDlg`, who reads the ExemplarFilters map
 (0x00B46924), the 0xA73B81F0 helper's role, the grid control's own slot semantics (§11.2), the res-key list's
 column-0 property ID source (+0xEC vs +0xF4, §12).
@@ -557,7 +560,7 @@ column-0 property ID source (+0xEC vs +0xF4, §12).
 | cSCUint32ComboBoxEntryView, cSCUint8ComboBoxEntryView | 1177 + 1133 named (+ GetValue 0x00687AE0, 0x00687CA0 unnamed) | specified (§10), identity of 0x87C34EDA proven |
 | typed text editors (8 classes) | ~3700 | layout and Init specified, SINT64 read-back specified (§8.1) |
 | cSCUint32SpinnerEntryView, cSC16ColumnGridEntryView, cSCColorSequenceEntryView, cSCResKeyTableEntryView | named Init/GetValue/handlers | specified round 3 (§11.1-11.3, §12) incl. unnamed SetValue/GetValue/DoMessage slots |
-| cSCHappinessCurveEntryView, cSCGeneralResponseCurveEntryView | ~8000 | identity only |
+| cSCHappinessCurveEntryView, cSCGeneralResponseCurveEntryView | ~8000 historical identity estimate | identity only here; [dedicated behavior/body ledger](curve-editor-views.md#10-per-body-attribution-ledger), Init still partial; no whole-byte credit |
 | cSCResourceCatalogView, cSCResCatBaseView, cSCResCatalogPickerView, cSCResKeyInputView | 16686 | identity only in this spec; separate partial contracts and body attribution in [resource-catalog.md](resource-catalog.md), no byte-total completion credit |
 
 Proposed coverage-map entries (exact owners, no wildcard credit): `spec` = `resource-exemplar-editor.md` for
