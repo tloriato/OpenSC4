@@ -357,7 +357,7 @@ The group must have an AEMS sound set (group `+0x64`, or its parent's); otherwis
   with −the input; else neutral.
 - **Speed.** The speed moves toward the gear's target (clamped to entries 6–7) by dt × entry 10 per tick, or by
   dt × entry 10 × entry 0 when braking; the exact input mapping and crossing-zero behavior are in §6.2.1.
-  Same-sign acceleration and command-channel feedback remain partly summarized.
+  Same-sign acceleration and command-channel feedback are specified in §6.2.3.
 - **Steering.** Left and right inputs change the steering at rates from entries 1, 2 and 5 (entry 5 when steering
   against the current turn), scaled by dt × entry 10 × entry 0, clamped to entries 8–9 *[summary]*; the turn
   (`+0x2E0`) is the steering, and the rudder angle shown is −0.125 × the steering.
@@ -396,7 +396,9 @@ gear with zero command. The no-input `-1` sentinels are used by the separate dri
 inside this magnitude helper (`0x0056E679–0x0056E6B1`).
 
 With an opposite-sign target and nonzero current speed, braking approaches that **target**, using
-`b=round32(round32(dt*p10)*p0)`. A positive speed becomes `max(target,speed-b)`; a negative speed becomes
+`a=round32(dt*p10)` and `b=round32((dt*p10)*p0)`. The product inside `b` is retained on the x87 stack,
+not reloaded from `a`. This corrects the round-1 double-rounding formula: `0x0056E686` stores with FST,
+and `0x0056E68A` multiplies the retained value. A positive speed becomes `max(target,speed-b)`; a negative speed becomes
 `min(target,speed+b)`. The opposite input channel is reset to its threshold, and execution skips the normal
 acceleration branch. There is no split of the tick at zero and no separate remaining-dt acceleration; a single
 braking step can cross zero. Positive-speed branch: `0x0056E749–0x0056E785`; negative-speed branch:
@@ -431,6 +433,78 @@ This covers straight translation and outer publication; the orientation/height a
 remain open. Independent vector before the height helper: heading `(3,4,0)`, position `(10,20,30)`, Speed 0.25,
 p4 0.2, dt 100 gives approximately `(15,20,30)`. Heading `(0,5,4)` gives approximately `(10,20,35)`. Zero dt leaves
 the candidate unchanged but still publishes and calls the height helper when Speed is nonzero.
+
+#### 6.2.3 Same-sign speed and inverse input feedback (round-2 instruction contract)
+
+This section covers finite inputs with ordered limits `p6<0<p7`, `p30<0<p31`, nonnegative dt/p10/p0,
+and valid group, drive-state and owner objects. It does not prescribe results for NaNs, bad pointers,
+zero divisors or uninitialized tuning. `dt` is the **second argument, binary32 milliseconds**;
+the first argument is the drive-state pointer. The decompiler's apparent arithmetic with that pointer
+in steering is a type error: the instructions use the second argument at stack `+0xB8`.
+
+Let `s` be owner Speed, `u` drive-state `+0x28`, `t` the §6.2.1 target clamped to `[p6,p7]`, and
+`sign0(x)` be -1 when x<0 and +1 otherwise (including both signed zeros). The steps are ordered:
+
+1. If u is zero, preserve Speed and skip all speed feedback. Gear selection has already happened.
+2. If s is nonzero and sign0(t) differs from sign0(s), use the braking branch in §6.2.1 and skip steps 3–4.
+3. If sign0(u)=sign0(s) and `abs(t)<=abs(s)`, **preserve Speed**, even for a weaker command. Write the
+   inverse helper result below to forward channel `+0x7C` when s>0, otherwise to reverse channel `+0x80`.
+   Do not rewrite `+0x28` or gear and do not reset the other channel here.
+4. Otherwise choose increment a, except that differing signs of u and s with u<0 choose b.
+   If increment is strictly greater than `abs(t-s)`, store t; otherwise store
+   `round32(s + sign0(u)*increment)`. Equality takes the arithmetic branch. There is no second speed clamp
+   after that store. In particular reverse acceleration from exactly zero uses b; forward acceleration uses a.
+
+Evidence: `0x0056E7BE–0x0056E89D`; sign helper `0x00566E00–0x00566E22`. The opposite-sign branch
+resets reverse input to p32 for s>0 and forward input to p33 for s<0 (`0x0056E776–0x0056E7B9`).
+Neutral does not decelerate here; coasting belongs to the separate drive tick (§6.1).
+
+The inverse helper is `0x005671D0` (312 bytes). It returns an x87 value without modifying its pointed-to Speed.
+Its caches are **separate** from §6.2.1: `c=0.9100000262260437` at `0x00B0A150`,
+`h=1.5707963705062866` at `0x00A9DA50`, `k=0.63661974668502808` at `0x00A9DA60`.
+On first use, store binary32 `n=round32(-c*0.5)`, `T=round32(tan(c*h))`, and
+`N=round32(tan(n*h))` in that order. **N uses tan, whereas the reverse cache in §6.2.1 uses atan.**
+Clamp Speed to `[p6,p7]`, yielding v. When v>0 compute `(v*T)/p7`, otherwise `(v*N)/p6`.
+Take atan, multiply by k, yielding w. When w>0 compute `(w*p31)/c`, otherwise `(w*p30)/n`.
+Clamp to `[p30,p31]`, return, then round32 when storing the selected channel. The reverse feedback is
+signed (normally negative); it is not an absolute reverse-input magnitude. Do not replace it with the
+mathematical inverse of the reverse mapping in §6.2.1. Cache construction `0x005671D1–0x00567234`,
+normalization `0x0056723A–0x0056729C`, atan/scaling/clamp `0x0056729C–0x00567305` prove this asymmetry.
+
+#### 6.2.4 Steering channels and tween reset (round-2 instruction contract)
+
+Let S be drive-state steering at `+0x5C`, L its channel `+0x84`, R its channel `+0x88`.
+Negative channel values are inactive; zero is active. Process the following **right phase then left phase**
+using each preceding store, not a simultaneous left-minus-right calculation. The p1/p2 descriptions in
+the old summary were misleading: p1 maps elapsed channel milliseconds to steering; p2 sets the return rate.
+
+| Phase | Condition | Ordered action |
+|---|---|---|
+| Right direct | R>=0 and S<=0 | If `S < -(p1*R)`, store `R=round32(-S/p1-dt)`. Then store `S=round32(-(p1*R))`. |
+| Right return | Otherwise, S<0 | Start with `b*p2`. If L>0 multiply this candidate by p5 and store L=0. Choose the larger of the candidate and `round32(b*p2)`. Add it to S, store32 the sum, then clamp a positive unrounded sum to zero. |
+| Right idle | Otherwise | No store. |
+| Left direct | L>=0 and S>=0 | If `p1*L < S`, store `L=round32(S/p1+dt)`. Then store `S=round32(L*p1)`. |
+| Left return | Otherwise, S>0 | Start with `b*p2`. If R>0 multiply the candidate by p5 and store R=0. Choose the larger of the candidate and `round32(b*p2)`. Subtract it from S, store32 the difference, then clamp a negative unrounded difference to zero. |
+| Left idle | Otherwise | No store. |
+
+Candidate products, comparisons and sums retain x87 precision except at the specified stores; the baseline
+store uses FST and does not round the candidate still on the stack. Direct channel adjustment uses raw dt,
+**not dt*0.001**. The right phase subtracts dt while the left phase adds dt; preserve this native asymmetry.
+Both inactive with nonzero steering returns toward zero; with both inactive and S=0 neither phase stores S.
+With both channels active, later processing can cancel or change the earlier phase. These rules require
+p1 nonzero; no zero-divisor fallback is present. Evidence `0x0056EBAE–0x0056ED57`.
+
+After rope handling, clamp S to `[p8,p9]`, store it back to `+0x5C` and to owner Turn (`+0x2E0`).
+Set drive-state `+0x23C=0`, `+0x240=0x40C90FDB` (binary32 2π), and `+0x238=round32(S*(-0.125))`.
+The rudder/heading output precedes tween handling (`0x0056EEC2–0x0056EF87`). Its angle helper and degenerate
+heading semantics are still OPEN; these stores do not establish a full angle contract.
+
+Compare binary32 `abs(Speed)` to the tween target at owner `+0x1A4`, using float equality, not a bit comparison.
+If equal, leave all four tween words alone, even when Speed changes sign. Otherwise call inherited
+`TweenStruct::GetCurrent` (`0x004FA960`), store its rounded result to `+0x1A0`, the new magnitude to `+0x1A4`,
+and zero both `+0x1A8` and `+0x1AC`. Then call inherited command translation (`0x00509070`) with the
+original drive-state pointer and dt and return its result (`0x0056EF8D–0x0056EFD9`). The inherited bodies
+are separate residuals, not foreign callbacks allowed to supply an owned command outcome.
 
 ### 6.3 Towing
 

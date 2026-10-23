@@ -1,6 +1,18 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| re-watercraft-completion4: native watercraft contracts | Codex / `re-watercraft-completion4` (RE, reserved detached worktree) | WIP: substantive contracts committed; current census 75 functions/38073 bytes versus brief 79/38556; questions check and diff check PASS; WC3-WC7 partially resolved, remain open; ABI unchanged; no game/shadow claim | 1. Reconcile four-function/483-byte census discrepancy. 2. Trace remaining AI, turning/tilt, crash, command and route bodies named below. 3. Reconcile portable subset before whole-owner credit. |
+| re-watercraft-completion4: native watercraft contracts | Codex / `re-watercraft-completion4` (RE, reserved detached worktree) | in progress: original research round 2/3; R1 evidence preserved; no owner qualification | Trace movement and command residuals from canonical Windows instructions; publish bounded algorithms and retain unknowns. |
+
+## Handoff
+
+- Goal: original round 2/3, movement/command first; no implementation, runtime calls or owner credit.
+- Starting tip: a2f2b75c; R1 substantive commits bd529644 and 9267ce96 are already present.
+- Next: canonical export metadata and instruction queries for 00569940, 00569E70, 00571880 and command callees.
+- Census remains 75/38073 versus old 79/38556, four functions/483 bytes unexplained.
+- Local q.py Bash wrapper failed with CreateInstance/E_ACCESSDENIED; use bounded PowerShell commands.
+- Only configured REA tools are procedure_pseudo_code and batch_decompile; no target-control tools permitted.
+- No games, ABI changes, tests, builds, engine reads, agents, refs changes, merge or push.
+- Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-re-watercraft-completion4-r2-manifest.json.
+- Prior round report below is preserved until the final round-2 report replaces this handoff.
 
 ## Report
 
