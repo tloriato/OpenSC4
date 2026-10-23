@@ -1,25 +1,89 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| core-scene-renderer4 (first portable cSC43DRender owner) | Codex / `core-scene-renderer4` (engine lane, detached HEAD) | in progress: final all Rust5155/0/0 incl13 owner tests and strict clippy passed; native release build active/full68CTest pending; seven-path fmt exit0; R2 terminal/cache UNKNOWN; denominator130, bytes UNKNOWN; ABI unchanged | Collect the one live final all (capture27740/qbuild26472/verifier24068); no duplicate checker or source edit. Then record actual terminal/native/CTest result and source/log/artifact correspondence. |
+| core-scene-renderer4 (first portable cSC43DRender owner) | Codex / `core-scene-renderer4` (engine lane, detached HEAD) | wip: final all Rust5155/0/0 incl13 owner tests, strict clippy and native4/4 observed; readonly stats32992 pending, final exit UNKNOWN/full68CTest unrun; seven-path fmt exit0; R2 terminal/cache UNKNOWN; denominator130, bytes UNKNOWN; ABI unchanged | Coordinator collect/account for capture27740/qbuild26472/verifier24068/stats32992 and actual terminal/source-end/full68CTest result. Keep held; no duplicate invocation, fourth round/reset or cache/process workaround. |
 
-## Handoff
+## Final original round 3/3: held, final wrapper incomplete
 
-- Goal: original same-name final round3/3; finish bounded renderer validation without scope expansion.
-- Done: start651a2297/engine b1124501f2deef4b5315970a855e970d4f74aec7; R2 actual quick evidence retained, not repeated.
-- At01:27:46/01:28:10 BST, Toolhelp/NT process inspection found old38324/9384/36584/23512 absent; no same-WT output writer/checker.
-- Full cwd/argv/creation/parent and output-path evidence: build-runs/final-r3/process-details{,-followup}.json. No candidate command inspection unknowns.
-- Cache server35784 has only conhost25092 as child; both service cwd reads denied5, commands/images inspected. Other output paths belong to train-integration/core-legacy-control4. No process/cache action taken. Netstat found no4584 row.
-- No genuine old terminal completion recovered from local artifacts/copied coordinator evidence; terminal/cache outcome remains UNKNOWN. Dated absence does not explain disappearance.
-- Raw R2 logs archived byte-for-byte as base64 in build-runs/final-r3/archived-r2-*.b64; four hashes match the historical report below. Earlier baseline remains distinct.
-- Raw transport stderr: `2026-10-23T00:21:20.005747Z ERROR codex_core::session: failed to record rollout items: thread 01a165fd-6a9c-72d0-b2cc-88de0ce8717d not found`. This is not a compiler/native diagnostic or proof of fatal execution/cause; structured result/report/queue exist. No root cause/fix claimed.
-- Formatting milestone: existing generator with explicit engine/rustfmt.toml width120 changed only backing/fixtures/mod/models/shake/tests.rs (66 insertions/266 deletions). record.rs unchanged; no algorithm/expectation edits. Shared additive lib.rs declaration untouched; its pre-existing ordering drift is not silently reformatted.
-- Seven absolute owner paths passed qbuild fmt: actual exit0/files7/diff_lines1, sole warning `could not canonicalize path C:\Users\tlori`; preserved in build-runs/final-r3/format-result.txt. Generator rerun emits an empty patch; git diff --check clean.
-- Stable formatted source commit9a843f0a57167befb94f4e792f887ffcf766f52c/engine ae8d9d0492a4ba44b2c7f50e2b664fd6ef52c074. Seven-file correspondence audit proves exactly original source after rustfmt; record/lib unchanged.
-- ONE final all started00:32:46.835982UTC (01:32:46BST), clean engine/worktree, all eight sources normalized-match commits; start.json and capture-final.py preserve command/time/hash evidence.
-- At00:38:41UTC: Rust5155/0/0 across workspace summaries, doctests0/0/0; all13 owner tests passed. qbuild-test.log SHA256 a0af7e14b4b13de85080e5177bb7291a68b5d7e66fa43f31079c1853fae30413. Strict clippy finished46.69s, SHA256 9d88b2036c9a9b23107b233bceb5ba4a0d1f148789ef4097559f61422e340995. Full data/name list: final-r3/rust-complete.json.
-- Native release build active at00:38:11UTC: capture27740 -> qbuild26472 -> verifier24068 -> CMake8788/Ninja32676; service-owned rustc27956 output belongs to this WT. Full argv/creation/cwd/output attribution in final-live-attribution.json. No terminal/cache/CTest outcome yet; no source changes while live.
-- Next: collect this single final operation's real terminal/native/full68CTest evidence; do not start another all. Any HEAD change during it is this report-only checkpoint; engine tree/eight source hashes remain identical.
-- No game requests, native-owner/default/whole-owner credit, ABI or fixture expectation changes; RND1/RND2/RND4/RND5-7 and all residuals retained.
+This round reconciled the absent R2 checker, preserved its measured components and UNKNOWN terminal/cache outcome, formatted six owner files, and ran exactly one final `qbuild all`. **Final source-corresponding Rust5155/0/0 (13/13 owner tests), strict clippy and native4/4 are observed. Full68CTest has not run and the final wrapper exit is UNKNOWN; this lane remains WIP.** No fourth round/reset, new checker or cache workaround is requested.
+
+Production algorithms remain93a6fc20. Formatting commit **9a843f0a57167befb94f4e792f887ffcf766f52c**, engine tree **ae8d9d0492a4ba44b2c7f50e2b664fd6ef52c074**, replaces pre-format engine **b1124501f2deef4b5315970a855e970d4f74aec7**. All seven owner files are exactly the original651a2297 source passed through rustfmt with explicit engine config; record.rs was already identical, and lib.rs is unchanged. This is formatting only: no algorithm, assertion, fixture expectation, skip, tolerance or supported-domain changes.
+
+### Final gate: actual evidence and remaining hold
+
+- Command: `python C:/Users/tlori/FreeCity4/.claude/lane-bin/qbuild.py --wt C:/Users/tlori/FreeCity4/.claude/worktrees/core-scene-renderer4 all`, wrapped by local `build-runs/final-r3/capture-final.py` for actual start/end/exit snapshots.
+- Actual start **2026-10-23T00:32:46.835982Z (01:32:46 BST)**, clean HEAD9a843f0a/engine ae8d9d04. All eight recorded files match committed source after CRLF normalization.
+- Workspace summaries total **5155 passed / 0 failed / 0 ignored**; doctests **0/0/0**; owner tests **13/13**, names below. Strict clippy finished successfully in **46.69s**. These are actual final-source results, distinct from the older baseline and R2 quick.
+- Native release build log reaches **4/4**, with the CAPI smoke executable and DLL linked. Current DLL SHA256 **61eaf78e727632f07a8435e5bec6ab6910ed01902f2ebed08110990c2117b24f**, **18127360 bytes**, mtime **01:41:16.317539 BST**. No native-owner execution/equivalence follows from building the plugin.
+- At **01:42:44.721514 BST**, actual process identity/creation/parent/cwd/argv shows capture27740 -> qbuild26472 -> verifier24068 -> **readonly stats32992**, created **01:41:30.597988 BST**, command `sccache.EXE --show-stats --stats-format json`. No compiler/output writer remains for this lane. Full CTest has no final log; generated metadata expects68. No terminal PASS/FAIL, exit code, end time or end snapshot is available yet. The absence of a terminal result is not a fabricated failure or success.
+- Fresh final-state attribution at **01:45:55.478601 BST** confirms those same creation identities/cwds/argv, still pending after **4m24.88s**, no candidate command inspection unknowns, no same-WT compiler/writer or final CTest log. Native release compilation finished in **3m47s**; all4 build steps are durable. The live process remains untouched; final-status-attribution.json preserves the full snapshot.
+- Report-only checkpoint **efe37829021de331bb005b023c4badf7be3086cb** changed HEAD while the gate ran. Engine tree and all eight source hashes stayed unchanged; this is documentation movement, not compiled-source drift. Final terminal/source-end evidence must still be collected.
+- Seven **absolute owner paths** passed `qbuild fmt`: actual **exit0/files7/diff_lines1**, sole warning `could not canonicalize path C:\Users\tlori`. Original **exit1/files8/diff_lines2044** remains preserved separately. Six files changed66 insertions/266 deletions under engine width120; record.rs needed no change. Shared lib.rs pre-existing ordering drift is separately reported; no whole-lib formatting was run.
+- Durable local evidence: `build-runs/final-r3/start.json`, `owner-format-correspondence.json`, `format-result.txt`, `rust-complete.json`, `native-complete.json`, `native-terminal-attribution.json`, capture/collector scripts and the raw qbuild/fc4verify logs. The captured-console collection attempt returned no buffered text; this is not a terminal verdict.
+- No process/client/daemon/service was terminated, no independent cache RPC issued, and no environment/provider/cache-policy or wrapper-tooling changes made. No exceptional coordinator action is inferred or authorized by the observation above.
+
+All thirteen final-source owner test functions passed:
+
+- `backing_b1_b4_and_both_ignored_results`
+- `backing_probe_failure_frees_both_short_circuits_and_missing_buffer_cleanup`
+- `dirty_strict_ties_mode_zero_penalty_deadline_and_threshold`
+- `failed_frustum_stays_unsupported_on_repeat`
+- `full_redraw_area_boundary_coalesces_actual_existing_frustum_and_queue_clearing`
+- `identity_lifetime_reaches_destructor_only_after_shutdown_boundary`
+- `lists_unsigned_stable_duplicate_refs_first_per_list_and_null_terrain`
+- `literal_dirty_fixtures`
+- `shake_s1_s6_stop_fade_strict_expiry_and_rounding`
+- `shared_backing_buffers_are_owned_once_and_switch_is_process_wide`
+- `model_queue_kinds_old_current_boxes_refs_predicate_and_boundaries`
+- `signed_filter_literal_cases`
+- `typed_record_version_and_sticky_error_partial_writes_are_literal`
+
+Final-source raw SHA256 values (lib.rs differs from its committed blob only by CRLF; normalized committed SHA256 `a462c04fc5e091a4f22580783c66e76076e8fc3706ea43b55a6b2d9e7a227f20`):
+
+| Source under engine/core/src | SHA256 |
+|---|---|
+| scene_renderer/backing.rs | `55827f7e524a71ba048d3f25ee2ae157a900646086d47d4a4991163ef832f329` |
+| scene_renderer/fixtures.rs | `4cc919284a7c8a09f4ac2ce0709ad67c2beb745232359283d1393bfa6b6ac614` |
+| scene_renderer/mod.rs | `7b60e07da901a6bfe0e31821adf9cbccdd9267dd8381a6f687a8f80fd68f5a27` |
+| scene_renderer/models.rs | `b9d4dbf3154318e047f457712981b0668ef7ea2a8170921fc3c634bc6687362c` |
+| scene_renderer/record.rs | `70986fb40235cf88529c67dac8a1002638c440a564a689e798a7a86a471d3eac` |
+| scene_renderer/shake.rs | `356f1c134cf121ffa47717314ad04b61b800c760318a8c8e085659c917364923` |
+| scene_renderer/tests.rs | `9bdd52e115e45a95a7e2885a34549e210e4fb6d9734021b0ff484dc5ff3a0585` |
+| lib.rs | `ad329c87dda520ce692dc234f17283f1cfc1205d573ac27a70eb9f6e46f7eafc` |
+
+Observed final log hashes (the native log is complete; final wrapper/cache/fullCTest are still pending):
+
+| Log under build-runs | SHA256 |
+|---|---|
+| fc4verify-build.log | `4531544d9daa9cf70a0202acfa823379a0a928f36909109392040db84330c36a` |
+| fc4verify-configure.log | `32dd863e1cedee6cf44e3a3b2f6e4849851752a7de2a69defaa5b5e89391a420` |
+| qbuild-clippy.log | `9d88b2036c9a9b23107b233bceb5ba4a0d1f148789ef4097559f61422e340995` |
+| qbuild-test.log | `a0af7e14b4b13de85080e5177bb7291a68b5d7e66fa43f31079c1853fae30413` |
+
+Other artifacts: fc4_capi_smoke.exe SHA256 `2e46ac15973a21cbc0e3a41bde37a859734e7778645803e052f0ecd1150ea452`,11021312 bytes; unchanged fc4_plugin_load_test.exe `06b249a28a0703c01b1bbad7eaf95badafe5d9993add07e26edc4fb4e050a355`,3120128 bytes. Neither artifact hash supplies a missing CTest verdict. Published spec SHA256: render3d.md `8c47d249712b863abd398622612497ddbc003f5bd42e13f98c1b193596ade829`; view3d.md `00324f403ccc59d1ab12af4358a623cba38ca9637eaa719b86483d819e54275d`.
+
+### Old operation reconciliation and exact transport diagnostic
+
+At01:27:46/01:28:10 BST this round's Toolhelp/NT audit found old qbuild38324/verifier9384/readonlystats36584/worker23512 absent, with no same-WT checker or output writer. Full current argv/image/creation/parent/output attribution is preserved in process-details{,-followup}.json. No candidate command inspection was unknown; shared server35784 and its sole conhost25092 child had denied service cwd reads5, recorded without hiding them. Other output paths belonged to train-integration/core-legacy-control4; netstat returned no4584 row. Dated absence establishes neither a terminal outcome nor a disappearance cause.
+
+R2 raw log bytes are archived as base64 in final-r3/archived-r2-*.b64; decoded SHA256s match the historical table below. Reused measurements remain core3113/0/0 incl13 owner tests, compile-only dependents and native4/4. No unchanged quick was rerun to repair a missing terminal verdict. The still-earlier baseline5142/0/0, clean clippy and native215/215 remains **partial earlier-source evidence**, with UNKNOWN wrapper exit and no durable fullCTest result.
+
+Exact retained raw R2 stderr:
+
+`2026-10-23T00:21:20.005747Z ERROR codex_core::session: failed to record rollout items: thread 01a165fd-6a9c-72d0-b2cc-88de0ce8717d not found`
+
+This rollout-recording error is separate from compiler/native diagnostics. Structured result, committed report and queue exist, so no fatal-execution inference, invented root cause or claimed fix follows from it.
+
+### Bounded scope, questions and next step
+
+The attributed denominator stays **130 owner functions including folded bodies; exact implemented body bytes UNKNOWN**. No implementation/native-equivalent percentage, foreign-body credit, whole-owner/native/shadow/default/replaced promotion is claimed.
+
+Support remains the existing bounded dirty scoring/filter/strict ties/threshold/deadline/recursive area overcount; stable unsigned view lists and reference decisions; two-buffer backing order/failure decisions with explicit shared ownership; queue kinds0/1/3/4; restricted shake/typed-record prefixes; actual existing CameraControl forwarding and the existing frustum restrictions. D5 spacing100->1000 rationale remains: spacing100 scores-900 and merges before exercising the16-node threshold. Tests/expectations were not changed to fit results.
+
+Queue kind2 stops Unsupported before MoveGridElement; kind5 derivation and queue200 DoFullViewUpdate stay Unsupported. General geometry, full Draw/ProcessDirtyRectangleQueue/UpdateViewportRect/DoPartialViewUpdate/DoViewCleanup, lifecycle/static driver/destructor, picking/visibility, general sine/extended shake, render3d section7 and view3d residuals remain Unsupported. Raw foreign primitives cannot supply renderer decisions or complete unexecuted plans. Repeated frustum errors remain errors; explicit elapsed time, backing ownership/reentry limits persist; Rust Drop gives no native destruction/reference proof.
+
+Retained questions: **RND1/RND2/RND4/RND5-RND7** in docs/specs/questions/render3d.md and all V3D-1 through V3D-10; none new this round. No spec, native/plugin/CAPI/ABI/default/coverage changes, terrain/other-owner work, game/shadow requests, network/live-user-file operations, external messages, subagents, merge/rebase/push or shared-ref changes were made.
+
+**Next:** coordinator must collect/account for the one still-live final operation, including real terminal/source-end and full68CTest outcomes. Keep this lane held until actual full source-corresponding checks pass. No fourth round/reset or new invocation is requested.
 
 ## Historical report: round 2 verification, WIP
 
@@ -113,7 +177,7 @@ Denominator: **130 owner functions**, including folded bodies. Exact implemented
 
 This inventory distinguishes method algorithms from raw foreign model/QI/world-box, grid, buffer, draw-context writes, notification, clock, property and reference primitives. It grants no byte credit and no whole-owner/native equivalence.
 
-## Current bounded implementation (code tip 93a6fc20; gates pending)
+## Bounded implementation (production algorithms93a6fc20; formatted9a843f0a; final gate held above)
 
 - Milestones: f4d643d0 inventory/literal fixtures; 09fcae9f first substantive module; 36adf9ee discriminators/typed record/reference and camera calls; 93a6fc20 persistent frustum failure and explicit elapsed-time start input.
 - Executable local algorithms: signed rectangle filter; AddDirtyRectangle(rect/box) and Internal scoring, strict ties, mode-0 penalty, unsigned 16-node threshold, inclusive -2500 merge, deadline adjustment, recursive mode 6 with area overcount; ClearDirtyRectangleQueue; DoFullViewUpdate/ForceFullRedraw coalescing through the actual existing frustum helper. Existing view-utilities unsupported inputs remain errors, including on repeated requests.
@@ -124,5 +188,5 @@ This inventory distinguishes method algorithms from raw foreign model/QI/world-b
 - Partial shake methods: owned parameter copying/prepend/handles, explicit clock-restart precondition, overload fade=0 portable RND4 choice, stop/fade, strict expiry, disabled freeze, seed-88 table via existing RzRandom, exact restricted curve/phase arithmetic and half-even rounding via x87::rhe where applicable. Arbitrary interpolation, nonzero sine entries, broad positional/extended accumulation and nonzero repeated scale beyond one factor remain Unsupported. These are not complete general SetShakeOffsets/Start bodies.
 - Partial lifetime/record: never-initialized Shutdown no-op; last Release reaches Shutdown then explicit unknown-destructor error without decrementing 0/1 or reporting deletion. Initialized Init/Shutdown, destructor and full Draw remain Unsupported. Portable typed Record Read/Write preserve version/order/sticky-error prefix writes but do not bind native slot 8 or transfer native reference ownership. Rust Drop does not perform unspecified renderer destruction: an embedding must explicitly drain acquired queue/list refs and clear camera references before dropping this portable owner.
 - Remaining Unsupported: Draw and its static/dynamic, translated, clipping/clear/draw helpers; ProcessDirtyRectangleQueue; UpdateViewportRect/DoPartialViewUpdate/DoViewCleanup; full lifecycle/static driver ownership; picking/terrain clipping and visibility wrappers; ReevaluateBackingStoreObjectFlags; all §7 residuals and unlisted owner bodies. No complete Draw/Update credit from action plans or callbacks. No terrain, drawcontext, DX7, effects, window, CAPI, ABI, defaults, coverage or native changes.
-- Current measured results and tooling block are recorded above; initial baseline and final-source validation remain distinct.
-- Next operation is collection of the current readonly cache query, as recorded above. Original session3939 is historical only.
+- Final measured results and current readonly-query hold are recorded at the top; initial baseline, R2 quick and final-source validation remain distinct.
+- Next operation is collection/accounting of final qbuild26472/verifier24068/stats32992. R1 session3939/R2 session40000 are historical only; current transport25324 is not independent liveness evidence.
