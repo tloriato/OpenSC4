@@ -1,22 +1,96 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| tools-refill-rea-admission4: per-worker REA startup/admission | Codex, `tools-refill-rea-admission4` | in progress | Reproduce isolated MCP target state; implement scoped same-client bootstrap and validate. |
+| tools-refill-rea-admission4: per-worker REA startup/admission | Codex, `tools-refill-rea-admission4` | wip: tooling implemented; installed REA API/live readiness UNKNOWN; full qualification outstanding | Coordinator inspect/review actual read-only startup/identity API, qualify contract and owned smoke, then validate tools before landing. No automatic worker round. |
 
-## Handoff
-- Goal: truthful per-worker REA readiness, scoped to the authorized read-only target; preserve all lane policies.
-- Worktree reused at detached HEAD; initial main.. log and status empty.
-- q.py cannot start Bash (E_ACCESSDENIED); use bounded PowerShell commands.
-- Milestone: real process fixture reproduces tools/list success followed by independent client `No app is open` (1 unittest passes). Old handshake also emits ResourceWarnings for unreaped/unclosed child.
-- Inspected backend/config/guard/prompt. Configured REA source access denied; metadata-only owned launch reports EOF and MODULE_NOT_FOUND. No protocol schema available in sandbox.
-- Design: reviewed exact-target/schema contract required; Codex attaches to the very process admitted before reservation via a narrow owned transport. Claude RE workflow explicitly unsupported until equivalent attachment exists.
-- Done: reproduction committed 482862b5. Implemented retained owned-child transport, reviewed target/schema contract, before-reservation admission, two-tool boundary, truthful Claude rejection, prompt/guard integration, safe coordinator inspect/smoke commands and contract docs.
-- Substantive fix committed 57636fcc. Review follow-up preserves private stderr, pins declared path/read-only schema options, verifies Windows owned-descendant cleanup without touching another admitted session, and retains valid JSON-RPC error framing on identity drift.
-- Measured focused checks: admission 15/15, backend 24/24, guard 23/23, evidence 9 passed + 1 skipped. Actual configured bridge, two independent process identities, failure/cancellation cases, no queue/state/round mutation all exercised with harmless processes.
-- Actual inspect command preserves REA EOF/MODULE_NOT_FOUND; live readiness UNKNOWN; no production contract created. Default Python has no pytest; authorized main pytest-venv reports pytest 8.2.2.
-- Source cleanup/schema/diagnostics milestone committed 26a6c7e9. ONE full tools suite on that committed source printed 194 passed, 1 skipped, 2 failed (46.96s), log build-runs/rea-full-tools.log.
-- Both failures were fixture proof using launcher PID as server PID under Windows venv redirectors. Reproduced independently: launcher PID 38760 vs actual interpreter 24644. Corrected tests to audit actual server-side open/identity/research witnesses, renamed production evidence to transport_pid; readiness still typed target identity, never PID.
-- Final focused source: authorized pytest venv prints admission 17 passed (25.81s), backend/guard/evidence 56 passed + 1 skipped (22.30s): total 73 passed + 1 skipped. Includes real backend supervisor lease/preflight/cleanup with only model execution and Git preparation stubbed. diff --check clean.
-- Added backend lifetime EOF cleanup; 17 admission cases include supervisor death and real backend main integration. Existing policies remain covered by backend/guard/evidence tests.
-- Next: finalize report/queue wip after committing this correction. Full suite not repeated (one-run limit). Coordinator must inspect/review real API and qualify live smoke/full tools before ready; commands in docs/ops/rea-admission.md. No automatic extra worker round.
-- No live target evidence; actual readiness UNKNOWN. No engine/game/native checks required.
-- Manifest: C:/Users/tlori/FreeCity4/build-runs/run4-tools-refill-rea-admission4-r1-manifest.json.
+## Result and scope
+
+Implemented fail-closed retained-client admission. This is **wip**, not a claim
+that the installed REA can now open the real Windows target. Actual configured
+source access was denied; metadata-only execution reported `REA EOF` with
+`MODULE_NOT_FOUND` for the configured `rea-agents/scripts/rea.mjs`. No real tool
+schemas, production target contract, project readiness or original procedure
+results were obtained. The actual prior `target_unavailable: No app is open`
+failure is retained as the motivating failure, not suppressed by keeper success.
+
+Changed **7 production files, 3 test/fixture files, 3 docs files**; added 17 MCP
+regression cases and one guard case. No engine, algorithms, maps, regions, ABI,
+models, auth, provider/cache configuration or live coordinator queue/state edits.
+No native build/game run was requested or needed. Questions: none.
+
+## Implementation
+
+- `tools/rea_session.py`: coordinator-reviewed binary hash, exact binary/project
+  paths, declared read-only open option, schema pins and typed identity required.
+  Open only an explicitly empty target; reject occupied/wrong/unready clients.
+  Retain the admitted procedure-capable process; the worker attaches once to it.
+  Recheck target identity before research; expose only the two research tools.
+- Backend/launcher: admission precedes reservation, queue/state writes and
+  worktree creation. Failed bootstrap preserves the cause without retries or
+  consumed rounds. Backend lifetime EOF, transport EOF/cancellation, startup
+  failure and Windows private job ownership clean only owned processes. Full
+  child stderr remains private in build-runs; stdout retains JSON-RPC framing.
+- Guard/prompt: deny non-RE and arbitrary MCP capabilities; keep STOP, assignment,
+  dependency, parking, caps, disk, concurrency, provider and progress policies.
+  A keeper or tools/list handshake can never establish target-ready GO.
+- Codex support is conditional on the reviewed version-1 contract, protocol
+  2025-06-18, declared read-only options and typed exact-target metadata. The
+  installed server's compliance is **unqualified**. Claude RE is explicitly
+  unsupported before reservation and in the backend; its current workflow cannot
+  guarantee same-client attachment. Engine/tool transports remain unchanged.
+
+## Measured validation
+
+Final source focused checks used the authorized
+`C:/Users/tlori/FreeCity4/build-runs/pytest-venv/Scripts/python.exe` (pytest 8.2.2):
+
+- `-m pytest tools/tests/test_rea_admission.py -q --tb=short` printed
+  **17 passed in 25.81s**.
+- `-m pytest tools/tests/test_lane_backends.py tools/tests/test_laneguard.py tools/tests/test_lane_evidence.py -q --tb=short`
+  printed **56 passed, 1 skipped in 22.30s**. Total **73 passed, 1 skipped**.
+- Tests execute actual configured bridge commands and per-process fake MCP
+  servers: two independent clients, same-server open/research audit witnesses,
+  correct preexisting identity without reopen, isolated keeper, wrong target,
+  missing path/hash/schema/options, open negative/error/untyped replies, protocol
+  error, timeout/EOF, identity drift, role/tool/path denials, cancellation,
+  supervisor lifetime loss, owned Windows descendants and no failed-preflight
+  queue/state/round/worktree mutation. Real backend preflight/lease/cleanup runs;
+  only model execution and Git preparation are stubbed in its supervisor test.
+- ONE full tools suite on committed source **26a6c7e9**:
+  `python build-runs/run-tools-suite.py` ran authorized Python
+  `-m pytest tools/tests -q --tb=short`, printing **194 passed, 1 skipped,
+  2 failed in 46.96s**. Full log: `build-runs/rea-full-tools.log`.
+  Both failures were the new tests equating a Windows venv redirector PID with
+  its actual server PID. Independently reproduced launcher 38760 versus Python
+  24644, corrected proof to audit actual server-side calls, and renamed recorded
+  process evidence to `transport_pid`. Final focused checks above pass this
+  environment. The full suite was **not repeated** under the one-run limit and
+  must not be reported as green on final source.
+- `git diff --check` printed no whitespace errors. Default Python's
+  `-m pytest --version` printed `No module named pytest`; the authorized venv
+  supplied actual validation, not an assumed pass.
+
+Milestones: **482862b5** reproduction, **57636fcc** substantive admission fix,
+**26a6c7e9** schema/diagnostic/ownership checks, **03bcea3a** redirector-proof
+identity evidence and supervisor lifetime cleanup.
+
+## Coordinator follow-up
+
+The reviewed contract and evidence expectations are in
+[docs/ops/rea-admission.md](../ops/rea-admission.md). Before landing, inspect the
+installed API and select/adapt a genuinely supported exact-target read-only open
+and typed identity path; do not mark the fixture-shaped template reviewed. The
+explicit contract is `MAIN/build-runs/rea-target.json`; no file was created there.
+
+Safe coordinator commands before landing (no model, research output or rounds):
+
+```powershell
+python C:/Users/tlori/FreeCity4/.claude/worktrees/tools-refill-rea-admission4/tools/rea_session.py inspect
+python C:/Users/tlori/FreeCity4/.claude/worktrees/tools-refill-rea-admission4/tools/rea_session.py inspect --identity-tool REVIEWED_TOOL_NAME
+python C:/Users/tlori/FreeCity4/.claude/worktrees/tools-refill-rea-admission4/tools/rea_session.py smoke --root C:/Users/tlori/FreeCity4 --lane re-readiness-smoke
+```
+
+After actual API/contract review, expect two distinct owned sessions, exact typed
+binary/project identity, boolean ready true, exactly two research capabilities,
+and zero research calls. Preserve UNKNOWN until that actual evidence exists.
+Then qualify the final full tools suite before changing this lane to ready.
+No automatic extra/reset/fourth worker round; inherited family caps are unchanged.
