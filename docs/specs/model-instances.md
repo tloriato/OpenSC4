@@ -222,9 +222,10 @@ separate products and sums in that order. The schedule is the same for all three
 | 5 | B(q_x+t_x), B(B(q_y)+t_y), B(B(q_z)+t_z) | row sums y and z; row sum x remains transient | `007F9531`–`007F96A5` |
 | >5 | B(B(s q_x)+t_x), B(B(s q_y)+t_y), B(s B(q_z)+t_z) | unscaled z row, then scaled x and y | `007F977B`–`007F995A` |
 
-For kinds 1/2/4/5, final coordinate stores run z,x,y for each vertex (z is copied as a word from a temporary
-binary32 slot). For kind3/default the final order is z,y,x. Input vertices are transformed in first,
-second,third order; all are stored before the ray call at `0x007F997E`. The temporary stores above are
+For every arithmetic kind, final coordinate stores run z,x,y for each vertex (z is copied as a word from
+a temporary binary32 slot). In kind3/default, the stack exchange before the z store leaves x above y;
+their stores still run x then y. Input vertices are transformed in first,second,third order; all are
+stored before the ray call at `0x007F997E`. The temporary stores above are
 semantically significant even though all final vertices have the same binary32 layout.
 
 #### 2.2.2 Triangle ray and distance

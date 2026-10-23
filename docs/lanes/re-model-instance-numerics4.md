@@ -52,7 +52,8 @@ Prior MI3–10 rules and the canonical twenty-vector sequence remain; only vecto
 - Independent numeric script: PC24/53/64 and all four RC expectations agree with published N1–N6 derivations.
 - No build, cargo, clippy, ctest, game run, native execution or shadow comparison performed; all are n/a.
 - Milestones: `96965f53` (MI13/MI12), `1acef253` (MI11 schedules/mode boundary); final commit adds vectors,
-  provenance, factory order, partial question wording and this report.
+  provenance, factory order, partial question wording and this report. `8b35109e` holds that milestone;
+  final stack-order review corrects kind3/default final stores to z,x,y (all arithmetic kinds agree).
 - Reserved detached HEAD retained. No branch/ref changes, merge, rebase, push, restart or queue entry requested
   or performed. Supervisor publishes commits. No excluded owner operations were researched.
 
