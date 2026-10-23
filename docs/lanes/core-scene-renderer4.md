@@ -1,6 +1,6 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| core-scene-renderer4 (first portable cSC43DRender owner) | Codex / `core-scene-renderer4` (engine lane, detached HEAD) | in progress: R3 reconciled old operation; terminal/cache UNKNOWN; reused core3113/0/0 incl13 owner tests and native4/4; six owner files formatted, seven-path fmt exit0; final all pending; denominator130, bytes UNKNOWN; ABI unchanged | Run one captured final qbuild all against the committed formatted engine; collect actual exit, workspace/doctest totals, strict clippy, native and full68CTest, hashes and source correspondence. |
+| core-scene-renderer4 (first portable cSC43DRender owner) | Codex / `core-scene-renderer4` (engine lane, detached HEAD) | in progress: final all Rust5155/0/0 incl13 owner tests and strict clippy passed; native release build active/full68CTest pending; seven-path fmt exit0; R2 terminal/cache UNKNOWN; denominator130, bytes UNKNOWN; ABI unchanged | Collect the one live final all (capture27740/qbuild26472/verifier24068); no duplicate checker or source edit. Then record actual terminal/native/CTest result and source/log/artifact correspondence. |
 
 ## Handoff
 
@@ -14,7 +14,11 @@
 - Raw transport stderr: `2026-10-23T00:21:20.005747Z ERROR codex_core::session: failed to record rollout items: thread 01a165fd-6a9c-72d0-b2cc-88de0ce8717d not found`. This is not a compiler/native diagnostic or proof of fatal execution/cause; structured result/report/queue exist. No root cause/fix claimed.
 - Formatting milestone: existing generator with explicit engine/rustfmt.toml width120 changed only backing/fixtures/mod/models/shake/tests.rs (66 insertions/266 deletions). record.rs unchanged; no algorithm/expectation edits. Shared additive lib.rs declaration untouched; its pre-existing ordering drift is not silently reformatted.
 - Seven absolute owner paths passed qbuild fmt: actual exit0/files7/diff_lines1, sole warning `could not canonicalize path C:\Users\tlori`; preserved in build-runs/final-r3/format-result.txt. Generator rerun emits an empty patch; git diff --check clean.
-- Next: ONE captured final qbuild all on this committed stable source; no unchanged quick rerun. Collect actual terminal outcome and full source/log/artifact correspondence.
+- Stable formatted source commit9a843f0a57167befb94f4e792f887ffcf766f52c/engine ae8d9d0492a4ba44b2c7f50e2b664fd6ef52c074. Seven-file correspondence audit proves exactly original source after rustfmt; record/lib unchanged.
+- ONE final all started00:32:46.835982UTC (01:32:46BST), clean engine/worktree, all eight sources normalized-match commits; start.json and capture-final.py preserve command/time/hash evidence.
+- At00:38:41UTC: Rust5155/0/0 across workspace summaries, doctests0/0/0; all13 owner tests passed. qbuild-test.log SHA256 a0af7e14b4b13de85080e5177bb7291a68b5d7e66fa43f31079c1853fae30413. Strict clippy finished46.69s, SHA256 9d88b2036c9a9b23107b233bceb5ba4a0d1f148789ef4097559f61422e340995. Full data/name list: final-r3/rust-complete.json.
+- Native release build active at00:38:11UTC: capture27740 -> qbuild26472 -> verifier24068 -> CMake8788/Ninja32676; service-owned rustc27956 output belongs to this WT. Full argv/creation/cwd/output attribution in final-live-attribution.json. No terminal/cache/CTest outcome yet; no source changes while live.
+- Next: collect this single final operation's real terminal/native/full68CTest evidence; do not start another all. Any HEAD change during it is this report-only checkpoint; engine tree/eight source hashes remain identical.
 - No game requests, native-owner/default/whole-owner credit, ABI or fixture expectation changes; RND1/RND2/RND4/RND5-7 and all residuals retained.
 
 ## Historical report: round 2 verification, WIP
