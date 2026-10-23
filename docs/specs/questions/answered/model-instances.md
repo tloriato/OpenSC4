@@ -1,5 +1,15 @@
 # model-instances: answered questions
 
+<!-- from: core-model-instances-contractfix4 (2026-10-22) -->
+~~- **MI13 - §6.1 wrapped interior-zero sheet keys:** for I=0x80000001 and input keys (0,0,0x7FFFFFFF,0,0), unsigned normalization gives (I,I,0,I,I). "A zero key cannot supply a downward source" does not specify whether encountering this interior zero fails immediately, resets the source, or fails only for a later equal-zero key. Does ReadAnim succeed, and what exact scales/source zooms are written? Also specify an initially zero key at zoom 4 after wrapping. [literal conservative failure whenever a normalized key is zero; this is marked a portable choice, separate from the proved I=0 false result and nonzero unsigned-wrap vector. No exact claim for wrapped-zero native resources.]~~
+
+**ANSWERED 2026-10-23 (re-model-instance-numerics4):** DIFFERS — §6.1 and §6.1.1: both wrapped-zero examples succeed. Different zero resets the source and writes unit scale; equal zero skips the scale write (and fails at zoom 0). Initial zoom-4 zero leaves its scale untouched. Literal resources distinguish these paths, nonzero wrap and I=0 failure.
+
+<!-- from: core-model-instances-contractfix4 (2026-10-22) -->
+~~- **MI12 - §10 vector 15 second-instance stage:** does "source and second instance retain their flag and byte" mean a second frame-builder copy before that instance's own SetModel? §2 requires every SetModel with blend (8,1) to clear its own flag 0x80 and byte 0x18, so two already-bound static instances cannot both retain the original values. [test the source and a second independent frame-builder copy while SetModel mutates the first; test that independently binding either instance applies its own material changes. No shared mutable material fields.]~~
+
+**ANSWERED 2026-10-23 (re-model-instance-numerics4):** MATCHES — §10 vector 15 explicitly stages two independent frame copies before binding. Every SetModel inspects its own material even on same-model rebinding; two already-bound instances both have cleared values (§§2,4.1).
+
 <!-- from: core-model-instances4 (2026-10-22) -->
 ~~- **MI3 - §§1–2, constructor/records:** what are the base/static initial owner, custom data, properties and draw attributes; which bytes in the 20-byte draw-attribute record hold flags; and what is the transform change counter's width and SetTransform increment source? [Rust accepts explicit base defaults; static custom data/properties start zero, supplied draw attributes; semantic flags plus 16 opaque bytes without native packing; wrapping u32 instance-local counter, never an ABI layout]~~
 

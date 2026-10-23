@@ -350,8 +350,12 @@ All fields are little-endian `u32`:
 
 Then each zoom z gets a source zoom and a scale s_z, with the zoom sizes P = (8, 16, 32, 73, 146) (`0x00ABD668`):
 
-- **Downwards:** zoom 4 is its own source (s₄ = 1). For z = 3, 2, 1, 0: a key equal to the current source's
-  shares it, s_z = P_z ÷ P_source; a different key becomes the source, s_z = 1.
+- **Downwards:** start with current key zero and no usable source. If k₄ is nonzero, zoom 4 becomes the
+  source and s₄ is written as 1; otherwise s₄ is **unwritten**. For z = 3, 2, 1, 0: a different key becomes
+  the current key/source and s_z is written as 1, **including when that different key is zero**. An equal
+  nonzero key shares the source and writes s_z = P_z ÷ P_source. An equal zero key leaves s_z unwritten;
+  at z=0 that equal-zero case returns false immediately. After a different key at z=0, a zero current key
+  also returns false. Only a nonzero final current key reaches the optional upward pass.
 - **Upwards, only when k₄ = I:** start with no source. For z = 0 … 4, a key other than I becomes the source,
   leaving its downward scale unchanged; a key equal to I takes the last source's key and scale P_z ÷ P_source
   **only if a nonzero source has already been found**. Leading I keys retain their downward key and scale.
@@ -359,10 +363,36 @@ Then each zoom z gets a source zoom and a scale s_z, with the zoom sizes P = (8,
   the downward scales (8/146, 16/146, 32/146, 73/146, 1); they do not get reset to five unit scales (MI7).
 
 The key comparison is unsigned and relative-key addition wraps at 32 bits (`0x00808731`–`0x0080873B`). Each
-scale ratio is evaluated by x87 division then stored as binary32. A zero key cannot supply a downward source;
-if the downward pass finishes without a nonzero source the reader returns false (`0x00808839`). In particular,
-I=0 forces keys 0 and 1 to zero and fails at that gate, even if higher keys were nonzero. This is separate from
-opaque MI1 fields, which this reader still only copies.
+scale ratio is evaluated by x87 division then stored as binary32. Zero is a source-state sentinel, not an
+immediate rejection: a later different nonzero key can replace it. In the upward pass a non-I zero key also
+replaces the current source with zero, disabling later I-key substitutions until another nonzero non-I key.
+Instruction evidence: zoom-4 gate/store `0x00808770`–`0x0080878C`, descending unequal/equal-zero branches
+`0x00808790`–`0x00808836`, final gates `0x0080881E`–`0x0080883B`, upward source replacement and nonzero tests
+`0x0080884E`–`0x008088F2`. I=0 forces keys 0 and 1 to zero and fails, even if higher keys were nonzero.
+This is separate from opaque MI1 fields, which this reader still only copies.
+
+#### 6.1.1 Literal normalization/write vectors (MI13)
+
+Each resource below consists of twelve little-endian u32 words: type `0x29A5D1EC`, five zero header words,
+the five input keys shown, and a final zero word. I is the resource's instance supplied by its stream, not
+an additional resource word. Give the destination scale slots distinct sentinels S₀…S₄ before ReadAnim;
+`unchanged` means no write, not a computed zero or unit scale. All reads succeed. All five normalized keys
+and the final zero word are stored **before** normalization's scale pass; false does not roll these back.
+The source column describes the denominator's zoom, not a separate stored source-index array.
+
+| Case | I | Literal input keys (z=0…4) | Final keys | Return | Final scales (z=0…4) | Scale sources |
+|---|---|---|---|---|---|---|
+| Interior zero | `0x80000001` | `(0,0,0x7FFFFFFF,0,0)` | `(I,I,0,I,I)` | true | `(1/2,1,1,1/2,1)` | `(1,1,2,4,4)` |
+| Initial zoom-4 zero | `0x80000001` | `(0,0,0,0,0x7FFFFFFF)` | `(I,I,I,I,0)` | true | `(8/73,16/73,32/73,1,unchanged S₄)` | `(3,3,3,3,none)` |
+| Nonzero wrap control | `0x80000001` | `(0,0,0x80000000,0,0)` | `(I,I,1,1,1)` | true | `(1/2,1,1,73/32,146/32)` | `(1,1,2,2,2)` |
+| I=0 control | `0` | `(0,0,0,0,0)` | `(0,0,0,0,0)` | false | `(unchanged S₀,unchanged S₁,unchanged S₂,unchanged S₃,unchanged S₄)` | none |
+
+Ratios in this table denote division followed by binary32 storage under the active x87 rounding mode;
+the dyadic ratios are exact. These are instruction-derived expectations, not native execution results.
+The interior-zero writes occur downward in order 4,3,2,1,0; zero at 2 writes unit scale, then I at 1
+starts a new source. Upward traversal encounters zero at 2, so leaves 3 and 4 unchanged. For initial-zero,
+there is no scale write at 4 and no upward pass because k₄ differs from I. The nonzero-wrap control first
+forms key 1 at zoom 2, then the upward pass rewrites zooms 3 and 4 to key 1 and the ratios shown.
 
 The sprite instance scales a frame by s_z when it differs from 1 (animated-sprite.md §4.1). Zooms 0 and 1 always end
 up with the instance's own key or a shared one, but the sprite draws nothing there.
@@ -458,9 +488,12 @@ from a reimplementation:
     format-2 container gives true. Hold an external container reference: after successful conversion,
     ReleaseModel alone leaves format-10 vertices; subsequent destruction restores the exact original block
     identities without a second container Release. Destruction without ReleaseModel restores them too.
-15. **Material isolation:** build two instances from a material with blend bytes (8,1), flag `0x80` and nonzero
-    byte `+0x18`. SetModel on the first clears its flag `0x80` and byte `+0x18`, and ORs draw byte 0 with `0x0E`;
-    source and second instance retain their flag and byte. Texture binding identities may remain shared.
+15. **Material isolation:** first frame-copy a source material with blend bytes (8,1), flag `0x80` and nonzero
+    byte `+0x18` into two independent destination containers, before either destination's SetModel inspection.
+    SetModel on the first clears its flag `0x80` and byte `+0x18`, and ORs its draw byte 0 with `0x0E`;
+    source and the second, still unbound copy retain their flag and byte. Then SetModel on the second applies
+    the same changes to that copy and its draw attributes; the source still retains the original values.
+    Two already-bound instances both have the cleared values. Texture binding identities may remain shared.
 16. **Asymmetric bounds:** min=(1,2,3), max=(4,5,6), matrix rows (1,2,0), (0,1,3), (4,0,1), scale −2,
     translation (10,20,30) yield min=(−18,−26,−14), max=(0,−2,16). This uses exact small-integer arithmetic.
     Full-transform bounds give that result even when the kind byte is 0. Identity applied to the constructor's
