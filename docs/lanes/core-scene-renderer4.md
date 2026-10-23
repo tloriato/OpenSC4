@@ -1,6 +1,6 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| core-scene-renderer4 (first portable cSC43DRender owner) | Codex / `core-scene-renderer4` (engine lane, detached HEAD) | in progress: R3 reconciled old operation; terminal/cache UNKNOWN; reused core3113/0/0 incl13 owner tests and native4/4; formatting and final all pending; denominator130, bytes UNKNOWN; ABI unchanged | Apply scoped formatting to six owner files, validate seven absolute owner paths, commit stable engine source, then one captured final qbuild all. |
+| core-scene-renderer4 (first portable cSC43DRender owner) | Codex / `core-scene-renderer4` (engine lane, detached HEAD) | in progress: R3 reconciled old operation; terminal/cache UNKNOWN; reused core3113/0/0 incl13 owner tests and native4/4; six owner files formatted, seven-path fmt exit0; final all pending; denominator130, bytes UNKNOWN; ABI unchanged | Run one captured final qbuild all against the committed formatted engine; collect actual exit, workspace/doctest totals, strict clippy, native and full68CTest, hashes and source correspondence. |
 
 ## Handoff
 
@@ -12,7 +12,9 @@
 - No genuine old terminal completion recovered from local artifacts/copied coordinator evidence; terminal/cache outcome remains UNKNOWN. Dated absence does not explain disappearance.
 - Raw R2 logs archived byte-for-byte as base64 in build-runs/final-r3/archived-r2-*.b64; four hashes match the historical report below. Earlier baseline remains distinct.
 - Raw transport stderr: `2026-10-23T00:21:20.005747Z ERROR codex_core::session: failed to record rollout items: thread 01a165fd-6a9c-72d0-b2cc-88de0ce8717d not found`. This is not a compiler/native diagnostic or proof of fatal execution/cause; structured result/report/queue exist. No root cause/fix claimed.
-- Next: run existing format-scene-renderer4.py with explicit engine config; apply generated patch, validate seven absolute owner paths; leave lib.rs ordering alone. Commit before ONE captured final all.
+- Formatting milestone: existing generator with explicit engine/rustfmt.toml width120 changed only backing/fixtures/mod/models/shake/tests.rs (66 insertions/266 deletions). record.rs unchanged; no algorithm/expectation edits. Shared additive lib.rs declaration untouched; its pre-existing ordering drift is not silently reformatted.
+- Seven absolute owner paths passed qbuild fmt: actual exit0/files7/diff_lines1, sole warning `could not canonicalize path C:\Users\tlori`; preserved in build-runs/final-r3/format-result.txt. Generator rerun emits an empty patch; git diff --check clean.
+- Next: ONE captured final qbuild all on this committed stable source; no unchanged quick rerun. Collect actual terminal outcome and full source/log/artifact correspondence.
 - No game requests, native-owner/default/whole-owner credit, ABI or fixture expectation changes; RND1/RND2/RND4/RND5-7 and all residuals retained.
 
 ## Historical report: round 2 verification, WIP

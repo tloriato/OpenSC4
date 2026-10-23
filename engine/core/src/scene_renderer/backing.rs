@@ -64,11 +64,7 @@ impl<D: BufferDriver> BackingStore<D> {
         let (w, h) = driver.viewport_size();
         let args = [0, 0, w, h, 0, 0];
         // Short circuit at FIRST failed probe, not after probing both buffers.
-        if !(driver.save(a, args)
-            && driver.restore(a, args)
-            && driver.save(b, args)
-            && driver.restore(b, args))
-        {
+        if !(driver.save(a, args) && driver.restore(a, args) && driver.save(b, args) && driver.restore(b, args)) {
             self.destroy();
             return false;
         }

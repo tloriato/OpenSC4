@@ -20,16 +20,8 @@ fn literal_dirty_fixtures() {
             s.add_dirty_rectangle_internal(mode, rect, Some(Object(9)), 0, false, &mut refs, None)
                 .unwrap();
         }
-        s.add_dirty_rectangle_internal(
-            f.incoming.0,
-            f.incoming.1,
-            Some(Object(10)),
-            0,
-            true,
-            &mut refs,
-            None,
-        )
-        .unwrap();
+        s.add_dirty_rectangle_internal(f.incoming.0, f.incoming.1, Some(Object(10)), 0, true, &mut refs, None)
+            .unwrap();
         let actual: Vec<_> = s.dirty_nodes().iter().map(|n| (n.mode, n.rect)).collect();
         assert_eq!(actual, f.expected, "{}", f.name);
         assert_eq!(s.dirty_area(), f.area, "{}", f.name);
@@ -63,22 +55,11 @@ fn dirty_strict_ties_mode_zero_penalty_deadline_and_threshold() {
     assert_eq!(s.dirty_nodes()[0].mode, 6);
     assert_eq!(s.dirty_nodes()[1].model, Some(Object(2)));
     assert_eq!(s.dirty_nodes()[0].value_15c, 37);
-    assert_eq!(
-        refs.0,
-        [(true, Object(1)), (true, Object(2)), (false, Object(1))]
-    );
+    assert_eq!(refs.0, [(true, Object(1)), (true, Object(2)), (false, Object(1))]);
     // An equal-area ordinary node beats a mode-0 node even though it is later.
     let mut s = SceneRenderer::default();
-    s.add_dirty_rectangle_internal(
-        0,
-        [0, 0, 100, 100],
-        Some(Object(1)),
-        0,
-        false,
-        &mut refs,
-        None,
-    )
-    .unwrap();
+    s.add_dirty_rectangle_internal(0, [0, 0, 100, 100], Some(Object(1)), 0, false, &mut refs, None)
+        .unwrap();
     s.add_dirty_rectangle_internal(1, [0, 0, 100, 100], None, 0, false, &mut refs, None)
         .unwrap();
     s.add_dirty_rectangle_internal(1, [0, 0, 100, 100], None, 0, true, &mut refs, None)
@@ -96,16 +77,8 @@ fn dirty_strict_ties_mode_zero_penalty_deadline_and_threshold() {
     }
     let mut s = SceneRenderer::default();
     for i in 0..f::D5_NODE_BOUNDARY.0 as i32 {
-        s.add_dirty_rectangle_internal(
-            1,
-            [i * 1000, 0, i * 1000 + 10, 10],
-            None,
-            0,
-            true,
-            &mut refs,
-            None,
-        )
-        .unwrap();
+        s.add_dirty_rectangle_internal(1, [i * 1000, 0, i * 1000 + 10, 10], None, 0, true, &mut refs, None)
+            .unwrap();
     }
     s.add_dirty_rectangle_internal(1, [15000, 0, 15010, 10], None, 0, true, &mut refs, None)
         .unwrap();
@@ -203,10 +176,7 @@ fn backing_probe_failure_frees_both_short_circuits_and_missing_buffer_cleanup() 
         assert_eq!(b.handles(), [None, None]);
         let d = b.driver().unwrap();
         assert_eq!(d.calls, fail);
-        assert_eq!(
-            &d.trace[d.trace.len() - 2..],
-            [(5, 10, [0; 6]), (5, 11, [0; 6])]
-        );
+        assert_eq!(&d.trace[d.trace.len() - 2..], [(5, 10, [0; 6]), (5, 11, [0; 6])]);
     }
     for kind in 0..=1 {
         let mut b = backing::BackingStore::new(Some(Driver {
@@ -223,12 +193,8 @@ fn backing_probe_failure_frees_both_short_circuits_and_missing_buffer_cleanup() 
     absent.set_enabled(true);
     assert!(!absent.enabled());
     // Native no-visible early true happens BEFORE service/handle/partial gates.
-    assert!(absent
-        .save([2, 0, 3, 600], (800, 600), (5, 0), false)
-        .unwrap());
-    assert!(!absent
-        .save([0, 0, 3, 600], (800, 600), (0, 0), false)
-        .unwrap());
+    assert!(absent.save([2, 0, 3, 600], (800, 600), (5, 0), false).unwrap());
+    assert!(!absent.save([0, 0, 3, 600], (800, 600), (0, 0), false).unwrap());
 }
 #[test]
 fn shared_backing_buffers_are_owned_once_and_switch_is_process_wide() {
@@ -263,11 +229,7 @@ fn lists_unsigned_stable_duplicate_refs_first_per_list_and_null_terrain() {
     assert_eq!(r.0, vec![(false, Object(1)); 4]);
     assert!(!s.backing_saved());
     assert_eq!(
-        s.view_list(3)
-            .unwrap()
-            .iter()
-            .filter(|n| n.object == Object(1))
-            .count(),
+        s.view_list(3).unwrap().iter().filter(|n| n.object == Object(1)).count(),
         1
     );
     r.0.clear();
@@ -316,10 +278,7 @@ fn identity_lifetime_reaches_destructor_only_after_shutdown_boundary() {
     for count in (1..5).rev() {
         assert_eq!(s.release().unwrap(), count);
     }
-    assert_eq!(
-        s.release(),
-        Err(Unsupported::Algorithm("destructor 0x007ca020"))
-    );
+    assert_eq!(s.release(), Err(Unsupported::Algorithm("destructor 0x007ca020")));
     assert_eq!(s.ref_count(), 1); // do not invent deletion or last decrement
     assert!(s.draw().is_err());
     assert!(s.init().is_err());
@@ -334,10 +293,7 @@ fn shake_s1_s6_stop_fade_strict_expiry_and_rounding() {
     let (h2, restart) = s.start_overload(5.0, 2.0, 0.0).unwrap();
     assert!(!restart);
     assert_eq!([h, h2], f::S1_HANDLES);
-    assert_eq!(
-        s.nodes().iter().map(|n| n.handle).collect::<Vec<_>>(),
-        f::S1_ORDER
-    );
+    assert_eq!(s.nodes().iter().map(|n| n.handle).collect::<Vec<_>>(), f::S1_ORDER);
     let p = &s.nodes()[0].parameters;
     assert_eq!(
         (
@@ -347,16 +303,13 @@ fn shake_s1_s6_stop_fade_strict_expiry_and_rounding() {
         f::S2
     );
     let before = s.nodes().to_vec();
-    s.set_offsets(false, 3.0, [0.0; 2], 1.0, 4, &patterns)
-        .unwrap();
+    s.set_offsets(false, 3.0, [0.0; 2], 1.0, 4, &patterns).unwrap();
     assert_eq!(s.nodes(), before);
     assert_eq!(s.offsets(), f::S6_OFFSETS);
     assert_eq!(s.last_time(), 0.0);
-    s.set_offsets(true, 2.0, [0.0; 2], 1.0, 4, &patterns)
-        .unwrap();
+    s.set_offsets(true, 2.0, [0.0; 2], 1.0, 4, &patterns).unwrap();
     assert_eq!(s.nodes().len(), 2); // t==duration, rate=0, amplitude=0
-    s.set_offsets(true, 2.25, [0.0; 2], 1.0, 4, &patterns)
-        .unwrap();
+    s.set_offsets(true, 2.25, [0.0; 2], 1.0, 4, &patterns).unwrap();
     assert!(s.nodes().is_empty());
     s.start_overload(5.0, 2.0, 0.0).unwrap();
     let h = s.nodes()[0].handle;
@@ -376,14 +329,10 @@ fn shake_s1_s6_stop_fade_strict_expiry_and_rounding() {
     s.stop(h, 2.0).unwrap();
     assert_eq!(s.nodes()[0].start, -5.0); // min, never moves forward
     for (distance, (w, advances)) in [1.0, 2.0].into_iter().zip(f::S3) {
-        assert_eq!(
-            positional_weight([distance, 0.0], [0.0; 2], 1.0).unwrap(),
-            w
-        );
+        assert_eq!(positional_weight([distance, 0.0], [0.0; 2], 1.0).unwrap(), w);
         let mut s = Shakes::default();
         s.start(&p, Some([distance, 0.0]), 0.0).unwrap();
-        s.set_offsets(true, 1.0, [0.0; 2], 1.0, 4, &patterns)
-            .unwrap();
+        s.set_offsets(true, 1.0, [0.0; 2], 1.0, 4, &patterns).unwrap();
         assert_eq!(s.nodes()[0].phase, if advances { 1.0 } else { 0.0 });
     }
     for &(input, expected) in f::S5 {
@@ -395,8 +344,7 @@ fn shake_s1_s6_stop_fade_strict_expiry_and_rounding() {
         }
         let mut s = Shakes::default();
         s.start(&p, None, 0.0).unwrap();
-        s.set_offsets(true, 1.0, [0.0; 2], 1.0, zoom, &patterns)
-            .unwrap();
+        s.set_offsets(true, 1.0, [0.0; 2], 1.0, zoom, &patterns).unwrap();
         assert_eq!(s.offsets(), (0, 0));
     }
     assert!(round_offset(f64::NAN).is_err());
@@ -469,10 +417,7 @@ fn model_queue_kinds_old_current_boxes_refs_predicate_and_boundaries() {
     assert_eq!(queue.items()[0].kind, Kind::Move);
     assert_eq!(queue.items()[0].old_box, bbox(f::OLD));
     assert_eq!(queue.items()[0].unused_byte, Some(0));
-    assert_eq!(
-        queue.items()[0].unused_stack,
-        UnusedStackFields::UnspecifiedNeverRead
-    );
+    assert_eq!(queue.items()[0].unused_stack, UnusedStackFields::UnspecifiedNeverRead);
     assert_eq!(
         queue.process(&mut scene, false, &mut io, None),
         Err(Unsupported::Algorithm("MoveGridElement"))
@@ -481,17 +426,11 @@ fn model_queue_kinds_old_current_boxes_refs_predicate_and_boundaries() {
     assert!(!queue.processing());
     assert_eq!(io.refs.0, [(true, Object(1))]);
     let regions = moved_dirty_regions(bbox(f::OLD), bbox(f::CURRENT), 0x200).unwrap();
-    assert_eq!(
-        regions,
-        [(1, Some(bbox(f::OLD))), (1, Some(bbox(f::CURRENT)))]
-    );
+    assert_eq!(regions, [(1, Some(bbox(f::OLD))), (1, Some(bbox(f::CURRENT)))]);
     let overlapping = bbox(([0.5, 0.0, 0.0], [1.5, 1.0, 1.0]));
     assert_eq!(
         moved_dirty_regions(bbox(f::OLD), overlapping, 0).unwrap(),
-        [
-            (0, Some(bbox(([0.0, 0.0, 0.0], [1.5, 1.0, 1.0])))),
-            (0, None)
-        ]
+        [(0, Some(bbox(([0.0, 0.0, 0.0], [1.5, 1.0, 1.0])))), (0, None)]
     );
     queue.clear_uninitialized(&mut io).unwrap();
     io.refs.0.clear();
@@ -538,10 +477,7 @@ fn model_queue_kinds_old_current_boxes_refs_predicate_and_boundaries() {
     );
     queue.process(&mut scene, false, &mut io, None).unwrap();
     assert_eq!(io.removed, 1);
-    assert_eq!(
-        io.refs.0,
-        [(true, Object(7)), (false, Object(7)), (false, Object(7))]
-    );
+    assert_eq!(io.refs.0, [(true, Object(7)), (false, Object(7)), (false, Object(7))]);
     for i in 1..=201 {
         assert_eq!(
             queue
@@ -570,10 +506,7 @@ fn model_queue_kinds_old_current_boxes_refs_predicate_and_boundaries() {
         (0x840, -1, true),
         (0x2040, -2, true),
     ] {
-        assert_eq!(
-            model_should_go_into_backing_store(flags, value, [3, 0, -1]),
-            expected
-        );
+        assert_eq!(model_should_go_into_backing_store(flags, value, [3, 0, -1]), expected);
     }
 }
 
@@ -620,16 +553,8 @@ fn full_redraw_area_boundary_coalesces_actual_existing_frustum_and_queue_clearin
     let mut r = Refs::default();
     s.set_dirty_limits(100, 10, 37).unwrap();
     s.set_backing_saved(true);
-    s.add_dirty_rectangle_internal(
-        0,
-        [0, 0, 9, 10],
-        Some(Object(1)),
-        3,
-        false,
-        &mut r,
-        Some(&Eye),
-    )
-    .unwrap();
+    s.add_dirty_rectangle_internal(0, [0, 0, 9, 10], Some(Object(1)), 3, false, &mut r, Some(&Eye))
+        .unwrap();
     assert_eq!(s.dirty_area(), 90);
     s.add_dirty_rectangle_internal(1, [20, 0, 21, 10], None, 0, false, &mut r, Some(&Eye))
         .unwrap();

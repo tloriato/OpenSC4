@@ -61,12 +61,7 @@ fn area(r: Rect) -> Result<i32> {
         .ok_or(Unsupported::Overflow)
 }
 fn union(a: Rect, b: Rect) -> Rect {
-    [
-        a[0].min(b[0]),
-        a[1].min(b[1]),
-        a[2].max(b[2]),
-        a[3].max(b[3]),
-    ]
+    [a[0].min(b[0]), a[1].min(b[1]), a[2].max(b[2]), a[3].max(b[3])]
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -257,14 +252,10 @@ impl SceneRenderer {
         if !self.initialized {
             return Ok(true);
         }
-        Err(Unsupported::Algorithm(
-            "Shutdown/model drain and native services",
-        ))
+        Err(Unsupported::Algorithm("Shutdown/model drain and native services"))
     }
     pub fn draw(&mut self) -> Result<bool> {
-        Err(Unsupported::Algorithm(
-            "Draw/translated updates/static drawing",
-        ))
+        Err(Unsupported::Algorithm("Draw/translated updates/static drawing"))
     }
     pub fn viewport_size(&self) -> (i32, i32) {
         self.viewport
@@ -316,11 +307,7 @@ impl SceneRenderer {
             camera_mode_bits: self.camera_mode as u32,
         }
     }
-    pub fn set_camera(
-        &mut self,
-        camera: Option<Object>,
-        io: &mut dyn CameraPrimitives,
-    ) -> Result<()> {
+    pub fn set_camera(&mut self, camera: Option<Object>, io: &mut dyn CameraPrimitives) -> Result<()> {
         if self.camera != camera {
             if let Some(camera) = camera {
                 io.add_ref(camera);
@@ -369,11 +356,7 @@ impl SceneRenderer {
         // Existing API accepts unsigned bits; preserve the original int bits.
         control.set_rotation(rotation as u32)
     }
-    pub fn set_zoom_and_rotation(
-        control: &mut crate::camera::CameraControl,
-        zoom: i32,
-        rotation: i32,
-    ) -> bool {
+    pub fn set_zoom_and_rotation(control: &mut crate::camera::CameraControl, zoom: i32, rotation: i32) -> bool {
         control.set_zoom_and_rotation(zoom as u32, rotation as u32)
     }
     pub fn backing_saved(&self) -> bool {
@@ -411,9 +394,7 @@ impl SceneRenderer {
     }
     pub fn return_render_system(&mut self) -> Result<bool> {
         self.borrowed = false;
-        Err(Unsupported::Algorithm(
-            "ReturnRenderSystem/camera and driver states",
-        ))
+        Err(Unsupported::Algorithm("ReturnRenderSystem/camera and driver states"))
     }
     pub fn set_view_fog_enabled(
         &mut self,
@@ -461,9 +442,7 @@ impl SceneRenderer {
         self.reason = reason;
         if self.full_pending {
             if self.frustum_incomplete {
-                return Err(Unsupported::Domain(
-                    "existing view-utilities frustum domain",
-                ));
+                return Err(Unsupported::Domain("existing view-utilities frustum domain"));
             }
             return Ok(());
         }
@@ -472,15 +451,10 @@ impl SceneRenderer {
         let r = self.viewport_rect;
         if !self
             .view_utilities
-            .build_draw_frustum_data_from_viewport_rect(
-                PixelRect::new(r[0], r[1], r[2], r[3]),
-                camera,
-            )
+            .build_draw_frustum_data_from_viewport_rect(PixelRect::new(r[0], r[1], r[2], r[3]), camera)
         {
             self.frustum_incomplete = true;
-            return Err(Unsupported::Domain(
-                "existing view-utilities frustum domain",
-            ));
+            return Err(Unsupported::Domain("existing view-utilities frustum domain"));
         }
         self.flags_160_174 = [false; 2];
         self.clear_dirty_rectangle_queue(refs);
@@ -536,9 +510,7 @@ impl SceneRenderer {
             .view_utilities
             .project_bounding_box_to_viewport_rectangle(bounds, &mut rect)
         {
-            return Err(Unsupported::Domain(
-                "existing view-utilities box projection domain",
-            ));
+            return Err(Unsupported::Domain("existing view-utilities box projection domain"));
         }
         self.add_dirty_rectangle(
             mode,
@@ -568,15 +540,9 @@ impl SceneRenderer {
         let model = if mode == 0 { model } else { None };
         let new_area = area(rect)?;
         if self.dirty.is_empty() {
-            self.deadline = self
-                .draw_counter
-                .checked_sub(delay)
-                .ok_or(Unsupported::Overflow)?;
+            self.deadline = self.draw_counter.checked_sub(delay).ok_or(Unsupported::Overflow)?;
         } else if merging {
-            self.deadline = self
-                .deadline
-                .checked_sub(delay)
-                .ok_or(Unsupported::Overflow)?;
+            self.deadline = self.deadline.checked_sub(delay).ok_or(Unsupported::Overflow)?;
             let mut best = self.area_limit.checked_neg().ok_or(Unsupported::Overflow)?;
             let mut chosen = None;
             let mut growth = 0;
@@ -595,17 +561,12 @@ impl SceneRenderer {
                 if score > best {
                     best = score;
                     chosen = Some(i);
-                    growth = union_area
-                        .checked_sub(node_area)
-                        .ok_or(Unsupported::Overflow)?;
+                    growth = union_area.checked_sub(node_area).ok_or(Unsupported::Overflow)?;
                 }
             }
             if self.dirty.len() >= 16 || f64::from(best) >= -2500.0 {
                 let i = chosen.ok_or(Unsupported::Domain("merge has no best node"))?;
-                self.dirty_area = self
-                    .dirty_area
-                    .checked_add(growth)
-                    .ok_or(Unsupported::Overflow)?;
+                self.dirty_area = self.dirty_area.checked_add(growth).ok_or(Unsupported::Overflow)?;
                 if self.dirty_area >= self.area_limit {
                     return self.do_full_view_update(4, refs, camera);
                 }
@@ -615,24 +576,18 @@ impl SceneRenderer {
                 }
                 if growth > 0 && self.dirty.len() > 1 {
                     self.dirty.remove(i); // deliberately do not subtract its area
-                    return self
-                        .add_dirty_rectangle_internal(6, combined, None, 0, merging, refs, camera);
+                    return self.add_dirty_rectangle_internal(6, combined, None, 0, merging, refs, camera);
                 }
                 self.dirty[i].mode = 6;
                 self.dirty[i].rect = combined;
                 return Ok(());
             }
         }
-        self.dirty_area = self
-            .dirty_area
-            .checked_add(new_area)
-            .ok_or(Unsupported::Overflow)?;
+        self.dirty_area = self.dirty_area.checked_add(new_area).ok_or(Unsupported::Overflow)?;
         if self.dirty_area >= self.area_limit {
             return self.do_full_view_update(4, refs, camera);
         }
-        self.dirty
-            .try_reserve(1)
-            .map_err(|_| Unsupported::Allocation)?;
+        self.dirty.try_reserve(1).map_err(|_| Unsupported::Allocation)?;
         if let Some(model) = model {
             refs.add_ref(model);
         }
@@ -656,30 +611,19 @@ impl SceneRenderer {
         self.dirty_area = 0;
     }
     pub fn process_dirty_rectangle_queue(&mut self) -> Result<()> {
-        Err(Unsupported::Algorithm(
-            "ProcessDirtyRectangleQueue/own draw helpers",
-        ))
+        Err(Unsupported::Algorithm("ProcessDirtyRectangleQueue/own draw helpers"))
     }
     pub fn view_list(&self, type_: u32) -> Option<&[ViewNode]> {
         list_index(type_).map(|i| self.lists[i].as_slice())
     }
-    pub fn add_view_object(
-        &mut self,
-        object: Object,
-        type_: u32,
-        key: u32,
-        refs: &mut dyn References,
-    ) -> Result<bool> {
+    pub fn add_view_object(&mut self, object: Object, type_: u32, key: u32, refs: &mut dyn References) -> Result<bool> {
         let Some(i) = list_index(type_) else {
             return Ok(false);
         };
         let list = &mut self.lists[i];
         list.try_reserve(1).map_err(|_| Unsupported::Allocation)?;
         refs.add_ref(object);
-        let at = list
-            .iter()
-            .position(|node| node.key > key)
-            .unwrap_or(list.len());
+        let at = list.iter().position(|node| node.key > key).unwrap_or(list.len());
         list.insert(at, ViewNode { object, key });
         if i >= 2 {
             self.backing_saved = false;
@@ -694,11 +638,7 @@ impl SceneRenderer {
             .into_iter()
             .any(|i| self.lists[i].iter().any(|n| Some(n.object) == object))
     }
-    pub fn remove_view_object(
-        &mut self,
-        object: Option<Object>,
-        refs: &mut dyn References,
-    ) -> bool {
+    pub fn remove_view_object(&mut self, object: Option<Object>, refs: &mut dyn References) -> bool {
         let mut found = false;
         if self.terrain == object {
             if let Some(object) = self.terrain.take() {

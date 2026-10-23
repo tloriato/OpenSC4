@@ -80,9 +80,7 @@ impl ModelQueue {
         if self.processing {
             return Err(Unsupported::Reentry);
         }
-        self.items
-            .try_reserve(1)
-            .map_err(|_| Unsupported::Allocation)?;
+        self.items.try_reserve(1).map_err(|_| Unsupported::Allocation)?;
         refs.add_ref(model);
         self.items.push(Item {
             model: Some(model),
@@ -93,12 +91,7 @@ impl ModelQueue {
         });
         Ok(self.items.len() == 200) // equality, NOT >=
     }
-    pub fn change_model(
-        &mut self,
-        model: Object,
-        type_: u32,
-        io: &mut dyn ModelPrimitives,
-    ) -> Result<bool> {
+    pub fn change_model(&mut self, model: Object, type_: u32, io: &mut dyn ModelPrimitives) -> Result<bool> {
         if self.processing {
             return Err(Unsupported::Reentry);
         }
@@ -126,9 +119,7 @@ impl ModelQueue {
             let full = self.push(model, kind, empty_box(), None, io)?;
             io.write_flags(model, element.flags | 0x10);
             if full {
-                return Err(Unsupported::Algorithm(
-                    "queue length 200 requires DoFullViewUpdate",
-                ));
+                return Err(Unsupported::Algorithm("queue length 200 requires DoFullViewUpdate"));
             }
         }
         Ok(true)
@@ -146,9 +137,7 @@ impl ModelQueue {
         let full = self.push(model, Kind::Move, element.bounds, Some(0), io)?;
         io.write_flags(model, element.flags | 0x10);
         if full {
-            return Err(Unsupported::Algorithm(
-                "queue length 200 requires DoFullViewUpdate",
-            ));
+            return Err(Unsupported::Algorithm("queue length 200 requires DoFullViewUpdate"));
         }
         Ok(true)
     }
@@ -199,9 +188,7 @@ impl ModelQueue {
         camera: Option<&dyn CameraRayProvider>,
     ) -> Result<()> {
         while let Some(item) = self.items.first().copied() {
-            let model = item
-                .model
-                .ok_or(Unsupported::Domain("nulled model queue item"))?;
+            let model = item.model.ok_or(Unsupported::Domain("nulled model queue item"))?;
             let element = io
                 .element(model)
                 .ok_or(Unsupported::Domain("queued model without element"))?;
@@ -224,11 +211,7 @@ impl ModelQueue {
                 }
                 Kind::Change2 | Kind::Change3 => {
                     io.world_box(model, &mut current);
-                    (
-                        if item.kind == Kind::Change2 { 0 } else { 3 },
-                        current,
-                        Some(model),
-                    )
+                    (if item.kind == Kind::Change2 { 0 } else { 3 }, current, Some(model))
                 }
                 Kind::Move | Kind::Reclassify => unreachable!(),
             };
@@ -277,14 +260,8 @@ pub struct InsertedDecision {
 /// Published old/current-box decision AFTER a successful MoveGridElement.
 /// This does not perform or claim the missing grid movement. Portable literal
 /// f32 subtraction at the tolerance comparison is recorded in RND7.
-pub fn moved_dirty_regions(
-    old: Aabb,
-    current: Aabb,
-    flags: u16,
-) -> Result<[(u32, Option<Aabb>); 2]> {
-    let a = [
-        old.min.x, old.min.y, old.min.z, old.max.x, old.max.y, old.max.z,
-    ];
+pub fn moved_dirty_regions(old: Aabb, current: Aabb, flags: u16) -> Result<[(u32, Option<Aabb>); 2]> {
+    let a = [old.min.x, old.min.y, old.min.z, old.max.x, old.max.y, old.max.z];
     let b = [
         current.min.x,
         current.min.y,

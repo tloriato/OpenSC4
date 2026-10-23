@@ -55,23 +55,13 @@ impl Shakes {
     /// for an empty list. The returned bool records that requirement. This is
     /// the owned list subalgorithm, not a complete native clock-driven Start.
     /// last_time is zeroed; elapsed start time must not be invented as zero.
-    pub fn start(
-        &mut self,
-        parameters: &Parameters,
-        position: Option<[f32; 2]>,
-        now: f32,
-    ) -> Result<(u32, bool)> {
+    pub fn start(&mut self, parameters: &Parameters, position: Option<[f32; 2]>, now: f32) -> Result<(u32, bool)> {
         validate(parameters)?;
         if !now.is_finite() || position.is_some_and(|p| p.iter().any(|v| !v.is_finite())) {
             return Err(Unsupported::Domain("nonfinite shake start"));
         }
-        let next = self
-            .next_handle
-            .checked_add(1)
-            .ok_or(Unsupported::Overflow)?;
-        self.nodes
-            .try_reserve(1)
-            .map_err(|_| Unsupported::Allocation)?;
+        let next = self.next_handle.checked_add(1).ok_or(Unsupported::Overflow)?;
+        self.nodes.try_reserve(1).map_err(|_| Unsupported::Allocation)?;
         let mut amplitude = Vec::new();
         let mut rate = Vec::new();
         amplitude
@@ -103,12 +93,7 @@ impl Shakes {
         );
         Ok((handle, restart))
     }
-    pub fn start_overload(
-        &mut self,
-        amplitude: f32,
-        duration: f32,
-        now: f32,
-    ) -> Result<(u32, bool)> {
+    pub fn start_overload(&mut self, amplitude: f32, duration: f32, now: f32) -> Result<(u32, bool)> {
         // RND4 published portable choice: fade=0, never emulate stack garbage.
         let mut a = Vec::new();
         let mut r = Vec::new();
@@ -146,9 +131,7 @@ impl Shakes {
         {
             return Err(Unsupported::Domain("extended shake stop arithmetic"));
         }
-        let candidate = (f64::from(now)
-            + (f64::from(n.parameters.fade) - f64::from(n.parameters.duration)))
-            as f32;
+        let candidate = (f64::from(now) + (f64::from(n.parameters.fade) - f64::from(n.parameters.duration))) as f32;
         if candidate < n.start {
             n.start = candidate;
         }
@@ -213,12 +196,7 @@ impl Shakes {
             let a = sample_exact(&n.parameters.amplitude, u as f32)?;
             let rate = sample_exact(&n.parameters.rate, u as f32)?;
             let phase = f64::from(n.phase) + f64::from(rate) * f64::from(t.min(dt));
-            if !dyadic(n.phase)
-                || !dyadic(rate)
-                || !dyadic(t.min(dt))
-                || phase < 0.0
-                || phase > 1024.0
-            {
+            if !dyadic(n.phase) || !dyadic(rate) || !dyadic(t.min(dt)) || phase < 0.0 || phase > 1024.0 {
                 return Err(Unsupported::Domain("extended shake phase"));
             }
             // Phase store is rounded once, as published.
@@ -246,10 +224,7 @@ impl Shakes {
                 for (axis, scale) in [ax, ay].into_iter().enumerate() {
                     let product = f64::from(sample[axis]) * scale;
                     let next = f64::from(sum[axis]) + product;
-                    if !product.is_finite()
-                        || f64::from(product as f32) != product
-                        || f64::from(next as f32) != next
-                    {
+                    if !product.is_finite() || f64::from(product as f32) != product || f64::from(next as f32) != next {
                         return Err(Unsupported::Domain("extended shake accumulation"));
                     }
                     sum[axis] = next as f32;
@@ -272,9 +247,7 @@ fn validate(p: &Parameters) -> Result<()> {
     if p.duration <= 0.0
         || p.aspect == 0.0
         || p.fade < 0.0
-        || ![p.duration, p.fade, p.aspect]
-            .into_iter()
-            .all(f32::is_finite)
+        || ![p.duration, p.fade, p.aspect].into_iter().all(f32::is_finite)
         || p.amplitude.is_empty()
         || p.rate.is_empty()
         || p.amplitude.iter().chain(&p.rate).any(|v| !v.is_finite())
@@ -311,13 +284,7 @@ pub fn sample_exact(curve: &[f32], u: f32) -> Result<f32> {
     Ok(value as f32)
 }
 pub fn positional_weight(position: [f32; 2], centre: [f32; 2], radius: f32) -> Result<f32> {
-    if !position
-        .into_iter()
-        .chain(centre)
-        .chain([radius])
-        .all(dyadic)
-        || radius <= 0.0
-    {
+    if !position.into_iter().chain(centre).chain([radius]).all(dyadic) || radius <= 0.0 {
         return Err(Unsupported::Domain("shake positional inputs"));
     }
     let inv = 1.0 / (f64::from(radius) * f64::from(radius));

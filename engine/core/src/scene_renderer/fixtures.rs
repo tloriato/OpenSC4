@@ -76,12 +76,7 @@ pub const S2: (f32, f32) = (2.5, 60.0);
 // S3 weight at radius and beyond; only beyond skips phase advance.
 pub const S3: [(f32, bool); 2] = [(0.0, true), (-3.0, false)];
 // S4 zoom -> repeated extended product; rounded only when consumed.
-pub const S4: &[(i32, f64)] = &[
-    (3, 0.6000000238418579),
-    (4, 1.0),
-    (5, 1.0),
-    (1, 0.2160000257492075),
-];
+pub const S4: &[(i32, f64)] = &[(3, 0.6000000238418579), (4, 1.0), (5, 1.0), (1, 0.2160000257492075)];
 // S5 ties round to even. S6: disabled => offsets zero, no node/phase/time mutation.
 pub const S5: &[(f64, i32)] = &[(2.5, 2), (3.5, 4), (-2.5, -2)];
 pub const S6_OFFSETS: (i32, i32) = (0, 0);
