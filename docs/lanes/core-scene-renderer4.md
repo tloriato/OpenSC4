@@ -1,23 +1,63 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| core-scene-renderer4 (first portable cSC43DRender owner) | Codex / `core-scene-renderer4` (engine lane, detached HEAD) | in progress, round 2/3: old operation reconciled with terminal outcome UNKNOWN; baseline archived; stable-source quick active; 13/13 owner tests passed (core3113/0/0); final all/fmt pending; denominator 130, bytes UNKNOWN; ABI unchanged | Collect quick (qbuild PID38324, started 00:48:17 BST); fix only demonstrated failures, absolute fmt and final all; preserve source/artifact evidence. No concurrent check. |
+| core-scene-renderer4 (first portable cSC43DRender owner) | Codex / `core-scene-renderer4` (engine lane, detached HEAD) | wip: current wrapper waits on readonly cache query; core3113/0/0 incl13/13 owner tests and native4/4 verified; final all/clippy/CTest pending; fmt8 fails; denominator130, bytes UNKNOWN; ABI unchanged | Collect qbuild38324 -> fc4verify9384 -> stats36584 (created01:12:10 BST); preserve terminal evidence before any check/source edit; then scoped formatting, committed stable source and final all. |
 
-## Handoff
-- Goal: bounded same-name portable cSC43DRender validation, no expansion. Round2/3; original family has at most one round left after this. Manifest run4-core-scene-renderer4-r2-manifest.json (150k/max100calls). Detached HEAD, no ref changes.
-- Done: source93a6fc20 unchanged; f4d643d0 independent fixtures/inventory BEFORE09fcae9f production; 36adf9ee discriminators/record/camera; 12bb9830 r1 stop; 47e82bed baseline reconciliation/archive; 6398072b refined precise inventory.
-- New measured: qbuild quick core i686 Rust3113 passed/0 failed/0 ignored, all13 scene_renderer tests passed; compile11m37s. fc4verify-quick-test.log SHA256 b5f725ce899d1fa885fad5b7810789bb9844e39aaeeed3bad27b0f4c0cb03f2c. No owner failures or expectation edits.
-- Source evidence: engine tree b1124501f2deef4b5315970a855e970d4f74aec7 at6398072b; 8 source hashes in build-runs/quick-r2/rust-evidence.json. Expected CTest68 (generated CTestTestfile.cmake), none yet observed.
-- Active: qbuild quick PID38324 created00:48:17 BST -> fc4verify9384; core tests ended01:01:16; dependent compile-only stage active in fc4verify-quick-deps.log. Session40000 is transport only, not liveness. No quick/all overlap or source edits.
-- Read-only qbuild fmt with8 absolute paths: exit1 files8 diff_lines2044 (engine max_width120 vs r1 default100 plus shared lib module ordering). Formatter patch prepared, NOT applied while quick active; helper build-runs/format-scene-renderer4.py now explicitly uses engine config. Do not broadly reorder shared lib modules.
-- Exact next: collect quick terminal incl service-owned compiler/cache/output lifetime, archive quick logs; apply formatting patch via apply_patch, absolute owner fmt + necessary lib declaration check; commit stable source then final qbuild all once. Inspect actual summed Rust totals, all13 owner tests, clippy, native, expected/observed CTest and source/tree/log/artifact hashes. Fix only demonstrated owner failures.
-- Old terminal UNKNOWN/incomplete. Coordinator00:40:16 reconciliation: at00:36 qbuild1880 -> fc4verify3680 -> stats23088; all absent00:37:58; no coordinator termination supplied. Actual r1 result00:37:16 says continue, stderr guard154k/150k. Readonly ancillary stats is not successful cache evidence.
-- OS00:43:44/00:44:13/00:46:03 BST: Toolhelp identities/parents, creation/image/command and accessible PEB cwd; old1880/3680/23088/6076 absent; all current compiler output paths attributable to other lanes, including service-owned rustc. Some service cwd reads denied5 but command paths attributable. Bare cache daemons persist; no RPCs/process/service changes.
-- Baseline byte-identical archive build-runs/baseline-r1/: test a8d5eeacc0e0b779c1e97c97087dd1957b42eedcdb3679d37947be831d35f816; clippy80072f9ba4c8ba51de131c2521230152808b9208fdcaf57e7eb2a157f473d9b7; native07d8f72ccf02f607ed64ea2b4b75c9bdedb2c75a9ee288f0dea2937061010063; configure34970e139997eb50963cf4c607951dff6b2409a432a7d77c3d4eb06f6e4acd2f. Full provenance/result/stderr in reconciliation.md there.
-- Baseline earlier-source Rust5142/0/0, clippy clean3m20s, native215/215 only; no durable CTest/terminal result. DLL mtime00:28:46 BST, plugin-load/.ninja_log00:28:50 BST. Never use baseline as final acceptance.
-- Independent D1-D6/B1-B4/model/list/S1-S6 unchanged. D5 spacing100->1000 provenance retained: gap100 scores-900 and merges early. No test expectations adjusted to implementation.
-- Keep all explicit Unsupported boundaries in inventory below, especially kind2 before MoveGridElement, kind5 flags, queue200 redraw, general Insert/Remove geometry, Draw/full update helpers, initialized lifecycle/static driver/destructor, nontrivial extended shake/native record binding, section7 residuals. Last Release never claims unknown destruction; Rust Drop invents no renderer COM releases.
-- Coalesced frustum failure stays failure; post-restart shake elapsed is supplied; backing owns synchronized shared state, no invented reentry. Host callbacks raw primitives only.
-- Denominator130 including folded bodies, bytes UNKNOWN. ABI unchanged. RND1/RND2/RND4 retained, RND5-RND7 appended; all V3D questions retained. No new questions this round, no specs/index/native/game/network/live files/merge queue.
+## Report: round 2 verification, WIP
+
+The previously committed bounded renderer now has meaningful source-corresponding test evidence: all **13 owner tests passed**, within **3113 passed / 0 failed / 0 ignored** core tests. This round changed the support inventory and preserved evidence; it did not expand production algorithms, alter fixtures or add tests. Production source remains 93a6fc20, engine tree `b1124501f2deef4b5315970a855e970d4f74aec7`. The full final gate is incomplete because the authorized focused wrapper is waiting on an ancillary read-only cache query.
+
+| Check | Actual result |
+|---|---|
+| Focused core i686 tests | 3113/0/0, including all 13 renderer tests; compile11m37s; completed01:01:16 BST |
+| Dependents | fc4-capi, fc4-conformance, fc4-formats compile-only completed01:05:40 BST |
+| Native build | 4/4 incremental steps completed, including CAPI smoke and DLL links |
+| Focused wrapper terminal | UNKNOWN/pending; no successful wrapper/cache result claimed |
+| Final qbuild all / final clippy | Not started; existing wrapper must first be accounted for |
+| Full CTest | Expected68 from generated metadata; not run, no observed full-suite result |
+| Absolute touched-file fmt | exit1, files8, diff_lines2044; owner width100 vs engine120 and shared lib ordering |
+| Game / shadow / ABI | No requests, no shadow or native-owner credit; C ABI unchanged |
+
+At **01:13:44 and 01:16:48 BST**, OS identity/creation/command/cwd attribution showed qbuild **38324** (created00:48:17) -> fc4verify **9384** -> sccache **36584** (created **01:12:10.094 BST**), command `sccache.EXE --show-stats --stats-format json`, cwd this worktree. No compiler/output process targeting this lane remained in the current enumerated compiler candidates, including service-owned compiler output-path attribution. The native build log ends in 4/4, but the ancillary query remains pending. No exit/timeout diagnostic was emitted. This is a tooling block, not a successful or failed cache query. No process/client/daemon/service was terminated or changed; no independent cache RPC was issued, no environment/policy workaround was used, and no new compiled check or source edit overlapped it. Session40000 is only the historical transport handle, not liveness evidence.
+
+Evidence is durable under **build-runs/quick-r2/**: rust-evidence.json, native-progress.json, native-attribution.json and cache-query-block-evidence.json. The latter contains the full raw current process attribution, eight source hashes, log hashes, source tree and artifact data. The eight source hashes still exactly match the source measured for the passing core tests.
+
+| Current log | SHA256 |
+|---|---|
+| fc4verify-quick-test.log | b5f725ce899d1fa885fad5b7810789bb9844e39aaeeed3bad27b0f4c0cb03f2c |
+| fc4verify-quick-deps.log | b26fb74b1a9eca9c880b8171cf891167d83b8858f9a7e67b50368f12574c8f18 |
+| fc4verify-build.log | db2945ac5928d93bd1b84d5a5044c96526982188497c415d1fcd791a2b9f4424 |
+| fc4verify-configure.log | 4d29f35a5eea64a94f4c2c66ad0d2eec10a5ca5b6affc2edb36c03c455310f09 |
+
+Current built DLL: **e95aa730eba521981e2bfd622f8cc7de35330210c7cdae67c32a3c6daf2c114b**, 18127360 bytes; mtime01:12:07.648 BST. Its native rebuild log and unchanged source hashes correspond to this focused operation. This does not validate the missing final workspace/clippy/CTest gate and gives no native replacement or whole-owner credit.
+
+The thirteen passing functions cover D1-D6 dirty/filter cases, strict ties, mode0 penalty, 15-vs16 threshold, inclusive -2500, deadline effects and recursive31000 overcount; B1-B4 and probe/allocation failures, ignored foreign bools, explicit shared backing ownership; stable unsigned duplicate lists, first removal per list and release/clear policies; model queue kinds0/1/3/4, old/current boxes and reference decisions, explicit kinds2/5 and queue200 boundaries; lifetime/destructor boundary; typed-record partial-error order; restricted shake state/expiry/rounding; full-redraw/frustum coalescing and repeated failure. Camera forwarding was also inspected through the actual existing CameraControl methods. Foreign hosts supply raw reference/property/model/grid/buffer/query primitives only. D5's documented spacing correction100->1000 remains: spacing100 scores-900 and merges before exercising the threshold. No expectations were adjusted to fit implementation.
+
+## Earlier operation reconciliation and preserved baseline
+
+The supplied coordinator reconciliation (00:40:16 BST) records qbuild1880 -> fc4verify3680 -> sccache23088 waiting on readonly stats at00:36, all absent by00:37:58, and no coordinator termination. Actual r1 result00:37:16 says continue at12bb9830; stderr records guard154k/150k. The terminal cause/code is **UNKNOWN**. Old session3939 cannot be collected portably and is not current liveness evidence.
+
+Read-only OS audits00:43:44/00:44:13/00:46:03 used Toolhelp identities/parents, creation/image/command and accessible PEB cwd. Old1880/3680/23088/6076 were absent; current compiler/cache-client output paths were attributed to other lanes, including server-owned Rust compilers. Some service cwd reads denied5, but command output paths remained attributable. Shared bare servers were left intact. DLL/plugin-load/.ninja_log timestamps matched the earlier native log tail. This established no remaining attributable old output operation, while preserving the unknown terminal outcome before one necessary stable-source replacement.
+
+All four original logs were moved byte-for-byte with apply_patch into **build-runs/baseline-r1/** before wrappers could overwrite them, with verified hashes:
+
+| Baseline log | SHA256 |
+|---|---|
+| qbuild-test.log | a8d5eeacc0e0b779c1e97c97087dd1957b42eedcdb3679d37947be831d35f816 |
+| qbuild-clippy.log | 80072f9ba4c8ba51de131c2521230152808b9208fdcaf57e7eb2a157f473d9b7 |
+| fc4verify-build.log | 07d8f72ccf02f607ed64ea2b4b75c9bdedb2c75a9ee288f0dea2937061010063 |
+| fc4verify-configure.log | 34970e139997eb50963cf4c607951dff6b2409a432a7d77c3d4eb06f6e4acd2f |
+
+Baseline earlier-source Rust5142/0/0, clean clippy3m20s and native215/215 remain **partial earlier evidence**, not final acceptance. There is no durable baseline CTest log or known terminal wrapper result. Supplied r1 result/stderr provenance and exact diagnostics are preserved in baseline-r1/reconciliation.md; q.py's Bash bootstrap access denial and unavailable psutil were not used as process-absence evidence.
+
+## Next operations and remaining scope
+
+1. Collect/observe the existing qbuild38324/fc4verify9384/stats36584 operation through its actual terminal outcome, accounting for service-owned compiler/output work. Do not terminate even the read-only client, start quick/all, edit compiled source or apply a cache/environment workaround while it remains outstanding. Exceptional root action requires explicit coordinator evidence.
+2. Preserve these quick/native logs and any eventual ancillary outcome before overwrite. The already valid core3113/13-owner evidence remains valid for its measured source; do not repeat an unchanged baseline.
+3. Apply only the prepared owner formatting correction after terminal. build-runs/format-scene-renderer4.py emits an apply_patch patch using the explicit engine rustfmt configuration; six owner files differ, record.rs needs no change. Run the authorized fmt wrapper on absolute owner paths and the necessary lib.rs declaration. Preserve the additive declaration and do not broadly reorder pre-existing shared modules.
+4. Commit stable source, run **one final qbuild all**, fix only demonstrated owner implementation/test/compiler/clippy failures, and inspect all actual Rust totals/13 owner results, clippy, native,68 expected/observed CTest, tree/source/log/artifact correspondence. No duplicate gate for a report-only commit. Enqueue ready only with completed required checks.
+5. This is original-family **round2/3**; at most **one round remains**. Round1 consumed154k/150k; no family reset or renamed/fourth round. Round2 limit remains150k/max100calls, last measured milestone106938/150000 at1a927b75; use the current guard manifest/status for subsequent measured remaining allowance. WIP reflects the current tooling block, not a budget reset.
+
+Questions remain RND1/RND2/RND4 and appended RND5-RND7 in docs/specs/questions/render3d.md; all V3D-1 through V3D-10 are retained. No new question/spec/index changes in round2. No native/plugin/CAPI/ABI/default/map/coverage changes, game/nativeprobe/reload, network/live-user-file operations, external communication, merge/rebase/push or subagents. Denominator **130**, exact body bytes **UNKNOWN**; supported/partial/Unsupported methods follow.
 
 ## Named-method inventory (initial inventory committed in f4d643d0; support refined in round 2)
 
@@ -63,5 +103,5 @@ This inventory distinguishes method algorithms from raw foreign model/QI/world-b
 - Partial shake methods: owned parameter copying/prepend/handles, explicit clock-restart precondition, overload fade=0 portable RND4 choice, stop/fade, strict expiry, disabled freeze, seed-88 table via existing RzRandom, exact restricted curve/phase arithmetic and half-even rounding via x87::rhe where applicable. Arbitrary interpolation, nonzero sine entries, broad positional/extended accumulation and nonzero repeated scale beyond one factor remain Unsupported. These are not complete general SetShakeOffsets/Start bodies.
 - Partial lifetime/record: never-initialized Shutdown no-op; last Release reaches Shutdown then explicit unknown-destructor error without decrementing 0/1 or reporting deletion. Initialized Init/Shutdown, destructor and full Draw remain Unsupported. Portable typed Record Read/Write preserve version/order/sticky-error prefix writes but do not bind native slot 8 or transfer native reference ownership. Rust Drop does not perform unspecified renderer destruction: an embedding must explicitly drain acquired queue/list refs and clear camera references before dropping this portable owner.
 - Remaining Unsupported: Draw and its static/dynamic, translated, clipping/clear/draw helpers; ProcessDirtyRectangleQueue; UpdateViewportRect/DoPartialViewUpdate/DoViewCleanup; full lifecycle/static driver ownership; picking/terrain clipping and visibility wrappers; ReevaluateBackingStoreObjectFlags; all §7 residuals and unlisted owner bodies. No complete Draw/Update credit from action plans or callbacks. No terrain, drawcontext, DX7, effects, window, CAPI, ABI, defaults, coverage or native changes.
-- Validation: 13 new focused test functions are committed but not yet executed by a completed source-corresponding gate. Baseline workspace results 5142/0/0 and clean clippy are separate evidence. Initial all session 3939 is still in CMake; no quick/final all/fmt has completed. No game request, native probe or shadow evidence, and no claim of replacement/default promotion.
-- Next: collect 3939; save baseline summary with collect-scene-renderer4.py before overwrites; run qbuild quick, fix failures, then qbuild all and absolute touched-file fmt, serially. Do not enqueue ready until final gates and source/artifact correspondence are measured. Manifest remains run4-core-scene-renderer4-r1-manifest.json; do not reset its family budget.
+- Current measured results and tooling block are recorded above; initial baseline and final-source validation remain distinct.
+- Next operation is collection of the current readonly cache query, as recorded above. Original session3939 is historical only.
