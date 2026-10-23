@@ -18,7 +18,8 @@
 - Pending controls (not submitted): vpkl4-r1-off-20261023-a, vpkl4-r1-native-on-20261023-a, vpkl4-r1-literal40-on-20261023-a. Exact baseline enable empty / disable budget / default simulator retained; literal40 is the task's exact 40-enable list plus infrastructure defaults. Same full-save script at 2031-12-01, all end 2032-01-01.
 - Final gate PASS: Rust 5332/0 (three new literal tests executed), clippy exit 0/zero diagnostics, CMake 4/4, CTest 68/68 in 72.39s. qbuild exit 0. Retain fc4verify's tree-changed flag: only lane documentation changed during this gate; git diff -- engine empty and engine tree b959b2e0ee25c3f9cfff8fb111c307a96d2dc333 unchanged. No extra all.
 - Frozen once: build-runs/keylist4-frozen/FreeCity4.dll SHA256 34A7848B1588263FC818F657D30689B0439262F636B05FA5ADB473926E0041C5; PDB SHA256 0FA615A407DA8FC2EC5EB2949B455B5ADAEA043140C54E32000072E141C2FC3A. Freeze HEAD 56b5ab4f; final engine code 36d90ebf.
-- Next: submit OFF vpkl4-r1-off-20261023-a and block without qwait. Stop on any OFF failure; only then native ON and literal40 ON. No native comparisons credited yet.
+- OFF vpkl4-r1-off-20261023-a complete: clean, ref_warnings=0, foreign_exceptions/watchdog/rtc/overruns=0, verdict date 2032-01-01 (42.000s simulated run, 56s wall). Full save returned 1 in 11047ms at 2031-12-13, PostAppShutdown logged, frozen DLL hash prefix 34a7848b. Actual subsystem log: simulator enabled, budget disabled, every experimental subsystem off by default. Zero KeyList assertions as intended. Full verdict/log retained in build-runs/game-results.
+- Next: submit native ON vpkl4-r1-native-on-20261023-a, same frozen DLL/PDB and profile except keylist_verify=1; wait without qwait. No native comparisons credited yet. No reload fixture or reload claim.
 
 ## Method and body limits
 
