@@ -165,4 +165,3 @@ impl CellRect {
 
 #[cfg(test)]
 mod tests;
-
