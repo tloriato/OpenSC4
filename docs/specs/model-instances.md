@@ -197,6 +197,97 @@ origin can therefore update a **positive** nearest distance. MeshPick returns af
 within that mesh; ModelPick still visits subsequent meshes (view-utilities §7). Nonunit directions do not
 change the distance to a given hit point.
 
+### 2.2 Point/pick storage schedule and inherited arithmetic (MI11, partial)
+
+These rules describe the original instructions, conditional on the entering x87 control word. Let B mean
+an actual binary32 memory store/reload with that word's rounding control. A transient arithmetic operation
+rounds according to the active precision and rounding controls; it is not an implicit B. The x87 exponent
+range also differs from binary32/binary64. Do not fuse multiply/add or substitute a host f64 default for
+an unproved incoming control word. This section supplements the bounds schedule in §2.1, playback §3.1
+and processor score store in §4.1; it does not replace the prior MI3–10 rules or twenty vectors.
+
+#### 2.2.1 MeshPick point transforms
+
+MeshPick dispatches the kind byte at `0x007F9280`–`0x007F928D`. For each of its three input vertices,
+let q_r denote the transient row dot evaluated as ((v_z M[r,2] + v_y M[r,1]) + v_x M[r,0]), with
+separate products and sums in that order. The schedule is the same for all three vertices:
+
+| Kind | Actual stored output x,y,z | Intermediate binary32 stores | Instruction spans |
+|---|---|---|---|
+| 0 | raw word copies of v | none; no arithmetic or NaN conversion | `007F9294`–`007F92D8` |
+| 1 | B(v_x+t_x), B(v_y+t_y), B(v_z+t_z) | only final coordinates | `007F92DD`–`007F9364` |
+| 2 | B(s v_x), B(s v_y), B(s v_z) | only final coordinates | `007F9369`–`007F93FE` |
+| 3 | B(B(s v_x)+t_x), B(B(s v_y)+t_y), B(s v_z+t_z) | scaled x and y; scaled z remains transient | `007F96AA`–`007F9776` |
+| 4 | B(q_x), B(q_y), B(q_z) | only final coordinates | `007F9403`–`007F952C` |
+| 5 | B(q_x+t_x), B(B(q_y)+t_y), B(B(q_z)+t_z) | row sums y and z; row sum x remains transient | `007F9531`–`007F96A5` |
+| >5 | B(B(s q_x)+t_x), B(B(s q_y)+t_y), B(s B(q_z)+t_z) | unscaled z row, then scaled x and y | `007F977B`–`007F995A` |
+
+For kinds 1/2/4/5, final coordinate stores run z,x,y for each vertex (z is copied as a word from a temporary
+binary32 slot). For kind3/default the final order is z,y,x. Input vertices are transformed in first,
+second,third order; all are stored before the ray call at `0x007F997E`. The temporary stores above are
+semantically significant even though all final vertices have the same binary32 layout.
+
+#### 2.2.2 Triangle ray and distance
+
+For `RayIntersectsTriangle(O,D,A,B,C,out)` (`0x005D6FF0`):
+
+1. Store each component of E1=B−A and E2=C−A as binary32, in x,y,z order
+   (`005D6FFB`–`005D7037`). Form P=D×E2 in registers, component products/subtractions unfused.
+2. Form det as (E1_z P_z + E1_y P_y) + E1_x P_x. P and det have no memory rounding before the
+   absolute 0.01f determinant test (`005D703B`–`005D709E`). On acceptance store reciprocal 1/det as
+   binary32 (`005D70AB`); later calculations reload that reciprocal, not the original det.
+3. Form T=O−A, storing x then y with pop and z **without pop** (`005D70B1`–`005D70C9`). The first
+   barycentric dot uses transient T_z with P_z, but reloaded T_y and T_x with P_y and P_x, in z,y,x
+   summation order. Multiply by stored reciprocal and store u as binary32 (`005D70E3`); both u tests
+   reload that store (`005D70ED`–`005D7111`).
+4. Form Q=T×E1 from the stored T components. Store Q_x and Q_y with pop, Q_z without pop
+   (`005D7117`–`005D7155`). Form v from transient Q_z D_z plus reloaded Q_y D_y then Q_x D_x,
+   multiplied by stored reciprocal. v stays transient for v≥0 and u+v≤1; u is reloaded from binary32
+   (`005D7159`–`005D7191`). There is no stored v used by those tests.
+5. If out is nonnull and the tests accepted, recompute the t numerator from **stored** Q_z E2_z,
+   Q_y E2_y, Q_x E2_x, in that order, and multiply by stored reciprocal (`005D719B`–`005D71B7`).
+   Keep t transient while separately forming/storing O_x+tD_x, O_y+tD_y, O_z+tD_z, in x,y,z order
+   (`005D71BB`–`005D71D4`). A rejected triangle leaves out untouched; null out skips this step.
+
+LengthOfLine (`005D7660`–`005D7690`) subtracts second−first x,y,z, retaining all three differences
+without memory stores, then evaluates ((dz×dz + dy×dy) + dx×dx) and square root. It returns the
+transient x87 result; it does **not** return a value already rounded through a binary32 or binary64 slot.
+TrianglePick compares that result directly against stored binary32 nearest and only then stores it on
+improvement (`007F6B23`–`007F6B35`). MeshPick does likewise (`007F9993`–`007F9998`). Thus an improvement
+can return true while rounding the newly stored nearest back to its previous bits.
+
+#### 2.2.3 Proved control-word writers and remaining boundary
+
+The application explicitly selects **24-significand-bit precision** during PreFrameWorkInit:
+`0045236C` calls `005F85E0`, which passes 0 to `008929E0`. That writer preserves the incoming control
+word except bits 8–9; argument 0 sets those bits to 00 (24), argument 1 to 10 (53), argument 2 to 11
+(64). It does not select rounding control or exception masks (`008929E4`–`00892A05`). This is an
+application precision selection, not a hardware/OS/compiler default. Same-thread calls which have not
+crossed another writer inherit that 24-bit precision; rounding remains the incoming rounding mode.
+
+This does not prove one persistent mode for every later native call. A concrete conditional writer is
+the expression parser `0067BA40`: after its initial subcall, if the getter reports precision 24 it
+selects 53 at `0067BA63`–`0067BA65` and returns without restoring precision (`0067BACC`–`0067BAD4`).
+The inspected Lua Pause wrapper temporarily selects 53 only when the entering precision is 24,
+and restores its saved precision on ordinary return (`008B6C35`–`008B6C65`); the wrapped callee
+executes within that interval. This single wrapper is evidence for that path, not all Lua callbacks.
+Getter `00892A0A` reports 0 for PC=00, 1 for PC=10, and 2 otherwise.
+
+The CRT also has a conditional initialization path `009EEEE5`–`009EEF02` to `009F6C30`:
+nonzero initialization argument invokes __controlfp(value=`0x10000`, mask=`0x30000`). This is a
+precision-only request; it does not establish rounding control. The application's later precision
+selection must not be replaced by a presumed CRT default. The local point/ray/length routines themselves
+contain no control-word setter. Their immediate native wrappers do not establish a rounding mode.
+
+**Residual MI11:** a complete startup/thread/callback path proving the incoming rounding mode at each
+normal bounds, pick, Advance and processor call has not been established. Neither the caller list nor
+the existence of initialization proves that intervening indirect/external calls preserve that word.
+Externally supplied control words remain explicit inputs. Exact last-bit emulation therefore requires
+the entering precision/rounding mode as well as the stores above; blanket f64 transients, blanket 64-bit
+x87 precision, and blanket 24-bit precision are not native equivalence claims. A portable API may state
+its own fixed mode, but must label that boundary and cannot infer native threshold outcomes outside
+proved modes. MI11 remains open for that caller-path/rounding proof.
+
 ## 3. Animated model instances (`cS3DModelInstanceAnimated`) *[compat]*
 
 The playback (constructor `0x007FD870`, `SetFrame`, `SetSpeed`, `Advance`, `Step`, `SetAnimMode`) is
