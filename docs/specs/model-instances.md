@@ -275,7 +275,8 @@ Getter `00892A0A` reports 0 for PC=00, 1 for PC=10, and 2 otherwise.
 
 The CRT also has a conditional initialization path `009EEEE5`–`009EEF02` to `009F6C30`:
 nonzero initialization argument invokes __controlfp(value=`0x10000`, mask=`0x30000`). This is a
-precision-only request; it does not establish rounding control. The application's later precision
+precision-only request mapped to PC=10 (53 bits) by `00A02F44`–`00A02F56`; it does not establish rounding
+control. The application's later precision
 selection must not be replaced by a presumed CRT default. The local point/ray/length routines themselves
 contain no control-word setter. Their immediate native wrappers do not establish a rounding mode.
 
@@ -287,6 +288,67 @@ the entering precision/rounding mode as well as the stores above; blanket f64 tr
 x87 precision, and blanket 24-bit precision are not native equivalence claims. A portable API may state
 its own fixed mode, but must label that boundary and cannot infer native threshold outcomes outside
 proved modes. MI11 remains open for that caller-path/rounding proof.
+
+#### 2.2.4 Independent mode/store counterexamples
+
+These are additional helper-level vectors, separate from §10's canonical twenty. Inputs and expected bits
+are derived from binary rational arithmetic and the instruction schedule, with masked exceptions, finite
+normal values, and round-to-nearest/even unless a row explicitly supplies RC. PC=24/53/64 means the x87
+significand precision, **not** an exponent/storage format. No vector establishes a process-wide native mode.
+
+| Vector | Inputs and observation | PC24 | PC53 | PC64 |
+|---|---|---|---|---|
+| N1: row cancellation | kind4, v=(1,1,1), each row=(−2²⁴,1,2²⁴); each output word | `00000000` | `3F800000` | `3F800000` |
+| N2: wider cancellation | N1 with 2⁵³ replacing 2²⁴ | `00000000` | `00000000` | `3F800000` |
+| N3: default stores | kind255, v=(1,1,1), each row=(1,2⁻²⁴,0), s=3, t=(−3,−3,−3); output words | `(00000000,00000000,00000000)` | `(34800000,34800000,00000000)` | same as PC53 |
+| N4: unrounded distance comparison | LengthOfLine from O=(0,0,0) to H=(1−2⁻²⁴,2⁻¹²,0), then pick's comparison with nearest=1 | improves, stores `3F7FFFFF` | improves, stores `3F800000` | improves, stores `3F800000` |
+| N5: determinant threshold | ray O=A=(0,0,0), D=(0,0,1), B=(−2⁻³¹,ε,0), C=(1,−1,0), ε=float bits `3C23D70A`; out initially (9,9,9) | true, out=(0,0,0) | false, out untouched | false, out untouched |
+
+For N1/N2, the mandated z,y,x order first adds 1 to 2ⁿ, then subtracts 2ⁿ. At precision n+1 this
+half-ulp tie rounds to the even 2ⁿ, losing the 1; at higher precision the addition is exact. All inputs
+are exactly binary32-representable, including 2⁵³. Reassociating x+z before y would give 1 in every column.
+
+For N3 at PC53/64, each row sum is exactly q=1+2⁻²⁴. x/y multiply q by 3 before storage;
+B(3+3×2⁻²⁴)=3+2⁻²², then subtraction of 3 yields 2⁻²² (`34800000`). z stores q first, rounding
+the halfway value to 1, so its final value is zero. Removing all intermediate stores instead yields
+3×2⁻²⁴ (`34400000`) in every coordinate. This distinguishes arithmetic width from store placement.
+
+For N4, the exact squared length is 1−2⁻²⁴+2⁻⁴⁸, or
+281474959933441/281474976710656. The squared midpoint between 1 and its binary32 predecessor is
+(1−2⁻²⁵)²=1−2⁻²⁴+2⁻⁵⁰. Thus the exact root is above that midpoint and below 1. At PC53/64 it
+remains strictly below 1 but stores as 1; rounding before comparison would incorrectly report no
+improvement. At PC24 the square loses 2⁻⁴⁸; the root then rounds to the predecessor of 1.
+
+For N5, P=(1,1,0) and the pre-rounding determinant is ε−2⁻³¹. ε has ulp 2⁻³⁰ and even low
+significand bit, so PC24 rounds this tie to ε and accepts equality. PC53/64 retain a value strictly
+below ε and reject before any output write. This tests the transient determinant, not just its storage.
+
+N6 supplies a rounding-mode counterexample independently of precision: kind1 with v=(1,1,1) and
+t=(2⁻²⁴,2⁻²⁴,2⁻²⁴) stores each coordinate as `3F800000` under nearest/even, downward or toward-zero,
+but `3F800001` under upward rounding, for any of the three precision settings. The exact sum is a
+binary32 midpoint. Choosing a rounding mode changes an observable result even with no complicated geometry.
+
+#### 2.2.5 Primary-source provenance and audit limits
+
+The Windows export identifies SimCity 4.exe, image base `00400000`, SHA256
+`3bc5c7fe807fe5aa24a3abb06e40f13486670bc1150612c09baf4ecedafe1a4b`. The working original executable
+has the same SHA256. Its bytes match all 1,104 decoded instructions in the scoped ray (165), length (21),
+MeshPick (601), static SetModel (47), ReadAnim (241), and precision setter/getter (29) ranges cited here.
+The jump-table data at `007F9A1C` selects kind0/1/2/3/4/5 arms at `007F9294`, `007F92DD`, `007F9369`,
+`007F96AA`, `007F9403`, `007F9531`; this matters because kind3 is laid out after kind5. Native P data at
+`00ABD668` is (8,16,32,73,146); the division operands in ReadAnim agree with those values.
+
+The export-first audit used decoded instruction bytes and direct caller/callee references, with no live
+REA query needed. Static Pick calls ModelPick (`00801741`), which calls MeshPick (`007F9B03`); these
+wrappers contain no local mode selection. Virtual providers called on that route prevent treating this
+as a proof of mode preservation across the whole route. The export scan found 138 control-word writer
+instructions; 25 are below the CRT area `009E0000`: 24 conversion sites at `00824756`–`008253FD`,
+and the precision setter at `00892A05`. The inspected conversion pair `00824741`–`0082475F` saves
+CW, ORs rounding bits with `0x0C00` for integer truncation and reloads the saved CW after conversion.
+It supplies no persistent nearest-rounding policy. CRT math also temporarily loads word `0x027F`
+(`009F5914`–`009F591C`, data `00AEA388`); a temporary math mode is not the caller's inherited mode.
+The complete set of runtime writer paths and indirect callbacks has **not** been proved to restore CW
+on every normal entry path. That is the remaining WIP, not evidence for an implicit precision/rounding default.
 
 ## 3. Animated model instances (`cS3DModelInstanceAnimated`) *[compat]*
 
@@ -382,9 +444,20 @@ Static SetModel's material changes affect the **instance material copy**, not th
 The original frame builder copies source material fields into the destination material array
 (`0x00806E41`–`0x00806E59`, copy helper `0x00802240`), while retaining shared texture bindings. SetModel changes
 the instance's first material bytes at `+4` and `+0x18` (`0x00801C92`, `0x00801C9B`). Sharing texture bindings
-does not make the material flags shared. A second instance built from the resource therefore starts with the
-resource's original flags. The model pointer itself is counted, with retain-new/store/release-old order and a
+does not make the material flags shared. A second frame-builder destination therefore starts with the
+resource's original flags, before its own SetModel inspection. The model pointer itself is counted, with retain-new/store/release-old order and a
 same-pointer shortcut, but the material inspection still runs after that shortcut (`0x00801C40`).
+
+The ordinary static factory path constructs and adds an instance reference, asks the model to build the
+frame into that instance, and only on success calls SetModel, then publishes the instance
+(`0x00804104`–`0x00804136`). Frame-build failure releases that instance instead (`0x0080413E`). Thus a
+successfully returned blend-(8,1) static instance has already undergone its own material changes; the
+unbound second copy in vector 15 is an intermediate observation, not a second factory-returned instance.
+SetModel itself does not copy a frame: retain/store/release of the model precedes inspection of the
+already populated material array. Material copying separately copies scalar fields and two texture-stage
+records (`0x00802249`–`0x0080229F`). Each stage retains a different incoming binding before storing it and
+releasing the outgoing binding; equal binding pointers leave reference counts alone
+(`0x0080207D`–`0x008020AB`). Its scalar bytes, including material-relative `+0x18`, remain independent.
 
 Sort's centre computation uses each original container mesh's current vertex-block bounds. It resets the
 output list, not the container mesh array (`0x00802DF8`, `0x00802E22`). The three min+max sums and dot product
@@ -473,17 +546,21 @@ The source column describes the denominator's zoom, not a separate stored source
 
 | Case | I | Literal input keys (z=0…4) | Final keys | Return | Final scales (z=0…4) | Scale sources |
 |---|---|---|---|---|---|---|
-| Interior zero | `0x80000001` | `(0,0,0x7FFFFFFF,0,0)` | `(I,I,0,I,I)` | true | `(1/2,1,1,1/2,1)` | `(1,1,2,4,4)` |
+| Interior zero | `0x80000001` | `(0,0,0x7FFFFFFF,0,0)` | `(I,I,0,I,I)` | true | `(1/2,1,1,1/2,1)` | `(1,1,none,4,4)` |
 | Initial zoom-4 zero | `0x80000001` | `(0,0,0,0,0x7FFFFFFF)` | `(I,I,I,I,0)` | true | `(8/73,16/73,32/73,1,unchanged S₄)` | `(3,3,3,3,none)` |
 | Nonzero wrap control | `0x80000001` | `(0,0,0x80000000,0,0)` | `(I,I,1,1,1)` | true | `(1/2,1,1,73/32,146/32)` | `(1,1,2,2,2)` |
-| I=0 control | `0` | `(0,0,0,0,0)` | `(0,0,0,0,0)` | false | `(unchanged S₀,unchanged S₁,unchanged S₂,unchanged S₃,unchanged S₄)` | none |
+| I=0 all-zero control | `0` | `(0,0,0,0,0)` | `(0,0,0,0,0)` | false | `(unchanged S₀,unchanged S₁,unchanged S₂,unchanged S₃,unchanged S₄)` | none |
+| I=0 partial-write control | `0` | `(0,0,2000,2000,0)` | `(0,0,2000,2000,0)` | false | `(unchanged S₀,1,32/73,1,unchanged S₄)` | `(none,none,3,3,none)` |
 
 Ratios in this table denote division followed by binary32 storage under the active x87 rounding mode;
-the dyadic ratios are exact. These are instruction-derived expectations, not native execution results.
+the dyadic ratios are exact. A unit scale written on transition to zero has no usable source (interior
+zero at zoom 2). These are instruction-derived expectations, not native execution results.
 The interior-zero writes occur downward in order 4,3,2,1,0; zero at 2 writes unit scale, then I at 1
 starts a new source. Upward traversal encounters zero at 2, so leaves 3 and 4 unchanged. For initial-zero,
 there is no scale write at 4 and no upward pass because k₄ differs from I. The nonzero-wrap control first
 forms key 1 at zoom 2, then the upward pass rewrites zooms 3 and 4 to key 1 and the ratios shown.
+The I=0 partial-write control visits zooms 4,3,2,1,0, writes scales only at 3,2,1, then fails at the
+equal-zero zoom-0 gate; it retains those earlier writes and never runs the upward pass.
 
 The sprite instance scales a frame by s_z when it differs from 1 (animated-sprite.md §4.1). Zooms 0 and 1 always end
 up with the instance's own key or a shared one, but the sprite draws nothing there.
