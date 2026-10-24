@@ -310,7 +310,8 @@ Entries before the first header belong to no section and are never read.
   length, or key not found: false, out unchanged. Defaults are the caller's: nothing is written on a miss.
 - ReadNumber (0x0091C8D2): ReadEntry, then C `sscanf("%ld")`: leading whitespace allowed, optional sign,
   decimal only, stops at the first non-digit (`"12abc"` reads 12, `"0x10"` reads 0); true only if a
-  number was parsed. 32-bit signed; overflow follows the C runtime.
+  number was parsed. The result is a signed 32-bit value; oversized decimal values wrap modulo
+  2^32 and still succeed. The exact compatibility rule and failure cases are in §3.5.1.
 - Binary entries are hexadecimal text, two characters per byte, written in upper case. Reading accepts
   `0-9`, `A-F`, `a-f`; any other character (spaces included) counts as 0 and makes the conversion fail.
   - ReadBinaryEntry(section, key, buffer, size) (0x0091C84F): converts min(length of value, 2 x size)
@@ -320,6 +321,52 @@ Entries before the first header belong to no section and are never read.
     length/2 and sets ptr; on conversion failure frees, sets ptr := null, returns 0. Missing entry:
     returns 0, ptr unchanged. The caller frees ptr with the framework allocator.
 - SectionExists (0x0091C95A): true if the lower-cased name is in the index.
+
+#### 3.5.1 Decimal overflow (RZ6) *[compat]*
+
+For an ASCII decimal value returned by ReadEntry, interpret the accepted signed decimal
+prefix as a mathematical integer N. Let u be its residue in [0, 2^32). ReadNumber stores
+u when u < 2^31, otherwise u - 2^32. This applies beyond both signed and unsigned
+32-bit limits and beyond 64-bit limits: no saturation, range error or overflow-based
+parse failure is introduced. A minus sign negates the magnitude modulo 2^32.
+
+The original executable's embedded scanner, rather than a replacement host C library,
+defines this behavior. ReadNumber calls it with the literal `%ld` at 0x00ACF148
+(call 0x0091C904 to 0x009EF536) and reports true exactly for one assignment
+(0x0091C90C–0x0091C90F). The decimal arithmetic has 32-bit width without a range
+rejection (0x009F8518–0x009F8523, 0x009F8565–0x009F856F); sign handling and the
+long-value assignment preserve that width (0x009F85C7–0x009F85D0,
+0x009F8626–0x009F862F).
+
+At least one accepted digit makes the conversion succeed, even when its residue is
+zero. Leading zeroes do not select octal; a non-digit ends the decimal prefix, so
+trailing letters or an exponent-looking suffix are not evaluated. With no digits,
+the conversion fails and does not assign the numeric output. A missing ReadEntry
+also returns false without assigning it. Empty input, whitespace alone, a sign alone,
+`abc`, `+abc` and `--1` are examples of failed conversions; this does not invent a
+new overflow failure or a default value.
+
+| Value text | ReadNumber result | Numeric output |
+|---|---|---:|
+| `2147483647` | true | 2147483647 |
+| `2147483648` | true | -2147483648 |
+| `4294967295` | true | -1 |
+| `4294967296` | true | 0 |
+| `4294967297` | true | 1 |
+| `-2147483649` | true | 2147483647 |
+| `-4294967297` | true | -1 |
+| `18446744073709551616` | true | 0 |
+| `18446744073709551617` | true | 1 |
+| `+4294967297junk` or `4294967297e3` | true | 1 |
+| `012` | true | 12 |
+| `0x10` | true | 0 |
+| Empty text, `+`, `abc` | false | unchanged |
+
+Static analysis and 32 isolated original-scanner executions, including 1,024-digit
+inputs, support this contract. The [evidence and reproduction notes](evidence/rz6-ini-number-overflow.md)
+separate scanner emulation from the wrapper's verified assignment-count check.
+No running-game or engine conformance result is claimed, and no additional locale
+or non-ASCII digit rules are established here.
 
 ### 3.6 Writeback (WriteEntry 0x0091D168)
 

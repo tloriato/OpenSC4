@@ -17,8 +17,6 @@
   "C" locale (ASCII only) or the OS full mapping (the core: Unicode single-unit lower case)? [choice]
 - **RZ5 - §3.3 entry without `=`:** the key is empty; what is the value (whole trimmed line or empty)? Only
   visible to ReadEntry with an empty key. The core uses empty. [choice]
-- **RZ6 - §3.5 ReadNumber overflow:** "follows the C runtime": wrap, clamp to LONG_MAX/LONG_MIN, or other?
-  The core wraps modulo 2^32. [choice]
 - **RZ7 - §3.4 / §3.6 "closes the file" with leave-open off:** is that the INI Close (slot 5: index and loaded
   flag dropped too) or only the cRZFile Close (index kept while the file is closed)? The core uses the INI
   Close. Also §3.6 step 1: when Open(forWrite) fails for a missing file, is the result false (the core) ?
