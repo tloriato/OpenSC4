@@ -298,6 +298,21 @@ initialised at the BMP's width and height in the **target** format and locked fo
 target bits) translations: 4 → 16, 8 → 8 or 16, 24 → 16, 24 or 32; any other pair fails. The result is the
 translation's result.
 
+### 6.5 Shipped-data inventory (PR2)
+
+A read-only scan on 2026-10-24 found no entries of type `0x62B9DA24` in GOG
+1.1.641 hotfix installer 25621: 857 DBPF package paths, representing 440 distinct
+package contents and 232,303 distinct-content index entries. This includes all
+417 shipped city saves, their identical installer support copies, and the root,
+locale, SKU and configuration packages. Thus no BMP, v0, v1 or v2 buffer-resource
+header occurs under this type in the enumerated corpus.
+
+The [scan report](evidence/persistence-pr2-gog-25621.md) records provenance,
+reproduction, positive-control counts and limitations; the accompanying manifest
+contains hashes and metadata only. This observation does not change §§6.1–6.4,
+prove absence in other editions, user saves or plugins, or settle PR3's separate
+question about runtime callers depending on padded v1 loads.
+
 ## 7. Buffer resource factory (`cGZBufferResourceFactory`, interface IID `0xA2C72982`) *[compat]*
 
 A §4.2 factory for type `0x62B9DA24` with two settings:

@@ -8,11 +8,6 @@
   the shipped packages and saves, which are little-endian]
 
 <!-- from: re-persistence4 (2026-10-21) -->
-- **PR2:** (§6) does any shipped package or save contain entries of type `0x62B9DA24` (buffer resources, forms
-  v0/v1/v2), and which forms occur? A DBPF index scan of the install answers it. [expected: few or none; UI images
-  are PNG (`0x856DDBAC`) and load through the persist-buffer / gimex factories, not here]
-
-<!-- from: re-persistence4 (2026-10-21) -->
 - **PR3:** (§6.2 v1) the original's padded-stride copy swaps the source and destination steps. FreeCity4 chose
   the correct copy (identical whenever stride = packed row size). Confirm no shipped data or caller depends on a
   padded v1 load. [the choice stands]

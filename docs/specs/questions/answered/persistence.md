@@ -17,3 +17,14 @@
   false on empty/all-false, true otherwise, preserving every callback; this is a deterministic clean-room
   policy, not a recovered native baseline. §10.1 separates callback traces, native constraints and chosen
   outputs in six independent vectors. The audit does not claim behavior for arbitrary external plugins.
+
+<!-- from: re-persistence4 (2026-10-21) -->
+- ~~**PR2:** (§6) does any shipped package or save contain entries of type `0x62B9DA24` (buffer resources, forms
+  v0/v1/v2), and which forms occur? A DBPF index scan of the install answers it. [expected: few or none; UI images
+  are PNG (`0x856DDBAC`) and load through the persist-buffer / gimex factories, not here]~~
+  **ANSWERED 2026-10-24 (re-persistence-buffer-corpus):** persistence.md §6.5 records a complete scan of
+  GOG installer 25621: 857 DBPF package paths (440 distinct contents), 281,399 indexed entries
+  (232,303 after deduplicating contents), zero target entries and no scan errors. All 417 shipped city
+  saves and their identical support copies were included, along with root, locale, SKU and configuration
+  packages. Thus none of the buffer forms occurs under this type in the enumerated corpus. The manifest
+  records hashes and counts; no claim is made about other editions, user saves, plugins or runtime callers.
