@@ -399,7 +399,10 @@ return false                                          -- re-delivered later the 
 | 6 low demand | tract developer through slot 8 | `tract-developer.md` §4.19 |
 
 "Visit" is one `UpdateLot`, about every 28 days per lot. `AbandonBuilding(lot, reason)` (slot 8) is exactly
-`lot.SetState(4, 0, reason)`, so the state changes **synchronously** (answers tract-developer Q5).
+`lot.SetState(4, 0, reason)`, so the state changes **synchronously** (answers tract-developer Q5). It has no defined
+result (LD34): `SetState` returns nothing (lot-records.md §13.2) and `AbandonBuilding` hands back whatever the register
+holds afterwards; the tract developer's two calls (the kick-out of a state-3 lot with reason 5 and the capacity reclaim with reason 6,
+tract-developer.md §4.19) both ignore it.
 
 ---
 
@@ -789,9 +792,11 @@ Without animation the state is set to 3 at once, so §6.5 runs when the queued m
 - **`ChangeBuilding(lot, type)`** (slot 10, `0x006C5210`, pop 8): no-op when the lot has no configuration (returns
   0). Otherwise `ClearLotBuildings(lot, 1, true, 0)` (§7.1), place `type` with BDS slot 7 at `GetPositionForBuilding`,
   and, when the lot has no foundation (flags & 3 = 0), the occupant-slope levelling / `AddBuildingFoundation` step
-  of §6.1. Finally `lot.SetState(3, 0, 0)` (also when no building was created *[quirk]*); returns its AL. The lot's
+  of §6.1. Finally `lot.SetState(3, 0, 0)` (also when no building was created *[quirk]*); returns whatever `SetState` leaves (no defined flag, see LD34). The lot's
   building type is not changed here.
-- **`AbandonBuilding(lot, reason)`** (slot 8): `lot.SetState(4, 0, reason)`, returns its AL.
+- **`AbandonBuilding(lot, reason)`** (slot 8, `0x006C3D30`): `lot.SetState(4, 0, reason)` and nothing else; **no defined
+  result** (LD34): the function returns straight after the call, so AL is whatever `SetState` left, which is not a
+  success flag. Do not forward or test it.
 - **`ReoccupyBuilding(lot, devType)`** (slot 9, `0x006C3D50`, pop 8): `w := BDS.GetWealth(devType)` (slot 31);
   `d := profile.wealth − w`; condition := 2 if `d = 1`, 3 if `d = 2`, otherwise (counter `0xE999B11F` exists and ≠ 0 ?
   1 : 0); `lot.SetState(3, w, 0)`; `lot.SetCondition(condition)`;
@@ -806,8 +811,7 @@ Without animation the state is set to 3 at once, so §6.5 runs when the queued m
   exists (lot slot 9): `s := GetLotSlope(lot, cfg.IsCompatibleWithWater())`; if
   `cfg.GetMaximumSlopeBeforeFoundation() < s` (NaN → no), `AddLotFoundation(lot, cfg, cfg.HasObjectsOfType(7),
   false, true)` (slot 54, may draw) and `added := true`; if `|s| > 0.25` (float `0x00A8821C`; NaN → no),
-  `UpdateLotObjectAlitudes`. Then `UpdateLotBaseTextureOccupant(lot, added)` (slot 45: true only when this call
-  added a foundation) and lot slot 20 (`UpdateSlope`). The original pushes `added` as a dword whose upper three
+  `UpdateLotObjectAlitudes`. Then `UpdateLotBaseTextureOccupant(lot, added)` (slot 45: its result is not a defined flag, see §6.6) and lot slot 20 (`UpdateSlope`). The original pushes `added` as a dword whose upper three
   bytes are leftover stack contents; slot 45 reads only the low byte. The kind-5 sender is not identified here
   (the power simulator also ignores kinds 4 and 5, `power.md`).
 
@@ -945,6 +949,12 @@ left, no defined value) (LD16): `occ := slot 41(lot, &occ, false)`; if found:
 (`0x005DF370`); when `force` is set, or the box changed and `a` is set, it notifies the occupant manager if the
 occupant is inserted (occupant manager slot 24 with the occupant sub-object at +4 and 0) and rebuilds its models
 (`0x005DF640`). It stores the changed flag through `changed` when that is not null.
+
+**Results (LD33).** `UpdateVertexAltitudes` has **no defined result**: on return EAX still holds its third argument
+(the `changed` pointer, or null), which is not a flag; slot 45 passes null. Slot 45's own result is not that value
+either: when the occupant was found, its last call is the `Release` of `occ`, so its EAX is that call's return (the
+remaining reference count, 0 when the occupant was freed); when no occupant was found it is slot 41's false. A
+re-implementation must not give either method a meaningful boolean.
 
 ### 6.7 Construction occupant (`cSC4ConstructionOccupant`, class `0xA97F909E`) *[compat]*
 
@@ -1765,9 +1775,9 @@ verified from the bodies).
 | 5 | +0x14 | `uint32 GetSimulatorType()` → `0x6818E5C9` | 0 | EAX | `0x006C3C40` | ok |
 | 6 | +0x18 | `bool StartConstruction(lot, cfg, uint32 type, bool animate)` | 16 | AL | `0x006CC490` | ok |
 | 7 | +0x1C | `bool ConstructDefaultLot(lot, cfg, uint32 type, bool)` | 16 | AL of slot 6 | `0x006CCEF0` | ok |
-| 8 | +0x20 | `bool AbandonBuilding(lot, int32 reason)` | 8 | AL of `SetState` | `0x006C3D30` | ok |
+| 8 | +0x20 | `bool AbandonBuilding(lot, int32 reason)` | 8 | **undefined** (incidental leftover of `SetState`, which has no result) | `0x006C3D30` | **error**: no defined bool result (LD34) |
 | 9 | +0x24 | `bool ReoccupyBuilding(lot, int32 devType)` | 8 | AL of `SetPopulation` | `0x006C3D50` | ok |
-| 10 | +0x28 | `bool ChangeBuilding(lot, uint32 type)` | 8 | AL of `SetState`; **0** when the lot has no configuration | `0x006C5210` | ok |
+| 10 | +0x28 | `bool ChangeBuilding(lot, uint32 type)` | 8 | no defined flag from `SetState` (LD34); **0** when the lot has no configuration | `0x006C5210` | ok |
 | 11 | +0x2C | `bool RemoveBuildingZotProp(lot)` | 4 | AL of the variant setter; 0 when no zot property | `0x006CB940` | ok |
 | 12 | +0x30 | `StartDemolishLot(lot)` | 4 | AL of `ClearLotBuildings` (slot 11's) | `0x006CC1D0` | declared bool: value is incidental |
 | 13 | +0x34 | `EndDemolishLot(lot)` | 4 | **undefined** (last call's EAX) | `0x006C90A0` | **error**: SDK `bool` |
@@ -1802,7 +1812,7 @@ verified from the bodies).
 | 42 | +0xA8 | `GetBoundaryLotTexture(BoundaryType*, uint32&, uint8&, bool&)` | 16 | **EAX = a map node pointer**, AL replaced by the flip byte | `0x006C6CF0` | **error**: SDK `bool` |
 | 43 | +0xAC | `void SetEmptyLotBaseTexture(lot)` | 4 | none | `0x006CC970` | ok |
 | 44 | +0xB0 | `SetNormalLotBaseTexture(lot, cfg, bool)` | 12 | **undefined** | `0x006CA8A0` | **error**: SDK returns `cISC4Lot*` |
-| 45 | +0xB4 | `bool UpdateLotBaseTextureOccupant(lot, bool)` | 8 | AL (via call) | `0x006C4290` | ok |
+| 45 | +0xB4 | `bool UpdateLotBaseTextureOccupant(lot, bool)` | 8 | **undefined**: not the update's value (LD33, §6.6) | `0x006C4290` | **error**: no defined bool result |
 | 46 | +0xB8 | `bool GetForceEmptyLotBaseTextures()` | 0 | AL | `0x006AAF40` (shared getter) | ok |
 | 47 | +0xBC | `void SetForceEmptyLotBaseTextures(bool)` | 4 | none | `0x006C77D0` | ok |
 | 48 | +0xC0 | `cISC4FoundationOccupant* GetFoundationByOccupant(occupant)` | 4 | EAX (via slot 50) | `0x006C3E10` | SDK `intptr_t` |
@@ -2021,7 +2031,7 @@ Pops from `docs/abi/interfaces.tsv` (checked rows) unless noted.
 | | 7 | GetLotsInCellRect(list, x1, z1, x2, z2, bool) | 24 | EAX |
 | | 9 / 10 | GetLotsSurroundingLot(lot, list, flags) / GetLotsSurroundingRect(rect, list, flags) | 12 | |
 | | 15 / 16 | GetSafeLotIterator / GetLotCount | 0 | EAX |
-| | 24 | DeleteLot(lot) | 4 | AL |
+| | 24 | DeleteLot(lot) | 4 | none (EAX undefined: the last call is a `Release`, zones.md §8.6) |
 | `cISC4Lot` (vtable `0x00AB19B0`) | 3, 9, 10, 12–15, 20–22, 25–31, 33–37, 40, 41, 43, 44, 46–48, 52, 55, 57–61, 63–67, 69 | as named in this spec | per `interfaces.tsv` (e.g. 34 SetState 12, 36 SetCondition 4, 61 GetOccupancy 4, 63 GetTravelJobs 4 ST0) | |
 | `cISC4OccupantManager` (`0x00B43D0C`) | 20 / 21 / 24 | InsertOccupant(occ, 0) / RemoveOccupant(occ, a, b) / occupant changed (occ, 0) | 8 / 12 / 8 | AL |
 | | 36 | GetOccupantsByBBox(list, min, max, filter, flags) | 20 | AL |

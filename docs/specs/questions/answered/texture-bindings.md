@@ -30,3 +30,8 @@
   **Partial proof 2026-10-22 (re-small-renderer-contracts4):** §§3–3.1 establish slots 6/7, manager destruction, material release at counts 0/1, wrapping acquisition, reverse binding destruction, and value-copy semantics. Residual: legacy 58/4883 counting scope versus 55 named bodies/4758B plus four class/create helpers/111B; no blanket inventory-completion claim.
 
 **ANSWERED 2026-10-22 (re-small-renderer-contracts4):** DIFFERS — §§3.1–3.2 establish material lifetime and manager slots 6/7; the exact 58/4883 subsystem scope is 53 class bodies/4749 plus five free functions/134, excluding two folded entries/9 and all named data.
+
+<!-- from: re-texbind (2026-10-19) -->
+- ~~**TB2 - §1.9:** who sets the factory's display bit depth (slot 10) and its LOD offset (slot 9), and from which
+  settings? graphics-formats.md §2.10 infers the texture-quality option for the LOD offset.~~
+  **ANSWERED 2026-10-27 (re-q-misc):** MATCHES — the only setter found is the effects manager's handler of RenderPropertiesChanged `0xC9F775BB` (`0x00593E10`, also run once at effects load): it calls `SetFreePoolMax` with kTexBindMaxFree × 1,000,000, `SetLodOffset` with kLODOffset (integer render property 3) and slot 10 with kTextureBits (integer 2); defaults equal the factory's initial state. Which option feeds those properties is data (Graphics Rules), not in the exe (§1.9).

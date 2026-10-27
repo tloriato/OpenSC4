@@ -49,3 +49,13 @@
   `6534284A/A9189CF0/00000001` through the public resource/property interfaces, then feeds the Rust
   property-reading implementation; no expected value is copied from a native lighting getter.]~~
   **ANSWERED 2026-10-24 (re-lighting-lt14):** DIFFERS — §1.4 corrects the shipped u32 texture to `0x69D3A23B` (1775477307), verified directly in GOG SimCity_1.dat exemplar `6534284A/A9189CF0/00000001`, property `085489C8`. The old `0x69D3BC3B` was a transcription error. The getter copies the shared integer unchanged, with optional per-holder override; missing properties retain prior configuration. Vector 23 covers shipped value, reload retention and holder isolation. The initial run's 0/46 verdict is preserved, not relabeled exact.
+
+<!-- from: re-lighting (2026-10-19) -->
+- ~~**LT1 - §2.1, §2.2:** which setting is the byte `+0x39C` of the `+0x0C` member of the settings object at
+  `0x00B43CC4`? When it is set the fade colour is black, the fade strength 0 and no dawn or dusk message is posted.~~
+  **ANSWERED 2026-10-27 (re-q-misc):** MATCHES — the byte is the boolean render property kRenderSnapshot (boolean 28: table offset 0x20 × 28 + 0x1C = `+0x39C`; registered index `0x1C`, default false). When set, time-of-day recomputation uses a black fade colour and fade strength 0 and posts no dawn/dusk message (lighting.md §2.1, §2.2; render-properties.md §3).
+
+<!-- from: re-lighting (2026-10-19) -->
+- ~~**LT2 - §4.3:** which network occupants answer true to slot 8 with `0x40000`? Their models are lit with the up
+  normal and the default weight, ahead of the type tests.~~
+  **ANSWERED 2026-10-27 (re-q-misc):** MATCHES — slot 8 of the network occupant (`HasNetworkFlag`, all given bits) with `0x40000` is true for pieces on a bridge step, abutments included, so bridge pieces are lit with the up normal and the default weight (lighting.md §4.3; network-geometry.md §10.3).

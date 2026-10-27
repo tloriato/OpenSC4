@@ -234,7 +234,7 @@ generated index: the questions live one file per spec, so read only the file for
 | advisors | 0 | 19 | AD20 | questions/advisors.md |
 | aircraft | 0 | 11 | AF12 | questions/aircraft.md |
 | animated-sprite | 5 | 6 | AS12 | questions/animated-sprite.md |
-| animation-coordinator | 7 | 0 | AC10 | questions/animation-coordinator.md |
+| animation-coordinator | 5 | 2 | AC10 | questions/animation-coordinator.md |
 | animation-tick-manager | 4 | 0 | TK5 | questions/animation-tick-manager.md |
 | app-directors | 3 | 0 | ADIR4 | questions/app-directors.md |
 | application | 15 | 7 | AP22 | questions/application.md |
@@ -292,7 +292,7 @@ generated index: the questions live one file per spec, so read only the file for
 | game-data-registry | 5 | 0 | GDR6 | questions/game-data-registry.md |
 | game-of-life | 4 | 0 | GL5 | questions/game-of-life.md |
 | geometry-utilities | 6 | 1 | GU8 | questions/geometry-utilities.md |
-| glyph-textures | 2 | 0 | GT3 | questions/glyph-textures.md |
+| glyph-textures | 0 | 2 | GT3 | questions/glyph-textures.md |
 | graphics-formats | 6 | 35 | FS18, GF25 | questions/graphics-formats.md |
 | graphics-rules | 4 | 8 | GR13 | questions/graphics-rules.md |
 | graphs-window | 4 | 0 | GW5 | questions/graphs-window.md |
@@ -304,16 +304,16 @@ generated index: the questions live one file per spec, so read only the file for
 | hit-music | 8 | 0 | HM9 | questions/hit-music.md |
 | html-document | 3 | 6 | HD10 | questions/html-document.md |
 | html-ui-hooks | 4 | 0 | HU5 | questions/html-ui-hooks.md |
-| intro-video | 2 | 0 | IV3 | questions/intro-video.md |
+| intro-video | 0 | 2 | IV3 | questions/intro-video.md |
 | landfill | 0 | 39 | LF7, LG34 | questions/landfill.md |
 | landvalue | 2 | 10 | LV11 | questions/landvalue.md |
 | language-utility | 4 | 0 | LU5 | questions/language-utility.md |
 | legacy-control | 4 | 13 | LC20 | questions/legacy-control.md |
-| lighting | 6 | 9 | LT16 | questions/lighting.md |
+| lighting | 4 | 11 | LT16 | questions/lighting.md |
 | local-grid-helper | 1 | 0 | LGH2 | questions/local-grid-helper.md |
 | lot-configuration | 0 | 2 | GLUE23 | questions/lot-configuration.md |
 | lot-configuration-editor | 0 | 18 | LE19 | questions/lot-configuration-editor.md |
-| lot-developer | 3 | 36 | LD40 | questions/lot-developer.md |
+| lot-developer | 1 | 38 | LD40 | questions/lot-developer.md |
 | lot-models | 3 | 5 | LM9 | questions/lot-models.md |
 | lot-records | 3 | 14 | LR18 | questions/lot-records.md |
 | lua-host | 0 | 9 | LH8 | questions/lua-host.md |
@@ -370,7 +370,7 @@ generated index: the questions live one file per spec, so read only the file for
 | region-view | 6 | 0 | RGV7 | questions/region-view.md |
 | regional-city | 6 | 3 | RY10 | questions/regional-city.md |
 | regional-city-records | 2 | 7 | RR10 | questions/regional-city-records.md |
-| render-properties | 4 | 4 | RP9 | questions/render-properties.md |
+| render-properties | 2 | 6 | RP9 | questions/render-properties.md |
 | render3d | 2 | 2 | RND5 | questions/render3d.md |
 | renderer-driver | 6 | 11 | RD13 | questions/renderer-driver.md |
 | renderer-gdrivers-director | 1 | 0 | GD2 | questions/renderer-gdrivers-director.md |
@@ -401,7 +401,7 @@ generated index: the questions live one file per spec, so read only the file for
 | terrain-view | 3 | 1 | TV5 | questions/terrain-view.md |
 | text-decal-occupant | 1 | 0 | TDO2 | questions/text-decal-occupant.md |
 | text-edit | 0 | 12 | TE13 | questions/text-edit.md |
-| texture-bindings | 3 | 1 | TB9 | questions/texture-bindings.md |
+| texture-bindings | 2 | 2 | TB9 | questions/texture-bindings.md |
 | timers | 0 | 3 | TM4 | questions/timers.md |
 | tip-of-the-day | 1 | 0 | TOD2 | questions/tip-of-the-day.md |
 | tools-com-director | 2 | 2 | TD5 | questions/tools-com-director.md |
@@ -434,5 +434,5 @@ generated index: the questions live one file per spec, so read only the file for
 | win-filebrowser | 0 | 6 | FBQ7 | questions/win-filebrowser.md |
 | win-grid | 2 | 7 | WG10 | questions/win-grid.md |
 | zone-tool | 1 | 0 | ZT2 | questions/zone-tool.md |
-| zones | 2 | 56 | ZG43, ZQ17 | questions/zones.md |
-| **total** | **619** | **1702** | | |
+| zones | 0 | 58 | ZG43, ZQ17 | questions/zones.md |
+| **total** | **604** | **1717** | | |

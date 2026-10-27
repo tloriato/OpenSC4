@@ -38,7 +38,9 @@ material records of models from the MATS data.
 
 The interfaces at `+0x04`, `+0x08`, `+0x0C` and `+0x24` start with `this − n` thunks to `QueryInterface`, `AddRef`
 and `Release` (`0x00809920`…`0x008099E0`); the `+0x0C` one's slot 3 runs the deleting destructor
-(`0x008099B0` → `0x00809FF0`). `AddRef` and `Release` (`0x008091B0`, `0x008091C0`) are the system service's.
+(`0x008099B0` → `0x00809FF0`). `AddRef` and `Release` (`0x008091B0`, `0x008091C0`) are the system service's. The `+0x04` interface (IID
+`0x088CEB67`, TB1) has only those three thunks and one further slot (`0x00648F10`, a one-argument body that returns at
+once, shared with many unrelated vtables); no other code in the executable names that IID *[inferred: an inert view]*.
 
 ### 1.2 State (0x84 bytes)
 
@@ -156,7 +158,23 @@ returns true.
   removed and its record un-keyed (instance := 0; `0x00809690` removes one entry); the bindings themselves live on.
   Then `+0x70` := g. Slot 11 returns `+0x70`.
 - `SetLodOffset(n)` (slot 9, `0x00809910`): `+0x6C` := n; it affects bindings made afterwards.
-- Slot 10 sets the display bit depth `+0x68`.
+- Slot 10 (the shared setter `0x006D6E00`) sets the display bit depth `+0x68`.
+
+**Who sets them (TB2)** *[compat]*. The only caller found for slots 9, 10 and 14 is the effects manager's handler of
+`kMessageTypeRenderPropertiesChanged` `0xC9F775BB`, `cSC4EffectsManager::DoRenderPropertiesChanged` (`0x00593E10`),
+which also runs once when the effects are first loaded (`0x005947D9`) and so sets the factory at startup. It gets
+the factory (service `0x1AC0E11A`, IID `0xFAC0E219`) and calls, in this order (`0x00593F6C`–`0x00593FCC`):
+
+1. `SetFreePoolMax` (slot 14) with the truncated product of the float render property `kTexBindMaxFree` (float 2,
+   default 2, range 0–32) and 1,000,000.0, so the shipped 2 reproduces the factory's own 2,000,000-byte limit (§1.2);
+2. `SetLodOffset` (slot 9) with the integer render property `kLODOffset` (integer 3, default 0);
+3. slot 10 with the integer render property `kTextureBits` (integer 2, default 32).
+
+The defaults equal the initial values of §1.2, so without any Graphics Rules the factory keeps its initial state.
+The render properties can be written by name by the Graphics Rules (`Graphics Rules.sgr`, graphics-rules.md), a data
+file, so which option or detected value feeds `kLODOffset` and `kTextureBits` is decided there and cannot be read
+from the executable (graphics-formats.md §2.10 infers the Texture Quality option for the LOD offset, which stays
+*[inferred]*).
 
 ### 1.10 Information
 
@@ -376,8 +394,11 @@ The model frame resolution of graphics-formats §4.1 (slots 5 and 6); code that 
 
 ## 6. Open questions
 
-See QUESTIONS.md TB1–TB2: the interface `0x088CEB67` at `+0x04`, and who sets the bit depth and the LOD offset (and
-with what). TB3 (the material slot bytes) is answered in §3.
+TB2 (who sets the bit depth and the LOD offset, and from what) is answered in §1.9 and archived. Still open in
+[questions/texture-bindings.md](questions/texture-bindings.md): TB1, the interface `0x088CEB67` at `+0x04` (§1.1: no
+other code in the executable mentions that interface ID, and its only slot beyond the three `this − 4` thunks is a
+one-argument body that does nothing and is shared by dozens of vtables, so it is an inert secondary view whose
+identity the executable does not reveal). TB3 (the material slot bytes) is answered in §3.
 
 ## 7. Conformance tests
 

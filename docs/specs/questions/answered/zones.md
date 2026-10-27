@@ -411,3 +411,15 @@ answer is in brackets.
 
 <!-- from: From the zone developer / lot manager glue, Stage B (2026-10-15) -->
 - ~~**ZG40:** `UpdateHighlightTextures` (§7.1.1), which the spec allows to be omitted, is not implemented. [omitted]~~ **ANSWERED 2026-10-16 (re-answers22):** MATCHES (zones.md §7.1.1). The function changes no simulation state and draws nothing; omitting it only removes the zoning preview textures while the zone tool drags, a visible UI difference in game and nothing else.
+
+<!-- from: From the return-channel audit (2026-10-16) -->
+- ~~**ZG41:** lot manager slot 24 DeleteLot is "EAX undefined; error: no bool result" in zones.md §8.6 and §11.3, but
+  lot-developer.md (cross-reference table near line 1659) and tract-developer.md's interface table (line 1164) list it
+  as AL. Those two tables should be corrected. [our hosts ignore it and return true (F3)]~~
+  **ANSWERED 2026-10-27 (re-q-misc):** MATCHES — zones.md is right: `DeleteLot` (slot 24, `0x0072F8E0`) has no defined result; in real mode its last action is the lot's `Release` (so EAX is a remaining reference count, 0 when the lot was freed), in highlight mode an unrelated leftover (zones.md §8.6, §11.3). lot-developer.md's dependency table is corrected; tract-developer.md's interface table ("AL") is wrong and still to be fixed outside this batch.
+
+<!-- from: From the return-channel audit (2026-10-16) -->
+- ~~**ZG42:** (tract-developer.md, the lane's "Q8") the tract-developer.md interface table gives lot configuration manager
+  slots 18/19 (Register/UnregisterLotConfigurationFilter) as AL, but prop-lotconfig.md §B7 gives "—" (no defined
+  return). Which is right? [no defined return; the result is not tested (F6)]~~
+  **ANSWERED 2026-10-27 (re-q-misc):** MATCHES prop-lotconfig.md §B7 — slots 18/19 of the lot configuration manager have no defined return. `RegisterLotConfigurationFilter` (`0x0048A660`) inserts the filter into an ordered set and returns with a pointer to its own stack temporary in EAX; `UnregisterLotConfigurationFilter` (`0x0048A3F0`) leaves whatever its find/erase left. tract-developer.md's "AL" is wrong (outside this batch). Recorded in zones.md §12.

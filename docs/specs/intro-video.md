@@ -103,8 +103,12 @@ Then `cGZWin::Shutdown`. The result is true.
 
 **`GZPaint`**: the screen keeps repainting itself while its timers run.
 1. When the countdown is 0, set it to 2.
-2. Clear: the graphics system (`RZ::GS()`, IID `0xC47B747C`), slot 3, gets slot 12 `(0, 0, 0, 0)`, slot 15 `(1)`
-   and slot 11 `(0x4000)` *[inferred: black, then clear]*.
+2. Clear (`0x0079D4AE`–`0x0079D4F3`): the graphics system (`RZ::GS()`, queried for IID `0xC47B747C`) gives its driver
+   (slot 3, as in texture-bindings.md §1.3); skipped when the query or the driver fails. The driver gets slot 12
+   `ClearColor(0, 0, 0, 0)` (a black, transparent clear colour), slot 15 `ColorMask(1)` (colour writes on in the OpenGL
+   driver; the DirectX 7 driver only flushes its queue here, renderer-driver.md §5.2) and slot 11 `Clear(0x4000)` (the colour
+   bit only: the whole viewport's colour buffer is cleared to black, depth and stencil are not touched; renderer-driver.md
+   §5.3) *[compat]*.
 3. With the logo window, `t` := the timer's elapsed ms:
    1. When the logo is visible (slot 71) and `t` > 5000: hide it, which fades it out.
    2. When `t` > 6000: `ChildDelete` the logo, release it, clear `+0xDC`, and post `0xEAAC1A96`.
@@ -134,10 +138,16 @@ or the second movie.
   `+0x17C` := `message`. The player posts that message to the target when its movie ends.
 - **`QueueMovie(&key, flags)`** (`0x008105A0`): false without the resource manager (framework service `0x056B906E`,
   IID `0x656B8EFC`). Otherwise:
-  1. The manager's slot 37 `(key, &resource, 0)`. When it fails, the result is false.
-  2. Query the resource for the serial record `0xC56B8F08`.
-  3. Create GZCOM class `0x0A32C0DA` (IID `0x8A32C0AC`) and give it the record (its slot 3).
-  4. Queue that object's slot 5 result with `flags` (`0x008104F0`).
+  1. The manager's slot 37 `(key, &record, 0)` (`0x00972B78`): this opens the DB **record** of `key` and does not load a
+     resource object. It finds the DB segment that holds the key (manager slot 32 `FindDBSegment`), opens the record in
+     it (segment slot 21 `OpenRecord(key, &record, access)`) with access 1 (read) when the third argument is 0, or 3
+     (read and write) otherwise, and releases the segment. It fails (false) when no segment holds the key or the open
+     fails, and then so does `QueueMovie`.
+  2. Query the record for the serial record `0xC56B8F08`.
+  3. Create GZCOM class `0x0A32C0DA` (IID `0x8A32C0AC`) and give it the record (its slot 3). That class is
+     `cGZDBSerialRecordAsIGZFile`, a serial record seen as a file with a position, a size and reads (record-as-file.md).
+  4. Queue that object's slot 5 result, which is its `cIGZFile` interface (record-as-file.md §1), with `flags`
+     (`0x008104F0`). The decoder then reads the movie from the package as an ordinary file.
   5. Release everything; true.
 - **`Queue(object, flags)`** (`0x008104F0`): push `{flags, object}`, with a reference, at the back of a
   `std::deque` at `+0xF8`. The deque has 128-byte blocks of 16 pairs; the slow path `0x0080FF30` adds a block.
@@ -173,6 +183,7 @@ All 22 functions:
   `0x00810400`, `0x00810580`, `0x00811C10`.
 
 Not covered:
-- the MAD decoder and the rest of `cSC4MadCowPlayerWin` (its own owner);
-- the resource manager's slot 37 and class `0x0A32C0DA` (IV1);
-- the graphics-system clear (IV2).
+- the MAD decoder and the rest of `cSC4MadCowPlayerWin` (its own owner).
+
+The questions IV1 (the manager's slot 37 and class `0x0A32C0DA`, §4) and IV2 (the clear, §3) are answered and archived
+in [questions/answered/intro-video.md](questions/answered/intro-video.md).

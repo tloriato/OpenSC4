@@ -25,7 +25,7 @@ manager keeps two kinds:
   `kStringTextureCacheSize` KB (1 MiB by default), trimmed every 50 ms with a second-chance sweep.
 
 Both are rendered by `nS3D::CreateTextureFromText` (`0x0080AB90`, out of scope here) with a font from the framework's
-font source `RZ::WCM()` (slot 5 maps a font ID to a font object *[inferred]*). When the driver asks for textures to be
+font source `RZ::WCM()`, the window control manager (§1.3; its slot 5 maps a font ID to a font object). When the driver asks for textures to be
 restored, the string cache is dropped and every glyph texture is rendered again.
 
 ## 1. `cSC4GlyphTextureManager` *[compat]*
@@ -104,7 +104,11 @@ link/release behavior. Replacing a manager link records new AddRef, store, old R
 
 `Init` runs once: initialised := true; budget := the render property `kStringTextureCacheSize` (KB, default 1024;
 read as `+0x3B4` of the render-properties object `+0x18` of the application's settings, `cSC4App` slot 44) × 1024;
-registers the service with the framework (framework slots 3 and 9 *[inferred: the tick list]*); subscribes the
+registers the service with the framework: first `AddSystemService` (framework slot 3, argument: the `+0x04`
+system-service view, so the service is found under its ID `0xABEB5E37` with priority −2,000,000 and the framework
+rejects a second service of that ID), then `AddToTick` (framework slot 9, `+0x24`, same argument), which puts the
+service on the framework's tick list so that `OnTick` (§1.5) runs once per frame, in descending priority order, tying with
+the simulator's priority, so the relative order depends on insertion (flammability.md, framework-gz-services.md §4.4); subscribes the
 `+0x20` target to `kSGLMessage_RestoreTextures` `0x8ACAA95F`. Always true.
 
 `Shutdown` (when initialised): for each glyph in the map, clear its manager link (releasing it) and release the map's
@@ -116,7 +120,11 @@ The key is (character string, font ID); the map orders keys by the string compar
 then by font ID (`0x005D7C00`).
 
 - **Found:** add a reference, return it; true.
-- **Else:** font := `RZ::WCM()` slot 5 (font ID); none → false. A new glyph texture (§2) is rendered from the
+- **Else:** font := `RZ::WCM()` slot 5 (font ID); none → false. `RZ::WCM()` (`0x00913C72`) returns the window control
+  manager service (`cIGZWinCtrlMgr`, interface `0x22C2EB1F` of service `0xC2C2EB0F`), cached after the first call in
+  the global `0x00B628C4` (framework-misc2.md §1); its slot 5 (`SystemFont`, `0x00997B55`) is a plain lookup of the
+  font ID in the manager's font table (widget-ctrlmgr.md): the stored font object, or null when the ID is not
+  registered (there is no fallback to the default font here, unlike the manager's internal helper). A new glyph texture (§2) is rendered from the
   character with that font, the source rectangle starting as (0, 0, 1, 1); a failed render → false. On success
   it records the manager, the character, the texture size and the glyph size (both 16-bit), and the UV rectangle
   as the rendered extents divided by the texture size; it enters the map (holding one reference) and the caller gets
@@ -332,7 +340,8 @@ Text in the 3D view, through the application (`cSC4App::Init` creates the manage
 
 ## 6. Open questions
 
-See QUESTIONS.md GT1–GT2: what `RZ::WCM()` is, and the framework slots 3 and 9 `Init` calls.
+GT1 (what `RZ::WCM()` is) and GT2 (the framework slots 3 and 9 that `Init` calls) are answered in §1.3 and §1.2 and
+archived in [questions/answered/glyph-textures.md](questions/answered/glyph-textures.md).
 
 ## 7. Conformance tests
 

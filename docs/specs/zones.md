@@ -1548,6 +1548,12 @@ stays in the cell map and the master list, and it is not released. Real mode, in
 5. if the lot has a business unit (lot slot 25), `lotDeveloper.RemoveLotFromItsBusinessUnit(lot)` (slot 33);
 6. `lot.Shutdown()` (slot 7) and release the manager's reference.
 
+**Result (ZG41).** `DeleteLot` has no defined result and must not be treated as a bool: in real mode the last action
+is the lot's `Release` (`0x006BF460`), so EAX is whatever that returns (the remaining reference count, 0 when the lot
+was freed), and in highlight mode it is an unrelated leftover. Other documents that list slot 24 as returning AL
+(lot-developer.md's dependency table, now corrected, and tract-developer.md's interface table) are wrong on this point;
+a re-implementation must not give it a meaning.
+
 `DeleteLots(x1, z1, x2, z2)` (slot 25, `0x0072CAE0`, pop 16; EAX undefined): `GetLotsInCellRect(…, false)` into a
 temporary list, `DeleteLot` each, release and free.
 
@@ -1885,6 +1891,7 @@ Pops are bytes (from `docs/abi/interfaces.tsv` argument counts or `--check`).
 | `cISC4Lot` | 5, 7, 8, 9, 12, 14, 16, 21, 23, 25, 31, 33, 34, 48, 69 | Init, Shutdown, PostCityInit, GetLotConfiguration, GetFlags, GetBoundingRect, GetAltitude (ST0), GetLocation, GetFacing, business unit, GetZoneType, GetState, SetState(1, 0, 0), GetBuilding, SetVerticesAreLocked | see `interfaces.tsv` | | throughout |
 | `cISC4LotConfiguration` | 14, 15 | `IsCompatibleWithWater`, `IsCompatibleWithZoneType(type)` | 0, 4 | AL | CanCreateLot, PlaceZone, CreateParcellizableRegion |
 | `cISC4LotConfigurationManager` (`0x00B43D18`) | 9 | `GetLotConfigurationsByFilter` | | | DetermineLotSize |
+| | 18, 19 (+0x48, +0x4C) | `RegisterLotConfigurationFilter(filter)` (`0x0048A660`), `UnregisterLotConfigurationFilter(filter)` (`0x0048A3F0`) | 4 | **none** (ZG42) | tract developer (not called from this spec) |
 | `cISC4GrowthDeveloper` | 29 and others | `EstimateDesirability`, purpose, wealth, source demand, growth list | | | DetermineLotSize |
 | `cISC4TrafficSimulator` (`0x00B43DA8`) | 22 (+0x58) | `GetDesiredLotInsertionPoint` | 0 | EAX | CreateLot |
 | `cISC4LandfillDeveloper` | 9 | `GetZoningCost(region*)` (int64) | 4 | EDX:EAX | PlaceZone |

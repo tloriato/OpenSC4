@@ -89,8 +89,19 @@ Direct destructor calls are lifetime termination, not reference-count operations
 | `+0x00` | index | index |
 | `+0x04` | name (a string) | name |
 | `+0x10` | short name (a string) | short name |
-| `+0x1C` | value (byte); two more bytes, 0 | value |
-| `+0x20`, `+0x24` | — | two more values: a range for some entries (§3) *[inferred: minimum, maximum]* |
+| `+0x1C` | value (byte) | value |
+| `+0x1D`, `+0x1E` | minimum and maximum (bytes), always 0 | — |
+| `+0x20`, `+0x24` | — | minimum and maximum: the range of some entries (§3), else 0 and 0 |
+
+All three tables hold the same record template, `{index, name, short name, value, minimum, maximum}`, instantiated per
+type (the export names the boolean instance `cSC4RenderProperty<bool>`) *[inferred: the minimum and maximum names
+follow from that layout and from the registered ranges of §3, e.g. 1–5 for `kEffectPriorityLevel`]*. Each
+registration (§1.3) stores the value, minimum and maximum together; a boolean is registered as (value, 0, 0), so its
+two extra bytes are an unused range of the same record type (RP2). **Nothing reads the minimum and maximum**
+(RP1) *[inferred]*: none of the 18 slots does, set neither clamps nor checks them (§2), the table copy of the
+constructor only carries them along, and every direct reader of the tables found in the executable (all code that
+reaches the application's object through the global `0x00B43CC4`, `0x0044B660`) uses the value offset only. They are
+registration metadata; a re-implementation may keep them for documentation but must not enforce them.
 
 So the value of boolean i is the byte at `table + 0x20 i + 0x1C`, and of integer or float i the 4 bytes at
 `table + 0x28 i + 0x1C`. Other classes read the values directly at these offsets (lighting.md §2.1 reads boolean 28
@@ -429,7 +440,7 @@ without this bridge. Live values need a complete input/copy history; setter cred
 observed setters (or an isolated owned-instance fixture); S needs the private lifetime
 binding above. QueryInterface/refcount/destruction and independent copying need separate
 owned-object tests (§7.1), never destructive calls on a borrowed live service. RP1/RP2's
-metadata and RP6's locale profiles remain separate questions. A registry-only shadow
+metadata (§1.2) is closed; RP6's locale profiles remain a separate question. A registry-only shadow
 does not become whole-owner verification by adding a dump of configured native values.
 
 ## 2. Slots (vtable `0x00ABB6C0`) *[compat]*
@@ -591,20 +602,23 @@ a short name always returns the lower index.
   28) and `kLightingUpdateDelta` (float 6) (lighting.md §1.3, §2.1, §6).
 - The glyph texture manager reads `kStringTextureCacheSize` (integer 23; glyph-textures.md §1.2).
 - The model maker reads `kModelLODOffset` (integer 22; graphics-formats.md §4.2).
+- The effects manager's handler of `0xC9F775BB` (`cSC4EffectsManager::DoRenderPropertiesChanged`, `0x00593E10`) pushes
+  `kTextureBits` (integer 2), `kLODOffset` (integer 3) and `kTexBindMaxFree` (float 2, × 1,000,000 bytes) into the
+  texture binding factory (texture-bindings.md §1.9).
 - `cSC4View3DWin` keeps a private scroll snapshot and can restore the application's tables without setters
   (§1.5); its text assignment helper writes the application and posts `0xC9F775BB` (graphics-formats.md §4.2).
 
 ## 5. Quirks
 
 1. Four short names are ambiguous; the lower index wins (§3).
-2. Get and set do not check the index; set ignores the range (§2).
+2. Get and set do not check the index; set ignores the range, and nothing else uses it (§1.2, §2).
 3. Scroll snapshot save/restore bypasses setters and copies the reference-count field too; its enable flag is
    checked separately at begin and end (§1.5).
 
 ## 6. Open questions
 
-See [questions/render-properties.md](questions/render-properties.md) RP1–RP2: who reads the two extra values of an
-entry, and what the two extra bytes of a boolean entry are for. RP3–RP5 are answered in
+RP1 (who reads the two extra values of an entry) and RP2 (what the two extra bytes of a boolean entry are) are
+answered in §1.2 and archived. RP3–RP5 are answered in
 §1.1, §2.1 and §1.3 respectively; their original entries are archived. RP6 asks for the
 remaining shipped-language locale/codepage profiles and startup ordering. §1.4 specifies
 the native primitive ABI, binding/failure protocol and byte/timing boundaries; §7.3 gives

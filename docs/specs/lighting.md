@@ -267,7 +267,7 @@ cannot supply an earlier dependency result. The input boundary is:
 | Construction and Init | §1.2 constructor state; §1.4 process-initial shared configuration plus all prior property reloads; settings slot 7 with argument `0x0C`; resource lookup success and effective properties of `6534284A/A9189CF0/00000001`; decoded pixels, dimensions/stride and load success of all four §1.5 maps | Init reads settings, exemplar and maps before subscribing to the seven messages in §1.3 order (`0x007DB6B4–0x007DB82D`). Construction/Shutdown do not reset the shared statics. |
 | Time delivery | Exact argument of each lighting slot-6 call; for the normal view driver, clock visual hour and minute read at that delivery (§2.4) | Include calls returning false: time, sampled colours and possibly month still change. On a backwards time step record the city date service's month result (city slot 70, then service slot 15); it is not read on every delivery (`0x007D9DF0–0x007D9E1C`). |
 | Tint/reset | Arguments of lighting slot 7 (RGB and amount), and every slot-8 reset, from the actual caller | These are direct interface calls, not owner message subscriptions. They immediately recompute at stored time (§2.3). Clock messages alone cannot replay tint. |
-| Render settings | Raw result of settings slot 7 (`0x0C`); threshold binary32 at settings member `+0x24`, offset `+0x10C`; fade-suppression byte at settings member `+0x0C`, offset `+0x39C` | Threshold/shadow toggle are consumed at Init or `0xC9F775BB` as specified in §§1.3/6. The byte is consumed by time-dependent recomputation and dawn/dusk handling (§2). Its public named accessor/meaning remains LT1; do not assume the day/night clock preference is this byte. There is no established complete public settings snapshot here. |
+| Render settings | Raw result of settings slot 7 (`0x0C`); threshold binary32 at settings member `+0x24`, offset `+0x10C`; fade-suppression byte at settings member `+0x0C`, offset `+0x39C` | Threshold/shadow toggle are consumed at Init or `0xC9F775BB` as specified in §§1.3/6. The byte is consumed by time-dependent recomputation and dawn/dusk handling (§2). The byte is the boolean render property `kRenderSnapshot` (boolean 28; LT1, §2.1); it is not the day/night clock preference. There is no established complete public settings snapshot here. |
 | View and city binding | New zoom/rotation pair carried by `0xA6B79601`; at `0x2B96B3EA` and a shadow-toggle refresh, current view zoom/rotation from view utilities; terrain/city-terrain availability, cell width and cell counts | City-start establishes geometry and grids, then applies the view (§6). A view refresh consumes the fade strength existing at that instant (§3). |
 | Terrain edits | Ordered `0xEA3B0AF1`, `0x278E6003`, `0x6A3B0AFD` deliveries; inclusive incoming rectangle; terrain initialized result and altitude-read results when requested | Long-operation edits accumulate rectangles; heights are read at the eventual copy, not necessarily at each notification. Full view refresh copies all heights when shadows are enabled. Preserve the §§5/6 stride convention. |
 | Exemplar changes | Effective property presence/values from the retained holder at each `0xC53D10AA` delivery | §1.4 reloads retained statics and derived key lists/sun; it is not a constructor or a map reload. Missing properties retain history. |
@@ -302,7 +302,8 @@ Let f = time × (1/24) and v = (month + 0.5) × (1/12).
 
 - **Day light** `+0x98`: when the `+0xCC` map exists, sample it at (f, v) (below); else interpolate the day-light key
   list at f (below).
-- When the settings object's `+0x0C` member has its byte `+0x39C` clear: **fade colour** `+0x168` from the `+0xD0`
+- When the settings object's `+0x0C` member has its byte `+0x39C` clear (that byte is the boolean render property
+  `kRenderSnapshot`, boolean 28, default false: render-properties.md §3, §4; the offset is 0x20 × 28 + 0x1C): **fade colour** `+0x168` from the `+0xD0`
   map at (f, v), else from the fade-colour list; **fade strength** `+0x164` from the fade-strength list at f.
   When the byte is set: fade colour := (0, 0, 0) and fade strength := 0.
 - **Global light** `+0x8C` := the day light, or with the tint on, lerp(day light, tint colour, tint amount); the fade
@@ -331,7 +332,7 @@ Evidence: `0x007D9E21–0x007D9E68` (including the square root at `0x007D9E55`).
    return false.
 4. If there is a terrain (`+0x14`):
    - wasNight := last announced day light red < T, isNight := day light red < T (T = `0x29189BF7`);
-   - if they differ and the `+0x39C` byte (§2.1) is clear, post (message-server slot 4) `0xC9DA96E8` (dawn) when it
+   - if they differ and the `kRenderSnapshot` byte (`+0x39C`, §2.1) is clear, post (message-server slot 4) `0xC9DA96E8` (dawn) when it
      was night, else `0xC9DA96E9` (dusk);
    - day fraction `+0xBC` := max(0, (red − T) / (1 − T)); night fraction `+0xC0` := max(0, 1 − (red − m) / (T − m)),
      m = `+0xD4`, with T − m replaced by 0.0001 when it is 0;
@@ -417,7 +418,9 @@ wrongly. Otherwise slot 23.
 The model gives its bounding box (slot 8) and its owner (slot 3), queried for the occupant `0x26BB767E`.
 
 1. Weight w := `0x29189BF2` (0.4). For an occupant:
-   - a network occupant (`0xA821EF94`) whose slot 8 answers true for `0x40000`: out := light ⊙ (w·m + (1 − w)·white),
+   - a network occupant (`0xA821EF94`) whose slot 8 (`HasNetworkFlag`, true when every given bit is set) answers true
+     for `0x40000`, i.e. a piece on a **bridge step**, abutments included (network-geometry.md §10.3,
+     network-geometry.md §10.3), so bridge decks and ramps are lit with the up normal and the default weight: out := light ⊙ (w·m + (1 − w)·white),
      m the model colour of the up normal; done;
    - flora (`0x74758926`) or in occupant group `0x5004` (occupant slot 22): w := `0x29189BF1` (0.9);
    - vehicle `0xC7CC75F1`, pedestrian `0x496E5783`, aircraft `0x480E6151` or watercraft `0x897F7EC2`:
@@ -529,9 +532,18 @@ binary32 replacement at `0x007D83A3`/`0x007D83B6`).
 ### 5.6 Shadow parameters and projections
 
 - `GetShadowParams(a&, b&, colour&)` (slot 14, `0x007D6B70`): `0x085489CC`, `0x085489CD`, `0x085489CB`.
+  Its user is the terrain overlay manager's two shadow passes, which treat `a` and `b` as two factors of one alpha
+  test: when `b` is above 0 the shadows are drawn with the alpha test on (comparison greater-or-equal, reference
+  `a × b`; the shipped 0.4 and 0.55 give 0.22), otherwise with it off and nothing else skipped (the code defaults
+  0.5 and 0 therefore mean "off"); `colour`
+  is the texture environment colour of the shadow (overlay-manager.md §4.6).
 - `GetDecalShadowParams(holder, tex&, a&, b&, c&, pair&, colour&)` (slot 16, `0x007DA490`): the lighting values of
   `0x085489C8`, `0x085489CC`, `0x085489CD`, `0x085489CA`, `0x085489C9`, `0x085489CB`, each then overridden by the
-  given property holder when it has them, so a model exemplar can change its own decal shadow.
+  given property holder when it has them, so a model exemplar can change its own decal shadow. The first two values
+  outside the texture are the same `0x085489CC` / `0x085489CD` pair as above. The remaining decal-only values,
+  `0x085489C9` (a float pair) and `0x085489CA` (12.0), have no other reader in the executable, and no call of slot 16
+  was found anywhere in it, so the shipped game does not appear to use them (LT4 stays open for the consumers that a
+  plugin or an unlocated indirect call might have) *[inferred]*.
 - `CalcShadowTerrainRect(…, box, outRect)` (slot 18, `0x007D6CC0`): the cell rectangle ⌊min / 16⌋ … ⌈max / 16⌉ of the
   box's x and z, intersected with the city and then extended by the ordered edge probes in §5.7; always true.
 - `CalcShadowProjection(count, points, uvs, xform, out)` (slot 17, `0x007D8C80`): fits, by least squares, the
@@ -847,8 +859,10 @@ clock's visual time (clock24.md).
 
 ## 10. Open questions
 
-See QUESTIONS.md LT1–LT4: the meaning of the settings byte `+0x39C` (§2.1), the network occupant test `0x40000`
-(§4.3), what the fade term is for on screen (§3), and the decal shadow values `0x085489C9` / `0x085489CA` (§5.6).
+LT1 (the settings byte `+0x39C`, §2.1) and LT2 (the network occupant test `0x40000`, §4.3) are answered and
+archived in [questions/answered/lighting.md](questions/answered/lighting.md). Still open:
+[questions/lighting.md](questions/lighting.md) LT3 (what the fade term is for on screen, §3) and LT4 (the decal
+shadow values `0x085489C9` / `0x085489CA`, §5.6; their only reader is slot 16).
 
 ## 11. Conformance tests
 

@@ -21,3 +21,13 @@
   **Partial proof 2026-10-22 (re-small-renderer-contracts4):** §1.1.1 establishes constructor at 005D8CA0, initial refs/sweep=0, inherited slots/thunks, storage-only destructor distinct from Shutdown, acquire-before-release manager assignment, absent-pointer removal no-op; §3.1 establishes info slot 0. Residual: exact legacy 43/4475 inventory scope versus 38 named bodies/4047B plus shared/unnamed slots; no complete-manager count claim.
 
 **ANSWERED 2026-10-22 (re-small-renderer-contracts4):** DIFFERS — §§1.1.1/3.1/3.3–3.4 establish construction, inherited entries, destruction and private insertion. Exact 43/4475 attribution includes two tree helpers and two unrelated ordinance neighbor thunks; it is not a 43-method manager API.
+
+<!-- from: re-glyphs (2026-10-19) -->
+- ~~**GT1 - §0, §1.3:** what `RZ::WCM()` (`0x00913C72`) returns, and whether its slot 5 is a font lookup by ID as this
+  spec infers.~~
+  **ANSWERED 2026-10-27 (re-q-misc):** MATCHES — `RZ::WCM()` returns the window control manager service (`cIGZWinCtrlMgr`, interface `0x22C2EB1F` of service `0xC2C2EB0F`), cached in `0x00B628C4`; its slot 5 (`SystemFont`, `0x00997B55`) looks the font ID up in the manager's table and returns the stored font object or null, as the spec inferred (glyph-textures.md §1.3).
+
+<!-- from: re-glyphs (2026-10-19) -->
+- ~~**GT2 - §1.2:** which framework services `Init` registers the glyph manager with through framework slots 3 and 9
+  (`0x005D7D50`); the tick list is inferred from `OnTick`.~~
+  **ANSWERED 2026-10-27 (re-q-misc):** MATCHES — framework slot 3 is `AddSystemService` and slot 9 (`+0x24`) is `AddToTick`, both given the `+0x04` system-service view, so the manager is registered under service ID `0xABEB5E37` at priority −2,000,000 and ticked every frame, as the spec inferred (glyph-textures.md §1.2).

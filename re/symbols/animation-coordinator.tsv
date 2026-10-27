@@ -3,7 +3,9 @@ va	name	evidence	mac_x86
 00446000	cSC4AnimationCoordinator::IsShownAnimatable	animation-coordinator.md §1.2; descriptive name, no Mac match; occupant flag 4 as well	
 00446070	cSC4AnimationCoordinator::GetOccupantBlock	animation-coordinator.md §2; descriptive name, no Mac match; position / 256 m, clamped	
 00446150	cSC4AnimationCoordinator::StartOrStopAnimation	animation-coordinator.md §2; descriptive name, no Mac match; animation tick manager slots 5 and 6, flag 0x20	
+00446210	cSC4AnimationCoordinator::GetBuildingFunding	animation-coordinator.md §2.1; descriptive name, no Mac match; lot manager slot 14, lot slot 48, budget simulator slot 51; 0 when missing	
 00446290	cSC4AnimationCoordinator::OccupantMayAnimate	animation-coordinator.md §2; descriptive name, no Mac match; properties 0xEA5393ED (power) and 0x8A5F88E3	
+00446760	cSC4AnimationCoordinator::OnPreferencesChanged	animation-coordinator.md §1.3, §3; descriptive name, no Mac match; message 0x231BBF91; byte +0xF16 above 1, refresh only on change	
 00446890	cSC4AnimationCoordinator::SetOccupantAnimation	animation-coordinator.md §2; block sets, the four conditions, flag 0x20	
 004469b0	cSC4AnimationCoordinator::GetChangedBlocks	animation-coordinator.md §3; descriptive name, no Mac match; blocks in either rectangle but not both	
 00446eb0	cSC4AnimationCoordinator::DoMessage	animation-coordinator.md §3; descriptive name; slot 3 of 0x00A86690	

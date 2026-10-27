@@ -186,3 +186,14 @@ region), from re-answers11. The lane's choices are in brackets.
   uninitialised value for the first network object). `AutoconnectLotNodes` QueryInterfaces every entry with no null
   test (`0x006115F7`), and the final release (occupant manager slot 48) over-releases a repeated node. Nothing in the
   original avoids this, so skipping the failed entry is the safe *[choice]*.
+
+<!-- from: From the return-channel audit (2026-10-16) -->
+- ~~**LD33:** (lot-developer.md §6.6) cSC4LotBaseTextureOccupant slot 9 UpdateVertexAltitudes(bool, bool, ptr): what does
+  it return? §6.6 passes it through as slot 45's AL. [passed through unchanged, as the original does]~~
+  **ANSWERED 2026-10-27 (re-q-misc):** DIFFERS — `UpdateVertexAltitudes` (`0x005DF820`) has no defined result: it returns with its third argument (the changed-flag pointer, null from slot 45) still in EAX. Slot 45's own result is not that value either: with an occupant found its last call is the `Release` of the occupant (remaining count, 0 when freed), otherwise it is slot 41's false. Neither is a bool, so nothing is "passed through" (lot-developer.md §6.6, §11.1 corrected).
+
+<!-- from: From the return-channel audit (2026-10-16) -->
+- ~~**LD34:** lot-developer.md §11.1 gives slot 8 AbandonBuilding as "AL of SetState", and lot-records.md §13.2 gives lot
+  slot 34 SetState as "none defined". So is AbandonBuilding's result undefined? tract-developer.md's interface table
+  lists it as plain AL. [passed through; the tract core never reads it]~~
+  **ANSWERED 2026-10-27 (re-q-misc):** DIFFERS — `AbandonBuilding` (`0x006C3D30`) calls `SetState(4, 0, reason)` and returns at once, and `SetState` has no result, so its AL is an incidental leftover, not "AL of SetState" as lot-developer.md §6.5/§11.1 said (corrected to "undefined"). Both tract-developer call sites ignore it. tract-developer.md's interface table ("AL") still needs the same correction; it is outside this batch.
