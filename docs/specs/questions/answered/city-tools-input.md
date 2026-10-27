@@ -94,3 +94,35 @@
   `CanDemolishLot`), §3.11 (`GetAutomaticFacingAndCellCoverage`, the street count) and §3.12 (`PlaceLot`); §7 claims
   the tool. The toll-booth picker (§3.13) and the preview and feedback drawing (§3.14) stay at summary level (CT16,
   CT17).
+
+<!-- from: the re-citytools4 lane (2026-10-21) -->
+- ~~**CT1 - §2.3, what the 3D view does with a handler's result:** the handlers return a bool, read as "handled".
+  How does `cSC4View3DWin` walk its control stack and persistent controls on an input event (top first? stop at
+  the first true? does `ShouldStack` false change the push)? Owner: the 3D view's input forwarding, not specified
+  anywhere. [top control first, stop on true *[inferred]*]~~
+  **ANSWERED 2026-10-27 (re-q-city):** DIFFERS — "top control first, stop on true" holds only for key events and part of the rest. The view walks both its lists from the last element to the first: key down/up go to the stack (first taker) and then to every persistent control; mouse presses and releases to the persistent controls (first taker) and then the stack (first taker); mouse move to every persistent control, then the stack first taker; the wheel to the stack first taker, then (if none took it) the persistent controls and the zoom; mouse exit to the top stack control and every persistent control. `ShouldStack` is never consulted: the push accepts any control whose `Init` succeeds (§2.3, view3d-window.md §6c).
+
+- ~~**CT6 - §8.2, the query tool's `+0x98`:** the constructor stores 3; no function of §8 reads it. Who reads it
+  (the dialog or route code)? [unknown]~~
+  **ANSWERED 2026-10-27 (re-q-city):** DIFFERS — it is read: `+0x98` is the route-step filter used by `DoesRouteCrossCell` (1: every step except subway steps, 2: only subway steps, 3: every step). The path and traffic-info builders set it (1, or 3 for transport buildings in group `0x1003`; 2 for subway network occupants, else 1); the constructor value 3 means "every step" (§8.2, §8.15).
+
+- ~~**CT7 - §8.4 step 5, the legend dialog:** the exact script key passed to `SC4CreateWindowFromScript` and the
+  placement arithmetic (window slots 41, 44, 45, 56) of the two legend panes; `SetLegendMinimized`
+  (`0x004C4630`) swaps their visibility and moves the minimised pane. [next RE round]~~
+  **ANSWERED 2026-10-27 (re-q-city):** MATCHES — the script key is `{0, 0x96A006B0, 0xABB0120F}` with child ID `0x6BB92BCB`; the full pane is moved to `(viewWidth − paneWidth − 2, 2)` and shown, the small pane to `(F.right − M.width, F.top)` and hidden, and the shell is removed from the view window. `SetLegendMinimized` hides the full pane, shows the small one and re-places it; the reverse just swaps visibility (§8.4 step 5).
+
+- ~~**CT9 - §8.6 step 2, the automaton and stoplight hits:** what do the vehicle manager's slot 34 and the traffic
+  network's slot 37 do with the picked automaton and stoplight prop (select or track it, toggle the light)? (City
+  slot 43 is `GetVehicleManager` and slot 40 `GetTrafficNetwork` in the SDK; the automaton filter accepts vehicles
+  `0xC7CC75F1` and pedestrians `0x496E5783`, `0x004C3AB0`; re-query 2026-10-21.) [unknown]~~
+  **ANSWERED 2026-10-27 (re-q-city):** MATCHES — both are Shift clicks. The automaton goes to the vehicle manager's slot 34, `SetCameraFollow` (the camera tracks it, zooming to step 4 from below 3 when the auto-zoom render property is on); the stoplight prop goes to the traffic network map's slot 37, `SwitchStoplightStates` (flips the signal phase of the intersection at the prop's cell and reloads the countdowns) (§8.6, §8.6.1).
+
+<!-- from: the re-querytool4 lane (2026-10-21, round 2) -->
+- ~~**CT13 - §8.11.3/§8.11.4, the tip gauge data:** the meaning of callout slot 4's values (12, 10) and slot 14's
+  value 5 with the fraction (an icon size and a gauge bar?). Round 3 named the services in §8.11.4 (police
+  `0x00B43D98`, fire `0x00B43D78`, pollution `0x00B43D9C`, slots per protection.md / pollution.md), so only the
+  callout slots remain. On the callout's primary vtable `0x00AB69D0`, slot 4 (`0x007982C0`) takes one held pointer
+  (`+0x130`) and slot 14 (`0x007984D0`) a held pointer (`+0x140`) and a float clamped to [0, 1]; the integer
+  arguments (12, 10) and (5) of §8.11.3 do not fit those shapes, so the interface the tip display calls through
+  must be checked again. [unknown; callout slots only]~~
+  **ANSWERED 2026-10-27 (re-q-city):** DIFFERS — the values are not an icon size and gauge: callout slot 4 is `(skin, padX, padY)`, so 12 and 10 are the horizontal and vertical padding around the text, and the "icon" of the tip tables is the callout's skin bitmap; slot 14 is `(meter, count, fill)`, so 5 is the meter's repeat count and the fraction is its fill (clamped to 0–1). The interface was the right one: callout-box.md §2 already gives these shapes (§8.11.3).

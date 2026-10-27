@@ -51,3 +51,5 @@ va	name	evidence	mac_x86
 005809d0	cSC4ViewInputControlTorch::OnMouseUpL	city-tools.md §2	
 00580a30	cSC4ViewInputControlTorch::OnMouseMove	city-tools.md §2; modifier bit 4 activates	
 00580b00	cSC4ViewInputControlTorch::OnMouseExit	city-tools.md §2	
+008ae16e	freetype::TrueTypeOpcodeDispatchTableInit	city-tools.md §3.4 "Library identity": stores the 256-entry TrueType opcode dispatch table whose repeats follow the opcode groups	
+008ae57b	freetype::TrueTypeInterpreterContextInit	city-tools.md §3.4 "Library identity": calls the dispatch-table init at 0x008ae16e, then fills 20 Q62 direction cosines and lengths; not the terraforming tool's SetCursorEchoPos	

@@ -54,11 +54,18 @@ offsets in the tool object; `+0x1C` is the city view and `+0x24` onward belong t
 - Made by the city view's `InvokeDisaster` (`0x007E9DB0`). `Init` (`0x00580660`): id `0xE9C24AC4`, cursor
   `0x4A08C57E`; inactive (`+0x60`); the fire manager (city slot 72, layer slot 7 for `0x621CDA33`, interface
   `0x49B43F57`, `+0x2C`); base `Init`; a timer (`+0x68`) started; tool message `0x2A106113`.
-- **Tool messages** (`SendTorchToolAudioMessage(type, a, b, c)`, `0x00580550`): the sound system (`0x00B43CB8`) makes
-  an event of `type` with `a`, `b`, `c` (slot 13, interface `0x5B523BA4`) and posts it (slot 12) *[inferred]*;
-  audio.md §7.4's torch entry points use them. Types: `0x2A106113` on, `0x8A10611A` off, `0x8A10611D` press,
-  `0x0A106122` release (and on deactivation), `0x4A106126` move (each of these three with `x`, `y` and the timer's
-  count, milliseconds *[inferred]*), `0xAA96FE8F` with the active flag.
+- **Tool messages** (`SendTorchToolAudioMessage(type, a, b, c)`, `0x00580550`): with the sound system
+  (`0x00B43CB8`) present (it is held across the call), it creates an event with slot 13 `(type, IID 0x5B523BA4,
+  &event, a, b, c, 0)`, posts it with slot 12 and releases the event; without a sound system nothing happens
+  *[compat]*. The four words are the event payload's data words, the fourth always 0. Types and words:
+  `0x2A106113` on (0, 0, 0; sent by `Init`), `0x8A10611A` off (0, 0, 0; `Shutdown`), `0x8A10611D` press, `0x0A106122`
+  release and `0x4A106126` move (each with the hit `x`, `y` and the timer's count; the release that
+  `ActivateTorch(false)` sends carries (0, 0, 0)), `0xAA96FE8F` (the active flag, 0, 0). The count is the tool
+  timer's elapsed time in **milliseconds** (the timer is set to millisecond units and started by `Init`, timers.md
+  §1), an unsigned 32-bit value. The consumer is the sound system's event handler `cSC4AudioEventHandler` (its
+  `DoEvent`, `0x004EF490`, **not** the disaster-fire handler): it reads the words back as signed `x`, signed `y` and
+  the wrapping timestamp, derives the movement speed and starts and stops the torch sounds; the per-type effects
+  are audio.md §7.5 (answers CT2).
 - **The effect** (`+0x30`): `torch_inactive` or `torch_active` by name (effects manager `0x00B43D1C`, slot 7). Turning
   active or inactive (`ActivateTorch(on)`, `0x005806D0`), with an effect and a change: the old effect is stopped
   (slot 4, 0) and released, the other made and started (slot 3, 0); deactivation sends `0x0A106122`; then
@@ -66,8 +73,10 @@ offsets in the tool object; `+0x1C` is the city view and `+0x24` onward belong t
   (`ShutdownTorchEffect`, `0x005807F0`, also `OnMouseExit`): a started effect is stopped (slot 4, 1); released;
   inactive; `0xAA96FE8F(0)`.
 - **Move** (`0x00580A30`): `PickTerrain(x, y, &+0x34, 0)`. A miss drops the effect. A hit: with no effect, make
-  `torch_inactive` and start it; inactive with modifier bit 4 (`0x10`) → active *[inferred: the left button is
-  down]*; place the effect; while active, the cell `(+0x40, +0x44)` := the hit's cell. Then `0x4A106126`. True.
+  `torch_inactive` and start it; inactive with modifier bit `0x10` set → active. That bit is the **left mouse button**
+  held (the window message's flag word maps the left, right and middle buttons to `0x10`, `0x20`, `0x40`, and
+  Shift, Ctrl, Alt to `0x01`, `0x02`, `0x04`; gz-graphics.md, built at `0x0098B750`) *[compat]*, so a move
+  with the left button held lights an inactive torch; place the effect; while active, the cell `(+0x40, +0x44)` := the hit's cell. Then `0x4A106126`. True.
 - **Press** (`0x005808B0`): `0x8A10611D`; a terrain hit (else true): an existing inactive effect turns active (as
   above, without the deactivation message); placed; the animation tick manager is told to call the tool (`+0x28`,
   `0xC0`); the fire manager's `IgniteCell(cell of the hit, false, true, 0)` (slot 5) and `SetCause(1)` (slot 9);
@@ -101,8 +110,10 @@ offsets in the tool object; `+0x1C` is the city view and `+0x24` onward belong t
 
 - **Modifiers** (`0x004D8AC0`): strength and radius := the base pair; Ctrl (modifier bit 1) → the Ctrl pair, else
   Shift (bit 0) → the Shift pair.
-- **Where** (`GetCursorPositionInWorld`, `0x004D8D10`): during a stroke while key `0x14` reads down (window manager
-  slot 6, slot 38, slot 1) *[inferred: Caps Lock]*, the mouse ray meets the level plane at the anchor height
+- **Where** (`GetCursorPositionInWorld`, `0x004D8D10`): during a stroke while key `0x14` reads down (the view's window
+  slot 6 gives the window manager, whose slot 38 gives the keyboard state, whose slot 1 `IsKeyComboDown(0x14, 0)` is
+  the test, widget-winmgr.md §7): key `0x14` is the virtual key `VK_CAPITAL`, **Caps Lock**, and "reads down" means
+  its held-key table entry is set with no Shift, Ctrl or Alt held (modifier word 0) *[compat]* (answers CT1), the mouse ray meets the level plane at the anchor height
   (`+0x124`), clipped to the city: true. Otherwise `PickTerrain(x, y, &p, 0)`: true on a hit, else the plane point
   and false. The anchor (`SetCursorAnchor`, `0x004D8CB0`) is the altitude (terrain slot 13) under a
   `PickTerrain(x, y, &p, 1)` hit.
@@ -150,8 +161,10 @@ offsets in the tool object; `+0x1C` is the city view and `+0x24` onward belong t
   down or up (`OnKeyUp`, `0x004D96E0`) re-applies the modifiers and re-places the echoes; false.
 - **Echoes** (`SetCursorEchoState(on)`, `0x004D8F50`): the two UI effects of the state (`on`: `+0x30`/`+0x34` and
   `+0x40`/`+0x44`; off: `+0x38`/`+0x3C` and `+0x48`/`+0x4C`) replace the old ones (a started old one is stopped with
-  0 and 1), made by ID pair (effects manager slot 6) when the settings flag (`0x00B43CC4` → `+0x0C` → byte `+0x23C`)
-  is set; the stroke cursor := `+0x50` (on) or `+0x54`. `SetCursorEchoPos(p, show)` (`0x004D9160`): the echo point
+  0 and 1), made by ID pair (effects manager slot 6) when the settings flag is set. The flag is the render property
+  boolean 17, `kUseCursorEffects` ("uce", default true; render-properties.md §1.3 and §3): the byte at
+  `[0x00B43CC4] → +0x0C → +0x23C` is entry 17 of the boolean table (`table + 0x20 × 17 + 0x1C`). With it off the
+  new effect slots are left empty and no cursor echoes appear; the stroke cursor := `+0x50` (on) or `+0x54`. `SetCursorEchoPos(p, show)` (`0x004D9160`): the echo point
   (`+0xF0`) := `p`; the first echo scaled by the brush radius (terrain slot 61) × the radius scale, the second by
   `3 / 1.7^zoom` (the power by repeated squaring in doubles, `0x004D8EF0`: exponent 0 gives 1.0; the zoom is never
   negative here, and a negative exponent would not terminate), both at `p`; each started when shown and stopped when not; the cursor: the stroke cursor when
@@ -164,10 +177,23 @@ offsets in the tool object; `+0x1C` is the city view and `+0x24` onward belong t
   `+0xE8` and `+0xEC` released, before the base view-input-control destructor.
 
 *Owner boundary.* The function at `0x008AE57B`, auto-named `SetCursorEchoPos` by a weak Mac match (score 0.618,
-support 0), is not this class's. Its only caller is `0x008A6D50` and the routine it calls is `0x008AE16E`, both
-inside the FreeType library range. It fills a table of doubles and shorts at object `+0x400`/`+0x4A0`, and the
-game's next function is the Lua script server's CLSID getter at `0x008AE770`. The FreeType range of
-`tools/coverage-libs.tsv` now ends there (re-scrubber7).
+support 0), is not this class's. Its only caller is `0x008A6D50` (inside `0x008A6CF5`) and it itself calls
+`0x008AE16E` first, both inside the FreeType library range. It fills a table of 64-bit fixed-point constants and
+shorts at block `+0x400`/`+0x4A0`, and the game's next function is the Lua script server's CLSID getter at
+`0x008AE770`. The FreeType range of `tools/coverage-libs.tsv` now ends there (re-scrubber7).
+
+*Library identity (answers CT3).* `0x008A6CF5` allocates a context object (0x154 bytes) and a 0x4C8-byte block
+through the library's allocator; its helper `0x008A6D50` calls `0x008AE57B`, which first calls `0x008AE16E` (it stores
+256 code pointers in the block's first 0x400 bytes) and then fills the constants described below. The 256 pointers are a **TrueType bytecode instruction dispatch table**: the
+repeats follow the TrueType opcode groups exactly (opcodes 0x02/0x03, 0x04/0x05, 0x06/0x07 and 0x08/0x09 share
+handlers in pairs, 0x10-0x12 and 0x13-0x16 in a triple and a quad, 0x2E/0x2F, 0x30/0x31, 0x32/0x33, 0x34/0x35,
+0x36/0x37, 0x3A/0x3B, 0x3E/0x3F in pairs, and the jump handlers are not independently checked), and the handlers are
+inside the same library range. `0x008AE57B`, after calling it, fills the rest of the same block, which its caller stores in the
+context: 20 Q62 fixed-point direction cosines (1, 0.7071, 0.8944, 0.9487, 0.8321, 0.9701, 0.8, 0.9806, ...) paired
+with 20 integer lengths (64, 91, 143, 202, 231, 264, ...), whose addresses it stores at `+0xC0`/`+0xC4` of the
+structure it is passed. Both routines are part
+of the library's TrueType interpreter set-up, not of this class; the library's exact function name is not
+recoverable from the stripped executable, so only the bucket (FreeType) and the role are stated *[compat]*.
 
 ## 4. The city-situations tool (`cSC4ViewInputControlCitySituations`) *[compat]*
 
@@ -202,8 +228,9 @@ game's next function is the Lua script server's CLSID getter at `0x008AE770`. Th
 
 ## 6. Open questions
 
-See [questions/city-tools.md](questions/city-tools.md): CT1 (the key read as Caps Lock, the settings flag and the
-torch's modifier bit 4), CT2 (the torch messages' event creation in the sound system).
+See [questions/city-tools.md](questions/city-tools.md). CT1 (the Caps Lock key, the cursor-effects flag and the torch's
+left-button bit), CT2 (the torch messages' event path) and CT3 (the library routine) are answered (2026-10-27,
+re-q-city).
 
 ## 7. Conformance tests
 

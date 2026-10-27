@@ -1,16 +1,6 @@
 # city-tools: open questions
 <!-- Questions about [city-tools.md](../city-tools.md). Append new entries at the END; when one is answered, move it to answered/city-tools.md. Rules: README.md. -->
 
-<!-- from: re-citytools (2026-10-20) -->
-- **CT1 - §2, §3.2, §3.4:** which key the terraforming tool reads as `0x14` through window manager slot 6, slot 38,
-  slot 1 (Caps Lock?), what the settings flag `0x00B43CC4` → `+0x0C` → byte `+0x23C` gates (the brush echoes), and
-  what the torch's modifier bit 4 is (the left button?). [as read]
-- **CT2 - §2:** how the sound system's slots 13 and 12 turn the torch's tool messages into events, and which
-  handler consumes each type (audio.md §7.4 names `HandleTorchControlMessages`). [as read]
-
-<!-- from: coordinator PR review (2026-10-22) -->
-- **CT3 - coverage attribution:** independently identify the library routine at0x008AE57B (498bytes), currently auto-named as TerrainScrubber::SetCursorEchoPos. Its only direct caller/callee are0x008A6D50/0x008AE16E inside the FreeType range; the real control method is0x004D9160. That is strong misnaming evidence but does not independently prove the exact library identity. The review retains the current coverage-libs range and withholds the TerrainScrubber owner credit until the attribution is reconciled. No native algorithm is changed.
-
 <!-- from: core-city-input-tools4 (2026-10-23) -->
 - **CT14 - sections 1/2/4, portable initialization and residual domain:** which constructor values initialize Flora's pressed/hover/out-of-money fields and CitySituations' locked/pressed handles, and what happens for nonpositive flora prices, int64 stroke overflow, nonfinite/out-of-range world coordinates, absent static data/managers, failed visual-effect creation and unspecified/null resource handles? Does a failed activation keep the old active flag after stopping/releasing the old effect? [portable owner requires supplied initial Flora/CitySituations state, positive price and nonzero resource identities; reports typed unsupported at the first unpublished operation with completed primitive prefix preserved; no native failure or initialization defaults claimed; Torch's fresh retained cell (0,0) is explicitly published]
 - **CT15 - section 1, indicator and planting call-site details:** city-tools describes int64 price/total passed to cost indicators, while ui-windows lists slot42 as two int32 arguments. What narrowing occurs, and what bool is passed to ClearCostIndicator on positive-total Release (Shutdown explicitly says true)? Does a failed press withdrawal still run the aura call? Does planting use the position rewritten by AddNewFloraOccupant (flora section 6.5) for subsequent sound/water/aura calls? [literal portable cost intents preserve int64 without a wire conversion; release-clear intent has an unresolved flag; aura follows successful insertion even after press withdrawal failure; subsequent calls use rewritten position; native narrowing/flag unsupported]

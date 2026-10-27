@@ -141,15 +141,22 @@ step 1.4 compares with (two copies of 1.0, `0x00B07E04` and `0x00B07E30`).
    1. 3D view slot 37 at (x, z) gives an occupant, whose type (slot 7) is `0x278128A0` (a building);
    2. it QIs to `cISC4BuildingOccupant` (`0x87DDA3A9`), `b`;
    3. the agent simulator exists and `MySimLivesHere(b)` (its slot 9) is null;
-   4. the float that `b` slot 9 points to is ≥ 1.0 *[inferred: fully built]*;
-   5. the value that `b` slot 11 points to is 1 *[inferred: residential purpose]*;
+   4. the float that `b` slot 9 points to is ≥ 1.0. Slot 9 (`0x00458810`) hands out the address of the building's
+      completion float (field `+0x58`; slot 10 stores it, and the lot developer drives it from 0 to 1.0 while the
+      building is under construction, lot-developer.md §6.7), so this means "construction finished" *[compat]*;
+   5. the value that `b` slot 11 points to is 1. Slot 11 (`0x00459250`) is `GetBuildingProfile`: it returns the
+      shared profile of the building's type (the building-development simulator's slot 39 asked for the type, or a
+      static all-zero profile when that simulator does not exist; abi/layouts.md "Building profile"). The profile's
+      first field is its purpose, and purpose 1 is residence (building-development.md §1), so this means "a
+      residential building" *[compat]*;
    6. the Sim accepts it: `TestForResidence(b, true, true)` for change house, `(b, true, false)` for move in (Sim
       slot 7);
-   7. the occupant's lot (lot manager `0x00B43D08` slot 14) is not null and its slot 33 is 3 *[inferred: the lot is
-      built]*.
+   7. the occupant's lot (lot manager `0x00B43D08` slot 14) is not null and its slot 33 is 3. Lot slot 33 is `GetState` (the habitation state byte, `+0x7F`) and 3 is
+      "occupied" (lot-developer.md conventions: 0 created, 1 ready, 2 constructing, 3 occupied, 4 vacant).
 
    Before test 1.7 the tool also reads:
-   - `w` := the lot's slot 41 (a wealth, 1–3), through the same lookup with **no null test** *[quirk]*;
+   - `w` := the lot's slot 41, `GetOccupantWealth` (byte `+0x82`: 0 none, 1–3 = $, $$, $$$), through the same
+     lookup with **no null test** *[quirk]*;
    - the building's name (`b` slot 19) into the callout title.
 2. **Eligible:**
    1. Hide `+0x40`. Move `+0x3C` to (x − `+0x48`, z − `+0x44`) and show it.
@@ -183,9 +190,12 @@ The same structure, with these differences.
    4. the value behind `b` slot 11 is **not** 1;
    5. the lot at the building's position: lot manager slot 5 with `b` slot 8's position (from a zero vector). It is
       dereferenced without a null test *[quirk]*. Then:
-      - its slot 63 with the Sim's wealth (Sim slot 19) is > 0 *[inferred: jobs for that wealth]*;
-      - its slot 35 is < 4;
-      - its slot 33 is 3.
+      - its slot 63 with the Sim's wealth (Sim slot 19) is > 0: `GetTravelJobs(wealth)`, the lot's job supply for
+        that wealth (a float; wealth 1, 2, 3 pick the lot's three travel-jobs values, any other wealth gives 0.0,
+        which fails; NaN also fails) *[compat]*;
+      - its slot 35 is < 4: `GetCondition` (byte `+0x80`), so a lot whose condition has reached 4 (the last step of
+        an abandoned lot's decline, lot-developer.md §5.5) is refused *[compat]*;
+      - its slot 33 is 3: `GetState`, "occupied", as in §3.1.
 2. The name (`b` slot 19) is read before the test, for the callout title.
 3. **Eligible:**
    1. The badges and the highlight as §3.1.
@@ -298,9 +308,11 @@ The deleting destructor is `0x00439F60`.
 - **The filter's include test** (its slot 3, `0x004393A0`). An occupant is a candidate when:
   - its type is `0xA9B6D7DE`;
   - it QIs to the pylon (`0xC9B6D7D6`);
-  - the pylon's slot 7 is not 0;
-  - it is not being dragged;
-  - its slot 20 (the owner *[inferred]*) QIs to `0x0A1DA42F` (the Sim).
+  - the pylon's slot 7 is not 0: `GetUIState` (field `+0x6C`; 1 normal, 2 active, 3 hovered, dispatch.md §4.1;
+    the pylon's own `Pick` also refuses state 0, network-occupants.md §6);
+  - it is not being dragged (slot 16);
+  - its slot 20, `GetPylonOwner` (field `+0x1C0`, set by slot 19 `SetPylonOwner`), is not null and QIs to
+    `0x0A1DA42F` (the Sim).
 - **`PickPylonOccupant(x, z, &out)`** (`0x00439890`, pops 12):
   1. `out` := null.
   2. Renderer `0x00B43DD0` slot 65 `Pick(x, z, filter, &hit)` (render3d.md §11.5). The hit's slot 3 is QI'd to the

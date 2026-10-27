@@ -258,8 +258,8 @@ generated index: the questions live one file per spec, so read only the file for
 | cheat-dialog | 3 | 0 | CCD4 | questions/cheat-dialog.md |
 | city-detail | 3 | 5 | CD9 | questions/city-detail.md |
 | city-situation | 2 | 11 | CS14 | questions/city-situation.md |
-| city-tools | 7 | 0 | CT18 | questions/city-tools.md |
-| city-tools-input | 15 | 16 | CT28 | questions/city-tools-input.md |
+| city-tools | 4 | 3 | CT18 | questions/city-tools.md |
+| city-tools-input | 10 | 21 | CT28 | questions/city-tools-input.md |
 | civic-buildings | 0 | 19 | CB20 | - |
 | clock24 | 0 | 22 | CK23 | - |
 | command-line | 4 | 0 | CL5 | questions/command-line.md |
@@ -288,7 +288,7 @@ generated index: the questions live one file per spec, so read only the file for
 | foundations | 9 | 10 | AO4, HG9, RN6, SV2, VC30 | questions/foundations.md |
 | framework-gz-services | 3 | 9 | GZ13 | questions/framework-gz-services.md |
 | framework-rz-files | 11 | 0 | RZ12 | questions/framework-rz-files.md |
-| freshness | 5 | 0 | FS6 | questions/freshness.md |
+| freshness | 1 | 4 | FS6 | questions/freshness.md |
 | game-data-registry | 5 | 0 | GDR6 | questions/game-data-registry.md |
 | game-of-life | 4 | 0 | GL5 | questions/game-of-life.md |
 | geometry-utilities | 6 | 1 | GU8 | questions/geometry-utilities.md |
@@ -323,7 +323,7 @@ generated index: the questions live one file per spec, so read only the file for
 | model-instances | 5 | 1 | MI15 | questions/model-instances.md |
 | model-maker | 1 | 1 | MM3 | questions/model-maker.md |
 | my-street-sim | 5 | 0 | ST6 | questions/my-street-sim.md |
-| mysim-tools | 3 | 0 | MST4 | questions/mysim-tools.md |
+| mysim-tools | 0 | 3 | MST4 | questions/mysim-tools.md |
 | mysim-windows | 3 | 0 | MW4 | questions/mysim-windows.md |
 | mysims | 0 | 22 | MS23 | questions/mysims.md |
 | nation | 0 | 4 | NQ5 | questions/nation.md |
@@ -435,4 +435,4 @@ generated index: the questions live one file per spec, so read only the file for
 | win-grid | 2 | 7 | WG10 | questions/win-grid.md |
 | zone-tool | 1 | 0 | ZT2 | questions/zone-tool.md |
 | zones | 2 | 56 | ZG43, ZQ17 | questions/zones.md |
-| **total** | **619** | **1702** | | |
+| **total** | **604** | **1717** | | |

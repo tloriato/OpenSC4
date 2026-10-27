@@ -94,9 +94,26 @@ Names follow the SDK's `cISC4ViewInputControl` order; "stub" rows are shared one
 | 28 | +0x70 | `005fb260` | PlayResultSound(soundId) | 4 | §2.8 |
 | 29 | +0x74 | `005fb0e0` | FinalRelease() | 0 | §2.1 |
 
-Input handlers return a bool: true means "handled" (the 3D view stops looking for another handler)
-*[inferred]* (Q CT1). `x`, `z` are window-client pixel coordinates passed through to `PickTerrain` (3D view
-slot 36).
+Input handlers return a bool: true means "handled". How the 3D view uses it depends on the event *[compat]*
+(view3d-window.md §6c, instruction-checked at `0x007E66D0`; answers CT1): the view keeps a **stack** of controls
+(the tool made current; the top is the last element) and a list of **persistent** controls (the city-situations
+tool). Each list is visited from the last element to the first, with an AddRef/Release around every visit.
+- Key down/up: the stack from the top, stopping at the first true; then **every** persistent control (results
+  ignored, so the persistent pass runs even when a tool took the key); the view's result is true when any of them
+  returned true.
+- Mouse press and release (left and right): the persistent controls first-taker, then the stack first-taker.
+- Mouse move: every persistent control, then the stack first-taker. Wheel: the stack first-taker; only when none
+  took it, every persistent control and then the zoom. Character: the stack first-taker, then the persistent
+  controls (with a bound quirk, view3d-window.md §6c). Mouse exit: only the top stack control, then every
+  persistent control.
+- `ShouldStack` (slot 12) plays no part in this: the view's `SetCurrentViewInputControl` pushes any control whose
+  `Init` succeeds and nothing in the view calls slot 12 (the `Dispatch`, `Effect`, `EffectDisaster`, `Query` and
+  `Torch` tools override it to return false, the other tools return true; neither value is ever consulted)
+  *[inferred from the absence of any caller in the view's code]*.
+
+`x`, `z` are window-client pixel coordinates passed through to `PickTerrain` (3D view slot 36). The `modifiers` word
+is the window message's flag word (gz-graphics.md, built at `0x0098B750`): `0x01` Shift, `0x02` Ctrl, `0x04` Alt,
+`0x10` left button, `0x20` right button, `0x40` middle button, each set while that key or button is down.
 
 Further non-virtual helpers: `IsKeyToBePassed` (`0x00505BE0`) returns true; `SetCapture` (`0x005FB130`) and
 `ReleaseCapture` (`0x005FB150`), `IsOnTop` (`0x005FB190`), and the non-deleting destructor `0x005FAFC0`
@@ -736,7 +753,7 @@ Base fields `+0x00..+0x20` as §2.2.
 | `+0x8C` | uint32 | mode | §8.1 |
 | `+0x90` | uint32 | tip delay | the timer period passed to the timer start (§8.5) |
 | `+0x94` | bool | false | the 3D view's `GetTerrainQueryEnabled()` (slot 39) at `Init` |
-| `+0x98` | uint32 | 3 | not read by the functions of §8 (Q CT6) |
+| `+0x98` | uint32 | 3 | the **route-step filter** (§8.15): which travel-type steps of a route count when the route is tested against a rectangle. 1: every step except subway steps (travel type 6); 2: only subway steps; 3 (the constructor's value, and any other): every step. Written by the building and network path queries and by the building traffic-info builder, read by `DoesRouteCrossCell` (CT6) |
 | `+0x9C` | cSC4PathView* | null | mode 1: the path view, held |
 
 ### 8.3 Slot table (vtable `0x00AA6658`-shaped, at `0x00A90A88`) *[compat]*
@@ -774,7 +791,24 @@ Key, character, right-button and wheel input are not handled (base stubs return 
    `cSC4LegendDialogWinProc` (vtable `0x00A90980`, `+0x08` = this tool); look up its child windows `0x0BB0F5E7`
    (into `+0x48`) and `0x6BB92BCA` (into `+0x4C`) as interface `0x22BA0121` (window slot 36), attach the window
    proc to each, add each to the 3D view's window and position it from the 3D view's size (window slots 41, 44,
-   45, 56) (Q CT7).
+   45, 56). Exact steps (answers CT7):
+   1. The script key is `{type 0, group 0x96A006B0, instance 0xABB0120F}`; the parent is the 3D view's window; the
+      child ID `0x6BB92BCB` names the dialog shell `D`, taken as interface `0x22BA0121`. A failed creation ends
+      the step (the tool then has no legend).
+   2. The window proc is a new 12-byte object (vtable `0x00A90980`, `+4` zero, `+8` this tool).
+   3. The full pane `F` (`+0x48`, child `0x0BB0F5E7`) and the small pane `M` (`+0x4C`, child `0x6BB92BCA`) are looked
+      up in `D` as `0x22BA0121`. An existing `+0x48`/`+0x4C` is released first.
+   4. `F`: removed from `D` (window slot 15), added to the 3D view's window, then moved to
+      `(viewWidth − paneWidth − 2, 2)`, its window proc set (after a QI for `0x5386D516`, that interface's slot 7),
+      pulled to the front (slot 23) and **shown**. That puts the full legend in the view's top right corner,
+      2 pixels from the top and right edges.
+   5. `M`: removed from `D`, added to the 3D view's window, then moved to `(F.right − M.width, F.top)`, i.e. the
+      same top edge, with its right edge on `F`'s right edge; window proc set, pulled to the front, **hidden**.
+   6. `D` itself is removed from the 3D view's window (window slot 16); the proc and the shell are released.
+   `SetLegendMinimized(on)` (`0x004C4630`, pops 4): with either pane missing nothing happens. `on` true hides `F`,
+   shows `M` and re-places `M` at `(F.right − M.width, F.top)` with the same arithmetic as step 5; `on` false shows
+   `F` and hides `M` (no move). The window proc (`DoWinProcMessage`, `0x004CB900`) calls it with true for the button
+   `0xEBB91356`; the button `0x4BB92C1F` restores directly (shows `F`, hides `M`).
 6. Return true.
 
 `Shutdown`, only when initialised: clear the cursor text with key `0x2A456CB1` (3D view slot 41); remove the
@@ -818,9 +852,11 @@ the occupant (as step 4), clear `+0x88`; returns true.
 1. Stop the timer, clear the cursor text (`0x2A456CB1`), hide the callout.
 2. Modifier bit `0x01` set (Q CT8):
    - pick at (x, z) with the automaton filter (vtable `0x00A90A18`, `0x004C4D10`; interface `0xA9B40F05`); a hit
-     goes to the object at city slot 43, its slot 34 (Q CT9); a miss posts message `0x2ACD2CF3` with data (x, z)
-     (message server slot 3);
-   - then pick a stoplight prop (§8.8); a hit goes to city slot 40, its slot 37 (Q CT9).
+     goes to the object at city slot 43 (`GetVehicleManager`), its slot 34, `SetCameraFollow(automaton)`
+     (`0x0050A930`); a miss posts message `0x2ACD2CF3` with data (x, z) (message server slot 3);
+   - then pick a stoplight prop (§8.8); a hit goes to city slot 40 (`GetTrafficNetwork`), its slot 37,
+     `SwitchStoplightStates(prop)` (`0x004B0A00`). Both are **Shift** clicks (modifier `0x01`) and both steps run in
+     one click (answers CT9, §8.6.1).
 3. Modifier bit `0x02` set: pick the terrain at (x, z) (result not tested *[quirk]*), turn the point into a cell
    and call the residential simulator (`0x00B43DA4`) slot 59 with (cellX / 4, cellZ / 4), C division rounding
    toward zero (Q CT10).
@@ -832,6 +868,35 @@ the occupant (as step 4), clear `+0x88`; returns true.
 
 `OnMouseUpL(x, z, modifiers)`: stop the timer, clear the cursor text, hide the callout, clear `+0x89`; returns
 true.
+
+#### 8.6.1 The two Shift-click targets (CT9)
+
+*Added 2026-10-27 (re-q-city).* Both calls are made while Shift is held (modifier `0x01`) on a press; they are
+independent (a click can reach both), and neither return value is used.
+
+- **`SetCameraFollow(automaton)`** (vehicle manager slot 34, `0x0050A930`, pops 4). The followed automaton is one
+  process-wide reference. The same automaton: nothing. Otherwise the old one is released and the new one stored
+  with a reference; a null argument stops there (it ends following). With a non-null automaton and a renderer:
+  the camera control (renderer slot 16) is taken, an "updating" flag is set, and when the render property
+  `kDoAutoZoomAndRotationChanges` (render-properties.md, default true) is on and the camera's zoom step is below 3 it
+  is zoomed to 4.0 (`SetZoom`). The camera's view target is then set to the automaton's position (its occupant's
+  position), the follow-smoothing state is cleared to the same start, the manager's `UpdateCameraFollow` (slot 64,
+  automata-managers.md) runs once with 100.0, and the updating flag is cleared. So Shift-clicking a vehicle or pedestrian makes the
+  camera track it from then on *[compat]*; the continued tracking is `UpdateCameraFollow` and the zoom-dependent
+  activation of automata managers (automata-managers.md slot 60).
+- **`SwitchStoplightStates(prop)`** (traffic network map slot 37, `0x004B0A00`, pops 4). A null prop does nothing.
+  The prop's position becomes a map cell (each of x and z multiplied by 1/16 and truncated), and every network tile
+  stacked at that cell (the tile chain, next link at tile `+0x54`) whose ID has a record in the map's intersection
+  table is processed. A record holds four approaches of 20 bytes: state (dword), light flag (byte `+4`, set =
+  green phase), warning flag (byte `+5`), on-time and off-time (floats `+8`, `+0x0C`) and the remaining time
+  (float `+0x10`) (the layout `TickSingleIntersection`, `0x004AFB80`, counts down). For each approach: in state 2
+  (timed signal) the light flag **flips** and the remaining time is reloaded from the on-time when the flag is now
+  set, else from the off-time (the warning flag is left alone); in state 3 the flag is cleared and the remaining
+  time set to 5.0; other states are untouched. The intersection's stoplight props are refreshed after the loop only if the last approach that changed left a
+  "changed" marker set: a state-3 approach always sets it, a state-2 flip sets it only when the flag ends up set, so a
+  state-2 flip to cleared as the last change (and no changes at all) skips the refresh *[compat]* (`UpdateIntersectionProps`, `0x004AE850`, with the record and a false flag). It therefore advances the
+  signal phase of the clicked intersection at once *[compat]*; how the props show a state is traffic work outside
+  this spec.
 
 ### 8.7 Messages (`DoMessage`, `0x004D7160`, on the `+0x28` sub-object) *[compat]*
 
@@ -871,7 +936,7 @@ occupant, which is QI'd for the wanted interface (the result is held by the call
 | hover, mode 0 (`0x00A909B0`) | `0x004C37B0` | buildings, power poles, landfill, network occupants; flora and props only when their exemplar has property `0x8A416A99` |
 | route, mode 1 (`0x00A909E4`) | `0x004C39A0` | buildings; network occupants (interface `0xA821EF94`) of any of the network types 0, 1, 2, 3, 6, 7, 8, 9, 10, 11, 12 (not 4 or 5) |
 | stoplight (`0x00A90A4C`) | `0x004C3AD0` | props in occupant group `0x5002` or `0x5003` |
-| automaton (`0x00A90A18`) | `0x004BDF90` | (not in this owner; Q CT9) |
+| automaton (`0x00A90A18`) | `0x004BDF90` | (not in this owner; answered in §8.6.1) |
 
 `PickQueriableOccupant(x, z, &out, filter)` (`0x004C4C90`) wants `0x26BB767E` (cISC4Occupant);
 `PickStoplightProp(x, z, &out)` (`0x004C4DC0`) wants `0xE9793A65`; both return true on a hit, false (and null)
@@ -963,10 +1028,13 @@ Type 5 and no match leave both strings empty. Type 4 only, when `IsDebugQueryEna
 
 After the builders and the debug line (§8.7):
 
-1. Callout held (`+0x44`) **and** icon non-zero: set the callout's image (callout slot 4) to the resource key
-   (type `0x856DDBAC`, group `0x46A006B0`, instance icon) with the two values 12 and 10; then the secondary
-   image (callout slot 14): with a secondary icon, the key (same type and group, instance secondary) with the
-   value 5 and the fraction; without one, (null, 0, 0). Then `SetTip(title, body)` and clear the cursor text
+1. Callout held (`+0x44`) **and** icon non-zero: set the callout's skin (callout slot 4 `(skin, padX, padY)`,
+   callout-box.md §2) to the resource key (type `0x856DDBAC`, group `0x46A006B0`, instance icon) with padding
+   `(12, 10)`: 12 horizontal and 10 vertical pixels between the box edge and its text; then the meter (callout
+   slot 14 `(meter, count, fill)`): with a secondary icon, the key (same type and group, instance secondary),
+   `count` 5 (the meter's repeat count) and `fill` the fraction (clamped to 0–1 by the callout); without one,
+   `(null, 0, 0)`. So the "icon" of this section is the callout's skin (background bitmap) and the "secondary
+   icon" its gauge bitmap; the names are kept because the builders and tables below use them (answers CT13). Then `SetTip(title, body)` and clear the cursor text
    (3D view slot 41, key `0x2A456CB1`).
 2. Otherwise (no callout, or icon 0): hide the callout's window when there is a callout (window slot 70), then
    with a 3D view set the cursor text (3D view slot 40) with (key `0x2A456CB1`, 0, title, body, 0). So icon-less
@@ -1434,6 +1502,15 @@ network occupant those crossing its cell (`GetNetworkOccupantPaths`). `ShowAllRo
 (`0xEBB0F666`, `0x2BB0F616`, `0x4BB0F628`, `0xEBB0F630`, `0x4BB91326`, `0x6BB91318`, `0x2BB9131F`, `0xABB0F639`,
 `0x4C081783`, …) and draws each route that crosses the rect (`DoesRouteCrossCell`, `GetRouteTravelTypes`). The
 message `0x69247DC7` with a path view clears and redraws it for the same rect (§8.7).
+
+*Route-step filter (CT6).* `DoesRouteCrossCell(route, rect, flag)` (`0x004C4AE0`) first tests the cell held in the route
+record (words `+0x20`/`+0x22`, read as its start cell *[inferred]*) against the rectangle (any mode), then walks the compressed route's steps (pathfinder.md §4.15) and accepts the
+route at the first step inside the rectangle that the filter `+0x98` lets through: 1 skips steps of travel type 6
+(subway), 2 accepts only steps of travel type 6, any other value (3) accepts all. The tool sets the filter before
+asking: `GetBuildingOccupantPaths` (`0x004CAA60`) and `GetBuildingOccupantTrafficInfo` (`0x004D0190`) use 1, or 3
+when the building is in occupant group `0x1003`; `GetNetworkOccupantPaths` (`0x004CAAE0`) uses 2 when the occupant
+is of network type 7 (subway) and 1 otherwise. So surface queries ignore the subway layer, subway queries show only
+it, and transport buildings (stations) see every layer *[compat]*.
 
 ### 8.16 Query closure supplements (CT14, CT18–CT20) *[compat]*
 

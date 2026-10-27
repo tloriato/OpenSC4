@@ -66,7 +66,7 @@ All player calls that change state take one process-wide lock (the critical sect
 | `+0x28`, `+0x2C` | 4, 4 | rows, columns |
 | `+0x30` | 120 | tempo, beats per minute |
 | `+0x34` | 8 | beats per bar |
-| `+0x38`, `+0x3C` | 1, 1 | (parsed; no reader found) |
+| `+0x38`, `+0x3C` | 1, 1 | parsed and stored, never read (§3.2) |
 | `+0x40`, `+0x44` | 0, 0 | the listener's start X and Y, 0–1000 (never parsed, so always 0) |
 
 ### 2.2 The text format *[compat]*
@@ -107,22 +107,33 @@ absent *[inferred from its callers]*.
 | 5 | `+0x31` (byte) | 0 | random pan (§5.4) |
 | 6 | `+0x34` | 0 | fade in on start when non-zero |
 | 7 | `+0x38` | 0 | fade time (ms) for fade-in and stop |
-| 8 | `+0x3C` | 0 | (no reader found) |
-| 9 | `+0x44` (byte) | 0 | (no reader found) |
+| 8 | `+0x3C` | 0 | stored, never read (§3.2) |
+| 9 | `+0x44` (byte) | 0 | stored, never read (§3.2) |
 | 10 | `+0x48` | 8 | loop length, in beats |
 | 11 | `+0x50` (byte) | 1 | looping |
-| 12 | `+0x4C` | 0 | (no reader found) |
+| 12 | `+0x4C` | 0 | stored, never read (§3.2) |
 | 13 | `+0x40` | 0 | start class 0–20 (§4.7) |
 | 14 | `+0x54` | 0 | pitch spread low, semitones |
 | 15 | `+0x58` | 0 | pitch spread high, semitones |
-| 16 | `+0x20` (byte) | 0 | (no reader found) |
+| 16 | `+0x20` (byte) | 0 | stored, never read (§3.2) |
 | 17 | `+0x5C` | 0 | group: at most one cell of a non-zero group plays at a time |
-| 18 | `+0x60` (byte) | 0 | version 7 only (no reader found) |
+| 18 | `+0x60` (byte) | 0 | version 7 only; stored, never read (§3.2) |
 | — | `+0x0C` | "" | the sound's file name |
 | — | `+0x64` | empty | links: cells `(col, row)` that must not be playing for this one to start |
 | — | `+0x08` | 0 | sound id, filled at start from the name (§5.1) |
 
 The cell's interface (vtable `0x00AD4908`) is plain getters and setters of these fields.
+
+### 3.2 Fields nothing reads *[inferred]*
+
+Cell fields 8, 9, 12, 16 and 18 and the score's `+0x38`/`+0x3C` have a parser, a constructor default and a setter
+(and, for the cell, a plain getter) but no consumer: neither the player, the cell player and the dimension player
+(which read the cell's other fields directly, not through the getters) nor SimCity 4's only client, the ambience
+layer (it creates a player and drives it by key, volume, play percent, fades and the head-relative and distance
+settings, [audio-ambience.md](audio-ambience.md) §6), ever load them. They therefore have no role in this build: a
+re-implementation parses and keeps the numbers (a score written for another host may use them) and lets them change
+nothing. Do not confuse the score's `+0x38`/`+0x3C` with the player's own `+0x38` (cells in the window, §4.4) and
+`+0x3C` (beat in bar, §4.1), which are live.
 
 ---
 
@@ -135,7 +146,7 @@ The cell's interface (vtable `0x00AD4908`) is plain getters and setters of these
 (no automatic starts or stops), `+0x24` tempo, `+0x28`/`+0x2C` listener column/row, `+0x34` zoom, `+0x38` cells in
 the window, `+0x3C` beat in bar, `+0x40` next beat number, `+0x44` beat origin, `+0x50` distinct groups in the window,
 `+0x54`/`+0x58` selection half-width/height (3, 3), `+0x5C`/`+0x60` the last cell stopped, `+0x64`/`+0x68` the last
-cell started, `+0x74` the 64 × 64 cell players, the play percent (100), the minimum and maximum 3D distance (100,
+cell started, `+0x74` the 64 × 64 cell players, the play percent (`+0x4088`, 100), the stress flag (`+0x4090`) and the fade-running flag (`+0x4091`), the minimum and maximum 3D distance (100,
 1000), the 3 × 3 divisions (§4.8) and the resource key.
 
 ### 4.2 The table
@@ -157,7 +168,7 @@ gives what each body does *[compat]*:
 | 12 | `0x0094832A` | `FadeVolume(ms, target, stopAtEnd)` (§4.9) | `FadeVolume` |
 | 13 / 14 | `0x00948504` / `0x009484A0` | set listener Y / X from 0–1000 (§4.6) | `SetYPos` / `SetXPos` |
 | 15 | `0x0094776D` | zoom := v | `SetZoom` |
-| 16 | `0x0094777F` | play percent := v | `SetPlayPercent` |
+| 16 | `0x0094777F` | play percent := v (only once initialised; §4.6) | `SetPlayPercent` |
 | 17 | `0x00948420` | `SetTempo(bpm)`: when playing and changed, restart the beat clock at the current beat | `SetTempo` |
 | 21 | `0x00947794` | manual := v | `SetManual` |
 | 22–25 | `0x00947996`… | first/last selectable row and column: listener ± half-size, clamped to the grid | as named |
@@ -173,7 +184,7 @@ gives what each body does *[compat]*:
 | 42 | `0x00947197` | end a running fade: stop and delete its timer | `Play` |
 | 43 | `0x0094758E` | set the volume on every cell player (`SetVol`) | `StopFade` |
 | 47 / 48 | `0x009478EA` / `0x009478FD` | set / get the selection half-height and half-width | `GetDataDir` / `SetSelectionAreaMaxDistances` |
-| 50 | `0x00948BD0` | stress flag (no reader found) | `SetStressLevel` |
+| 50 | `0x00948BD0` | stress flag: while non-zero the beat clock does nothing (§4.6) | `SetStressLevel` |
 | 51 | `0x00947914` | two fields `+0x6C`, `+0x70` (no reader found) | `SetPause` |
 | 52 | `0x009471EE` | is `(row, col)` inside the selection window | `UpdateListener` |
 | 53 | `0x00947E90` | stop without the lock (§4.5) | `StopNoLock` |
@@ -216,7 +227,8 @@ player with the sound system for an update every **250 ms** (`0xFA`, sound-syste
 
 ### 4.6 The beat clock (`0x00947F58`) *[compat]*
 
-Each update (while initialised, playing and not suspended): `now` := the timer's elapsed ms. Beat `n` falls at
+Each update (while initialised, playing and the stress flag, set through slot 50, is zero; with the flag set the
+whole update, including step 4, is skipped): `now` := the timer's elapsed ms. Beat `n` falls at
 `(n − origin) × 60000 / tempo` ms (`0x009475FB`; −1 when the tempo is 0). While the next beat is due:
 
 1. After 24 hours (`now > 86,400,000`): reset the beat state to the bar length, restart the timer and stop catching
@@ -227,7 +239,8 @@ Each update (while initialised, playing and not suspended): `now` := the timer's
    playing, outside the window and not already stopping; failing that, a uniformly random playing cell inside the
    window whose class is not 20 and that is not stopping. Mark it stopping; remember its group (and its class when
    the group is non-zero).
-3. On the same beats, when not manual, the start switch is on (`+0x4088`, not otherwise documented), and the active
+3. On the same beats, when not manual, the play percent is non-zero (the same `+0x4088` field slot 16 sets and §4.4
+   scales the budget by, so a play percent of 0 starts nothing), no volume fade is running (§4.9) and the active
    cells (busy − stopping) are below the maximum: find the best cell to start (slot 54) for the remembered group;
    failing that, retry once more for a class-19 group (`0x13`), and again when below the minimum. When found and a
    division can be chosen (§4.8), give the cell player its cell, the external sound interface, and start it.
@@ -273,8 +286,10 @@ enabled). The cell player then gets the head-relative flag, the min/max distance
 ### 4.9 Volume fades
 
 `FadeVolume(ms, target, stopAtEnd)` (`0x0094832A`, when playing): `step := (target − volume) / 20`. A zero step sets
-the volume at once (and stops when asked). Otherwise a callback timer is created (its slot 1 with 100, then started
-with period `ms / 20`) unless one runs; each callback (`0x0094761C`, skipped while the lock is held elsewhere) adds
+the volume at once (and stops when asked). Otherwise a callback timer is created (its delay set to 100, which is already
+its default and which the timer never passes to its service, [timers.md](timers.md) §2.2, then started
+with period `ms / 20`) unless one runs; the fade-running flag (`+0x4091`) is set with the timer and cleared when the fade ends (slot 42 or the callback
+reaching its target), and while it is set the beat clock starts no new cell (§4.6 step 3); each callback (`0x0094761C`, skipped while the lock is held elsewhere) adds
 `step`, clamps to 0–`0x400` and sets the volume; reaching the target ends the fade, and a downward fade with
 `stopAtEnd` then stops the player.
 
@@ -316,8 +331,12 @@ external interface → §5.5. Otherwise:
 
 ### 5.3 `Update` (each beat, `0x009459BF`)
 
-- Playing and looping: decrement the loop counter; without the stopping mark, reload it from the loop length when it
-  reaches 0; with the mark, stop (slot 8) while it is non-zero *[as read]*.
+- Playing and looping: decrement the loop counter. Without the stopping mark, reload it from the loop length when it
+  reaches 0. With the mark, kill the cell (slot 8: release the sound at once, no fade, state idle, mark cleared)
+  whenever the decremented counter is **non-zero**; a counter that lands exactly on 0 leaves it playing until the
+  next update (where it goes to −1 and is killed). So a marked cell is cut at the next update, which is the same
+  beat when the beat clock marked it, except for the exact-zero case *[quirk]*; it does not wait for the loop to
+  end.
 - Playing, not looping: once the sound no longer plays, stop and go idle.
 - Stopping: once the sound's fade has finished (slot 20 returns 0), kill it and go idle.
 
@@ -361,6 +380,8 @@ probability proportional to its class *[as read]*. Not used by SC4 (§1).
 5. Pitch steps beyond ±12 read zeros; the external path does not invert negative steps (§5.1, §5.5).
 6. The cell player's distances default to min 1000, max 100 (§5.1).
 7. Several port names are one slot off (§4.2).
+8. A looping cell with the stopping mark is killed at its next update, not at the end of its loop; a counter landing exactly on 0 delays that by one update (§5.3).
+9. The cell fields 8, 9, 12, 16 and 18 and the score's `+0x38`/`+0x3C` are write-only (§3.2).
 
 ## 8. Open items
 
@@ -382,3 +403,5 @@ Questions are filed in [questions/freshness.md](questions/freshness.md) (prefix 
 9. **Fade.** `FadeVolume(2000, 0, 1)` from 1024 steps by −51 every 100 ms and stops the player at 0.
 10. **Divisions.** With only the default four enabled and the current one among them, a new choice keeps the
     current one with probability 1/4.
+11. **Stopping mark.** A playing looping cell with loop length 8 and the mark set is killed by its first update (the counter reads 7); with loop length 1 the first update leaves it playing (the counter reads 0) and the second kills it.
+12. **Play percent 0.** With the play percent 0 the beat clock never starts a cell (it may still stop cells); with the stress flag set it does nothing at all; with a volume fade running it starts no cell.
