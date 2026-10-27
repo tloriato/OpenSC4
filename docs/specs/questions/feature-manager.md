@@ -8,6 +8,7 @@
   manager pointer kept in memory and used later would escape both. An in-game probe that counts calls of slots 5
   and 6, with return addresses, over one session would settle it. [reachability only: the spec's answers stand
   either way]
+  **PARTIAL 2026-10-27:** Slot 7 already calls slot 6 internally (0x0046F7B8), so §6 now narrows its negative claim to independent external uses. Both nation call chains reach that internal query. A further external slot-5/6 use through a retained manager pointer remains unproved; the question stays open.
 
 <!-- from: verify-feature-manager4 (2026-10-22) -->
 - **FM5 - §5.1 shipped input size:** the supported 1.1.641 game provider in

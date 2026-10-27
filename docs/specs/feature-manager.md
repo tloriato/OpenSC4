@@ -310,7 +310,11 @@ A FreeCity4 replacement must therefore run its scan after every package, plugins
   key 0; tutorial-registry.md §3.2, §4.2).
 - `cSC4Nation::ResetTutorialCities` (`0x00498D82`) asks the application for the manager itself (slot 32) and makes
   the same `GetCurrentExpansionPack()` → `GetTutorialRegionDefaultDirName` call.
-- **No caller of slots 5 and 6** was found *[inferred]* (FM1). Two scans of the whole code section: (a) every read of
+- **Slot 6 is called internally by slot 7** (`0x0046F7B0–0x0046F7BD`), testing packs 32 downwards until a
+  pack is present. Therefore both nation call chains above reach `IsExpansionPackInstalled` through
+  `GetCurrentExpansionPack` *[compat]*. The call is virtual on the same manager; it is not a direct call to
+  `0x0046F780`. No external caller of slot 5 or independent external caller of slot 6 was identified
+  *[inferred]*. This narrower negative result comes from two scans of the whole code section: (a) every read of
   the cached global `0x00B43C98` (the nation's `Init` only), and every `cISC4App` slot-32 call on a register loaded
   from the application global `0x00B43C94` (the cache store and `ResetTutorialCities`); (b) every slot-32 call
   (`+0x80`, any receiver) whose result is used within the next few instructions for a slot 5, 6 or 7 call (only
@@ -351,9 +355,9 @@ shutdown callback `0x0046FA20`; static constructor and destructor of the feature
 
 ## 9. Open questions
 
-- **FM1:** is `IsFeatureEnabled` or `IsExpansionPackInstalled` called anywhere in the shipped executable through a
-  pointer the static scan of §6 cannot see? An in-game probe that counts calls to slots 5 and 6 (with return
-  addresses) over a session would settle it. Until then a replacement must answer them exactly as §4 states.
+FM1 remains open for independent external users of slots 5/6. The internal slot-7-to-slot-6 call on both
+identified nation call chains is confirmed in §6; the query contracts remain §4.
+
 - ~~**FM2:** the exact key the `tutorial_registry` script's `add_default_region(n, dir)` writes, and so whether pack 1
   maps to `timbuktu` through key 1 (§6). Belongs with the tutorial registry's spec.~~ **ANSWERED 2026-10-23
   (re-tutreg7):** key `n` itself; pack 1 maps to `timbuktu` through key 1 (§6, tutorial-registry.md §3.2).

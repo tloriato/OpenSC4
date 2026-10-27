@@ -1,9 +1,6 @@
 # geometry-utilities: open questions
 <!-- Questions about [geometry-utilities.md](../geometry-utilities.md). Append new entries at the END; when one is answered, move it to answered/geometry-utilities.md. Rules: README.md. -->
 
-<!-- from: re-geometry (2026-10-20) -->
-- **GU1 - §4.4:** Does any caller of `RaysIntersect2D` pass a null output, so that the direction-difference test is ever used? The polygon clipper always passes one; the eight calls in `0x00752FC3`-`0x0075530A` were not traced. [the rule is specified as read either way]
-
 <!-- from: core-geometry-utilities4 (2026-10-22) -->
 - **GU2 - §§1–6 numeric sequence:** Please publish the operation association and float-store boundaries for the formulas, including dot/cross products, normalisation, trigonometry, mesh lighting and byte conversion. Are constants such as 0.3/0.7 double or float operands, and which comparisons retain extended temporaries? What are the NaN/overflow conversion rules for the colour integer? [Core uses left-associated expressions, separate 24-bit operations through the existing foundation arithmetic, f32 constants/stores, and nearest-even colour conversion; nonfinite/out-of-i32 colour conversions use the x87 indefinite integer. No exact x87/extreme-input credit claimed until confirmed.]
 

@@ -94,7 +94,7 @@ instructions of each function concretely for every input (languages 0..0x2f, cou
 | Constructor (00928afe) | builds the embedded utility, calls its `Init`, `SetLanguage(1)`, `SetCountry(0x36)`. |
 | `GetCurrentLanguage` (slot 7) / `GetCurrentCountry` (slot 28) | return the stored IDs. |
 | `GetLanguageUtility(id)` (slot 38, 00924b50) | id 0 means the current language. Returns the embedded utility when id equals the current language, otherwise null. No reference is added. |
-| `GetNewLanguageUtility(id)` (slot 39, 00928beb) | a new utility with reference count 1 (the caller owns it), `SetLanguage(id)`; `Init` is not called and the country stays 0x36. |
+| `GetNewLanguageUtility(id)` (slot 39, 00928beb) | a new utility with reference count 1 (the caller owns it), `SetLanguage(id)` with **id stored verbatim, including 0**. It does not substitute the current language (`0x00928C0C–0x00928C14`, `0x009B2970–0x009B2979`); `Init` is not called and the country stays 0x36. *[compat]* |
 
 ### 4.2 Switching language and country *[compat]*
 

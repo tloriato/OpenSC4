@@ -149,7 +149,11 @@ with spaces):
 
 Both callers in the game pass format **0** (the query tool's desirability text `0x004C9D76` and the configuration
 log `0x007CEFB3`), so the shipped game only ever writes month/day/year. The numbering looks like the language IDs
-(1 US, 2 UK English …) *[inferred]* (DT1).
+(1 US, 2 UK English …) *[inferred]* (DT1). The formatter itself never asks the language manager or the
+CRT locale: it maps argument 0 to 1, then selects solely by the numeric argument
+(`0x00912C7C–0x00912C99`, `0x00912CC7–0x00912CF3`). In particular 0 does **not** mean the current
+language *[compat]*. The COM wrapper forwards the supplied code unchanged (`0x00913245–0x00913260`).
+This proves the numeric behavior, but neither a shared public enum identity nor third-party usage.
 
 For the COM wrapper's replacement-copy, return-register and failure rules, see §4.2; the base formatter
 dispatches to the supplied string's `Sprintf` slot 27 (`0x00912DA4`–`0x00912DAF`).

@@ -130,8 +130,11 @@ cases (`A`–`Z` with `a`–`z`; other characters exactly).
 Both start at `max(start, 0)`; a start at or beyond `n` gives −1 at once. They return the first matching index, else
 −1.
 
-- **Slot 11** (`name`): a switch argument whose length is `len(name) + 1` and whose characters after the prefix equal
-  `name` in any case (`-Intro` matches `intro`; `-intro:off` does not).
+- **Slot 11** (`name`): a switch argument of **at least two characters** whose length is `len(name) + 1` and whose
+  characters after the prefix equal `name` in any case (`-Intro` matches `intro`; `-intro:off` does not). The
+  minimum-length guard precedes the name-length comparison (`0x0091405E–0x0091409D`). Consequently an empty
+  name always returns −1, including on a lone `-`, `/` or `\`. Slot 9 therefore returns false for an empty name:
+  its fallback to slot 8 also rejects it (`0x00913EDD–0x00913EF8`, `0x009143CB`).
 - **Slot 12** (`c`): a switch argument of exactly two characters whose second is `c` in either case.
 
 ## 5. Users
@@ -182,6 +185,7 @@ Both start at `max(start, 0)`; a start at or beyond `n` gives −1 at once. They
    `("intro:", v, true)` is false; on `[-intro:]` `("intro", v, true)` is false and `v` is unchanged.
 4. **Bare switches:** on `[p, -Intro, /w, -width]`: `GetIndexOfSwitch("intro", 0) = 1`, `("intro", 2) = −1`,
    `('W', 0) = 2`, `('w', 3) = −1`, `("width", −5) = 3`; `IsSwitchPresent("intro") = true`.
+   An empty switch name on `[-, /, \]` gives −1 through slot 11 and false through slot 9 (CL2).
 5. **Letter switch with value:** with `v` preset to `keep`: on `[-w]` `IsSwitchPresent('w', v, true)` is true and
    `v = keep`; on `[-W1024]` `v = 1024`; on `[-w"x y"]` `v = x y`; on `[-w""]` `v` is empty; on `[-intro]`
    `IsSwitchPresent('i', v, false)` gives `ntro`; on `[w]` (no prefix) false.

@@ -112,8 +112,13 @@ declaration has the same 15 interface slots in this order.
   returned pointer: a caller that stores into it changes what later missing-ID lookups return; clearing the set does
   not reset it *[quirk]*. Read-only callers (flora.md §12) see Empty.
 - **`CompareParameterString(id, text, cs)`**:
-  - `id = 0xFFFFFFFE` (−2): true when the comparison is true for **any** parameter (each one through slot 11, in ID
-    order), else false.
+  - `id = 0xFFFFFFFE` (−2): walks the map directly in ascending unsigned ID order and asks slot 11 to
+    compare each visited ID, returning true on the first match and false at the end. It does **not** use
+    slots 13/14: a parameter under `0xFFFFFFFF` is compared when reached. There is no guard for a stored
+    `0xFFFFFFFE`: reaching that ID re-enters the same any-parameter search from the beginning. If no earlier
+    ID matches, this repeats without a terminating result; the value under −2 is never compared directly
+    *[quirk]*. A later `0xFFFFFFFF` entry is then unreachable. Evidence: `0x0092A5F3–0x0092A62D`, with
+    ordered successor traversal at `0x0040D4C0–0x0040D4F5`.
   - otherwise: false when `id` is missing. The value is read with `GetValString` (data-formats.md §5.1); when that
     returns false (any value that is not a string or a string object, e.g. Sint32 5 against `"5"`) the result is
     false. Else true exactly when the string equals `text` in full, compared byte for byte when `cs` is true, or after
@@ -123,8 +128,19 @@ declaration has the same 15 interface slots in this order.
 ### 1.5 The status parameter *[compat]*
 
 ID `0x2B999D2B` (the SDK's `kStatusParameterID`) holds a command's result in its **output** set. The dispatcher
-returns it (§4.4); a handler reports failure with `SetStatusParameterValue(2)` (for example
-`cGZMiscCommandSystemSupport::DoMessage`, `0x005C8C10`) *[inferred meaning: 0 success, 2 failure; GC4]*. It is an
+returns it (§4.4). The framework handlers use these values *[compat]*:
+
+| Status | Verified use |
+|---|---|
+| 0 | Explicit success, e.g. window operations (`0x005C7255`, `0x005C72B2`) and miscellaneous commands (`0x005C8D11`, `0x005C8FCD`). |
+| 1 | `GZWinWaitForWindow` in its nonblocking path when no matching window exists (`0x005C7834–0x005C7847`); `WaitForMessage2` when registering a wait (`0x005CA3A9–0x005CA41A`, `0x005CA469–0x005CA4B9`). |
+| 2 | Failure, e.g. the miscellaneous handler's rejected operation (`0x005C8C08–0x005C8C10`) and tool handler failure (`0x005C55E2–0x005C55E9`). |
+
+The window-command registration associates the wait name with ID `0x4BA6C540`
+(`0x005C4133–0x005C4145`); the miscellaneous handler tests `WaitForMessage2` ID `0xCBAC32F4`.
+*[inferred]* Status 1 therefore covers an unsatisfied condition or a wait still pending, rather than a
+universal fatal-error meaning. These examples establish the handlers' vocabulary, not a restriction on
+plugin-defined results: the setter stores any signed 32-bit value (`0x009296A5–0x009296D4`). It is an
 ordinary parameter otherwise: it counts in `GetParameterCount`, is visited by iteration, and is written by
 `ConvertCommandOutputToString` (§3.6). The Lua call closures skip it when they return outputs (lua-host.md §9.4).
 
@@ -264,6 +280,10 @@ text loses empty-string parameters (`x` + `""` gives `Name x ` with a trailing b
 appended as `quote(GetValString text)`, separated by one space (none before the first). It does **not** skip the
 status parameter (§1.5) and returns true, also for an empty set (`out` empty). `params` must not be null (the
 original dereferences it) *[choice]*: FreeCity4 treats null as an empty set.
+
+Both §3.6 walks use slots 13/14 and stop when an ID is `0xFFFFFFFF`: they omit a parameter under that ID.
+A parameter under `0xFFFFFFFE` is serialized normally; these walks do not call `CompareParameterString`
+(`0x0092A784–0x0092A7D6`, `0x0092A830–0x0092A88F`) *[compat]*.
 
 ### 3.7 `ExecuteCommand(text, length, out)` (slot 8)
 
@@ -444,8 +464,7 @@ whatever order a header declares the two in.
 - **GC3:** (§4.4) does any handler execute a command while it handles one (for example `ExecuteScript` or
   `ExecuteCheat` running script text that issues commands), so that the shared message and default sets are
   reused during delivery? An in-game probe that logs nested `ExecuteCommand` calls would settle it.
-- **GC4:** (§1.5) which status values do the handlers use besides 2? A survey of every `SetStatusParameterValue`
-  call in the handlers would give the vocabulary.
+GC4 is answered in §1.5: explicit handler statuses 0, 1 and 2, with command-specific uses of 1.
 
 ## 9. Conformance tests
 

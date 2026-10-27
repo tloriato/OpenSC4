@@ -262,8 +262,8 @@ generated index: the questions live one file per spec, so read only the file for
 | city-tools-input | 15 | 16 | CT28 | questions/city-tools-input.md |
 | civic-buildings | 0 | 19 | CB20 | - |
 | clock24 | 0 | 22 | CK23 | - |
-| command-line | 4 | 0 | CL5 | questions/command-line.md |
-| command-system | 8 | 0 | GC9 | questions/command-system.md |
+| command-line | 3 | 1 | CL5 | questions/command-line.md |
+| command-system | 6 | 2 | GC9 | questions/command-system.md |
 | commercial-industrial | 1 | 12 | CM11, IN4 | questions/commercial-industrial.md |
 | coverage-radius-effect-helper | 4 | 0 | CRH5 | questions/coverage-radius-effect-helper.md |
 | crime | 0 | 24 | CQ25 | - |
@@ -291,7 +291,7 @@ generated index: the questions live one file per spec, so read only the file for
 | freshness | 5 | 0 | FS6 | questions/freshness.md |
 | game-data-registry | 5 | 0 | GDR6 | questions/game-data-registry.md |
 | game-of-life | 4 | 0 | GL5 | questions/game-of-life.md |
-| geometry-utilities | 6 | 1 | GU8 | questions/geometry-utilities.md |
+| geometry-utilities | 5 | 2 | GU8 | questions/geometry-utilities.md |
 | glyph-textures | 2 | 0 | GT3 | questions/glyph-textures.md |
 | graphics-formats | 6 | 35 | FS18, GF25 | questions/graphics-formats.md |
 | graphics-rules | 4 | 8 | GR13 | questions/graphics-rules.md |
@@ -307,7 +307,7 @@ generated index: the questions live one file per spec, so read only the file for
 | intro-video | 2 | 0 | IV3 | questions/intro-video.md |
 | landfill | 0 | 39 | LF7, LG34 | questions/landfill.md |
 | landvalue | 2 | 10 | LV11 | questions/landvalue.md |
-| language-utility | 4 | 0 | LU5 | questions/language-utility.md |
+| language-utility | 3 | 1 | LU5 | questions/language-utility.md |
 | legacy-control | 4 | 13 | LC20 | questions/legacy-control.md |
 | lighting | 6 | 9 | LT16 | questions/lighting.md |
 | local-grid-helper | 1 | 0 | LGH2 | questions/local-grid-helper.md |
@@ -395,7 +395,7 @@ generated index: the questions live one file per spec, so read only the file for
 | span-render-565 | 6 | 2 | SR566 | questions/span-render-565.md |
 | span-render-8 | 3 | 3 | SR11 | questions/span-render-8.md |
 | span-render-8888 | 5 | 1 | SR8889 | questions/span-render-8888.md |
-| strings-language | 1 | 0 | SL2 | questions/strings-language.md |
+| strings-language | 0 | 1 | SL2 | questions/strings-language.md |
 | system-service-pointer | 2 | 1 | SSP4 | questions/system-service-pointer.md |
 | terrain | 9 | 39 | TR48 | questions/terrain.md |
 | terrain-view | 3 | 1 | TV5 | questions/terrain-view.md |
@@ -435,4 +435,4 @@ generated index: the questions live one file per spec, so read only the file for
 | win-grid | 2 | 7 | WG10 | questions/win-grid.md |
 | zone-tool | 1 | 0 | ZT2 | questions/zone-tool.md |
 | zones | 2 | 56 | ZG43, ZQ17 | questions/zones.md |
-| **total** | **619** | **1702** | | |
+| **total** | **613** | **1708** | | |

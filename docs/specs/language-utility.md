@@ -18,7 +18,7 @@ observable rule, *[inferred]* meaning drawn from names and use, not from a measu
 | Object size | 0x28 bytes: vtable, reference count (+0x04), **language ID** (+0x08), **country ID** (+0x0C), **local-currency flag** byte (+0x10), **group-space string** (+0x14, a string object). |
 | Constructor `0x0092847C` | count 0, language 1 (English), country `0x36` (United States), currency flag 0, group-space string = U+00A0 NO-BREAK SPACE (UTF-8 `C2 A0`). |
 | `Init` (slot 3, `0x00928FDD`) | resets the group-space string to U+00A0 and passes it through the UTF-8-to-destination conversion (§1.1); returns true. |
-| Slot 4 | shared "shutdown" body (identical-code folded); not described further. |
+| `Shutdown` (slot 4, `0x00949ADE`) | returns true in AL; performs no calls or state writes. Language, country, currency flag, reference count and group-space string are all preserved. |
 | `SetLanguage(id)` (slot 31, `0x009B2970`) | stores the language ID verbatim; no validation, no return value. |
 | `SetCountry(id)` (slot 32, `0x00894F6D`) | stores the country ID verbatim. |
 | `Release` (slot 2, `0x00927C4F`) | count > 1: decrement and return the new count; otherwise call the deleting destructor (slot 30) and return 0. |
@@ -36,7 +36,9 @@ Holders:
   the id equals the current language, otherwise null. No AddRef is taken.
 - `GetNewLanguageUtility(id)` (`0x00928BEB`): allocates a fresh 0x28-byte utility, AddRefs it (count 1),
   `SetLanguage(id)`, returns it; the caller owns that reference. `Init` is **not** called (the constructor
-  already set the same group-space string). Country stays 0x36.
+  already set the same group-space string). Country stays 0x36. ID **0 is stored verbatim**, regardless of
+  the manager's current language: this factory forwards its argument unchanged to slot 31
+  (`0x00928C0C–0x00928C14`, setter `0x009B2970–0x009B2979`).
 
 ### 1.1 Output strings and encoding *[compat]*
 

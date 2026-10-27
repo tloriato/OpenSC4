@@ -6,6 +6,7 @@
   (parameter set), `0x0B90251E` (string generator), `0x0B903CC3` / `0x0B903CC4` (dispatcher), `0x4B99446A` /
   `0x0B903CC5` (command message). Only `0x4B99446A` is asked for in the executable (two view handlers). Do plugins
   ask for any of the others?
+  **PARTIAL 2026-10-27:** Rechecked QueryInterface bodies 0x00929676, 0x009296F5, 0x009297DE and 0x009297B0: each listed IID pair returns the same corresponding interface view and AddRefs it. This does not recover the public interface names or determine which IIDs external plugins request.
 
 <!-- from: re-commands (2026-10-19) -->
 - **GC2 - §1.3:** what is `ValidateParameter`'s second argument? Only `0xFF` gives true, whatever the value's type,
@@ -15,17 +16,6 @@
 - **GC3 - §4.4:** does any handler execute a command while it handles one (for example `ExecuteScript` or
   `ExecuteCheat` running text that issues commands), so that the shared message and default sets are reused during
   delivery? A probe that logs nested `ExecuteCommand` calls would settle it.
-
-<!-- from: re-commands (2026-10-19) -->
-- **GC4 - §1.5:** which status values do the handlers use besides 2? A survey of the `SetStatusParameterValue` calls
-  in the handlers would give the vocabulary.
-
-<!-- from: core-commands4 (2026-10-21) -->
-- **GC5 - §1.4 `CompareParameterString` with ID −2:** how does the "any parameter" walk visit the parameters: the
-  map itself (so a parameter under `0xFFFFFFFF` is compared) or slots 13/14 (which stop before it)? And a parameter
-  stored under `0xFFFFFFFE` itself would recurse through slot 11 forever; does the original guard it? Same question
-  for the "each parameter in ID order" walks of §3.6. [the −2 walk uses the map, every ID, and compares a parameter
-  under `0xFFFFFFFE` directly; the §3.6 walks stop before `0xFFFFFFFF` as §1.4 describes]
 
 <!-- from: core-commands4 (2026-10-21) -->
 - **GC6 - §2.1 rule 4 / §2.2:** with a delimiter other than space, does a trailing delimiter (`a,`, or `a, ` with

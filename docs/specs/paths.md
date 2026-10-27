@@ -227,6 +227,12 @@ each is visited as `dir + name + "\"`, with the same filter and `includeTop`. Th
 is always true. The order is: this directory's files, then each subdirectory's results in system order. The global
 counter makes concurrent calls on two threads interfere *[inferred]*.
 
+*[compat]* None of the six nonrecursive direct call sites passes `includeTop=false`: both resource-setup
+calls (`0x00457A2F`, `0x00457CAE`), region copying (`0x004982C5`), tutorial reset (`0x004996F9`), CD-path
+validation (`0x0089132B`) and multi-packed-file opening (`0x0097E9DE`) pass true. The sole remaining direct
+call is recursion itself and forwards the incoming flag (`0x0091BF3A–0x0091BF47`). This survey establishes
+no built-in top-level user of false. Whether third-party mods depend on traversal order remains PA2.
+
 ### 3.6 Existence and search (static)
 
 - `DoesAnyEntryExistThatMatchesPattern(pattern)` (`0x0091B312`): true when the search (§4) finds anything.
@@ -340,8 +346,18 @@ matching, short-name matches *[compat-limit]*. The order of matches is the file 
 collation order); nothing here sorts *[compat-limit]*.
 
 Four function pointers (`0x00B6291C`, `0x00B62920`: find first and next; `0x00B62924`, `0x00B62928`: create and
-remove directory) would replace these calls, but nothing in 1.1.641 sets them, so the ANSI Win32 calls are always
-used *[inferred]*.
+remove directory) select alternate paths when populated. No built-in writer or public installation entry was
+identified; with the pointers zero the ordinary ANSI paths apply *[inferred]*. This is not proof that an
+external plugin can never populate them (PA1).
+
+*[compat]* The alternate find path converts the input pattern to UTF-16, supplies a wide find-data buffer,
+and converts the returned wide name back to framework encoding (`0x0091B0BB–0x0091B143`,
+`0x0091B23E–0x0091B276`; input conversion `0x0091AF87–0x0091AFF1`). Create-directory selects its
+UTF-16 path only when **both** create and remove pointers are nonnull (`0x0091B822–0x0091B846`),
+so rollback can use the remove pointer (`0x0091B90F–0x0091B91E`). Remove-directory tests its own pointer
+independently (`0x0091BFDA–0x0091BFF9`, `0x0091C1E9–0x0091C209`). Search cleanup still closes the
+returned handle through the ordinary Win32 close operation (`0x0091AE6F–0x0091AE78`). These are concrete
+wide-path branches; their existence does not establish a published plugin hook API.
 
 ### 4.1 Exhaustion state (PA7)
 

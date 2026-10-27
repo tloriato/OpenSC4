@@ -194,6 +194,13 @@ Only ordered |k| < ε rejects; unordered proceeds and can store NaNs/return true
 differences must be ordered and strictly greater than ε in magnitude; equality/unordered returns false.
 Evidence: `005D7429–7496`, `005D749D–74CC`. On denominator failure a nonnull hit is untouched.
 
+*[compat]* All ten direct call sites supply nonnull hit storage: the polygon clipper
+(`0x005D7910`, `0x005D7984`), the two terrain frustum routines (`0x00752FC3`, `0x00752FE1`,
+`0x00753353`, `0x00753371`), side-cliff drawing (`0x00753ED8`, `0x00753EFA`) and water-box drawing
+(`0x007552EC`, `0x0075530A`). The eight terrain calls use stack buffers. No address-taking reference to
+`0x005D7420` was found in the export. Thus the null-output algorithm is unused by the identified executable
+callers *[inferred]*; this does not remove its behavior from the helper's contract.
+
 ### 4.5 `LinesIntersect2D(a1, a2, b1, b2, hit)` (`0x005D74D0`)
 
 Segments a1–a2 and b1–b2. With k = (b1.y − b2.y)(a2.x − a1.x) − (a2.y − a1.y)(b1.x − b2.x): |k| < ε is false
@@ -497,8 +504,8 @@ texture manager (text textures).
 
 ## 9. Open questions
 
-See [questions/geometry-utilities.md](questions/geometry-utilities.md). GU1 retains the null-output caller
-survey; GU2 retains ambient/exception/trig domains beyond the explicit operation sequences; GU3/GU5 retain
+See [questions/geometry-utilities.md](questions/geometry-utilities.md). GU1's direct caller survey is resolved in
+§4.4. GU2 retains ambient/exception/trig domains beyond the explicit operation sequences; GU3/GU5 retain
 foreign bounds/container and missing lifecycle behavior; GU6 retains any ownership attribution beyond the
 enumerated bodies. GU4's text epilogue is specified in §§6.4.1–6.4.2. A local helper call is not proof of the
 callee's entire algorithm, resource semantics or error behavior.

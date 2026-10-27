@@ -13,3 +13,8 @@
   byte pitch divided signed by bytes-per-pixel; compressed source stepping derives from pitch unsigned>>2.
   Helper access/cleanup order and valid normal domains are explicit. These are owner-issued reference/access
   calls, not claims about foreign font/surface implementations, device results or general destructor behavior.
+
+<!-- from: re-geometry (2026-10-20) -->
+- ~~**GU1 - §4.4:** Does any caller of `RaysIntersect2D` pass a null output, so that the direction-difference test is ever used? The polygon clipper always passes one; the eight calls in `0x00752FC3`-`0x0075530A` were not traced. [the rule is specified as read either way]~~
+
+**ANSWERED 2026-10-27 (re-q-framework):** MATCHES — All ten direct callers supply nonnull hit storage; none uses the direction-difference branch. No address-taking reference was found (§4.4).

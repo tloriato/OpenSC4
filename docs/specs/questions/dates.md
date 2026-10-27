@@ -5,6 +5,7 @@
 - **DT1 - §1.6:** are the format codes of `cRZDate::DateString` (`0x00912C79`) the language manager's language
   IDs (1 US English month/day/year, 2 UK English day/month/year, dots for 4, 10 and 11, dashes for 7, 8 and 14,
   year first for 9 and 15)? Both callers in the game pass 0, so only plugins see the other codes.
+  **PARTIAL 2026-10-27:** The formatter maps 0 to 1 locally and never queries current language/locale (0x00912C7C–0x00912CF3); the COM wrapper forwards the numeric code (0x00913245–0x00913260). The name table at 0x00924798 supports the existing language-number inference but does not prove shared enum identity. §1.6 now states the independently verified behavior; identity remains unresolved.
 
 - **DT4 — executable locale input (glue-dates4, 2026-10-22):** §1.5 establishes
   executable-CRT LC_CTYPE folding but no supported public acquisition of its
