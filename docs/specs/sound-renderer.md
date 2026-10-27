@@ -72,7 +72,7 @@ listener call (position, orientation, velocity, the three factors, commit) is fo
 ## 4. The 2D sound (`0xFDED7F31`)
 
 0xD8 bytes (constructor `0x00877672`): the framework sound (`cGZSnd`, [sound-framework.md](sound-framework.md) §4.6) on a
-**static** DirectSound buffer. Fields: the data source `+0x18`, the buffer `+0x80`, the volume `+0x50`, the priority
+DirectSound buffer (static loading in §4.1, streaming allocation in §4.5). Fields: the data source `+0x18`, the buffer `+0x80`, the volume `+0x50`, the priority
 `+0x60`, the buffer flags `+0xC4`, the renderer `+0xD0`, the use count `+0xC8`.
 
 ### 4.1 Loading (`0x00876504`)
@@ -107,17 +107,53 @@ the target, mark the fade active and register the sound as a **fast** update tar
 
 ### 4.5 Other members *[as read]*
 
-Play/stop/pause through the buffer; the play position and length in ms (`0x00876255`); a 1–6 level stored at `+0xB8`
-(`0x00876238`); releasing the last reference stops and deletes the sound (`0x00876097`).
+Play/stop/pause through the buffer; releasing the last reference stops and deletes
+the sound (`0x00876097`).
+
+**Streaming allocation level (SRN1).** *[compat]* The setter `0x00876238` belongs
+to the interface at object `+8` (table `0x00AC2C54`, QI adjustment `0x00877842`).
+It clamps an unsigned argument to 1–6 and stores it at interface `+0xB8`, hence
+object `+0xC0`; the default is 1 (`0x00877672`). It scales streaming buffer
+allocation in groups of six chunks, independently of voice priority (object
+`+0x60`, §4.2). Streaming setup computes an initial chunk size of
+`4 × (floor(sampleRate/8) mod 8388608)` bytes, multiplies it by `6 × level` with
+32-bit wrap, then divides by `6 × level` to recover the chunk size. For a filename
+ending in XA, a chunk not divisible by 4 is rounded up to a multiple of 4. The
+allocated DirectSound buffer is the final chunk size times `6 × level`
+(`0x00877D7A`, especially `0x00877EB9`–`0x00877EF3`; the 3D streaming path
+`0x00878E5D` uses the same calculation). At 22050 Hz and level 1, this gives six
+11024-byte chunks, 66144 bytes total; level 2 doubles that total. The setter
+itself only stores the level; it does not reallocate an existing buffer.
+
+**Remaining-time calculation (SRN3).** *[compat, quirk]* `0x00876255` is the
+completion/remaining-time operation of the interface at object `+0x14`
+(table `0x00AC2C18`, QI adjustment `0x0087788A`). For a playing, non-streaming
+sound, subtract the DirectSound play cursor in bytes from the loaded byte count,
+divide that remainder by **bits per sample**, multiply by 8000, then divide by
+sample rate. Both divisions are unsigned integer divisions and multiplication
+keeps the low 32 bits. The calculation omits channel count. While a streaming
+sound plays it returns `0xFFFFFFFF`. When not playing it instead uses the full
+loaded byte count in that formula and multiplies the result by another 1000
+(with 32-bit wrap). Preserve the extra stopped-state factor and the division
+order; this is not an elapsed playback-position getter. For 16000 loaded bytes,
+16 bits/sample and 8000 Hz, the stopped result is 1000000; while playing with a
+byte cursor of 8000 it is 500. A zero bits/sample or sample rate is unchecked.
+
 
 ## 5. The 3D sound (`0xFDED7F34`) and the 3D helper
 
 The 3D sound is a 2D sound plus a DirectSound 3D buffer (QI `0x306077D2` at `+0xD8`). Distances (`0x0087845D`): a
 level clamped to 1–10 picks `T[level]` from the table at `0x00B11DE0` (`T[1..10]` = 1, 10, 50, 100, 200, 500, 1000,
-2000, 5000, 10000); minimum distance := `T / factor` (the listener's distance factor, `0x00B540A0` slot 11
-*[inferred]*) and maximum distance := that × 100 (`0x00A80AA0`). The minimum distance sent to DirectSound is raised
+2000, 5000, 10000); minimum distance := `T / factor` (the listener's cached distance factor, `0x00B540A0` slot 11,
+`0x00878CD9`) and maximum distance := that × 100 (`0x00A80AA0`). The minimum distance sent to DirectSound is raised
 to 1.0 when below it (`0x008784D9`, the 3D buffer's `SetMinDistance`). A 0–127 value is scaled by 1/127
-(`0x00AC2774`) before it reaches the 3D helper (`0x00878762`) *[as read]*.
+(`0x00AC2774`) before it reaches the renderer's auxiliary helper (`0x00878762`).
+*[compat]* This path obtains the helper through renderer slot 12 and passes the
+DirectSound 3D-buffer pointer and the scaled float to its slot 6. The helper body
+`0x008792D0` queries a property-set interface and writes property 1 as four bytes
+under the GUID at `0x00B11E30`; it is not a call to DirectSound's listener factor
+setters. The acoustic meaning of that property remains unresolved (SRN2); the
+0–127 input range is a caller convention, with no clamp in `0x00878762`.
 
 ## 6. Quirks *[quirk]*
 

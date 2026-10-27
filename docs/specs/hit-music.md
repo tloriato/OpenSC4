@@ -246,10 +246,20 @@ level is in the sems (§10): a sound whose own `0xFFAE9DDB` priority is below th
 ### 3.8 The track-flow error handler
 
 Every track error (§8.7) calls `HandleTrackFlowError(track, message)` (slot 29), which calls the handler set by
-`SetTrackFlowErrorHandler` (slot 28). The default handler (`0x009377DD`) calls `track.slot3()`, then slot 9 of the
-object it returns, then `track.slot16()` *[as read]*; its effect is to stop the failing track *[inferred]*.
+`SetTrackFlowErrorHandler` (slot 28). The default handler (`0x009377DD`) *[compat]* obtains the track's sound interface
+and calls Kill (sound slot 9, `0x0093BBF0`), then marks the track's error condition
+(track slot 16, `0x0093AA6F`). The mark is set after Kill and is observable through
+GetErrorCondition. It ignores the error-message text (HM6; interface access
+`0x00968303`, track table `0x00AD3E48`, sound table `0x00AD3D48`).
 
 ### 3.9 The `cIHitMan` table
+
+**Pause API (HM5).** *[compat]* Slot 6 clears the duck map through slot 42 and
+returns true (`0x00937875`, `0x00938492`). It neither pauses tracks nor sets the
+manager's pause flag. Slot 7 simply returns true without changing state
+(`0x00949ADE`). Slot 8 reads the flag at object `+0x21` (`0x0093998F`); construction
+sets it to zero (`0x00939EA4`), and neither of those operations changes it. Do not
+implement a global track pause/resume transition for these two calls.
 
 Slots read from the vtable at `0x00AD2968` (names from the port's symbol tables):
 
@@ -483,10 +493,25 @@ slot 26) and sem (`0xFF891EAA`, HitMan `GetSem`).
 
 The start routine (`0x0093B791`, named `PlayPause`) *[compat]*:
 
-1. If `0xFFB0333D` (control group) is non-zero and the HitMan has that group, ask the group (its slot 4, then slot 20
-   of the result); a zero answer ends here with success and nothing plays *[inferred: a muted group]*.
-2. If the player's sound answers true to slots 7 and 19 of `+0x0C` (playing and paused *[inferred]*): set the byte
-   `+0x5C` (while it is set the tick does nothing) and return slot 18's result *[as read]*.
+1. A nonzero control-group ID `0xFFB0333D` obtains the group through `ControlGroup`,
+   creating it when missing. Group slot 4 returns its sound interface; slot 20 reads
+   group volume. Zero volume vetoes the start while returning success. A new group
+   starts at 1024, so creation alone does not veto playback (`0x0093B791`,
+   `0x00938AF0`, `0x0093873F`; tables `0x00AD2718`, `0x00AD2680`; getter
+   `0x0099BE66`). This start path itself can create a group without an outside
+   `AddToControlGroup` caller (HM1); whether installed track data requests one is
+   a separate data question.
+2. Slots 7, 19 and 18 of the player's own `+0x0C` sound interface mean IsPlaying,
+   IsPaused and Unpause. IsPlaying includes either the player's running state or a
+   playing dependent (`0x0093AFEE`). IsPaused reads the 32-bit pause word at object
+   `+0x5C` (`0x0093E48B`), not a separate resume latch. If both predicates are true,
+   the start routine sets that same word to 1 and calls Unpause, which immediately
+   clears it. It then unpauses dependents and the paused channel, performs a tick
+   with elapsed time 0, and registers for 20 ms updates if still playing; it returns
+   whether the error condition is clear (`0x0093B08B`). Pause sets the same word to
+   1 and removes the update target (`0x0093B01E`). Constructor `0x0093E8F4` and the
+   ordinary start path `0x0093B8CC` also clear it. Thus the resume branch does not
+   leave subsequent ticks blocked (HM3).
 3. **Fade-in**: when `0xFFFF4E79` (fade-in ms) is non-zero: `0xFF2D16F2` (fade target) := current `0xFF53DBF3`
    (unless a fade is already running), `0xFF47F685` := `0xFF53DBF3`, `0xFF53DBF3` := 0,
    `0xFFD1C82F` (fade rate) := `target × 1000 / fadeInMs`; the fading flag `0xFF0AD592` := 1 when the rate is non-zero.
@@ -504,7 +529,8 @@ channel.
 
 ### 6.4 The tick (`HandleTimerCallback`, `0x0093DF4C`)
 
-Called with the elapsed time `dt` (ms) *[compat]*:
+Called with the elapsed time `dt` (ms) *[compat]*. If the pause word is nonzero,
+return before dependent cleanup, fades or instruction execution (`0x0093DF64`):
 
 1. Drop the dependents that are no longer playing.
 2. If not running and no dependents are left: stop (slot 9 of `+0x0C`) and return.
@@ -514,7 +540,7 @@ Called with the elapsed time `dt` (ms) *[compat]*:
    `reg[key] := cur`.
 4. If the "stop when faded" mark is set and the fade has ended: stop and return.
 5. `wait := max(0, wait − dt)`.
-6. While running, not resuming and `wait == 0`: execute one instruction (§8). After more than 100 instructions in one
+6. While running, not paused and `wait == 0`: execute one instruction (§8). After more than 100 instructions in one
    tick the error "Too many instructions executed without wait (infinite loop?)" is reported on every further
    instruction *[compat]*; the loop does not stop.
 7. Note length: when non-zero, decrement it (once per tick, not by `dt`); on reaching 0, stop the channel's sound
@@ -545,15 +571,23 @@ to it (silent); then the dependent is played with registers 0–3 as its argumen
 
 With a channel whose sound is loaded:
 
-1. If the frequency `0xFF099DB2` is not set locally, set it (silent) from the sound's original frequency (sound slot
-   28) through the player's register interface.
+1. Test whether frequency `0xFF099DB2` is present in the local register set or the
+   directly assigned track definition. This predicate is register-interface slot 6
+   (`0x0093AE2D`); unlike the value getter, it does not walk further parents. If
+   absent from both, obtain the sound's original frequency (sound slot 28), attempt
+   to write it into the assigned definition, and set the player's frequency through
+   the register interface (`0x0093B54D`–`0x0093B5B7`).
 2. `f := 0xFF099DB2`, `lo := 0xFF8DCFD8`, `hi := 0xFF69510B`. If either is non-zero:
    `fLo := lo ≠ 0 ? f × r^lo : f`, `fHi := hi ≠ 0 ? f × r^hi : f` with `r = 2^(1/12)` (the double at `0x00AD2B80` =
    1.0594630943592953), both truncated to integers; `f := HitMan.Random(fHi, fLo)`; set `0xFF099DB2 := f` (silent).
 3. Send `f` to the channel (`0xFF099DB2`); re-send `0xFF3071B9` and `0xFF86FE79` when set locally.
 
-*[quirk, inferred]* Step 2 writes the randomised frequency back into the register step 1 read, so each further
-`UpdatePitch` spreads around the previous random value rather than around the sound's own frequency.
+*[quirk]* Step 2 writes the randomised frequency into the player's local set,
+through register slot 3 (`0x0093B268`, called at `0x0093B66F`). Later value reads
+prefer this set (`0x0093B200`), and the presence predicate now succeeds there.
+Consequently subsequent `UpdatePitch` calls spread around the previous random
+value until the frequency is overwritten or removed. Slot 6 is a presence test,
+not a setter; the compounding itself is confirmed (HM8).
 
 ### 6.8 `HandleNotifySetPropertyValue` (`0x0093BD06`)
 
@@ -869,7 +903,7 @@ every loaded `.hit` to it (§3.2). Nothing a player hears depends on it *[inferr
 6. `FilepathHasEmbeddedKey`'s runs overlap by one character (§3.3).
 7. The default track holds nine `0 = 0` properties; the default channel sets `0xFFAAB623` twice (§5.3, §9.1).
 8. The 3D sem tests the maximum distance twice (§10).
-9. `UpdatePitch` compounds its random spread (§6.7, inferred).
+9. `UpdatePitch` compounds its random spread (§6.7).
 10. A parent cycle in TKDT records never ends (§5.3, inferred).
 11. The "Too many instructions" error repeats on every instruction after the 100th in a tick and never stops the loop
     (§6.4).

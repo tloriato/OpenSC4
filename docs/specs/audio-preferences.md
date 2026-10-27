@@ -256,6 +256,18 @@ With `v` the copied volume (`W+0x1C` music, `W+0x18` effects) and `lo, hi` its p
    `(0x2A5B69C0, v, 0, 0, 0)`, where `v` = `P+8` when the effects byte `P+4` is set, else 0.
 2. Post `0xAA650860 (P+0x10, P+0x0C)`: music on and music volume to the radio (audio.md §7.2.1).
 
+**Volume units (APW1).** *[compat]* These are framework volume units: 0 mutes and
+1024 is unity. The slider interpolation in §4.2 is linear in those units, with the
+floor/mute discontinuity described there; it is not a linear amplitude or loudness
+curve. The effects event stores the supplied master level and recomputes active
+sounds (`0x004FA550`); the radio passes its level to the sound's volume setter
+(`0x008D2FDC`, `0x008D319B`). At the DirectSound backend, a sound volume v is clamped
+to 0–1024 and transformed to `trunc(1024 × sqrt(v/1024))` before the renderer master
+is applied. Zero maps to −10000, unity to 0, and other resulting levels w to
+`trunc(6000 × w/1024) − 6000` in hundredths of dB (`0x00876894`, `0x00875FFF`;
+[sound-renderer.md](sound-renderer.md) §4.3). Thus, with renderer master 1024,
+volume 256 reaches −3000, not a linear quarter-amplitude setting.
+
 ## 5. Saving and restoring *[compat]*
 
 `UpdatePreferences(src)` (`0x004F2520`): copies from `src` (always `W+0x14`) into `R`, then `UpdateSoundSys`:
@@ -310,7 +322,7 @@ OK/Cancel handler or `DoModalWin` ends with `EndDialog`.
    3. **Region rows** (when `P+0x4A` is not null): for each Region entry `j` < 30, a new song button
       (`cGZWinBtn`, 0x1B4 bytes) at row `j`:
       - button slots: 12 `(4, 0, 0)`; 47 `(ID)` with `ID = 0x2A5BA8A7 + j`; 9 `(P+0x4A+j ≠ 0)` (checked); 17
-        `(the buffer of the UI script key (0x856DDBAC, 0x46A006B0, 0x14416244))` *[inferred: its look; APW3]*; 5
+        `(the bitmap buffer for UI key (0x856DDBAC, 0x46A006B0, 0x14416244))`; 5
         `(4, 0)`; 45 `(2, 0x8A5C324A)`, its click sound;
       - its window: notification target = the dialog; flag 2 (enabled) := `AudioFileExists(0, file)`;
       - the grid: `SetCellTextValue(0, j, title)` and `SetCellWindow(1, j, button window, 0, 1, 1)`;
@@ -320,6 +332,17 @@ OK/Cancel handler or `DoModalWin` ends with `EndDialog`.
    5. `ClearSelection`; the grid's window gets the dialog as notification target.
 
 The button states come from `P`, not from the copy; the two are equal at this point.
+
+**Song-button appearance (APW3).** *[compat]* Slot 12 selects bitmap style 4, which
+uses eight horizontal state images. With a null bitmap it first records the style
+but has no drawable image. Slot 17 supplies the bitmap buffer, reapplies that style
+using the whole bitmap, and invalidates the window; each state image is one eighth
+of the bitmap width and its full height. This retains the supplied buffer by
+reference (`0x009B1179`, `0x009B0338`). Slot 5 with `(4, 0)` clears button flag 4,
+which controls caption display; the bitmap remains the button's visible content
+(`0x009B14DF`, `0x009B13DD`, `0x009B0C08`, `0x009B1541`). The checked value is set
+separately by slot 9. These calls are made for both song lists by `0x004F44C0`.
+
 
 ### 6.4 `DoModalWin` (`0x004F25F0`)
 

@@ -71,7 +71,12 @@ for message type `0xDB53383B` (`kSndEventMsgTypeStd`); when threaded and not yet
 (`cGZMessageQueue2`, `+0x30`), the property cache (`0x9D4C6B95`, IID `0x5D4C6B90`) and the instance cache
 (`0xBDF613B4`, IID `0x3DF613A1`), starts its timers, and creates a **callback timer** (`+0x58`) with a **20 ms**
 period whose callback (`0x009666F4`) calls `Update(dt)` with the milliseconds since the previous call (0 when the
-clock went back); the timer's thread gets priority 4 (its slot 5) *[as read]*.
+clock went back). *[compat]* The timer's slot 12 returns its scheduler, whose
+slot 5 forwards to its embedded worker thread's priority setter (`0x00968164`,
+`0x009D8564`, scheduler table `0x00AD1F6C`, `0x00933653`). Priority 4 maps to
+Windows thread priority +1 (above normal), through `SetThreadPriority`; it does
+not change timer resolution (`0x0092064A`, thread table `0x00ACFB90`). If the
+worker has not been created, the setter retains that priority for creation (SY1).
 
 - `PostEvent(e)` (`0x00966A95`) pushes the event's message on the queue. The helpers `0x00966AB2`, `0x00966B55`,
   `0x00966C15` create a `cGZSndEventStd` (`EventCreate`, slot 13, IID `0x5B523BA4`), fill data1–data4 (payload slots
@@ -103,8 +108,17 @@ false (used to find, stop or kill sounds by id: `FindPlayingGZSnd` `0x009669BE`,
 Renderers (`+0x90`): `RegisterRenderer` (no duplicates), `UnregisterRenderer`, `IsRegisteredRenderer`,
 `NumRenderers`. `SetMasterVolume` sends `+0xE0` to every renderer (slot 3). The listener state is pushed to every
 renderer's 3D interfaces: position (`0x406077D2` slot 7), orientation (6 floats, slot 9), velocity (`0x5B30E7B3`
-slot 4) and three factors (slots 8, 10, 12 — distance, roll-off and Doppler *[inferred]*); `CommitDeferredSettings`
+slot 4) and three factors on the extended listener (slots 8, 10, 12 — Doppler, roll-off
+and distance, respectively); `CommitDeferredSettings`
 calls `0x406077D2` slot 5 on each. Getters return the stored copies.
+
+**Factor mapping (SY2).** *[compat]* The framework setters are `0x0096742C`
+(Doppler), `0x009674BD` (roll-off) and `0x0096754E` (distance). They forward to
+extended-listener slots 8, 10 and 12. At the DirectSound helper, these reach
+SetDopplerFactor (`0x00878A94`), SetRolloffFactor (`0x00878B03`) and
+SetDistanceFactor (`0x00878AB9`), with immediate application. The helper also
+caches the distance factor for distance conversion; its extended-listener slot 11
+returns that cached value (`0x00878CD9`, table `0x00AC2F3C`).
 
 ### 2.5 Extension map
 
@@ -188,6 +202,15 @@ interface. `SetGlobalProperty` (`0x00969F64`), `RemoveGlobalProperty` (`0x00969F
 The **instance cache** (0x14 bytes, QI `0x3DF613A1`) maps a key to a list of ids and answers which key a given id
 belongs to (`0x0096A53F`) *[as read]*.
 
+**Established cache operations (SY3, partial).** *[compat]* The instance cache's
+slot 6 ensures a list exists for the supplied key, then appends an ID only when
+absent (`0x0096A760`, table `0x00AD7440`). Slot 7 removes the first ID in that
+key's list (`0x0096A6C2`); slot 10 removes the requested ID once from each list
+(`0x0096A6F5`). Slot 11 scans keys in map order and returns the first key whose
+list contains the requested ID (`0x0096A53F`). These are integer keys and values;
+the container bodies do not establish that they are sound IDs or sound-instance
+IDs. The caller that assigns those meanings remains unresolved.
+
 ### 4.3 The default event handler (`cGZSndDefaultEventHandler`, `0x7DC495CC`)
 
 QI `0xBB523BB2`; holds the sound manager (`+0x08`) and the sound system (`+0x0C`). `DoEvent` (`0x0096A972`) reads the
@@ -225,9 +248,14 @@ Every case other than a successful event 1 returns false, so later handlers stil
 ### 4.5 The XA file data source (`0x1D07EB4B`) *[compat]*
 
 0xF84 bytes (`0x0096B1F5`). **Open** (`0x0096B078`): the file (`CreateFileA`, read, share-read, open-existing)
-starts with an 8-byte header — `"XA"`, two bytes, a `u32` **decoded size** in bytes — then a 16-byte PCM format block
+starts with an 8-byte header — `"XA"`, two opaque bytes, a `u32` **decoded size** in bytes — then a 16-byte PCM format block
 (`wFormatTag` must be 1, channels, rate, byte rate, block align, bits). Errors at `+0xF7C`: 1 open failed, 3 not XA
 or not PCM, 4 read failed.
+
+The two bytes at file offsets 2–3 are not validated by Open: only the first two
+signature bytes are tested (`0x0096B078`). *[compat]* Accept any values there and
+obtain channel count from the following PCM format block. Their intended format
+meaning (version or padding, for example) remains unknown (SY4).
 
 **Decoding** (`0x0096B28C`): the compressed stream is read 0xF00 bytes at a time (`0x0096B4DE`). It is made of
 frames of 28 samples per channel: mono frames are 15 bytes (1 header byte + 14 data bytes), stereo frames 30 bytes

@@ -19,3 +19,8 @@ va	name	evidence	mac_x86
 009693c0	cGZSndMgr::GetSound	sound-system.md §3.2 (id form)
 009694a2	cGZSndMgr::SndAutoPlay	sound-system.md §3.2
 00967885	cGZSndSys::UpdateTargets	sound-system.md §2.3 (250 ms slow round)
+0096742c	cGZSndSys::SetDopplerFactor	sound-framework.md §2.4; extended listener slot 8; forwards through 0x00878A94 to DirectSound SetDopplerFactor
+009674bd	cGZSndSys::SetRolloffFactor	sound-framework.md §2.4; extended listener slot 10; forwards through 0x00878B03 to DirectSound SetRolloffFactor
+0096754e	cGZSndSys::SetDistanceFactor	sound-framework.md §2.4; extended listener slot 12; forwards through 0x00878AB9 to DirectSound SetDistanceFactor
+0096a760	cGZSndInstanceCache::AddInstance	sound-framework.md §4.2; slot 6 of 0x00AD7440; ensures key list exists and appends ID only if absent
+0096a53f	cGZSndInstanceCache::FindInstanceKey	sound-framework.md §4.2; slot 11 of 0x00AD7440; scans key lists and returns first containing the ID

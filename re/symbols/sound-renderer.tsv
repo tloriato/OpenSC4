@@ -1,0 +1,3 @@
+va	name	evidence
+00876238	cGZSnd::SetStreamingBufferLevel	sound-renderer.md §4.5; +8 interface slot 6, clamps 1–6; +0xC0 used by streaming allocation at 0x00877EB9
+00876255	cGZSnd::CompletionTime	sound-renderer.md §4.5; +0x14 interface slot 5; remaining byte count conversion and stopped-state factor 1000

@@ -240,8 +240,8 @@ generated index: the questions live one file per spec, so read only the file for
 | application | 15 | 7 | AP22 | questions/application.md |
 | audio | 3 | 17 | AU51 | questions/audio.md |
 | audio-ambience | 3 | 12 | AA15 | questions/audio-ambience.md |
-| audio-preferences | 3 | 0 | APW4 | questions/audio-preferences.md |
-| audio-scape | 4 | 0 | SCP5 | questions/audio-scape.md |
+| audio-preferences | 1 | 2 | APW4 | questions/audio-preferences.md |
+| audio-scape | 3 | 1 | SCP5 | questions/audio-scape.md |
 | aura | 1 | 15 | AU17 | questions/aura.md |
 | auto-game-pause | 1 | 0 | AGP2 | questions/auto-game-pause.md |
 | automata | 9 | 44 | A5, AM13, AT34 | questions/automata.md |
@@ -301,7 +301,7 @@ generated index: the questions live one file per spec, so read only the file for
 | gz-framework-core | 9 | 5 | GZF14 | questions/gz-framework-core.md |
 | gz-graphics | 0 | 7 | GZG8 | questions/gz-graphics.md |
 | history | 0 | 17 | HW18 | - |
-| hit-music | 8 | 0 | HM9 | questions/hit-music.md |
+| hit-music | 3 | 5 | HM9 | questions/hit-music.md |
 | html-document | 3 | 6 | HD10 | questions/html-document.md |
 | html-ui-hooks | 4 | 0 | HU5 | questions/html-ui-hooks.md |
 | intro-video | 2 | 0 | IV3 | questions/intro-video.md |
@@ -362,7 +362,7 @@ generated index: the questions live one file per spec, so read only the file for
 | prop-lotconfig | 7 | 12 | PL25 | questions/prop-lotconfig.md |
 | prop-occupant | 0 | 5 | PO7 | - |
 | protection | 0 | 20 | PR21 | questions/protection.md |
-| radio | 4 | 0 | RA5 | questions/radio.md |
+| radio | 1 | 3 | RA5 | questions/radio.md |
 | region | 3 | 0 | RQ4 | questions/region.md |
 | region-city-dialogs | 12 | 0 | CY13 | questions/region-city-dialogs.md |
 | region-model | 13 | 6 | RM19, RQ4 | questions/region-model.md |
@@ -387,8 +387,8 @@ generated index: the questions live one file per spec, so read only the file for
 | sc-resources | 1 | 11 | SCR12 | questions/sc-resources.md |
 | simgrid | 2 | 1 | SG4 | questions/simgrid.md |
 | snapshots | 9 | 0 | SN10 | questions/snapshots.md |
-| sound-framework | 4 | 0 | SY5 | questions/sound-framework.md |
-| sound-renderer | 3 | 0 | SRN4 | questions/sound-renderer.md |
+| sound-framework | 2 | 2 | SY5 | questions/sound-framework.md |
+| sound-renderer | 1 | 2 | SRN4 | questions/sound-renderer.md |
 | sound-system | 12 | 12 | SS13 | questions/sound-system.md |
 | span-render-1555 | 2 | 5 | SR1556 | questions/span-render-1555.md |
 | span-render-4444 | 3 | 4 | SP8 | questions/span-render-4444.md |
@@ -435,4 +435,4 @@ generated index: the questions live one file per spec, so read only the file for
 | win-grid | 2 | 7 | WG10 | questions/win-grid.md |
 | zone-tool | 1 | 0 | ZT2 | questions/zone-tool.md |
 | zones | 2 | 56 | ZG43, ZQ17 | questions/zones.md |
-| **total** | **619** | **1702** | | |
+| **total** | **604** | **1717** | | |

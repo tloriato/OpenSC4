@@ -135,6 +135,16 @@ only: scapes still listed are leaked *[quirk]*. Normally `Shutdown` has removed 
 `soundId` the sound, `f` a float (50.0 by default). `extra`, `flag` and `f` are stored and copied but read by nothing
 in this owner *[inferred]*.
 
+**Instance identity (SCP4).** *[compat]* The sound manager receives the private
+copy's address as an opaque 32-bit instance key, not as a record to inspect. The
+scape start helper posts only sound ID and instance key, then volume; its supplied
+flag does not reach the start payload (`0x004F5610`). The receiver reads the event's
+sound ID, instance key and optional event flag (`0x004FA1F0`); it uses the key for
+lookup/replacement and stores it in the new sound instance (`0x004F9D70`). It does
+not read the definition's extra, flag or f through that key. Those stored/copied
+fields therefore do not supply additional playback parameters on this path.
+
+
 ### 3.5 Input format and ownership (AU42)
 
 There is **no scape resource decoder** in this owner. Slot 5's first argument is a string

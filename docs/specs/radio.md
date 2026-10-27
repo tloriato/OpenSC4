@@ -59,12 +59,23 @@ slot 5 (`+0x14`) with a heap `cRZString` payload:
 | Event | Effect |
 |---|---|
 | `0x0AB186E5` | stop the radio sound (slot 8) |
-| `0x0AB1A61E` | remember the volume; when there is a sound and it is not paused, set it (slot 21) |
-| `0x4AB186E9` | when the sound plays: slot 22 of the sound with its position (slot 20) and the event's value; set a flag *[as read]* |
+| `0x0AB1A61E` | remember the volume; when there is a sound and it is not fading, set it (slot 21) |
+| `0x4AB186E9` | when the sound plays, asynchronously fade from its current volume (sound slot 20) to data1 over data2 milliseconds (sound slot 22); mark the pending station transition |
 | `0x6AB1A480` | no sound → 0; data 0 and the sound playing → 0 (no skip); else stop the sound, clear the current station's wait flag and make it play the next music item (station slot 23, type 0) |
 | `0xEAB186DF` | when the event has a payload: stop the sound; reset its data source (`0x09D002D2` slot 3, `(0, 2)`); open the file (slot 36, `(path, 1)`); play (slot 6, `(volume, 0, 1)`); record it as the current song |
-| `0xEAB1A483` | store the sound's playing state (slot 7) and paused state (slot 23); `IsPlaying` returns the first |
+| `0xEAB1A483` | store the sound's playing state (slot 7) and fading state (slot 23); `IsPlaying` returns the first |
 | other | 0 |
+
+**Station transition (RA1).** *[compat]* The event uses
+`Fade(currentVolume, data1, data2, true)`, not a playback-position operation
+(`0x008D32BB`–`0x008D32F6`, sound table `0x00AC2C88`, fade `0x0087630C`). Its
+transition mark is at radio object `+0x71`. Once the sound is no longer playing,
+the unsuspended idle path clears that mark, stops playback and invokes the current
+station's idle handler (`0x008D30D1`). The event itself does not open or start a
+second sound. Fade execution follows [sound-renderer.md](sound-renderer.md) §4.4,
+including its integer step and existing-fade refusal. The idle event caches the
+fading state through sound slot 23 (`0x00877815`), and volume events defer setting
+the sound volume while that cached flag is set; this flag is not a pause state.
 
 ### 2.2 `Init` and `Shutdown`
 
@@ -95,7 +106,7 @@ leaves the framework lists, unregisters the event target.
 1. `stations := radioDir + "Stations\"`, `commercials := radioDir + "Commercials\"`.
 2. List the sub-directories of `stations`. When there is at least one, remove all current stations first.
 3. For each sub-directory `d` that contains a `*.id` file, make a `cRZDiskRadioStation`, add it (`AddStation`) and
-   set its shuffle strategy from a radio option bit *[as read]*. Its folders:
+   set its shuffle strategy from bit 0 of the settings word described below. Its folders:
    - station folder `stations + d + "\"`;
    - Music `station + "Music\"`;
    - DJ `station + "DJ\"`, Commercials `commercials`, Jingle `station + "Jingle\"`, each followed by the current
@@ -104,6 +115,14 @@ leaves the framework lists, unregisters the event target.
      is dropped;
    - then the station reads its call sign (§3.1).
 4. A saved station index beyond the count is reset to 0. Returns whether any station was made.
+
+**Shuffle setting (RA2).** *[compat]* The tested word is at object `+0x2C`
+(`0x008D4BD8`), also addressed as `+0x10` from the radio interface. ReadSettings
+copies settings word `s[7]` into it and WriteSettings copies it back
+(`0x008D2ADF`, `0x008D2B3C`). Construction clears it (`0x008D35AB`). A clear bit
+selects strategy 0 (random shuffle); a set bit selects strategy 1 (file-time sort).
+The value is captured when a station is built; it is separate from DJ/commercial/
+language options and the current station index.
 
 `AddStation(s)` (`0x008D38E5`): ignores a station already present; gives it the radio (station slot 6), initialises
 it (slot 3) and appends it; when it is the first station and the radio is on, selects it and runs the idle tick.
@@ -116,6 +135,9 @@ it (slot 3) and appends it; when it is the first station and the radio is on, se
 
 ### 2.6 Station selection and the idle tick
 
+Offsets `+0x54` and `+0x6D` below are relative to the `cIGZRadio` interface,
+which begins at object `+0x1C`.
+
 Select (`0x008D3066`, index `i`): when `i` differs from the current one, stop the current station (its slot 8),
 stop playback unless a flag at `+0x6D` is set, clamp `i` to the last station, make it current and, when on, start
 it (station slot 7). `GetStation(callSign)` (`0x008D484A`/`0x008D490B`) compares call signs (station slot 9); the
@@ -124,6 +146,19 @@ second variant also posts a station event with its extra argument and selects th
 The idle tick (slot 5, `0x008D30D1`), when on and with stations: posts the idle event; then, unless suspended
 (`+0x54`) and while the sound is not playing, clears a "station changed" flag (stopping playback when it was set)
 and runs the current station's `OnIdle` (§3.2).
+
+**Preview and deferred station changes (RA3).** *[compat]* Radio slot 30 directly
+sets the suspend byte (interface `+0x54`, object `+0x70`; `0x009B1F4B`, table
+`0x00ACC310`). The SC4 audio handler uses this slot for preview-start/end message
+`0xAA650861` (`0x004EF810`); preview suppresses station idle programming, while the
+radio still refreshes its playing/fading state. The keep-playing byte (interface
+`+0x6D`, object `+0x89`) is instead set internally by the call-sign selection
+variant, slot 13, when its transition-argument pointer is nonnull. That path sets
+the byte before dispatching the fade event and finding/selecting the station
+(`0x008D4926`–`0x008D4939`). It therefore prevents station selection from immediately
+stopping the sound being faded (`0x008D3066`). Both bytes start at zero
+(`0x008D35AB`). The call-sign path does not clear the keep-playing byte afterwards,
+including when no call sign matches; it is a retained flag, not a scoped guard.
 
 ---
 
