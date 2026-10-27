@@ -68,6 +68,14 @@ Conventions:
 | `+0x168`, `+0x16A` | largest and smallest flat button width (16-bit) | 16, 8 |
 | `+0x16C` | flat button colour: **never written** by the class *[quirk]* (WSP1) | — |
 
+*[compat]* Factory allocation does not supply a zero default for this colour (`0x009C5973`,
+`0x009C5327`). The shared allocator uses a 512-byte free-list block for this object and
+returns it without clearing the payload (`0x005E55E0`, `0x005B9FC0`, `0x005E5CB0`,
+`0x005E16E0`, table `0x00AA4024`, `0x005E5BC0`). Thus flat painting can consume a colour left by an earlier
+allocation (`0x009C4E36`). Whether shipped UI resources exercise this path remains WSP1.
+*[choice]* A replacement may initialise the flat colour to zero; that value is not an original
+allocator guarantee.
+
 ## 2. The `cIGZWinSpinner` slots *[compat]*
 
 ### 2.1 Table (vtable `0x00AE0DF0`, 35 slots)

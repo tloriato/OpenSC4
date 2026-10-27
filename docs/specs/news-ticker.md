@@ -14,8 +14,10 @@ Conventions:
 - `T` is the ticker.
 - `P` is the parent of its window (`T+0x44` slot 3, then slot 11).
 - `SetFlag(1, on)` shows or hides a window.
-- An advice's slot 6 is its mood, slot 7 its priority *[inferred]*, slot 11 its advisor ID, and slot 15
-  `CheckFlags`.
+- An advice's slot 6 is its mood, slot 7 its priority, slot 11 its advisor ID, and slot 15
+  `CheckFlags`. *[compat]* Slot 7 reads the priority loaded from the advice's `priority` script
+  property (`0x00407AB0`, `0x00408C70`, property read `0x00408D1B`–`0x00408D38`), confirming
+  the meaning used for ordering and the flipper threshold (NTK1).
 
 ## 1. Identity and fields *[compat]*
 
@@ -70,6 +72,14 @@ Once:
 **The timer callback** (`0x00772440`, cdecl): it gets message server 2 (framework service `0x04FA845B`, IID
 `0x652294C7`), makes a `cRZMessage2Standard` of type `0x0A344006`, and hands it with `T` to the server's slot 7.
 
+*[compat]* Slot 7 queues delivery to that specific target. The concrete service interface
+(base table `0x00AD1BF4`; application table `0x00A8CAFC`, installed by
+`0x00472EB0`; query `0x0092D091`) reaches `0x0092EA00`, which retains a message/target
+pair and appends it to the directed queue (`0x0092D1C5`, `0x0092E6E2`). The callback can
+release its message reference immediately. The queue pump later removes the pair and calls
+the target's message handler (`0x0092F90C`); this is deferred delivery, not a synchronous
+handler call within the timer callback (NTK4).
+
 ## 3. Showing and messages *[compat]*
 
 - **`Show`** (`0x00772920`):
@@ -98,6 +108,12 @@ Once:
 | `0xCA09FA6C` | `RemoveAdvice(adv)`, rebuild, `+0x7C` := 1 |
 | `0x8A09FA67` AdviceRemovedAll | the object is an advisor (`0xCA09F544`). Every listed advice of its ID (advisor slot 5 against advice slot 11) is removed. If any was: rebuild, `+0x7C` := 1, `DoFlipperMessage` |
 | `0x0A344006` (the timer) | §5.2 |
+
+*[compat]* Flag `0x2000` is set by `cSC4CitySituationAdvice::Init` after the base advice
+initialisation (`0x004239D0`). This identifies city-situation advice as a concrete excluded
+category, regardless of priority: the ticker tests the flag before inserting an added advice
+(`0x00772B60`). The flag is also publicly mutable through advice slot 14
+(`0x00407AE0`), so exclusion is a flag test rather than a test of the advice's class (NTK2).
 
 ## 4. The list
 
@@ -165,7 +181,8 @@ Nothing without a flipper control. Otherwise:
 
    Each uses `</B></FONT>` otherwise. Without an advice: dark blue.
 2. **The face** is ` FACE="StocletITC TT" SIZE=2><B>` when the language (`RZ::LM` slot 7) is 15, else the `SIZE=3`
-   one.
+   one. *[compat]* Language 15 is Japanese: the language manager maps ID `0x0F` to
+   `Japanese` (`0x00924798`), confirming this branch in `0x00773980` (NTK3).
 3. **The line** = colour + face + the title (advice slot 18, or `" "` without an advice) + close.
 4. The flipper control's slot 4 gets `(&e, &e, &line, &line, 0, adv, &e, 0, 0x14416265)`, with `e` empty strings.
 
@@ -188,7 +205,7 @@ Quirks:
 ## 7. Not covered
 
 - The list control and the flipper control are `cSC4WinAdviceList` controls, specified in advice-list.md.
-- The advice priority slot (slot 7) and flags `2`, `0x20` and `0x2000` (AW4).
+- Advice flags `2` and `0x20` beyond their uses above (AW4); priority and the city-situation exclusion are established here (NTK1, NTK2).
 
 ## 8. Function inventory (owner `cSC4NewsTickerWinProc`)
 

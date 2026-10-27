@@ -33,6 +33,16 @@ Evidence: static RE only, on the instruction and data bytes of the Steam 1.1.641
 **Preferences** (`P` = `0x00B43CD8`): byte `+0x49C` the dialog's check box; dword `+0x4A0` the instance of the last
 tip shown.
 
+*[compat]* The checkbox byte defaults to 1 (`0x00449070`). It is persisted with the complete
+`0x1734`-byte preferences payload, record type `0xA9DD6E06`, group
+`0x49DD6E08`, instance 1, version `0x15` (`0x0044BDB0`); reading that version restores the payload
+including this byte (`0x0044BC50`). Persistence does not make the checkbox an opening gate:
+`DoPostCityInit` tests only the session's shown flag and the presence of tips before invoking
+the opener (`0x007ED0F0`), and the opener checks the parent, existing dialog and script
+creation (`0x0078C8C0`). Clearing the checkbox therefore does not suppress this automatic
+opening on a later run. The shown flag already prevents another automatic opening during
+the same run (`0x0078C760`, `0x0078CDB0`; TOD1).
+
 ## 2. Entry points *[compat]*
 
 - **`HasBeenShownAlready`** (`0x0078C760`): the shown byte.
@@ -110,7 +120,7 @@ The destructor (`0x0078C9E0`) releases `+0x20`, `+0x1C`, `+0x18` and frees the v
 - When the last tip shown is no longer among the tips, the dialog starts at the second tip (index 0 + 1), not the
   first *[quirk]*.
 - `EntriesPresent` caches its answer for the run: tips added later are not seen by it (the dialog itself rescans).
-- The opener in the 3D view does not read `P+0x49C`; the check box is only written here (TOD1).
+- The checkbox is saved and restored, but the automatic opener ignores it (§1, TOD1).
 - The callback returns nothing and the scan cannot stop early: presence mode still loads no further exemplars once one
   is found, but every key is still visited.
 

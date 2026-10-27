@@ -204,6 +204,14 @@ whole image (rect null).
 | 18 `GetImage(out rect, out image, out x)` | `0x009C3FD9` | `F`, the image (not AddRef'd), `x := 0`; true when there is an image |
 | 19 `GetSizeLimits(out q)` *[inferred name]* | `0x009C4004` | horizontal `q := (3·tw, th, 0xFFFF, th)`; vertical `(tw, 3·th, tw, 0xFFFF)`; true; other orientations false (`q` untouched) |
 
+*[compat]* Verified image-setting callers include the text editor's vertical and horizontal
+scrollbar-image setters (`0x009BD278`, `0x009BD2F9`) and scrollbar creation in `AddScrollBar`
+(`0x009BE477`). They pass the source rectangle, image and **zero** as slot 17's third
+argument; an empty rectangle selects the image's own area. Slot 17 forwards only the first
+two arguments and discards the third (`0x009C3FC6`). Slot 18 writes zero to the corresponding
+output (`0x009C3FD9`). This establishes that the third argument is unused on these paths;
+callers establishing names for all size-limit outputs remain unresolved (WSL1).
+
 "Layout" is window slot 153; none of these redraws. The divisors are numbers of steps, kept when the range changes
 *[quirk]*.
 

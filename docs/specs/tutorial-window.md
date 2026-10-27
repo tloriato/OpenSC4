@@ -41,10 +41,10 @@ Conventions:
 |---|---|
 | `+0x10` | `S`, the script window's generator (counted) |
 | `+0x14` | the HTML text control (counted): class `0xAA12E5F5`, interface `0x4A11FD4A` |
-| `+0x18` | the shown arrow (counted). Set outside this owner (TUW1), hidden at task changes |
+| `+0x18` | the shown arrow (counted); selected by the arrow-placement helper described below (TUW1), hidden at task changes |
 | `+0x1C`, `+0x20` | the two arrow windows (counted) |
 | `+0x24` | the exit dialog (counted), made by the first exit request (§6.2) |
-| `+0x2C` | an object reached through its slot 21 `(-1, 0, 0)` (counted). Set outside this owner (TUW1) |
+| `+0x2C` | the catalog view currently flashing an item (counted); slot 21 `(-1, 0, 0)` cancels its flashing (TUW1) |
 | `+0x30` | the absolute index of the current task |
 | `+0x34` | the highlighted window (counted) |
 | `+0x38` | byte: skip the next highlight (set by `HandleCatalogView`) |
@@ -54,6 +54,17 @@ Conventions:
 | `+0x3C`, `+0x40` | the rest position `(x, y)` of `S`'s window |
 | `+0x44` | the Lua context (counted) |
 | `+0x48`…`+0x50` | the task vector (counted tasks; begin, end, capacity) |
+
+*[compat]* These references are written by tutorial-window helpers, rather than the tasks.
+The message target (`0x00444480`) handles the queued self-message `0x4C05A5E6`:
+kind 3, once its delay count reaches zero, flashes the requested catalog item through catalog
+slot 21, retains that catalog interface at `+0x2C`, and places an arrow at the item's rectangle.
+Kind 4 derives a hint window's screen rectangle (`0x00442760`) and places an arrow there.
+Both reach the arrow-placement helper (`0x00442430`), which hides/releases the previous
+`+0x18`, selects and retains one of `+0x1C`/`+0x20` for applicable task types 4 and `0x10`,
+then positions, raises and shows it. Task type 4 also requires a nonzero task parameter
+(slot 18). Later task transitions cancel the retained catalog flashing and hide the arrow
+(§3.4; TUW1).
 
 Shared state:
 - The global `0x00B2140C` is a `std::map<uint32, uint32>` from window ID to a visit count; its size is at
@@ -253,9 +264,15 @@ Nothing happens without a current task `T` and `V`. Otherwise:
    3. When `w` is not `+0x34`: unhighlight, then highlight `w`, and `+0x34` := `w`.
 
 Highlight and unhighlight:
-- To highlight `w`: its button interface `0x8810` gets slot 44 `(0x7FFFFFFF, 200)` (TUW2).
+- To highlight `w`: its button interface `0x8810` gets slot 44 `(0x7FFFFFFF, 200)`.
+  *[compat]* Slot 44 starts flashing with a countdown and a timer interval in milliseconds
+  (`0x009B1058`). Each timer message updates the layout and decrements a positive countdown;
+  alternating parity supplies the flashing phases (`0x009B0311`, `0x009B1A3B`,
+  `0x009B0C08`). Thus 200 ms is the interval between phase updates, and the count measures
+  updates, not pairs of phases. The tutorial requests an effectively continuous sequence (TUW2).
 - To unhighlight: when `+0x34` is set, its button interface gets slot 44 `(0, 200)`; then release and clear
-  `+0x34`.
+  `+0x34`. A zero count immediately reapplies the resting layout; the next timer message stops
+  the timer without another countdown change (`0x009B1058`, `0x009B1A3B`).
 
 ### 5.3 `HandleCatalogView(menu)` (`0x00442340`, slot 8)
 
@@ -272,8 +289,10 @@ Highlight and unhighlight:
 
 1. Make a `cRZMessage2Standard` of type `0x4C05A5E6`. Its five data fields (slots 11, 16, 21, 27 and 33) get
    `kind`, `a`, `b`, `c` and `d`.
-2. Hand it with `W+0xC` to message server slot 7, which delivers it to the window's own `DoMessage`
-   (`0x00444480`, kinds 1–4) *[inferred]*.
+2. Hand it with `W+0xC` to message server slot 7, which queues it for the window's own
+   `DoMessage` (`0x00444480`, kinds 1–4) *[compat]*. The server retains the message and target
+   in its directed queue (`0x0092EA00`); delivery occurs when that queue is pumped
+   (`0x0092F90C`), not inside slot 7.
 3. Release it.
 
 The kinds used here:
@@ -340,7 +359,11 @@ Every time: show the dialog (slot 69), then run it modally (its window manager's
    - `id`;
    - the IID `0x22BA0121`;
    - `&out`.
-3. On success with a window: `HideWindow` (slot 70) and `SetFlag(0x200000, 1)` (TUW3). Return true.
+3. On success with a window: `HideWindow` (slot 70) and `SetFlag(0x200000, 1)`. Return true.
+   *[compat]* This flag excludes the arrow from cursor targeting: the parent's cursor-point
+   search skips flagged children (`0x0099DFA9`), and cursor-message routing also skips them
+   and refuses delivery to a flagged window (`0x0099D40B`). Visible arrows therefore let
+   cursor targeting continue to windows underneath them (TUW3).
 4. Otherwise return false.
 
 `Init` ignores the results.

@@ -251,11 +251,11 @@ generated index: the questions live one file per spec, so read only the file for
 | budget-window | 6 | 19 | BW27 | questions/budget-window.md |
 | building-development | 0 | 39 | DG40 | - |
 | bulldozer-tool | 1 | 0 | BT2 | questions/bulldozer-tool.md |
-| callout-box | 3 | 0 | WCB4 | questions/callout-box.md |
+| callout-box | 0 | 3 | WCB4 | questions/callout-box.md |
 | camera | 2 | 8 | CA11 | questions/camera.md |
-| catalog-view | 2 | 0 | CV3 | questions/catalog-view.md |
+| catalog-view | 1 | 1 | CV3 | questions/catalog-view.md |
 | cheat-codes | 1 | 0 | CCM2 | questions/cheat-codes.md |
-| cheat-dialog | 3 | 0 | CCD4 | questions/cheat-dialog.md |
+| cheat-dialog | 1 | 2 | CCD4 | questions/cheat-dialog.md |
 | city-detail | 3 | 5 | CD9 | questions/city-detail.md |
 | city-situation | 2 | 11 | CS14 | questions/city-situation.md |
 | city-tools | 7 | 0 | CT18 | questions/city-tools.md |
@@ -339,7 +339,7 @@ generated index: the questions live one file per spec, so read only the file for
 | network-tools | 16 | 15 | NT37 | questions/network-tools.md |
 | network-transport | 4 | 0 | Q15 | questions/network-transport.md |
 | network-type-info | 4 | 0 | TI5 | questions/network-type-info.md |
-| news-ticker | 4 | 0 | NTK5 | questions/news-ticker.md |
+| news-ticker | 0 | 4 | NTK5 | questions/news-ticker.md |
 | occupant-groups | 4 | 0 | OG5 | questions/occupant-groups.md |
 | occupant-manager | 1 | 6 | OM11 | questions/occupant-manager.md |
 | occupants-props | 6 | 14 | OP20 | questions/occupants-props.md |
@@ -403,14 +403,14 @@ generated index: the questions live one file per spec, so read only the file for
 | text-edit | 0 | 12 | TE13 | questions/text-edit.md |
 | texture-bindings | 3 | 1 | TB9 | questions/texture-bindings.md |
 | timers | 0 | 3 | TM4 | questions/timers.md |
-| tip-of-the-day | 1 | 0 | TOD2 | questions/tip-of-the-day.md |
+| tip-of-the-day | 0 | 1 | TOD2 | questions/tip-of-the-day.md |
 | tools-com-director | 2 | 2 | TD5 | questions/tools-com-director.md |
 | traffic-network | 0 | 29 | TN30 | - |
 | traffic-simulator | 0 | 94 | TG27, TS69 | questions/traffic-simulator.md |
 | tutorial | 0 | 6 | TU10 | questions/tutorial.md |
-| tutorial-window | 4 | 2 | TUW7 | questions/tutorial-window.md |
+| tutorial-window | 1 | 5 | TUW7 | questions/tutorial-window.md |
 | ui-feedback-owners | 0 | 0 | - | questions/ui-feedback-owners.md |
-| ui-helpers | 3 | 0 | UIH4 | questions/ui-helpers.md |
+| ui-helpers | 1 | 2 | UIH4 | questions/ui-helpers.md |
 | ui-script-service | 1 | 0 | UIS2 | questions/ui-script-service.md |
 | ui-windows | 1 | 0 | UI30 | questions/ui-windows.md |
 | underground-occupants | 1 | 4 | UG6 | questions/underground-occupants.md |
@@ -426,7 +426,7 @@ generated index: the questions live one file per spec, so read only the file for
 | web-network | 3 | 0 | Q17, UI30 | questions/web-network.md |
 | widget-controls | 0 | 0 | - | questions/widget-controls.md |
 | widget-dragdrop | 1 | 0 | WDD2 | questions/widget-dragdrop.md |
-| widget-lineinput | 2 | 0 | WLI3 | questions/widget-lineinput.md |
+| widget-lineinput | 1 | 1 | WLI3 | questions/widget-lineinput.md |
 | widget-slider | 2 | 0 | WSL3 | questions/widget-slider.md |
 | widget-spinner | 2 | 0 | WSP3 | questions/widget-spinner.md |
 | widget-toolkit | 5 | 12 | WT15, WTC2, WTG2, WTH2 | questions/widget-toolkit.md |
@@ -435,4 +435,4 @@ generated index: the questions live one file per spec, so read only the file for
 | win-grid | 2 | 7 | WG10 | questions/win-grid.md |
 | zone-tool | 1 | 0 | ZT2 | questions/zone-tool.md |
 | zones | 2 | 56 | ZG43, ZQ17 | questions/zones.md |
-| **total** | **619** | **1702** | | |
+| **total** | **602** | **1719** | | |

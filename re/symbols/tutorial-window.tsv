@@ -1,0 +1,4 @@
+va	name	evidence
+00442430	cSC4TutorialUIWinProc::PlaceHintArrow	tutorial-window.md §1 (TUW1); hides/releases +0x18, selects retained +0x1C/+0x20 for task types 4/0x10, positions and shows the chosen window
+00442760	cSC4TutorialUIWinProc::PlaceHintArrowForWindow	tutorial-window.md §1 (TUW1); obtains a hint window screen rectangle then calls 0x00442430; used by self-message kind 4
+00444480	cSC4TutorialUIWinProc::DoMessage	tutorial-window.md §1 (TUW1); message-target table 0x00A86368 slot 3; self-message kind 3 retains the flashing catalog at +0x2C and calls arrow placement

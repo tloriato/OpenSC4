@@ -191,7 +191,17 @@ slot 48) exceeds the inner width `drawArea.r − gr − gl − drawArea.l`, adva
 
 With a non-zero sound ID `i` and the sound system (`RZ::SS`): its slot 13 `(5, 0x5B523BA4, &obj, id, 0, 0, 0)`;
 on success its slot 8 `(obj)` and that result is returned; the object is released either way. Otherwise false.
-Index 0 is played for a control character, index 1 at the limit. The constructor does not set the IDs (WLI2).
+Index 0 is played for a control character, index 1 at the limit. The constructor does not set the IDs.
+
+*[compat]* The factory allocates the control without clearing its storage (`0x009C6ABE`,
+`0x005E55E0`, `0x005B9FC0`). Both this control and the spinner fit the allocator's 512-byte
+size class. That class removes a block from a free list without clearing its payload
+(`0x005E5CB0`, table `0x00AA4024`, `0x005E16E0`); freeing a block writes the free-list link, not zeros throughout
+it (`0x005E5BC0`). Consequently the unwritten sound IDs can retain earlier allocation contents;
+the allocator does not establish silence (`0x009C68AC`, `0x009C6096`).
+
+*[choice]* Initialise all three IDs to zero in the replacement. This gives deterministic silence
+until configured, without reproducing dependence on previous heap contents (WLI2).
 
 ## 7. Lifecycle and painting
 
@@ -240,7 +250,7 @@ place of the first `0x8000000`.
 
 Quirks:
 1. Backspace erases the wrong bytes and cannot erase the first character (§5.2, WLI1).
-2. The sound IDs are never initialised by the constructor (§6, WLI2).
+2. The sound IDs are never initialised by the constructor and the allocator does not clear them (§6, WLI2).
 3. The constructor and a non-editable left click use the control manager and the parent without null checks.
 4. A highlight alpha strictly between 0 and 1 draws no highlight (§7).
 5. `SetCursorLoc` does not scroll or redraw; `SetOutlineType` does not redraw; `SetCharacterLimit` does not cut.

@@ -79,6 +79,12 @@ the money string of 1500.
 
 ## 3. Catalog items and views
 
+*[compat]* The property roles below follow executable consumers: `0x0078EF30` compares the
+menu property and uses the order property as the map key; `0x0078EC90` loads the text keys
+and fallback strings and supplies icon/button values to the catalog item. This verifies those
+roles independently of a human-readable property-name table. The shipped names themselves
+are not established from these consumers and remain UIH3.
+
 ### 3.1 `CreateCatalogItemFromExemplar(exemplar, window, kind, detokenizer)` (`0x0078EC90`)
 
 `P` is the exemplar's property holder (exemplar slot 7). The function returns a new `cSC4CatalogItem` with one
@@ -199,13 +205,25 @@ The three dialogs share one sequence. In step 2, each creates its window with th
    8-byte object with vtable `0x00AB55C0` and its count at `+4`.
 6. Set the texts. The text children are taken with `GetChildAsRecursive(id, 0x212CDC1F)`; their slot 4 gets the
    string. The buttons are taken with the button interface `0x8810`; their slot 49 gets the label, when the
-   argument is not null.
+   argument is not null. *[compat]* Both are caption setters: text slot 4 reaches
+   `cGZWinText::SetCaption`, which stores the caption, recalculates text placement and
+   invalidates the window (`0x009C160F`, interface table `0x00AE0118`, thunk `0x007BE730`,
+   body `0x009C20B2`). Button slot 49 similarly stores the caption, updates label presence
+   and size, and lays out the button (`0x009AFFD3`, table `0x00ADDD50`, `0x009B14E4`; UIH2).
    - Notification: `title` into `0xCA8CC4B6`, `text` into `0x4A8CC4A9`.
    - Confirmation: `title` into `0x8A91E4FD`, `text` into `0x6A8CC495`; `yes` into button `0x8A8DFD4E`, `no` into
      button `0x8A8DFD4A`.
-7. The window-location store `0x00B43CE0`: slot 10 `(dialog, 1)` restores a saved place *[inferred]*.
+7. The window-location store `0x00B43CE0` is `cSLWinLocationSaver` *[compat]*
+   (`0x0044B4E0`, `0x00603650`, table `0x00AA6E74`). Slot 10 `(dialog, 1)` restores the
+   position saved under the window ID (`0x00603710`, `0x00603A20`). With a parent, a saved
+   position is accepted when left ≤ parent width − 8, top ≤ parent height − 8, right ≥ 8
+   and bottom ≥ 8; otherwise it moves to `(8, 8)`. Without a saved entry the initial
+   position is kept (UIH1).
 8. Run the dialog: `result` := `DoModalWin(dialog)` (manager slot 41).
-9. The location store slot 6 `(dialog)` saves its place.
+9. The location store slot 6 `(dialog)` saves its parent-relative left/top under the window ID
+   (`0x00603680`, `0x00603D70`) *[compat]*. The saver imports its map from up to 200
+   preferences entries on initialisation and exports it on shutdown (`0x00603810`,
+   `0x00603910`; UIH1).
 10. Detach the procedure (generator slot 7 with 0) and release it. Destroy the dialog (manager slot 23).
 11. When the old focus is still valid (manager slot 24 `IsWindowValid`), give it back the focus (slot 37).
 12. Release the dialog. The pause ends.
@@ -259,6 +277,6 @@ Not covered:
 - `cSC4WinCatalogView` and `cSC4CatalogItem` (their own owners);
 - the detokenizer;
 - `SC4LoadExemplarString` and the money formatters;
-- the window-location store (UIH1);
-- the text interface `0x212CDC1F` (UIH2);
+- the window-location store beyond the restoration and persistence boundary in §5 (UIH1);
+- the text interface beyond its caption setter (§5, UIH2);
 - the property names (UIH3).

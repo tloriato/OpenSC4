@@ -55,7 +55,11 @@ The pieces:
 - **The destructor** (`0x0079BD80`): `Shutdown`, then `~cGZWinGenDlg`. It frees the object (global heap) when bit
   0 of its argument is set.
 
-No code writes the sound IDs after the constructor, so `PlaySound` never plays *[quirk]* (§4.4, CCD3).
+*[compat]* In 1.1.641 the application creator (`0x004E0BB0`) constructs the dialog and
+immediately runs it modally; it supplies no sound IDs. The constructor explicitly zeroes both
+IDs (`0x0079BD00`), and `Init` does not configure them (`0x0079BDC0`). Thus the normal
+application path remains silent: `PlaySound` rejects a zero ID before obtaining a sound
+(`0x0079BB70`). This conclusion concerns the analysed build (CCD3).
 
 ## 2. `Init` (`0x0079BDC0`) and `Shutdown` (`0x0079BAF0`) *[compat]*
 
@@ -87,7 +91,11 @@ No code writes the sound IDs after the constructor, so `PlaySound` never plays *
 ## 3. `DoMessage(msg)` (`0x0079BFC0`)
 
 By message type (`msg+0`):
-- **`0x11`**: `M` slot 37 `(E's window)`, then the base `cGZWin::DoMessage`.
+- **`0x11` (keyboard focus gained)**: `M` slot 37 `(E's window)`, then the base
+  `cGZWin::DoMessage` *[compat]*. The base dispatcher's original jump table maps message 17
+  to `GZOnSetFocus`, window slot 132 (`0x0099CCF0`, table `0x0099CEF9`, handler dispatch
+  `0x0099CE9C`). The dialog redirects focus into its edit before base processing
+  (`0x0079BFC0`; CCD1).
 - **`0x9B1552D5`** (a key notification of `E`; Return): see below. The result is true, except false when there is
   no cheat code manager.
 - **Anything else**: the base `cGZWin::DoMessage(msg)`.
@@ -227,5 +235,5 @@ All 33 functions (6,403 bytes):
   - the backward copy `0x005C7E50`.
 
 Not covered here: the cheat code manager (`cGZCheatCodeManager`, now in cheat-codes.md), `SC4DoPopupStringListMenu`,
-the base dialog `cGZWinGenDlg` (widget-dialogs.md). The meaning of message type `0x11` and of keyboard slot 3 is
-*[inferred]* (CCD1, CCD2).
+the base dialog `cGZWinGenDlg` (widget-dialogs.md). Keyboard slot 3 remains
+*[inferred]* (CCD2); the focus message is established in §3 (CCD1).

@@ -22,3 +22,19 @@
 
   Types 0xB–0xD and 0x10 only change the window's hint handling (tutorial-window.md §5.2). tutorial-window.md §8
   updated.
+
+<!-- from: re-tutwin7 (2026-10-23) -->
+- ~~**TUW1 - §1:** `+0x18` (the shown arrow) and `+0x2C` (slot 21 `(-1, 0, 0)`) are read and released here but
+  written elsewhere. Which code sets them: the tasks, or the message target's `DoMessage` (`0x00444480`)?
+  [unknown]~~
+  **ANSWERED 2026-10-27 (re-q-widget):** MATCHES — The queued message handler retains the flashing catalog at +0x2C; arrow-placement helpers select and retain the shown arrow at +0x18 (§1).
+
+<!-- from: re-tutwin7 (2026-10-23) -->
+- ~~**TUW2 - §5.2:** the button interface `0x8810` slot 44 gets `(0x7FFFFFFF, 200)` to highlight and `(0, 200)` to
+  stop. Is it a blink count and a 200 ms period? [inferred]~~
+  **ANSWERED 2026-10-27 (re-q-widget):** MATCHES — Button slot 44 takes a flashing-update countdown and a millisecond interval; the tutorial uses 200 ms phase updates, and zero restores the resting layout (§5.2).
+
+<!-- from: re-tutwin7 (2026-10-23) -->
+- ~~**TUW3 - §7.1:** each arrow gets `SetFlag(0x200000, 1)` after `HideWindow`. What does window flag `0x200000`
+  do? [unknown]~~
+  **ANSWERED 2026-10-27 (re-q-widget):** MATCHES — Flag 0x200000 skips the arrow in cursor targeting and cursor-message routing, allowing targeting underneath it (§7.1).

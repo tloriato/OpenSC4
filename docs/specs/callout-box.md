@@ -98,9 +98,11 @@ Slots 0–3, 5, 9, 13 and 16 are shared bodies. Two small helpers:
 
 ### 3.1 Content (`dirty` bit 0)
 
-1. `maxW` = the bounds' **height** minus `2·padX`. The bounds' `y1 − y0` is used where the width is meant
-   *[quirk]*.
-2. **Title**, when not empty: the title font's slot 45 `(text, length, &r1, 0, 250, maxW)` measures it.
+1. `maxH` = the bounds' height minus `2·padX`: the text height budget uses horizontal
+   padding *[quirk]* (`0x00798710`).
+2. **Title**, when not empty: the title font's slot 45 `(text, length, &r1, 0, 250, maxH)` measures it.
+   *[compat]* The final three arguments mean minimum width, maximum width and maximum height:
+   the width limit is 250 pixels; the bounds-derived value limits height (`0x008973D4`; WCB1).
    Width := `r1.w + 4`, height := `r1.h`.
 3. `+0x1AC` := height + `padY` + 3.
 4. **Body**, when not empty: the body font's slot 45 measures `r2`. Width := max(width, `r2.w`). The height grows by
@@ -115,7 +117,13 @@ Slots 0–3, 5, 9, 13 and 16 are shared bodies. Two small helpers:
    - It is remade (graphics system slot 3) when its size differs from the **content** size, then sized to the
      **text** size (slot 3 with format `{1, 0}`). Since the two sizes differ whenever there is padding or an
      icon, it is remade on every content change *[quirk]*.
-   - It is locked with `0x8010`. This function never unlocks it.
+   - It is locked with `0x8010`. This function never balances that lock. *[compat]* Font slots
+     55/56 bracket their own renderer access: on the outermost font-use entry/exit they call
+     the renderer's lock/unlock (`0x00896B8E`, `0x00896BC2`). The default renderer adds and
+     removes a separate `0x8080` surface lock (`0x00896232`, `0x00896243`). For the standard
+     buffer, each successful lock increments its nesting count and each unlock decrements it
+     once (`0x00826AA0`, `0x00826490`); the font pair therefore leaves the callout's original
+     nesting level outstanding. It does not release the earlier `0x8010` lock (WCB3).
 8. **Background**, with a skin. `s` = `+0x1AC − (content height − text height)/2` splits the surface:
    - rows above `s` are tiled from cell (1, 1) `{tw, th, 2tw, 2th}`;
    - rows below from cell (1, 2) `{tw, 2th, 2tw, 3th}`.
@@ -125,6 +133,12 @@ Slots 0–3, 5, 9, 13 and 16 are shared bodies. Two small helpers:
      there is a meter. It is drawn with the body font.
 
    Then the title font's slot 56 `(surface)`.
+
+   *[compat]* Slot 52 draws a paragraph, wrapping lines to the supplied rectangle width;
+   alignment 0 places each line at the left edge (`0x0089A35B`). Its `0x08000000` argument is
+   the background-colour sentinel passed to line drawing, not a wrapping flag. In palette
+   mode with palette-background mode 2, black foreground selects white as the palette
+   background (`0x0089A099`). Slots 55/56 are font-use lock/unlock calls (§3.1 step 7; WCB1).
 10. `dirty` gets `6`.
 
 ### 3.2 Layout (`dirty` bit 1)
@@ -180,8 +194,11 @@ Rectangles are taken relative to the window rectangle.
 
 ### 3.4 Drawing (every paint)
 
-`dirty` := 0. The offset `o` is minus the parent's slot-50 point *[inferred: this window's coordinates; WCB2]*. With the
-draw context (`cGZWin` `+0x6C`):
+`dirty` := 0. *[compat]* The offset `o` is minus the **absolute** left/top of the parent.
+Window slot 50 returns its absolute area (`0x0099BCE8`, rectangle beginning at window
+`+0x14`); the callout takes the first two coordinates (`0x00798710`, drawing at
+`0x00799B0B`). Thus the box, icon and meter rectangles are translated from screen coordinates
+into the parent's drawing coordinates (WCB2). With the draw context (`cGZWin` `+0x6C`):
 1. The box surface at the window rectangle + `o` (slot 38).
 2. The icon at `(box.x0 + padX, box.y0 + (box height − icon height)/2)` + `o` (slot 38).
 3. **The meter.** Its rectangle is moved by `(box.x0 + padX + icon width + 4, box.y0 + padX)` + `o`. The vertical
@@ -192,7 +209,7 @@ draw context (`cGZWin` `+0x6C`):
 
 ## 4. Quirks
 
-- The maximum text width is taken from the bounds' height.
+- The maximum text height is the bounds' height minus twice the horizontal padding; text width is limited to 250 pixels (§3.1).
 - The text surface is remade on every content change, and it is never unlocked.
 - The layout's near-edge tests use the cell width for vertical distances.
 - The meter is placed with the horizontal padding on both axes.
@@ -209,7 +226,7 @@ draw context (`cGZWin` `+0x6C`):
 
 ## 6. Not covered
 
-- The GZ fonts (slots 45, 52, 55 and 56), the surfaces and the draw context: WCB1.
+- Font behavior beyond the measured/drawn paragraph and font-use locking contracts in §3.1; the remaining surface and draw-context operations.
 - The callers, which set the texts and the point (city-tools-input.md, view3d-window.md).
 
 ## 7. Function inventory (owner `cSC4WinCalloutBox`)

@@ -113,6 +113,19 @@ IDs, but it holds `4·e`, so `4·e` dwords are inserted into the set: the `e` sa
 the block *[quirk]* (CCM1). Nothing checks `size` beyond the first test, the password size `+0x50` is not updated and
 the enabled flag is left as it is.
 
+*[compat]* The city owns persistence of this block. `cSC4City::Write` queries its size, fills
+an independent byte buffer and writes that buffer as a version-1 record with type
+`0x89D9B9EE`, group `0x69D9B9F1`, instance 0 (`0x0045C5B0`, calls at `0x0045CA66` and
+`0x0045CA91`). `cSC4City::Read` obtains that record's length, fills a separate byte buffer,
+passes it with its length to the manager, then frees it (`0x0045CB10`,
+`0x0045D184`–`0x0045D1BA`). The saved IDs end the payload (`0x00921060`); there is no
+following city field within that buffer. The excess reads therefore reach beyond the
+payload, not a specified following record. Their actual values depend on allocation contents
+and remain unresolved (CCM1).
+
+*[compat-limit]* A bounded replacement should consume only the state IDs represented by
+that byte count and available in the payload, rather than reproducing the out-of-bounds reads.
+
 ## 5. Quirks and cases
 
 Quirks:

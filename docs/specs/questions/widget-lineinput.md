@@ -6,8 +6,3 @@
   bytes one position too early and nothing at caret `n`. Does any shipped window use an editable `cGZWinLineInput`
   where this shows (type `abc`, Backspace: `ac`?), or do the game's text fields all use `cGZWinTextEdit`?
   [game: find a line input in a dialog and press Backspace]
-
-<!-- from: re-gzwinli7 (2026-10-23) -->
-- **WLI2 - §6:** the constructor never writes the sound IDs `+0x144`…`+0x14C`, so `PlaySound` reads whatever the
-  global heap left there unless a script or caller sets them. Does `GlobalHeapAlloc` return zeroed memory? [static:
-  the allocator; until then a reimplementation should start them at 0]

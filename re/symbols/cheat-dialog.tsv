@@ -1,0 +1,2 @@
+va	name	evidence
+0079bd00	cSC4CheatCodeEntryDialog::cSC4CheatCodeEntryDialog	cheat-dialog.md §1 (CCD3); base dialog construction and interface tables; explicitly clears both sound IDs; sole direct caller 0x004E0BB0 runs it modally

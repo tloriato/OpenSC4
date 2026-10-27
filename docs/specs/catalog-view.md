@@ -102,7 +102,14 @@ The item's other functions:
 1. `p` := min(`p`, count − `visible`), then max(`p`, 0).
 2. When `p` changed, store it and invalidate `W` (slot 92).
 3. Then, always: when `W`'s parent answers IID `0x8A25CE2C`, its slot 7 gets `(p > 0, p < count − visible)`. These
-   enable the scroll arrows *[inferred]*.
+   update the tertiary menu frame's up/down arrow availability *[compat]*.
+
+The receiver is `cSC4WinTertiaryMenuFrame`: its constructor installs interface table
+`0x00AB6D04` (`0x0079AFF0`), and its interface query accepts `0x8A25CE2C`
+(`0x0079A110`). Slot 7 stores the two availability bytes and invalidates the frame when either
+changes (`0x0079B080`). Painting selects the corresponding arrow images from those bytes
+(`0x0079B0E0`). These are frame state, rather than separate child-button enable calls.
+The notification runs even when the clamped scroll position did not change (`0x0079A660`).
 
 **The callout point** of item `i`:
 - `x` = `w` + 16;
@@ -245,5 +252,5 @@ Owner `cSC4CatalogItem` (8 functions): `0x0079B6B0`, `0x0079B750`, `0x0079A040`,
 `0x0079B730`, `0x0079B740`, `0x0082ACF0`.
 
 Not covered:
-- the parent's scroll-arrow interface `0x8A25CE2C` (CV1);
+- the rest of the tertiary menu frame beyond its arrow-availability receiver (§2, CV1);
 - the draw buffer's lock flags (CV2).
