@@ -50,6 +50,7 @@
 #include "FC4CitySitShadow.h"     // the glue17 lane
 #include "FC4DemolitionShadow.h"  // the glue17 lane
 #include "FC4DemolitionHost.h"
+#include "cFC4Demolition.h"
 #include "FC4DispatchShadow.h"    // the glue17 lane
 #include "cFC4Terrain.h"        // the glue18 lane
 #include "FC4Popups.h"
@@ -355,6 +356,15 @@ extern "C" __declspec(dllexport) intptr_t __cdecl FC4TestSeam(uint32_t op, void*
         case kFC4SeamDemolitionPreDemolish:
             fc4::DemolitionSendPreDemolish(static_cast<cIGZMessageServer2*>(b), static_cast<cISC4Occupant*>(a));
             return 0;
+        case kFC4SeamDemolitionRegionMask: {
+            if (!a || !b) return -1;
+            fc4_zone_region region{};
+            std::vector<uint8_t> mask;
+            if (!fc4::DemolitionRegionToC(*static_cast<SC4CellRegion<int32_t>*>(a), region, mask) ||
+                mask.size() > 32) return -1;
+            std::memcpy(b, mask.data(), mask.size());
+            return static_cast<intptr_t>(mask.size());
+        }
         default:
             return 0;
     }

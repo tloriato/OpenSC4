@@ -13223,6 +13223,7 @@ int main(int argc, char** argv) {
             PowerLineConnectionChecks(seam);
             DemolitionFilterChecks(seam);
             DemolitionPreDemolishChecks(seam);
+            DemolitionRegionMaskChecks(seam);
 
             // The always-on guard: the reference as PreAppInit takes it, a
             // quiet tick, then a 53-bit main thread is reported once.

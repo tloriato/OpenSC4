@@ -141,6 +141,36 @@ void DemolitionPreDemolishChecks(FC4TestSeamFn seam) {
     CHECK(server.sends == 1 && server.posts == 0 && occupant.refs == 1);
 }
 
+void DemolitionRegionMaskChecks(FC4TestSeamFn seam) {
+    struct CellMap {
+        virtual ~CellMap() = default;
+        uint32_t width = 2, height = 35, words = 2;
+        uint32_t** rows = nullptr;
+    };
+    struct Region {
+        int32_t x0 = -3, z0 = 20, x1 = -2, z1 = 54;
+        CellMap map;
+    } region;
+    static_assert(sizeof(Region) == 0x24, "SDK native cell region including vptr");
+    uint32_t row0[] = {0x80000001, 5}, row1[] = {2, 4};
+    uint32_t* rows[] = {row0, row1};
+    region.map.rows = rows;
+    uint8_t mask[32]{};
+    CHECK(seam(kFC4SeamDemolitionRegionMask, &region, mask) == 9);
+    const uint8_t expected[] = {1, 0, 0, 0x80, 0x15, 0, 0, 0, 0x20};
+    CHECK(std::memcmp(mask, expected, sizeof(expected)) == 0);
+    // Invalid dimensions/strides/pointers fail before indexing the bitmap.
+    region.map.words = 1;
+    CHECK(seam(kFC4SeamDemolitionRegionMask, &region, mask) == -1);
+    region.map.words = 2;
+    region.map.height = 34;
+    CHECK(seam(kFC4SeamDemolitionRegionMask, &region, mask) == -1);
+    region.map.height = 35;
+    rows[1] = nullptr;
+    CHECK(seam(kFC4SeamDemolitionRegionMask, &region, mask) == -1);
+    CHECK(seam(kFC4SeamDemolitionRegionMask, nullptr, mask) == -1);
+}
+
 void DemolitionFilterChecks(FC4TestSeamFn seam) {
     using namespace demolition_building_test;
     FakeVtable occupantVt, queriedVt, cityVt, managerVt, lotVt;

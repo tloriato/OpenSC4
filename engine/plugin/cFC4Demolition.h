@@ -46,6 +46,11 @@ static const uint32_t kFC4_IID_cISC4Demolition = 0x26DDE2EA;
 // The GZCOM class factory (FC4Subsystems.cpp, `enable = demolition`).
 cIGZUnknown* CreateFC4Demolition();
 
+namespace fc4 {
+bool DemolitionRegionToC(const SC4CellRegion<int32_t>& region, fc4_zone_region& out,
+                        std::vector<uint8_t>& mask);
+}
+
 class cFC4Demolition final : public cFC4ISC4Demolition,
                              public cIGZMessageTarget2,
                              public cIGZSerializable {

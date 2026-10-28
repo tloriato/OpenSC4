@@ -133,11 +133,13 @@ public:
 private:
     struct Layout {
         int32_t x1, z1, x2, z2;
-        struct {
+        struct CellMap {
+            virtual ~CellMap() = default; // SDK cRZCellMap's vptr precedes the dimensions
             uint32_t width, height, words;
             uint32_t** rows;
         } map;
     };
+    static_assert(sizeof(void*) != 4 || sizeof(Layout) == 0x24, "SC4CellRegion layout");
     Layout layout_{};
     std::vector<uint32_t> bits_;
     std::vector<uint32_t*> rows_;

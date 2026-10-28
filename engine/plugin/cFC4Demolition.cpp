@@ -34,12 +34,12 @@
 #include <cstring>
 #include <vector>
 
-namespace {
+namespace fc4 {
 
 // The game's SC4CellRegion<long> as fc4_zone_region (zones.md, 0x24 bytes:
 // x1, z1, x2, z2, then the cell map; bit (dx, dz) is bit dz % 32 of
 // rows[dx][dz / 32]). The mask is rebuilt here in the C ABI's bit order.
-bool RegionToC(const SC4CellRegion<int32_t>& r, fc4_zone_region& out, std::vector<uint8_t>& mask) {
+bool DemolitionRegionToC(const SC4CellRegion<int32_t>& r, fc4_zone_region& out, std::vector<uint8_t>& mask) {
     const auto* raw = reinterpret_cast<const uint8_t*>(&r);
     int32_t x0, z0, x1, z1;
     std::memcpy(&x0, raw + 0, 4);
@@ -51,11 +51,13 @@ bool RegionToC(const SC4CellRegion<int32_t>& r, fc4_zone_region& out, std::vecto
     if (w <= 0 || h <= 0 || w * h > (int64_t{1} << 24)) return false;
     uint32_t mapW = 0, mapH = 0, words = 0;
     uint32_t** rows = nullptr;
-    std::memcpy(&mapW, raw + 16, 4);
-    std::memcpy(&mapH, raw + 20, 4);
-    std::memcpy(&words, raw + 24, 4);
-    std::memcpy(&rows, raw + 28, sizeof(rows));
-    if (rows == nullptr || mapW < static_cast<uint32_t>(w) || mapH < static_cast<uint32_t>(h) || words == 0) {
+    // SDK cRZCellMap has a virtual destructor: +0x10 is its vptr.
+    std::memcpy(&mapW, raw + 20, 4);
+    std::memcpy(&mapH, raw + 24, 4);
+    std::memcpy(&words, raw + 28, 4);
+    std::memcpy(&rows, raw + 32, sizeof(rows));
+    if (rows == nullptr || mapW < static_cast<uint32_t>(w) || mapH < static_cast<uint32_t>(h) ||
+        words < static_cast<uint32_t>((h + 31) / 32)) {
         return false;
     }
     mask.assign(static_cast<size_t>((w * h + 7) / 8), 0);
@@ -78,7 +80,7 @@ bool RegionToC(const SC4CellRegion<int32_t>& r, fc4_zone_region& out, std::vecto
     return true;
 }
 
-}  // namespace
+}  // namespace fc4
 
 cIGZUnknown* CreateFC4Demolition() {
     return static_cast<cIGZUnknown*>(static_cast<cFC4ISC4Demolition*>(new cFC4Demolition()));
@@ -153,7 +155,7 @@ bool cFC4Demolition::DemolishRegion(bool doIt, SC4CellRegion<int32_t> const& reg
     if (core_ == nullptr) return false;
     fc4_zone_region r{};
     std::vector<uint8_t> mask;
-    if (!RegionToC(region, r, mask)) return false;
+    if (!fc4::DemolitionRegionToC(region, r, mask)) return false;
     return fc4_demolition_demolish_region(
         core_, doIt, &r, static_cast<uint32_t>(privilege), flags, dezone, fc4::TokenOf(filter),
         static_cast<uint64_t>(demolished), fc4::TokenOf(clicked), static_cast<int32_t>(x), static_cast<int32_t>(y),

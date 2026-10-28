@@ -353,6 +353,9 @@ constexpr uint32_t kFC4SeamDemolitionFilters = 0xD3000003;
 // a = borrowed occupant, b = borrowed message server; synchronous pre-demolish send.
 constexpr uint32_t kFC4SeamDemolitionPreDemolish = 0xD3000004;
 
+// a = borrowed native cell region, b = uint8_t[32]; packed mask byte count or -1.
+constexpr uint32_t kFC4SeamDemolitionRegionMask = 0xD3000005;
+
 using FC4TestSeamFn = intptr_t(__cdecl*)(uint32_t op, void* a, void* b);
 
 namespace fc4 {
