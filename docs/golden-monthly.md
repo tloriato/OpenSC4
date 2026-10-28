@@ -77,3 +77,6 @@ replace the coordinator's full recording.
 When main repins, take main's schedule and harness before rebuilding. Wait for
 `build-runs/golden/RECORDING` to disappear before running candidate comparisons.
 Keep evidence from different pins separate.
+
+The [2026-10-28 proof](golden-monthly-proof.md) records five real timing pairs,
+the advisors/zones checks, storage measurements and validation limits.
