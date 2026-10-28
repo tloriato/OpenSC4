@@ -1,0 +1,209 @@
+type	owner	class	source
+00D0723D	ordinance?	cSC4OrdinanceCommunityCPRTraining	engine/plugin/FC4Subsystems.cpp
+02BF1DFA	ordinance?	cSC4OrdinanceWaterConservation	engine/plugin/FC4Subsystems.cpp
+096E75F5	automata?	cSC4Watercraft	automata-managers.md §1
+098F964D	occmgr?	cSC4OccupantManager	engine/plugin/FC4Subsystems.cpp
+0990BDD8	aura?	cSC4AuraSimulator	engine/plugin/FC4Subsystems.cpp
+0990C005	power?	cSC4PowerSimulator	engine/plugin/FC4Subsystems.cpp
+0990C075	plumbing?	cSC4PlumbingSimulator	engine/plugin/FC4Subsystems.cpp
+0990C138	development?	cSC4GrowthDeveloper	engine/plugin/FC4Subsystems.cpp
+0990C38A	demolition?	cSC4Demolition	engine/plugin/FC4Subsystems.cpp
+09C05C6A	network occupants?	cSC4PowerPoleOccupant	network-occupants.md §1.1
+0A086BD3	disasters?	cSC4DisasterManagerEarthquake	engine/plugin/FC4Subsystems.cpp
+0A133012	disasters?	cSC4DisasterInstancePipeBurst	engine/plugin/FC4Subsystems.cpp
+0A134F24	neighbors?	cSC4NeighborConnection	save-records.md §3.1; neighbors.md §4.3
+0A1D8285	graphics rules?	cSC4ConfigRuleManager	engine/plugin/FC4Subsystems.cpp
+0A413481	civic?	cSC4CivicBuildingSimulator	engine/plugin/FC4Subsystems.cpp
+0B7D45E0	module version	module version	foundations.md §3.7
+0BB14381	citysit?	cSC4CitySituationManager	engine/plugin/FC4Subsystems.cpp
+0BF606A5	mysims?	cSC4MyStreetSim	engine/plugin/FC4Subsystems.cpp
+0C0B06E8	automata?	cSC4PoliceHelicopterDispatchSource	save-records.md §7.4; aircraft.md §5
+2026960B	region/city names	thumbnail/city/mayor names	save-records.md §2
+22F6E80C	ordinance?	cSC4OrdinanceLandfillGasRecovery	engine/plugin/FC4Subsystems.cpp
+22F6E81B	ordinance?	cSC4OrdinancePaperReductionAct	engine/plugin/FC4Subsystems.cpp
+2977AA47	occupants and props?	cSC4PropOccupant	lot-records.md §1
+2977AA48	occupants and props?	cSC4PropOccupantTerrainDecal	prop-occupant.md §1.2
+2977AA49	occupants and props?	cSC4PropOccupantVisualEffect	lot-records.md §1
+298F9B2D	zones?	cSC4ZoneManager	engine/plugin/FC4Subsystems.cpp
+299062C0	other SC4 classes?	cSC4LotConfigManager	engine/plugin/FC4Subsystems.cpp
+2990BFF2	demand?	cSC4DemandSimulator	engine/plugin/FC4Subsystems.cpp
+2990C05A	protection?	cSC4FireProtectionSimulator	engine/plugin/FC4Subsystems.cpp
+2990C142	tract?	cSC4TractDeveloper	engine/plugin/FC4Subsystems.cpp
+2990C1BC	weather?	cSC4WeatherSimulator	engine/plugin/FC4Subsystems.cpp
+2990C1E5	simulator?	cSC4Simulator	engine/plugin/FC4Subsystems.cpp
+29B5AB89	disasters?	cSC4DisasterInstanceVolcano	engine/plugin/FC4Subsystems.cpp
+29D25F1D	disasters?	cSC4FireOccupant	save-records.md §3.1; disasters.md §5.11.2
+2A134F42	neighbors?	cSC4NeighborDeal	save-records.md §3.1; neighbors.md §5.6
+2A4017A0	automata?	cSC4PropOccupantAutomataController	prop-occupant.md §1.2
+2A5118AD	effects?	cSC4EffectsResource	engine/plugin/FC4Subsystems.cpp
+2A5F877D	advisors?	cSC4AdvisorCityPlanning	engine/plugin/FC4Subsystems.cpp
+40D07236	ordinance?	cSC4OrdinanceFreeClinics	engine/plugin/FC4Subsystems.cpp
+42BF1E18	ordinance?	cSC4OrdinanceTrashPresort	engine/plugin/FC4Subsystems.cpp
+49822F75	effects?	cSC4EffectsManager	engine/plugin/FC4Subsystems.cpp
+498F9B01	zonedev?	cSC4ZoneDeveloper	engine/plugin/FC4Subsystems.cpp
+4990BD93	dispatch?	cSC4DispatchManager	engine/plugin/FC4Subsystems.cpp
+4990C013	residential?	cSC4ResidentialSimulator	engine/plugin/FC4Subsystems.cpp
+499B23FE	class-store index	class-store index	foundations.md §3.3
+49B6D69B	network occupants?	cSC4PylonOccupant	network-occupants.md §1.1
+49B9E602	simgrids?	cSC4SimGrid	simgrid.md §2
+49B9E603	simgrids?	cSC4SimGrid	simgrid.md §2
+49B9E604	simgrids?	cSC4SimGrid	simgrid.md §2
+49B9E605	simgrids?	cSC4SimGrid	simgrid.md §2
+49B9E606	simgrids?	cSC4SimGrid	simgrid.md §2
+49B9E607	simgrids?	cSC4SimGrid	simgrid.md §2
+49B9E608	simgrids?	cSC4SimGrid	simgrid.md §2
+49B9E609	simgrids?	cSC4SimGrid	simgrid.md §2
+49B9E60A	simgrids?	cSC4SimGrid	simgrid.md §2
+49B9E60B	simgrids?	cSC4SimGrid	simgrid.md §2
+49C05B9F	network occupants?	cSC4PipeOccupant	network-occupants.md §1.1
+49C05C8F	occupants and props?	cSC4FoundationOccupant	lot-records.md §1
+49C05C9F	lots and lot records?	cSC4LotRetainingWallOccupant	lot-records.md §1
+49C1A034	network occupants?	cSC4NetworkOccupantWithPreBuiltModel	network-occupants.md §1.1
+49CC1BCD	network occupants?	cSC4NetworkBridgeOccupant	network-occupants.md §1.1
+49DD6F4C	save root	root city reference	foundations.md §3.7
+4A0DD616	advisors?	cSC4AdvisorSystem	engine/plugin/FC4Subsystems.cpp
+4A10AFC2	network occupants?	cSC4UndergroundOccupant	network-occupants.md §1.1
+4A132FDF	disasters?	cSC4DisasterManagerPipeBurst	engine/plugin/FC4Subsystems.cpp
+4A1628C5	automata?	cSC4AutomataGenerator	automata-managers.md §1
+4A1B664E	automata?	cSC4AutomataScriptSystem	engine/plugin/FC4Subsystems.cpp
+4A1DBBBF	mysims?	cSC4MySim	engine/plugin/FC4Subsystems.cpp
+4A222B98	automata?	cSC4PatrolCar	automata-managers.md §1
+4A222E4D	automata?	cSC4SimFireCrew	automata-managers.md §1
+4A232DA8	lots and lot records?	cSC4BusinessUnit	lot-records.md §1
+4A38206C	disasters?	cSC4DisasterManagerRiot	engine/plugin/FC4Subsystems.cpp
+4A38206D	disasters?	cSC4DisasterInstanceRiot	engine/plugin/FC4Subsystems.cpp
+4A3AD3E1	advisors?	cSC4AdvisorTraffic	engine/plugin/FC4Subsystems.cpp
+4A416254	automata?	cSC4TrainCar	automata-managers.md §1
+4A5B69ED	automata?	cSC4TrailerVehicle	automata-managers.md §1
+4BE372CD	advisors?	cSC4AdvisorCitySituations	engine/plugin/FC4Subsystems.cpp
+4C0AE114	automata?	cSC4FirePlaneDispatchSource	save-records.md §7.4; aircraft.md §5
+4C0DD224	automata?	cSC4MayorLimo	automata-managers.md §1
+4C22AE53	automata?	cSC4MassTransitTrain	automata-managers.md §1
+4E4C3030	network manager?	cSC4NetworkLot	engine/plugin/FC4Subsystems.cpp
+4E4C4330	network manager?	cSC4NetworkLotConfiguration	engine/plugin/FC4Subsystems.cpp
+4E543030	other?	cFC4NetworkTool	engine/plugin/FC4Subsystems.cpp
+61F6ABF5	disasters?	cSC4DisasterLayer	engine/plugin/FC4Subsystems.cpp
+62BF1DAA	ordinance?	cSC4OrdinanceMandatorySmokeDetectors	engine/plugin/FC4Subsystems.cpp
+62BF1DB9	ordinance?	cSC4OrdinanceNeighborhoodWatch	engine/plugin/FC4Subsystems.cpp
+62F6E7CF	ordinance?	cSC4OrdinanceTouristPromotion	engine/plugin/FC4Subsystems.cpp
+6534284A	exemplar data	exemplar resource	foundations.md §9.2
+6990C04F	protection?	cSC4PoliceSimulator	engine/plugin/FC4Subsystems.cpp
+6990C1AA	traffic?	cSC4TrafficSimulator	engine/plugin/FC4Subsystems.cpp
+69C1718E	disasters?	cSC4DisasterManagerFire	engine/plugin/FC4Subsystems.cpp
+69C1718F	disasters?	cSC4DisasterInstanceFire	engine/plugin/FC4Subsystems.cpp
+6A037C24	regionalcity?	cSC4RegionalCity	engine/plugin/FC4Subsystems.cpp
+6A0F82B2	traffic?	cSC4TrafficNetworkMap	save-records.md §3.1; traffic-network.md §6.2
+6A1628BA	automata?	cSC4AutomataAttractor	automata-managers.md §1
+6A26D049	advisors?	cSC4AdviceSubject	engine/plugin/FC4Subsystems.cpp
+6A3848DB	advisors?	cSC4AdviceNeghborDeal	engine/plugin/FC4Subsystems.cpp
+6A5F8755	advisors?	cSC4AdvisorHQ	engine/plugin/FC4Subsystems.cpp
+6A7B3E9B	disasters?	cSC4DisasterManagerEffect	engine/plugin/FC4Subsystems.cpp
+6A7B3E9C	disasters?	cSC4DisasterInstanceEffect	engine/plugin/FC4Subsystems.cpp
+6A9335DE	mysims?	cSC4MySimAdvice	advisors.md §1.1
+6B70EFAD	mysims?	cSC4MySimBalloonAdvice	advisors.md §1.1
+6C1ACDE1	automata?	cSC4Ambulance	automata-managers.md §1
+815B4CEF	ordinance?	cSC4OrdinanceJuniorSportsLeague	engine/plugin/FC4Subsystems.cpp
+82B9999B	ordinance?	cSC4OrdinancePowerConservation	engine/plugin/FC4Subsystems.cpp
+896E714A	automata?	cSC4Vehicle	automata-managers.md §1
+896E75AF	automata?	cSC4Pedestrian	automata-managers.md §1
+8990BE7A	development?	cSC4BuildingDevelopmentSimulator	engine/plugin/FC4Subsystems.cpp
+8990C065	pollution?	cSC4PollutionSimulator	engine/plugin/FC4Subsystems.cpp
+8990C080	commercial?	cSC4CommercialSimulator	engine/plugin/FC4Subsystems.cpp
+8990C09A	crime?	cSC4CrimeSimulator	engine/plugin/FC4Subsystems.cpp
+8990C12D	demand?	cSC4Demand	engine/plugin/FC4Subsystems.cpp
+8990C372	city and save file?	cSC4City	save-records.md §3.2
+89C48F47	propdev?	cSC4PropDeveloper	engine/plugin/FC4Subsystems.cpp
+89C49986	propdev?	cSC4WealthRequester	engine/plugin/FC4Subsystems.cpp
+89D9B9EE	city cheat state	city auxiliary cheat state	save-records.md §2.1
+89EFA536	history?	cSC4HistoryWarehouse	engine/plugin/FC4Subsystems.cpp
+8A09F5F4	advisors?	cSC4Advice	engine/plugin/FC4Subsystems.cpp
+8A139184	network occupants?	cSC4UndergroundConnectionOccupant	network-occupants.md §1.1
+8A22BEBE	landfill?	cSC4LandfillOccupant	save-records.md §3.1; landfill.md §6.4
+8A2482B9	region thumbnails	region-view PNG	save-records.md §2
+8A41625A	automata?	cSC4Train	automata-managers.md §1
+8A4BD52B	network occupants?	cSC4NetworkTunnelOccupant	network-occupants.md §1.1
+8A6E4FA4	automata?	cSC4RiotPolice	automata-managers.md §1
+8A91E7E0	terrain data	terrain vertex properties	save-records.md §2
+8A91E7E3	terrain data	terrain misc data	save-records.md §2
+8B79C707	occupants and props?	cSC4TextDecalOccupant	lot-records.md §1
+8BA98EDA	automata?	cSC4Helicopter	aircraft.md §1
+8BD4FC74	ordinance?	cSC4OrdinanceSimple	engine/plugin/FC4Subsystems.cpp
+8BE3753B	advisors?	cSC4CitySituationAdvice	advisors.md §1.1
+A0D07129	ordinance?	cSC4OrdinanceLegalizeGambling	engine/plugin/FC4Subsystems.cpp
+A2BF1DDC	ordinance?	cSC4OrdinanceCarpoolIncentive	engine/plugin/FC4Subsystems.cpp
+A2BF1DE5	ordinance?	cSC4OrdinanceShuttleService	engine/plugin/FC4Subsystems.cpp
+A2BF1E43	ordinance?	cSC4OrdinanceCleanAir	engine/plugin/FC4Subsystems.cpp
+A7E7F929	clock24?	cSC424HourClock	engine/plugin/FC4Subsystems.cpp
+A97F909E	occupants and props?	cSC4ConstructionOccupant	lot-records.md §1
+A98F9D28	automata?	cSC4WatercraftManager	engine/plugin/FC4Subsystems.cpp
+A98F9D3B	automata?	cSC4VehicleManager	engine/plugin/FC4Subsystems.cpp
+A990BD10	propmgr?	cSC4PropManager	engine/plugin/FC4Subsystems.cpp
+A990BFE0	lotdev?	cSC4LotDeveloper	engine/plugin/FC4Subsystems.cpp
+A990C022	industrial?	cSC4IndustrialSimulator	engine/plugin/FC4Subsystems.cpp
+A990C08E	ordinance?	cSC4OrdinanceSimulator	engine/plugin/FC4Subsystems.cpp
+A9B5AB9F	disasters?	cSC4DisasterManagerVolcano	engine/plugin/FC4Subsystems.cpp
+A9BC9AB6	occupants and props?	cSC4Occupant	lot-records.md §1
+A9BD882D	occupants and props?	cSC4BuildingOccupant	lot-records.md §1
+A9C05C85	flora?	cSC4FloraOccupant	lot-records.md §1
+A9C741B3	model maker?	cSC4ModelMaker	save-records.md §3.2; model-maker.md
+A9C8647C	3D view	cSC4View3DWin	save-records.md §2
+A9DD6FF4	terrain data	terrain altitudes/edge strips	save-records.md §2
+AA086D86	disasters?	cSC4DisasterInstanceEarthquake	engine/plugin/FC4Subsystems.cpp
+AA09DC28	automata?	cSC4PedestrianOneShot	automata-managers.md §1
+AA2049A1	ports?	cSC4AirportDeveloper	engine/plugin/FC4Subsystems.cpp
+AA222B83	automata?	cSC4FireTruck	automata-managers.md §1
+AA313C9F	budget?	cSC4LineItem	engine/plugin/FC4Subsystems.cpp
+AA371C32	advisors?	cSC4RewardAdvice	engine/plugin/FC4Subsystems.cpp
+AA3836FB	tutorial?	cSC4TutorialSystem	engine/plugin/FC4Subsystems.cpp
+AA3FE6BC	parks?	cSC4ParkManager	engine/plugin/FC4Subsystems.cpp
+AA5292D7	advisors?	cSC4AdvisorFinance	engine/plugin/FC4Subsystems.cpp
+AA9F4A3D	automata?	cSC4Bus	automata-managers.md §1
+AB72FBB3	occupants and props?	cSC4SignpostOccupant	lot-records.md §1
+C2BF1DC5	ordinance?	cSC4OrdinanceYouthCurfew	engine/plugin/FC4Subsystems.cpp
+C2BF1E04	ordinance?	cSC4OrdinanceVehicleEmissionStandard	engine/plugin/FC4Subsystems.cpp
+C2F6E81F	ordinance?	cSC4OrdinanceTireRecycling	engine/plugin/FC4Subsystems.cpp
+C470D325	gzfw?	cGZBuffer	engine/plugin/FC4Subsystems.cpp
+C96E75DC	automata?	cSC4Aircraft	aircraft.md §1
+C97F987C	lots and lot records?	cSC4LotBaseTextureOccupant	lot-records.md §1
+C98F9D17	automata?	cSC4PedestrianManager	engine/plugin/FC4Subsystems.cpp
+C98F9D4A	automata?	cSC4AircraftManager	engine/plugin/FC4Subsystems.cpp
+C990BD46	netmgr?	cSC4NetworkManager	engine/plugin/FC4Subsystems.cpp
+C990C034	flora?	cSC4FloraSimulator	engine/plugin/FC4Subsystems.cpp
+C990C0A4	neighbors?	cSC4NeighborsSimulator	engine/plugin/FC4Subsystems.cpp
+C9B84E10	3D scene and models?	cSTETerrainView3D	view3d.md §0; save-records.md §3.2
+C9BD5D4A	lots and lot records?	cSC4Lot	lot-records.md §1
+C9C05C5D	network occupants?	cSC4PowerLineOccupant	engine/plugin/FC4Subsystems.cpp
+C9C05C6E	network occupants?	cSC4NetworkOccupant	network-occupants.md §1.1
+C9C628EC	camera and projection?	cSC4CameraControl	save-records.md §3.2; camera.md §2
+C9EFB016	occupants and props?	cSC4PropOccupantBurntBuilding	prop-occupant.md §1.2
+CA027EDB	region data	regional-city record	foundations.md §11.2
+CA09F543	advisors?	cSC4AdvisorBase	engine/plugin/FC4Subsystems.cpp
+CA14CA03	automata?	cSC4AutomataControllerManager	engine/plugin/FC4Subsystems.cpp
+CA15ED6B	network occupants?	cSC4SubwayConnectionOccupant	network-occupants.md §1.1
+CA16374F	network occupants?	cSC4SubwayOccupant	network-occupants.md §1.1
+CA2C2A2F	advisors?	cSC4AdvisorUtility	engine/plugin/FC4Subsystems.cpp
+CBB32B0A	automata?	cSC4CarjackedVehicle	automata-managers.md §1
+CBC14674	mysims?	cSC4MySimDispatch	engine/plugin/FC4Subsystems.cpp
+CBEB4F62	automata?	cSC4Airplane	aircraft.md §1
+E0D0722E	ordinance?	cSC4OrdinanceNuclearFreeZone	engine/plugin/FC4Subsystems.cpp
+E0D07233	ordinance?	cSC4OrdinanceProReadingCampaign	engine/plugin/FC4Subsystems.cpp
+E86B1EEF	DBPF directory	compressed-record directory	foundations.md §3.1
+E98F9525	terrain?	cSTETerrain	save-records.md §3.2; terrain.md §13.2
+E990BE01	budget?	cSC4BudgetSimulator	engine/plugin/FC4Subsystems.cpp
+E990BFFC	budget?	cSC4DepartmentBudget	engine/plugin/FC4Subsystems.cpp
+E990C045	flammability?	cSC4FlammabilitySimulator	engine/plugin/FC4Subsystems.cpp
+E990C18E	landvalue?	cSC4LandValueSimulator	engine/plugin/FC4Subsystems.cpp
+E9A6CD3B	netlot?	cSC4NetworkLotManager	engine/plugin/FC4Subsystems.cpp
+E9C622D8	3D scene and models?	cSC43DRender	save-records.md §3.2; view3d-window.md §6
+EA09D4AE	landfill?	cSC4LandfillDeveloper	engine/plugin/FC4Subsystems.cpp
+EA0A5ACF	network occupants?	cSC4PipeConnectionOccupant	network-occupants.md §1.1
+EA19E825	advisors?	cSC4AdvisorSafety	engine/plugin/FC4Subsystems.cpp
+EA230A28	ports?	cSC4SeaportDeveloper	engine/plugin/FC4Subsystems.cpp
+EA3FF4F5	app version	app load/save version	foundations.md §3.7
+EA863423	automata?	cSC4GetawayVan	automata-managers.md §1
+EAC937B4	advisors?	cSC4Advisor	engine/plugin/FC4Subsystems.cpp
+EAD4BA36	citydetail?	cSC4CityDetailManager	engine/plugin/FC4Subsystems.cpp
+EBE0DCAD	automata?	cSC4Tank	automata-managers.md §1
+EBFB0402	disasters?	cSC4DisasterManagerToxic	engine/plugin/FC4Subsystems.cpp
+EBFB0403	disasters?	cSC4DisasterInstanceToxic	engine/plugin/FC4Subsystems.cpp
+FC401717	other?	cFC4OverlayOwner	engine/plugin/FC4Subsystems.cpp

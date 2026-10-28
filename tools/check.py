@@ -180,7 +180,7 @@ def record(args):
     return 2 if failed else 0
 
 
-def record_owners():
+def registry_record_owners():
     """Save record type (a class ID) -> (replace key, class name), from the subsystem registry."""
     plugin = REPO / 'engine/plugin'
     constants = {}
@@ -196,6 +196,15 @@ def record_owners():
             value = constants.get(clsid) if clsid.startswith('kFC4') else int(clsid, 16)
             if value is not None:
                 owners.setdefault(value, (key, name))
+    return owners
+
+
+def record_owners():
+    """Registry owners first, then the generated, explicitly inferred record labels."""
+    owners = registry_record_owners()
+    with Path(__file__).with_name('record-owners.tsv').open(encoding='utf-8', newline='') as stream:
+        for row in csv.DictReader(stream, delimiter='\t'):
+            owners.setdefault(int(row['type'], 16), (row['owner'], row['class']))
     return owners
 
 
@@ -260,20 +269,22 @@ def attribute_owners(report, keys, owners):
         for record in month['records']:
             owner, cls = owners.get(int(record['tgi'].split('/')[0], 16), ('unowned', '-'))
             record.update(owner=owner, cls=cls)
-            first.setdefault(owner, {'date': month['date'], 'records': []})
-            if first[owner]['date'] == month['date']:
-                first[owner]['records'].append(record['tgi'])
+            key = owner.rstrip('?')
+            first.setdefault(key, {'date': month['date'], 'records': []})
+            if first[key]['date'] == month['date']:
+                first[key]['records'].append(record['tgi'])
     # Read the candidate hash inventory to distinguish "no record" from exact.
     inventory = Path(report['run']) / 'monthly.json'
     observed = set()
     if inventory.is_file():
         data = json.loads(inventory.read_text(encoding='utf-8'))
-        observed = {owners.get(int(tgi.split('/')[0], 16), ('unowned', '-'))[0]
+        observed = {owners.get(int(tgi.split('/')[0], 16), ('unowned', '-'))[0].rstrip('?')
                     for month in data['months'].values() for tgi in month['records']}
     report['owners'] = {key: {
         'verdict': 'different' if key in first else 'incomplete' if not monthly['complete'] else
                    'exact' if key in observed else 'unobserved',
-        'first_difference': first.get(key), 'basis': 'owned normalized save records; combined replacements'}
+        'first_difference': first.get(key),
+        'basis': 'registry/inferred normalized save-record owners; combined replacements'}
         for key in keys}
     report['record_owner_first_differences'] = first
 

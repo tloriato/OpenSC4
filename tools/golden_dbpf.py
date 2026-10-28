@@ -74,7 +74,8 @@ def _qfs(data, expected):
     return bytes(out)
 
 
-def read_records(path):
+def read_records(path, *, decompress=True):
+    """Read records, optionally retaining compressed bytes for an inventory-only census."""
     data = Path(path).read_bytes()
     head = _slice(data, 0, 96)
     if head[:4] != b'DBPF':
@@ -120,7 +121,7 @@ def read_records(path):
             if ck in compressed or ck not in entries or ck[0] == DIR:
                 raise ValueError('invalid or duplicate DIR entry')
             compressed[ck] = words[-1]
-    return {key: _qfs(raw, compressed[key]) if key in compressed else raw
+    return {key: _qfs(raw, compressed[key]) if decompress and key in compressed else raw
             for key, raw in entries.items() if key[0] != DIR}
 
 
