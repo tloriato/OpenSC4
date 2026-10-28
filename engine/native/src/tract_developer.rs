@@ -28,6 +28,9 @@ layout! {
         0x54 => abandoned_cost / set_abandoned_cost: f32,
         0x58 => aggregation_cost / set_aggregation_cost: f32,
         0x5C => subdivision_cost / set_subdivision_cost: f32,
+        0x60 => occupancy_variation / set_occupancy_variation: f32,
+        0x64 => minimum_vacancy / set_minimum_vacancy: f32,
+        0x68 => maximum_vacancy / set_maximum_vacancy: f32,
         0x6C => kick_out / set_kick_out: u8,
         0x7C => years_between_changes / set_years_between_changes: i32,
         0x80 => developer / set_developer: u32,
@@ -37,9 +40,13 @@ layout! {
         0xB4 => existing / set_existing: i32,
         0xB8 => desired / set_desired: i32,
         0xBC => desired_maximum / set_desired_maximum: i32,
+        0xC0 => built / set_built: i32,
         0xC8 => relaxed / set_relaxed: u8,
         0xE4 => candidates_begin / set_candidates_begin: u32,
         0xE8 => candidates_end / set_candidates_end: u32,
+        0xF0 => chosen_configuration / set_chosen_configuration: u32,
+        0x10C => suitability_header / set_suitability_header: u32,
+        0x110 => suitability_count / set_suitability_count: u32,
         0xF8 => observed_land_value / set_observed_land_value: i32,
         0xFC => minimum_building_capacity / set_minimum_building_capacity: i32,
         0x100 => maximum_building_capacity / set_maximum_building_capacity: i32,
@@ -160,8 +167,10 @@ pub mod cache;
 pub mod copying;
 pub mod evaluation;
 pub mod geometry;
+pub mod growth;
 pub mod networks;
 pub mod pool;
+pub mod population;
 pub mod sorting;
 pub mod suitability;
 pub mod surface;
@@ -172,8 +181,10 @@ const COUNT: usize = compatibility::PORTS.len()
     + copying::PORTS.len()
     + evaluation::PORTS.len()
     + geometry::PORTS.len()
+    + growth::PORTS.len()
     + networks::PORTS.len()
     + pool::PORTS.len()
+    + population::PORTS.len()
     + sorting::PORTS.len()
     + suitability::PORTS.len()
     + surface::PORTS.len()
@@ -184,8 +195,10 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     copying::PORTS,
     evaluation::PORTS,
     geometry::PORTS,
+    growth::PORTS,
     networks::PORTS,
     pool::PORTS,
+    population::PORTS,
     sorting::PORTS,
     suitability::PORTS,
     surface::PORTS,
