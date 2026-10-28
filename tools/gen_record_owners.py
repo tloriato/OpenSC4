@@ -33,7 +33,7 @@ RECORDS = {
     0x8A91E7E3: ('terrain data', 'terrain misc data', 'save-records.md §2'),
     0xA9DD6FF4: ('terrain data', 'terrain altitudes/edge strips', 'save-records.md §2'),
     0xE86B1EEF: ('DBPF directory', 'compressed-record directory', 'foundations.md §3.1'),
-    0x6534284A: ('exemplar data', 'exemplar resource', 'foundations.md §9.2'),
+    0x6534284A: ('exemplar data', 'exemplar resource', 'foundations.md §10.6'),
 }
 # Identities specified in prose or in differently shaped tables, rather than a
 # Class / Class ID table. These are class names, never hand-assigned replace keys.

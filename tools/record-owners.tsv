@@ -86,7 +86,7 @@ type	owner	class	source
 62BF1DAA	ordinance?	cSC4OrdinanceMandatorySmokeDetectors	engine/plugin/FC4Subsystems.cpp
 62BF1DB9	ordinance?	cSC4OrdinanceNeighborhoodWatch	engine/plugin/FC4Subsystems.cpp
 62F6E7CF	ordinance?	cSC4OrdinanceTouristPromotion	engine/plugin/FC4Subsystems.cpp
-6534284A	exemplar data	exemplar resource	foundations.md §9.2
+6534284A	exemplar data	exemplar resource	foundations.md §10.6
 6990C04F	protection?	cSC4PoliceSimulator	engine/plugin/FC4Subsystems.cpp
 6990C1AA	traffic?	cSC4TrafficSimulator	engine/plugin/FC4Subsystems.cpp
 69C1718E	disasters?	cSC4DisasterManagerFire	engine/plugin/FC4Subsystems.cpp
