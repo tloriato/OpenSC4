@@ -142,6 +142,9 @@ pub mod network;
 pub mod trees;
 pub mod trips;
 pub mod refresh;
+pub mod finish_helpers;
+pub mod finish_passes;
+pub mod final_map;
 #[cfg(test)]
 mod test_support;
 
@@ -149,7 +152,7 @@ mod test_support;
 pub const PORTS: &[Port] = &crate::port::concat::<
     {
         queries::PORTS.len() + containers::PORTS.len() + budget::PORTS.len() + capacity::PORTS.len() + maps::PORTS.len()
-            + network::PORTS.len() + trees::PORTS.len() + trips::PORTS.len() + refresh::PORTS.len()
+            + network::PORTS.len() + trees::PORTS.len() + trips::PORTS.len() + refresh::PORTS.len() + finish_helpers::PORTS.len() + finish_passes::PORTS.len() + final_map::PORTS.len()
     },
 >(&[
     queries::PORTS,
@@ -161,4 +164,7 @@ pub const PORTS: &[Port] = &crate::port::concat::<
     trees::PORTS,
     trips::PORTS,
     refresh::PORTS,
+    finish_helpers::PORTS,
+    finish_passes::PORTS,
+    final_map::PORTS,
 ]);
