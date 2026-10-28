@@ -82,6 +82,7 @@ stored_op!(add_float, "fadd dword ptr [{operand}]");
 
 pub mod bitmap;
 pub mod com;
+pub mod find;
 pub mod grid;
 pub mod io;
 pub mod monthly;
@@ -92,7 +93,8 @@ const COUNT: usize = bitmap::PORTS.len()
     + grid::PORTS.len()
     + plants::PORTS.len()
     + monthly::PORTS.len()
-    + io::PORTS.len();
+    + io::PORTS.len()
+    + find::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
     bitmap::PORTS,
     com::PORTS,
@@ -100,6 +102,7 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     plants::PORTS,
     monthly::PORTS,
     io::PORTS,
+    find::PORTS,
 ]);
 /// This module's complete replacements.
 pub const PORTS: &[Port] = &ALL;
