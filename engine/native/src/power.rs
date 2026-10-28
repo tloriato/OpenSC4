@@ -86,6 +86,7 @@ pub mod find;
 pub mod grid;
 pub mod io;
 pub mod monthly;
+pub mod occupants;
 pub mod plants;
 pub mod powered_lots;
 
@@ -94,6 +95,7 @@ const COUNT: usize = bitmap::PORTS.len()
     + grid::PORTS.len()
     + plants::PORTS.len()
     + monthly::PORTS.len()
+    + occupants::PORTS.len()
     + io::PORTS.len()
     + find::PORTS.len()
     + powered_lots::PORTS.len();
@@ -103,6 +105,7 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     grid::PORTS,
     plants::PORTS,
     monthly::PORTS,
+    occupants::PORTS,
     io::PORTS,
     find::PORTS,
     powered_lots::PORTS,
