@@ -33,7 +33,7 @@ layout! {
         0x14 => message_server / set_message_server: *mut u8,
         /// Retained city interface.
         0x18 => city / set_city: *mut u8,
-        /// Retained terrain interface.
+        /// Terrain height service.
         0x1C => terrain / set_terrain: *mut u8,
         /// The zone manager (`cISC4ZoneManager*`), taken in `Init`.
         0x20 => zone_manager / set_zone_manager: *mut u8,
@@ -48,14 +48,22 @@ layout! {
         /// Pending changes since the last pass.
         0x34 => dirty / set_dirty: u8,
         /// Current pipeline state; 9 means the pass is finished.
-        0x38 => state / set_state: i32,
+        0x38 => state / set_state: u32,
         /// Tract scanning iterator.
         0x3C => tract_iterator / set_tract_iterator: *mut u8,
         /// Slope scanning iterator.
         0x40 => slope_iterator / set_slope_iterator: *mut u8,
+        /// Running sum, with 32-bit wrapping.
+        0x44 => sum / set_sum: i32,
+        /// Number of counted tracts.
+        0x48 => count / set_count: i32,
+        /// Whether the scan includes unzoned land.
+        0x4C => ignore_zoning / set_ignore_zoning: u8,
         /// Owned altitude histogram storage.
         0x50 => histogram / set_histogram: *mut u8,
-        /// Altitude histogram bin shift.
+        /// End of altitude histogram bins.
+        0x54 => histogram_end / set_histogram_end: *mut i32,
+        /// Altitude bin shift.
         0x5C => histogram_shift / set_histogram_shift: u32,
         /// pivot (§7.3).
         0x60 => pivot / set_pivot: f32,
@@ -65,12 +73,20 @@ layout! {
         0x68 => high_range / set_high_range: f32,
         /// topIndex (§7.3).
         0x6C => top_index / set_top_index: i32,
+        /// Current developer map node.
+        0x70 => developer_cursor / set_developer_cursor: *mut u8,
         /// The saved average land value byte.
         0x74 => average / set_average: u8,
         /// meanAlt (§3).
         0x78 => mean_altitude / set_mean_altitude: f32,
         /// Tuned grid tract size.
         0x7C => tract_size / set_tract_size: u8,
+        /// Base value for land.
+        0x7D => base_value / set_base_value: u8,
+        /// Water bonus at its source.
+        0x81 => water_near / set_water_near: u8,
+        /// Water effect radius.
+        0x82 => water_radius / set_water_radius: u8,
         /// The altitude curve (`cSC4ResponseCurve*`, tuning `0x47E2C320`).
         0x84 => altitude_curve / set_altitude_curve: *mut u8,
         /// Developer desirability response curve.

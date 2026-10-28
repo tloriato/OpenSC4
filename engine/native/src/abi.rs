@@ -19,8 +19,8 @@
 //! - [`vcall!`] calls a virtual method through the object's vtable slot (thiscall, the object in ECX).
 //! - [`game_fn!`] declares a game function by its original address, convention and signature. In the DLL it
 //!   calls that address, so a later replacement of the callee (a jump at its entry) is picked up. Under
-//!   `cfg(test)` the address resolves to our own port when one exists, else to a fake the test installed
-//!   (`crate::testing::fake`). A function that returns a float in ST0 is declared `-> St0` and returns the
+//!   `cfg(test)` the address resolves to a fake the test installed (`crate::testing::fake`), else to our own
+//!   port when one exists. A function that returns a float in ST0 is declared `-> St0` and returns the
 //!   register value as an [`F80`], unrounded.
 //! - [`game_data!`] declares a game global by address (a fake location under `cfg(test)`).
 //! - [`call_raw`] calls any address with chosen EAX, ECX and EDX and stack words, for conventions Rust has no
@@ -82,7 +82,7 @@ pub fn target(address: u32) -> usize {
     address as usize
 }
 
-/// Where a call to the game function at `address` goes: our port of it, else the test's fake.
+/// Where a call to the game function at `address` goes: the test's fake, else our port of it.
 #[cfg(test)]
 pub fn target(address: u32) -> usize {
     crate::testing::resolve(address)
@@ -495,7 +495,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "no port and no fake")]
+    #[should_panic(expected = "no fake and no port")]
     fn missing_fake_panics() {
         // SAFETY: never reached (no target).
         unsafe {

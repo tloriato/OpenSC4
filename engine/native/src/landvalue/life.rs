@@ -993,7 +993,7 @@ mod tests {
             assert_eq!(calls(), [Call::Virtual(message as usize, 0x10, vec![])]);
         }
         for dirty in [0, 1, 255] {
-            for state in [-1, 0, 8, 9, 10] {
+            for state in [u32::MAX, 0, 8, 9, 10] {
                 f.view().set_dirty(dirty);
                 f.view().set_state(state);
                 STATE.with(|s| s.borrow_mut().message_kind = 0x6695_6816);

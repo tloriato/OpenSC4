@@ -327,7 +327,7 @@ mod tests {
             lv.set_total_grid(0x12 as *mut u8);
             lv.set_slope_grid(0x13 as *mut u8);
             lv.set_dirty(dirty);
-            lv.set_state(state);
+            lv.set_state(state as u32);
             lv.set_average(42);
             lv.set_mean_altitude(f32::from_bits(0x438F_999A));
         }

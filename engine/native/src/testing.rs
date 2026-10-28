@@ -39,7 +39,8 @@ impl Drop for Fake {
     }
 }
 
-/// Calls to the game function at `address` go to `function` (when the crate has no port of it).
+/// Calls to the game function at `address` go to `function`, even when the crate has a port of it (a test's fake
+/// keeps the function under test isolated from the other ports).
 pub fn fake(address: u32, function: usize) -> Fake {
     FAKES.with(|t| {
         let mut t = t.borrow_mut();
@@ -59,14 +60,16 @@ pub fn fake_data(address: u32, location: *mut u8) -> Fake {
     Fake { address, data: true }
 }
 
-/// Our port of the game function at `address`, else the fake, else a panic.
+/// The test's fake of the game function at `address`, else our port of it, else a panic.
 pub fn resolve(address: u32) -> usize {
-    if let Some(p) = crate::PORTS.iter().find(|p| p.address == address) {
-        return p.entry as usize;
+    if let Some(f) = FAKES.with(|t| t.borrow().iter().find(|&&(a, _)| a == address).map(|&(_, f)| f)) {
+        return f;
     }
-    FAKES
-        .with(|t| t.borrow().iter().find(|&&(a, _)| a == address).map(|&(_, f)| f))
-        .unwrap_or_else(|| panic!("game function 0x{address:08X} has no port and no fake in this test"))
+    crate::PORTS
+        .iter()
+        .find(|p| p.address == address)
+        .map(|p| p.entry as usize)
+        .unwrap_or_else(|| panic!("game function 0x{address:08X} has no fake and no port in this test"))
 }
 
 /// The stand-in of the game global at `address`, else a panic.
