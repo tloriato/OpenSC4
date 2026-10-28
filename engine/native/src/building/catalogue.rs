@@ -2,7 +2,7 @@
 // Copyright (C) 2026 FreeCity4 contributors
 // Licensed under GPL-3.0-or-later; see LICENSE at the repository root.
 
-//! Catalogue enumeration, family expansion, and name-map removal callbacks.
+//! Catalogue enumeration, family expansion, and name/profile entry access.
 
 use crate::abi::{call_raw, Conv, RawCall};
 use crate::port::Port;
@@ -13,8 +13,8 @@ game_fn! { fn assign_vector(this: *mut u8, source: *mut u8) -> u64 = "thiscall" 
 game_fn! { fn insert_vector(this: *mut u8, position: *mut u8, cookie: *mut u8, key: *mut u32, a: u32, b: u32) -> u64 = "thiscall" 0x0051_CA60; }
 game_fn! { fn reserve_set(this: *mut u8, count: u32) -> u64 = "thiscall" 0x004F_0940; }
 game_fn! { fn insert_set(this: *mut u8, out: *mut u8, key: *mut u32) -> u64 = "thiscall" 0x0062_4DD0; }
-game_fn! { #[allow(dead_code)] fn erase_name(this: *mut u8, key: *mut u32) -> u64 = "thiscall" 0x0048_62F0; }
-game_fn! { #[allow(dead_code)] fn erase_family_name(this: *mut u8, key: *mut u32) -> u64 = "thiscall" 0x0069_B720; }
+game_fn! { #[allow(dead_code)] fn name_entry(this: *mut u8, key: *mut u32) -> u64 = "thiscall" 0x0048_62F0; }
+game_fn! { #[allow(dead_code)] fn profile_entry(this: *mut u8, key: *mut u32) -> u64 = "thiscall" 0x0069_B720; }
 game_fn! { fn tried_developer(this: *mut u8, key: *mut u32) -> *mut u8 = "thiscall" 0x0069_AB40; }
 game_fn! { #[allow(dead_code)] fn find_tract(this: *mut u8, key: *mut u32) -> u64 = "thiscall" 0x0069_5F70; }
 
@@ -26,7 +26,7 @@ game_data! { static family_map: u8 = 0x00B4_8598; }
 game_data! { static family_begin: *mut *mut u8 = 0x00B4_859C; }
 game_data! { static family_end: *mut *mut u8 = 0x00B4_85A0; }
 game_data! { static name_map: u8 = 0x00B4_855C; }
-game_data! { static family_name_map: u8 = 0x00B4_8584; }
+game_data! { static profile_map: u8 = 0x00B4_8584; }
 game_data! { static tried_map: u8 = 0x00B4_85E0; }
 game_data! { static active_developer: u32 = 0x00B4_8544; }
 
@@ -221,35 +221,35 @@ port! {
 }
 
 port! {
-    /// Removes one entry from the building name map using the caller's key word.
-    #[port(address = 0x0069_AB00, owner = "building", name = "EraseBuildingName", naked)]
+    /// Returns the building name entry using the caller's type word.
+    #[port(address = 0x0069_AB00, owner = "building", name = "cSC4BuildingDevelopmentSimulator::GetBuildingName", naked)]
     pub unsafe extern "C" fn fc4p_0069ab00() {
-        core::arch::naked_asm!("lea ecx, [esp + 4]", "call {body}", "ret 4", body = sym erase_name_body);
+        core::arch::naked_asm!("lea ecx, [esp + 4]", "call {body}", "ret 4", body = sym name_entry_body);
     }
 }
 port! {
-    /// Removes one entry from the family name map using the caller's key word.
-    #[port(address = 0x0069_CA60, owner = "building", name = "EraseBuildingFamilyName", naked)]
+    /// Returns the building profile entry, inserting a default entry when the type is absent.
+    #[port(address = 0x0069_CA60, owner = "building", name = "cSC4BuildingDevelopmentSimulator::GetBuildingProfile", naked)]
     pub unsafe extern "C" fn fc4p_0069ca60() {
-        core::arch::naked_asm!("lea ecx, [esp + 4]", "call {body}", "ret 4", body = sym erase_family_body);
+        core::arch::naked_asm!("lea ecx, [esp + 4]", "call {body}", "ret 4", body = sym profile_entry_body);
     }
 }
 
-unsafe extern "fastcall" fn erase_name_body(key: *mut u32, entry_edx: u32) -> u64 {
+unsafe extern "fastcall" fn name_entry_body(key: *mut u32, entry_edx: u32) -> u64 {
     // SAFETY: the entry forwards its writable caller key.
-    unsafe { erase(0x0048_62F0, name_map(), key, entry_edx) }
+    unsafe { entry(0x0048_62F0, name_map(), key, entry_edx) }
 }
-unsafe extern "fastcall" fn erase_family_body(key: *mut u32, entry_edx: u32) -> u64 {
+unsafe extern "fastcall" fn profile_entry_body(key: *mut u32, entry_edx: u32) -> u64 {
     // SAFETY: the entry forwards its writable caller key.
-    unsafe { erase(0x0069_B720, family_name_map(), key, entry_edx) }
+    unsafe { entry(0x0069_B720, profile_map(), key, entry_edx) }
 }
 
-unsafe fn erase(address: u32, map: *mut u8, key: *mut u32, edx: u32) -> u64 {
+unsafe fn entry(address: u32, map: *mut u8, key: *mut u32, edx: u32) -> u64 {
     let args = [key as u32];
     let mut call = RawCall::new(Conv::Thiscall, crate::abi::target(address), map as u32, &args);
     call.eax = key as u32;
     call.edx = edx;
-    // SAFETY: each callback declares and invokes its original map erasure helper.
+    // SAFETY: each entry accessor declares and invokes its original map helper.
     unsafe { call_raw(&mut call) };
     (u64::from(call.edx) << 32) | u64::from(call.eax)
 }

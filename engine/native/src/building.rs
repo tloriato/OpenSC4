@@ -27,8 +27,10 @@ layout! {
         0x2C => lots / set_lots: *mut u8,
         0x30 => land_value / set_land_value: *mut u8,
         0x34 => power / set_power: *mut u8,
+        0x38 => terrain / set_terrain: *mut u8,
         0x40 => cells_x / set_cells_x: i32,
         0x44 => cells_z / set_cells_z: i32,
+        0x48 => building_map / set_building_map: *mut u8,
         0x5C => developers / set_developers: *mut u8,
         0x68 => tract_developer / set_tract_developer: *mut u8,
         0x6C => lot_developer / set_lot_developer: *mut u8,
@@ -40,6 +42,7 @@ layout! {
         0xC0 => resource_min / set_resource_min: u32,
         0xC4 => resource_max / set_resource_max: u32,
         0xC8 => resource_fraction / set_resource_fraction: f32,
+        0xCC => demand_bias / set_demand_bias: i32,
         0xD0 => population_multipliers / set_population_multipliers: *const f32,
         0xDC => use_growth_plan / set_use_growth_plan: u8,
         0xDE => ignore_power / set_ignore_power: u8,
@@ -50,15 +53,19 @@ layout! {
 
 pub mod access;
 pub mod catalogue;
+pub mod changed;
 pub mod checks;
 pub mod containers;
 pub mod daily;
 pub mod foundation;
+pub mod growth;
 pub mod growth_tree;
 pub mod io;
+pub mod planning;
 pub mod queries;
 pub mod resources;
 pub mod shared;
+pub mod terrain;
 pub mod trees;
 
 const COUNT: usize = checks::PORTS.len()
@@ -68,22 +75,34 @@ const COUNT: usize = checks::PORTS.len()
     + access::PORTS.len()
     + trees::PORTS.len()
     + queries::PORTS.len()
-    + growth_tree::PORTS.len();
-const ALL: [Port; COUNT + foundation::PORTS.len() + daily::PORTS.len() + io::PORTS.len() + catalogue::PORTS.len()] =
-    crate::port::concat(&[
-        checks::PORTS,
-        containers::PORTS,
-        resources::PORTS,
-        shared::PORTS,
-        access::PORTS,
-        trees::PORTS,
-        queries::PORTS,
-        foundation::PORTS,
-        daily::PORTS,
-        io::PORTS,
-        catalogue::PORTS,
-        growth_tree::PORTS,
-    ]);
+    + growth_tree::PORTS.len()
+    + planning::PORTS.len()
+    + changed::PORTS.len()
+    + growth::PORTS.len();
+const ALL: [Port;
+    COUNT
+        + foundation::PORTS.len()
+        + daily::PORTS.len()
+        + io::PORTS.len()
+        + catalogue::PORTS.len()
+        + terrain::PORTS.len()] = crate::port::concat(&[
+    checks::PORTS,
+    containers::PORTS,
+    resources::PORTS,
+    shared::PORTS,
+    access::PORTS,
+    trees::PORTS,
+    queries::PORTS,
+    foundation::PORTS,
+    daily::PORTS,
+    io::PORTS,
+    catalogue::PORTS,
+    growth_tree::PORTS,
+    terrain::PORTS,
+    planning::PORTS,
+    changed::PORTS,
+    growth::PORTS,
+]);
 
 /// This module's complete replacements.
 pub const PORTS: &[Port] = &ALL;

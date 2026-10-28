@@ -13,7 +13,7 @@ enum Event {
     Insert(usize, u32, u32, u32),
     Reserve(usize, u32),
     Set(usize, u32),
-    Erase(usize, u32),
+    Entry(usize, u32),
     Tried(usize, usize),
     Find(usize, [u32; 2]),
 }
@@ -79,8 +79,8 @@ extern "thiscall" fn set(this: *mut u8, _out: *mut u8, key: *mut u32) -> u64 {
     }
     0xAABB_CCDD_1234_5678
 }
-extern "thiscall" fn erase(this: *mut u8, key: *mut u32) -> u64 {
-    log(Event::Erase(this as usize, unsafe { read(key) }));
+extern "thiscall" fn entry(this: *mut u8, key: *mut u32) -> u64 {
+    log(Event::Entry(this as usize, unsafe { read(key) }));
     0xCAFE_BABE_1234_5678
 }
 extern "thiscall" fn tried(this: *mut u8, key: *mut u32) -> *mut u8 {
@@ -289,8 +289,8 @@ fn family_expansion_vector_and_set_keep_distinct_clear_append_and_return_rules()
 
 #[test]
 fn name_callbacks_pop_one_word_and_forward_both_return_registers() {
-    let _a = fake(0x0048_62F0, erase as *const () as usize);
-    let _b = fake(0x0069_B720, erase as *const () as usize);
+    let _a = fake(0x0048_62F0, entry as *const () as usize);
+    let _b = fake(0x0069_B720, entry as *const () as usize);
     let mut names = 0u8;
     let mut families = 0u8;
     let _names = fake_data(0x00B4_855C, &mut names);
@@ -304,7 +304,7 @@ fn name_callbacks_pop_one_word_and_forward_both_return_registers() {
         call.edx = 0xA5A5_5A5A;
         unsafe { call_raw(&mut call) };
         assert_eq!((call.eax, call.edx), (0x1234_5678, 0xCAFE_BABE));
-        assert_eq!(events(), [Event::Erase(map as usize, 0x89AB_CDEF)]);
+        assert_eq!(events(), [Event::Entry(map as usize, 0x89AB_CDEF)]);
     }
 }
 

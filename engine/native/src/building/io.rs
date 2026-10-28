@@ -44,7 +44,7 @@ layout! {
     }
 }
 
-unsafe fn successor(mut node: *mut u8) -> *mut u8 {
+pub(super) unsafe fn successor(mut node: *mut u8) -> *mut u8 {
     // SAFETY: all links belong to the live ordered game tree.
     unsafe {
         let right = SaveNode::from_ptr(node).right();
