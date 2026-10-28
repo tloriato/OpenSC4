@@ -28,3 +28,7 @@ version = "0.1.0"
 dependencies = [
  "fc4-core",
 ]
+
+[[package]]
+name = "fc4-native"
+version = "0.1.0"

@@ -190,6 +190,8 @@ if(FC4_IS_WIN32_X86)
         plugin/FC4Pacing.h
         plugin/FC4Schedule.cpp
         plugin/FC4Schedule.h
+        plugin/FC4Native.cpp
+        plugin/FC4Native.h
         plugin/FC4RefAudit.cpp
         plugin/FC4RefAudit.h
         plugin/FC4Checked.cpp
@@ -645,6 +647,22 @@ if(FC4_IS_WIN32_X86)
     # A fixed load address (no ASLR): the fixed schedule's heap lies below it, and the game's
     # pointer-keyed sets that hold this DLL's objects keep one order (FC4Schedule.cpp kDllBase).
     target_link_options(FreeCity4 PRIVATE /DYNAMICBASE:NO /BASE:0x5C000000)
+    # fc4native.dll (engine/native): drop-in replacements for the game's own functions, which the plugin loads
+    # only when FreeCity4.ini lists some ([native] functions; plugin/FC4Native.h). A release cargo build (no
+    # imports, no C runtime, preferred base 0x5B000000), copied next to FreeCity4.dll with its pdb.
+    set(FC4_NATIVE_OUT "${FC4_CARGO_OUT_DIR}/fc4native.dll")
+    add_custom_target(fc4_native_cargo ALL
+        COMMAND ${CMAKE_COMMAND} -E env ${FC4_CARGO_ENV}
+                ${CARGO_EXECUTABLE} build --release -p fc4-native ${FC4_CARGO_TARGET_ARGS}
+                --target-dir "${FC4_CARGO_TARGET_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${FC4_NATIVE_OUT}" "${FC4_CARGO_OUT_DIR}/fc4native.pdb"
+                "${CMAKE_BINARY_DIR}"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        BYPRODUCTS "${FC4_NATIVE_OUT}" "${CMAKE_BINARY_DIR}/fc4native.dll"
+        COMMENT "cargo build fc4-native (${FC4_RUST_TARGET})"
+        USES_TERMINAL
+        VERBATIM)
+    add_dependencies(FreeCity4 fc4_native_cargo)
     # Exports: GZDllGetGZCOMDirector (from cRZCOMDllDirector.cpp) and the
     # test seam FC4TestSeam (plugin/FC4TestSeam.h; never called by the game).
 

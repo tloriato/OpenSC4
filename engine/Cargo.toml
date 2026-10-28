@@ -2,7 +2,7 @@
 # FreeCity4 engine Cargo workspace.
 [workspace]
 resolver = "2"
-members = ["core", "capi", "conformance", "formats"]
+members = ["core", "capi", "conformance", "formats", "native"]
 
 [workspace.package]
 version = "0.1.0"

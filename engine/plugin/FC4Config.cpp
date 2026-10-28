@@ -289,6 +289,7 @@ const char* const kOtherKeys[] = {"disable", "enable", "budget_default", "refaud
                                   "sim_turbo_wait_days", "close_dialogs",
                                   "sim_fixed_step",  // golden harness; default off
                                   "schedule",  // FC4Schedule.h: fixed schedule for the original; default off
+                                  "native functions", "native dll",  // FC4Native.h ([native] section); default off
                                   "schedule limit reads", "heap trace", "heap trace max", "heap dump at", "heap perturb", "heap watch", "walk census",  // its checks
                                   "script_save_grace_ms",  // golden full-save allowance; default off
                                   "autotest_stall_grace_ms",  // suite city-size allowance; default off
@@ -547,6 +548,10 @@ std::map<std::string, std::string> ReadIni(bool* found) {
         static_cast<unsigned char>(text[2]) == 0xBF) {
         text.erase(0, 3);  // UTF-8 BOM (Notepad)
     }
+    // Section headers are ignored, except that `functions` and `dll` under `[native]` read as "native functions"
+    // and "native dll" (FC4Native.h). Every other key is global wherever it stands, so tools that append keys at
+    // the end of the file keep working.
+    bool native = false;
     size_t at = 0;
     while (at < text.size()) {
         size_t end = text.find_first_of("\r\n", at);
@@ -561,10 +566,18 @@ std::map<std::string, std::string> ReadIni(bool* found) {
             }
         }
         line = Trim(line);
-        if (line.empty() || line[0] == '[') continue;
+        if (line.empty()) continue;
+        if (line[0] == '[') {
+            const size_t close = line.find(']');
+            const std::string section =
+                close == std::string::npos ? std::string() : Lower(Trim(line.substr(1, close - 1)));
+            native = section == "native";
+            continue;
+        }
         const size_t eq = line.find('=');
         if (eq == std::string::npos) continue;
-        const std::string key = Lower(Trim(line.substr(0, eq)));
+        std::string key = Lower(Trim(line.substr(0, eq)));
+        if (native && (key == "functions" || key == "dll")) key = "native " + key;
         if (!key.empty()) out[key] = Trim(line.substr(eq + 1));
     }
     return out;

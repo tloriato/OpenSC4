@@ -30,6 +30,7 @@
 #include "FC4Seed.h"     // the seeding lane: session_seed
 #include "FC4Pacing.h"   // the detpacing lane: pacing
 #include "FC4Schedule.h" // schedule = fixed (docs/specs/simulator.md §5.8)
+#include "FC4Native.h"   // [native] functions: fc4native.dll ports (FC4Native.h)
 #include "FC4DrawCapture.h"
 #include "FC4Popups.h"
 #include "FC4RefAudit.h"
@@ -736,6 +737,7 @@ void Resolve() {
     SessionSeedStartup();  // session_seed (FC4Seed.h): one line with S
     PacingStartup();       // pacing (FC4Pacing.h): before any core exists; one line
     ScheduleStartup();     // schedule = fixed (FC4Schedule.h): hooks before the city loads
+    NativeStartup();       // [native] functions (FC4Native.h): jumps to fc4native.dll; nothing when unset
     DrawCaptureStartup();  // draw_capture = 1 only; observe driver calls in memory
     RefAuditReload();
     CheckedStartup();

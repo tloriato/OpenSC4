@@ -10,6 +10,7 @@ gzcom-dll SDK. Read [CONTRIBUTING.md](../CONTRIBUTING.md) before you change anyt
 | [`capi/`](capi/) | `fc4-capi`: a stable C ABI over the core (`include/fc4.h`), built as a static library | Rust + C header |
 | [`conformance/`](conformance/) | Language-neutral JSON test vectors (the migration contract) and their Rust runner | JSON + Rust |
 | [`formats/`](formats/) | `fc4-formats`: readers for the game's data files (DBPF packages, QFS/RefPack, exemplars and cohorts, LTEXT, FSH textures and S3D models), the `fc4-dat` inspection tool, and a sweep test over the installed game (`FC4_GAME_DIR`). Groundwork for the standalone engine (M6); not used by the plugin. | Rust |
+| [`native/`](native/) | `fc4-native`: `fc4native.dll`, drop-in replacements ("ports") for the game's own functions, one function at a time, with the original's address, calling convention, object offsets and calls. No imports, no C runtime. The plugin loads it only when `FreeCity4.ini` lists functions. | Rust |
 | [`plugin/`](plugin/) | `FreeCity4.dll`: GZCOM director with a subsystem table, the `cISC4Simulator` adapter, the budget classes (`cISC4BudgetSimulator`, `cISC4DepartmentBudget`, `cISC4LineItem`), the land value, weather, ordinance, demand and power simulators, the standard ordinances and the demand nodes (off by default), stream and property helpers, and our own standard message class (foundations §5.1; the SDK's `cRZMessage2Standard` is not used). Windows, x86 only. | C++17 |
 | [`tests/`](tests/) | `capi_smoke` (drives the C ABI from C++ with the plugin's compiler and CRT), `message_test` (foundations §7 item 12) and `plugin_load_test` (loads the DLL like a host and drives the simulator and the budget) | C++17 |
 | `third_party/gzcom-dll/` | gzcom-dll SDK (LGPL-2.1+), git submodule | C++ |
@@ -67,6 +68,43 @@ CMake runs `cargo build --release -p fc4-capi --target i686-pc-windows-msvc`, wi
 CRT (`/MT`), so the DLL needs no runtime DLLs. CTest runs `cargo test` for the same target, plus the C++
 `capi_smoke` test. On other platforms or architectures CMake builds and tests only the Rust parts and skips the
 plugin.
+
+### Native replacements (`fc4native.dll`)
+
+`native/` builds `fc4native.dll`. Each port replaces one function of `SimCity 4.exe` and keeps its calling
+convention, the object offsets it reads and writes, the calls it makes (in the same order, to the same addresses)
+and its x87 arithmetic (`native/src/x87.rs`). A port is exported as `fc4p_<address>` (the 8 lowercase hex digits of
+the original's entry) and listed, with its owner (the class) and name, in the exported table `fc4native_ports`.
+
+```sh
+cd engine
+cargo test -p fc4-native --target i686-pc-windows-msvc    # the ports on objects at the game's layout, with fakes
+cargo build --release -p fc4-native --target i686-pc-windows-msvc
+```
+
+The CMake build runs the release build and copies `fc4native.dll` and its pdb next to `build-x86/FreeCity4.dll`.
+The release DLL has no imports, no entry point and no C runtime (`/NOENTRY /NODEFAULTLIB`), keeps its relocations
+and prefers base 0x5B000000 (`native/build.rs`). Dev builds of the crate (the workspace's unwinding profile) link
+std; they are never loaded into the game.
+
+To use ports in a game, add to `FreeCity4.ini`:
+
+```ini
+[native]
+functions = 006bd540, 006bd810   ; 8-hex addresses, owner names (landvalue) or all
+dll = C:\path\to\fc4native.dll    ; optional; default: next to FreeCity4.dll
+```
+
+At game start, once the executable is identified as 1.1.641, the plugin (`plugin/FC4Native.cpp`) loads the DLL,
+checks each enabled port's export against the table and writes a 5-byte `jmp` to it at the original's entry, in
+memory only. The log has one `native: jump installed ...` line per port and a summary line. Without `functions`
+the plugin loads nothing, writes nothing and logs nothing. Only `functions` and `dll` belong to `[native]`;
+other keys stay global wherever they stand (the ini reader ignores other section headers). A slot run of
+`tools/ingame_run.ps1` keeps only FreeCity4.dll in the slot's Plugins folder, so give `dll =` there.
+
+To add a port: declare it with `port!` in a module of `native/src/` (see `native/src/port.rs`), list it in that
+module's `PORTS`, and test it on an object at the original layout (`layout!`) with fakes for the game functions
+it calls (`game_fn!`, `testing::fake`) under the game's control word (`testing::GameFpu`).
 
 ### Save sweep (records read back from every save)
 

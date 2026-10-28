@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+[package]
+name = "fc4-native"
+description = "Drop-in replacements for SimCity 4's own functions, built as fc4native.dll (no imports, no C runtime)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+# Naked functions (`#[unsafe(naked)]`, `naked_asm!`) are stable from 1.88.
+rust-version = "1.88"
+build = "build.rs"
+
+[lib]
+name = "fc4native"
+# cdylib only: fc4native.dll. `cargo test` builds the test harness from the same sources with std.
+crate-type = ["cdylib"]
+doctest = false
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
