@@ -347,6 +347,21 @@ constexpr uint32_t kFC4SeamGZFrameworkCreate = 0x475A0001;
 // a = borrowed power-line unknown, b = uint64_t[2]; 1 for two non-null poles.
 constexpr uint32_t kFC4SeamPowerLineConnections = 0x50570001;
 
+// a = borrowed occupant, b = borrowed city; bits 0/1 = default/realistic inclusion.
+constexpr uint32_t kFC4SeamDemolitionFilters = 0xD3000003;
+
+// a = borrowed occupant, b = borrowed message server; synchronous pre-demolish send.
+constexpr uint32_t kFC4SeamDemolitionPreDemolish = 0xD3000004;
+
+// a = borrowed native cell region, b = uint8_t[256]; ABI mask byte count or -1.
+constexpr uint32_t kFC4SeamDemolitionRegionMask = 0xD3000005;
+
+// a = borrowed unknown; b = uint32_t[4], nested query-reference lifetime probe.
+constexpr uint32_t kFC4SeamDemolitionQueryLifetime = 0xD3000006;
+
+// Creates an uninitialized power simulator with one reference for raw-slot ABI tests.
+constexpr uint32_t kFC4SeamPowerCreate = 0x50570002;
+
 using FC4TestSeamFn = intptr_t(__cdecl*)(uint32_t op, void* a, void* b);
 
 namespace fc4 {

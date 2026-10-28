@@ -44,3 +44,25 @@ avail_after)`, with powered as 0 or 1. Include the entry mark and exit
 powered-next bitmaps as 64 rows of 64 bits. For the plant identified by the
 wear value above, also return the PW-MAPS30-01 ageing tuple. Use uint32 hex
 for f32 bits and decimal integers otherwise; values only, no implementation.
+
+## PW-SE36-1 - block iterator draw count under the fixed schedule
+
+Open; services-exact36; 2026-10-28. Section 6.3 step 6 explicitly requires
+prime-step mode and exactly one CRT rand() call per network. Please confirm
+the iterator mode, construction/reset draw count, and ordered block outputs
+with a value-only example. The replacement follows that one-draw contract.
+
+Power-only qcheck-2 on paradis-berner first differs at digest 2466069.5
+(2039-10-07 #5, upcoming target Plumbing). This line precedes that target's
+delivery and follows Power's state 1 -> 2 delivery. The fixed seed for the
+power delivery (day 2466069, n=4, S=5EED1234) is 3DE8776D. Reference state
+7DD0D232 is reached after 959 CRT advances; replacement state 6C6D2C7C after
+one. The next delivery reseeds and matches again. None qcheck-3 is exact.
+Thus the named plumbing target does not establish a differing plumbing query.
+
+Evidence: main build-runs/golden-runs/compare-20261028-084940-f1e063ba/result,
+reference key 0402bb675e00cb340144ce72453e60792ed99741cf567fac2dda425948eaa289.
+The clean/ref0 services36-power-shadow-2 run reports 3 complete cycles with
+mismatches=0/not_exact=0, including the preceding first cycle (one flood).
+The shadow compares the resulting grid/properties, not CRT consumption.
+No behavior or schedule edit was made to force the observed draw count.

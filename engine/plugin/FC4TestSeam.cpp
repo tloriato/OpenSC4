@@ -50,6 +50,7 @@
 #include "FC4CitySitShadow.h"     // the glue17 lane
 #include "FC4DemolitionShadow.h"  // the glue17 lane
 #include "FC4DemolitionHost.h"
+#include "cFC4Demolition.h"
 #include "FC4DispatchShadow.h"    // the glue17 lane
 #include "cFC4Terrain.h"        // the glue18 lane
 #include "FC4Popups.h"
@@ -348,6 +349,58 @@ extern "C" __declspec(dllexport) intptr_t __cdecl FC4TestSeam(uint32_t op, void*
                                                static_cast<cIGZMessageServer2*>(b));
         case kFC4SeamPowerLineConnections:
             return PowerTestLineConnections(static_cast<cIGZUnknown*>(a), static_cast<uint64_t*>(b));
+        case kFC4SeamDemolitionFilters:
+            return (fc4::DemolitionDefaultFilterIncludes(static_cast<cISC4Occupant*>(a)) ? 1 : 0) |
+                   (fc4::DemolitionRealisticFilterIncludes(static_cast<cISC4Occupant*>(a),
+                                                           static_cast<cISC4City*>(b)) ? 2 : 0);
+        case kFC4SeamDemolitionPreDemolish:
+            fc4::DemolitionSendPreDemolish(static_cast<cIGZMessageServer2*>(b), static_cast<cISC4Occupant*>(a));
+            return 0;
+        case kFC4SeamDemolitionRegionMask: {
+            if (!a || !b) return -1;
+            fc4_zone_region region{};
+            std::vector<uint8_t> mask;
+            if (!fc4::DemolitionRegionToC(*static_cast<SC4CellRegion<int32_t>*>(a), region, mask) ||
+                mask.size() > 256) return -1;
+            std::memcpy(b, mask.data(), mask.size());
+            return static_cast<intptr_t>(mask.size());
+        }
+        case kFC4SeamDemolitionQueryLifetime: {
+            if (!a || !b) return -1;
+            auto* occupant = static_cast<cIGZUnknown*>(a);
+            auto* counts = static_cast<uint32_t*>(b);
+            fc4::DemolitionHostContext ctx;
+            auto hold = [&ctx, occupant] {
+                FC4_ADDREF(occupant);
+                ctx.held.emplace_back(occupant, [](void* p) {
+                    FC4_RELEASE(static_cast<cIGZUnknown*>(p));
+                });
+            };
+            {
+                fc4::DemolitionHostCall outer(ctx);
+                // Reenter once while releasing the first query batch.
+                FC4_ADDREF(occupant);
+                ctx.held.emplace_back(occupant, [&](void* p) {
+                    fc4::DemolitionHostCall reentrant(ctx);
+                    hold();
+                    FC4_RELEASE(static_cast<cIGZUnknown*>(p));
+                });
+                {
+                    fc4::DemolitionHostCall inner(ctx);
+                    hold();
+                }
+                counts[0] = static_cast<uint32_t>(ctx.held.size());
+                counts[1] = ctx.callDepth;
+            }
+            counts[2] = static_cast<uint32_t>(ctx.held.size());
+            counts[3] = ctx.callDepth;
+            return 0;
+        }
+        case kFC4SeamPowerCreate: {
+            cIGZUnknown* power = CreateFC4PowerSimulator();
+            power->AddRef();
+            return reinterpret_cast<intptr_t>(power);
+        }
         default:
             return 0;
     }

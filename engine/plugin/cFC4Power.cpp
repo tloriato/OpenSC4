@@ -1410,7 +1410,7 @@ void cFC4PowerSimulator::GetMonthlyConsumptionMapPtr(void*& map) {
     map = &map_->rows;
 }
 
-bool cFC4PowerSimulator::GetSupplyValue(int32_t x, int32_t z) { return fc4_power_is_powered(core_, x, z); }
+uint32_t cFC4PowerSimulator::GetSupplyValue(int32_t x, int32_t z) { return fc4_power_is_powered(core_, x, z); }
 
 void cFC4PowerSimulator::GetSupplyValueMapPtr(cISC4SimGrid<uint8_t>*& grid) {
     grid = reinterpret_cast<GridU8*>(FromToken(fc4_power_powered_grid(core_)));  // no AddRef
@@ -1463,7 +1463,9 @@ void cFC4PowerSimulator::FindPowerPlants(cISC4Occupant** lowestFunded, SC4Percen
     }
 }
 
-bool cFC4PowerSimulator::IsOccupantPowered(cISC4Occupant* o) { return fc4_power_is_occupant_powered(core_, Occ(o)); }
+uint32_t cFC4PowerSimulator::IsOccupantPowered(cISC4Occupant* o) {
+    return fc4_power_is_occupant_powered(core_, Occ(o));
+}
 
 bool cFC4PowerSimulator::GetOccupantPowerConsumed(cISC4Occupant* o, uint32_t& consumed) {
     return fc4_power_occupant_consumed(core_, Occ(o), &consumed);
@@ -1485,8 +1487,8 @@ cISC4SimGrid<uint8_t>* cFC4PowerSimulator::GetPoweredGrid() {
     return reinterpret_cast<GridU8*>(FromToken(fc4_power_powered_grid(core_)));
 }
 
-bool cFC4PowerSimulator::IsPowered(int32_t x, int32_t z) { return fc4_power_is_powered(core_, x, z); }
-bool cFC4PowerSimulator::IsWired(int32_t x, int32_t z) { return fc4_power_is_wired(core_, x, z); }
+uint32_t cFC4PowerSimulator::IsPowered(int32_t x, int32_t z) { return fc4_power_is_powered(core_, x, z); }
+uint32_t cFC4PowerSimulator::IsWired(int32_t x, int32_t z) { return fc4_power_is_wired(core_, x, z); }
 bool cFC4PowerSimulator::IsOnStrike() { return fc4_power_slot_value(core_, 39) != 0; }
 
 // Slot 40 returns its argument's address (§10.1 SDK check 4).

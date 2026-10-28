@@ -133,11 +133,13 @@ public:
 private:
     struct Layout {
         int32_t x1, z1, x2, z2;
-        struct {
+        struct CellMap {
+            virtual ~CellMap() = default; // SDK cRZCellMap's vptr precedes the dimensions
             uint32_t width, height, words;
             uint32_t** rows;
         } map;
     };
+    static_assert(sizeof(void*) != 4 || sizeof(Layout) == 0x24, "SC4CellRegion layout");
     Layout layout_{};
     std::vector<uint32_t> bits_;
     std::vector<uint32_t*> rows_;
@@ -175,19 +177,14 @@ bool InManager(cISC4Occupant* o) { return o != nullptr && o->IsFlagSet(1); }  //
 // The shared occupant filters (§4.2 step 1). The game's own
 // cSC4DefaultOccupantFilter / cSC4RealisticOccupantFilter have no getter, so
 // the verdicts are the spec's literal reading here.
-bool ExposesRealismIface(cISC4Occupant* o) {
+bool ExposesInterface(cISC4Occupant* o, uint32_t iid) {
     if (o == nullptr) return false;
     void* p = nullptr;
-    if (o->QueryInterface(kRealismIfaceA, &p) && p != nullptr) {
-        o->Release();  // the QI above took a reference
-        return true;
-    }
-    p = nullptr;
-    if (o->QueryInterface(kRealismIfaceB, &p) && p != nullptr) {
-        o->Release();
-        return true;
-    }
-    return false;
+    if (!o->QueryInterface(iid, &p) || p == nullptr) return false;
+    auto* queried = static_cast<cIGZUnknown*>(p);
+    FC4_ACQUIRED(queried, "QueryInterface");
+    FC4_RELEASE(queried);
+    return true;
 }
 
 bool IsDefaultFilterGroup(cISC4Occupant* o) {
@@ -197,11 +194,20 @@ bool IsDefaultFilterGroup(cISC4Occupant* o) {
     return false;
 }
 
-// [question DQ1] The "base-texture occupant on an empty lot" and "prop that is
-// not a real prop" half of the realistic filter (§4.2 step 1) has no slot in
-// docs/abi; only the group test is applied here.
-bool RealisticRejects(cISC4Occupant* o) {
-    return o != nullptr && o->IsOccupantGroup(kRealisticExtraGroup);
+// occupant-manager.md §13.2.3: all three realistic-filter flags start clear.
+bool RealisticRejects(cISC4Occupant* o, cISC4City* city) {
+    if (o->IsOccupantGroup(kRealisticExtraGroup)) return true;
+    if (o->GetType() == 0x497F6D9D && ExposesInterface(o, 0x097F6D98) && city != nullptr) {
+        cS3DVector3 position;
+        o->GetPosition(&position);
+        int x = 0, z = 0;
+        city->PositionToCell(position.fX, position.fZ, x, z);
+        cISC4LotManager* manager = city->GetLotManager();
+        cISC4Lot* lot = manager ? AsGame(manager)->GetLot(x, z, false) : nullptr;
+        if (lot != nullptr && static_cast<uint32_t>(AsGame(lot)->GetState()) == 1) return true;
+    }
+    return o->GetType() == kTypeProp &&
+           (ExposesInterface(o, 0x4B44FBE2) || ExposesInterface(o, 0x2B3B7D86));
 }
 
 }  // namespace
@@ -210,12 +216,18 @@ bool RealisticRejects(cISC4Occupant* o) {
 
 bool DemolitionDefaultFilterIncludes(cISC4Occupant* o) {
     if (o == nullptr) return false;
-    return !ExposesRealismIface(o) && !IsDefaultFilterGroup(o);
+    if (ExposesInterface(o, kRealismIfaceA) || ExposesInterface(o, kRealismIfaceB) || IsDefaultFilterGroup(o)) {
+        return false;
+    }
+    // occupant-manager.md §13.2.3: these are holder properties, not IIDs.
+    const cISCPropertyHolder* holder = o->AsPropertyHolder();
+    if (props::Has(holder, 0x49512A09) || props::Has(holder, 0x8A15F1BD)) return false;
+    std::vector<uint32_t> hidden;
+    return !props::GetU32s(holder, 0xCAA45670, hidden) || hidden.empty() || hidden[0] == 0;
 }
 
-bool DemolitionRealisticFilterIncludes(cISC4Occupant* o) {
-    if (!DemolitionDefaultFilterIncludes(o)) return true;  // only a rejection over the default counts
-    return !RealisticRejects(o);
+bool DemolitionRealisticFilterIncludes(cISC4Occupant* o, cISC4City* city) {
+    return DemolitionDefaultFilterIncludes(o) && !RealisticRejects(o, city);
 }
 
 void DemolitionVisitOccupants(SC4List<cISC4Occupant*>& list, fc4_token_callback cb, void* ctx) {
@@ -267,9 +279,23 @@ cFC4Terrain* DemolitionTerrain(cISC4City* city) {
     return city ? reinterpret_cast<cFC4Terrain*>(city->GetTerrain()) : nullptr;
 }
 
+void DemolitionSendPreDemolish(cIGZMessageServer2* server, cISC4Occupant* occupant) {
+    if (server == nullptr || occupant == nullptr) return;
+    cFC4Message2Standard* msg = FC4MakeMessage(kMsgPreDemolishNetworkOccupant, 0, 0, 0);
+    if (msg == nullptr) return;
+    msg->SetVoid1(occupant);
+    msg->SetIGZUnknown(occupant);
+    server->MessageSend(msg);
+    msg->Release();
+}
+
 void DemolitionHostReleaseHeld(DemolitionHostContext* ctx) {
     if (ctx == nullptr) return;
-    for (auto& l : ctx->held) {
+    // A last Release can reenter demolition. Its new query lists belong to
+    // that call, not to the batch being drained here.
+    std::vector<std::shared_ptr<void>> held;
+    held.swap(ctx->held);
+    for (auto& l : held) {
         // Each held list's occupants carry one reference from the query
         // (OM §8.1 step 7); ReleaseOccupantList (slot 48) drops them.
         auto* list = static_cast<SC4List<cISC4Occupant*>*>(l.get());
@@ -277,7 +303,6 @@ void DemolitionHostReleaseHeld(DemolitionHostContext* ctx) {
         cISC4OccupantManager* om = OMgr(ctx->city);
         if (om != nullptr) om->ReleaseOccupantList(*list);  // slot 48 [abi-ret] eax-or-void
     }
-    ctx->held.clear();
 }
 
 void DemolitionHostReleaseAll(DemolitionHostContext* ctx) {
@@ -389,8 +414,8 @@ bool DefaultFilterIncludes(void*, uint64_t occupant) {
     return DemolitionDefaultFilterIncludes(Occ(occupant));
 }
 
-bool RealisticFilterIncludes(void*, uint64_t occupant) {
-    return DemolitionRealisticFilterIncludes(Occ(occupant));
+bool RealisticFilterIncludes(void* u, uint64_t occupant) {
+    return DemolitionRealisticFilterIncludes(Occ(occupant), City(u));
 }
 
 // -- occupants --
@@ -648,12 +673,7 @@ void SendPreDemolish(void* u, uint64_t t) {
     if (o == nullptr) return;
     cIGZMessageServer2Ptr ms;
     if (!ms) return;
-    cFC4Message2Standard* msg = FC4MakeMessage(kMsgPreDemolishNetworkOccupant, 0, 0, 0);
-    if (msg == nullptr) return;
-    msg->SetData1(reinterpret_cast<intptr_t>(o));
-    msg->SetVoid1(o);
-    ms->MessagePost(msg, false);
-    msg->Release();
+    DemolitionSendPreDemolish(ms, o);
     (void)u;
 }
 

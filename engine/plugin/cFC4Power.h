@@ -114,7 +114,7 @@ public:
     int32_t GetMonthlyConsumptionAt(int32_t x, int32_t z) override;
     int32_t GetMonthlyConsumptionTotal() override;
     void GetMonthlyConsumptionMapPtr(void*& map) override;
-    bool GetSupplyValue(int32_t x, int32_t z) override;
+    uint32_t GetSupplyValue(int32_t x, int32_t z) override;
     void GetSupplyValueMapPtr(cISC4SimGrid<uint8_t>*& grid) override;
     int32_t GetUnpoweredConsumerCount() override;
     int32_t GetPoweredConsumerCount() override;
@@ -127,14 +127,14 @@ public:
     int32_t GetDistressedPowerPlantCount() override;
     void FindPowerPlants(cISC4Occupant** lowestFunded, SC4Percentage& funding, cISC4Occupant** mostWorn,
                          int32_t& wearPercent) override;
-    bool IsOccupantPowered(cISC4Occupant* occupant) override;
+    uint32_t IsOccupantPowered(cISC4Occupant* occupant) override;
     bool GetOccupantPowerConsumed(cISC4Occupant* occupant, uint32_t& consumed) override;
     bool GetOccupantPowerProduced(cISC4Occupant* occupant, uint32_t& produced, uint32_t& used) override;
     bool GetOccupantMaxPowerProduced(cISC4Occupant* occupant, uint32_t& maxProduced) override;
     cISC4SimGrid<uint8_t>* GetPoweredGridConst() const override;
     cISC4SimGrid<uint8_t>* GetPoweredGrid() override;
-    bool IsPowered(int32_t x, int32_t z) override;
-    bool IsWired(int32_t x, int32_t z) override;
+    uint32_t IsPowered(int32_t x, int32_t z) override;
+    uint32_t IsWired(int32_t x, int32_t z) override;
     bool IsOnStrike() override;
     SC4Percentage* GetChanceOfStrike(SC4Percentage& chance) override;
     bool BeginStrike() override;

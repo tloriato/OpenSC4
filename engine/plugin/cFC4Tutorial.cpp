@@ -19,6 +19,7 @@
 #include "FC4PropCityCommon.h"
 #include "FC4RefAudit.h"
 #include "FC4Streams.h"
+#include "compat/FC4Compat.h"
 
 #include "GZServPtrs.h"
 #include "cIGZApp.h"
@@ -36,6 +37,7 @@
 
 #include <mutex>
 #include <set>
+#include <cstring>
 
 namespace {
 
@@ -69,14 +71,6 @@ std::set<const void*>& Live() {
     return s;
 }
 
-// Logged once per process: a host route the shim does not have (TU6-TU9).
-void NoteOnce(std::atomic<bool>& flag, const char* what) {
-    if (!flag.exchange(true)) fc4::Log("tutorial: %s", what);
-}
-std::atomic<bool> g_noteWindow{false};
-std::atomic<bool> g_noteRegistry{false};
-std::atomic<bool> g_noteFilter{false};
-
 // ---- host callbacks (fc4_tutorial_host) ------------------------------------------------------------------
 //
 // The core runs under the lock: the game calls it asks for are queued
@@ -100,31 +94,97 @@ void UnregisterCheatCb(void* u) {
     cFC4TutorialSystem* s = Self(u);
     s->Lock().Defer([s] { s->CheatRegistration(false); });
 }
-void AddRefCb(void*, uint64_t token) {
-    if (cIGZUnknown* p = fc4::FromToken(token)) FC4_ADDREF(p);
+void AddRefCb(void* u, uint64_t token) {
+    Self(u)->RetainHostObject(token);
 }
-void ReleaseCb(void*, uint64_t token) {
-    if (cIGZUnknown* p = fc4::FromToken(token)) FC4_RELEASE(p);
+void ReleaseCb(void* u, uint64_t token) {
+    Self(u)->ReleaseHostObject(token);
 }
-// TU9: cSC4TutorialUIWinProc has no route in docs/abi: no window.
-uint64_t CreateWindowCb(void*) {
-    NoteOnce(g_noteWindow, "WARNING the tutorial window cannot be created (no route to cSC4TutorialUIWinProc, TU9); "
-                           "the tutorial runs without a window");
-    return 0;
+// tutorial.md 4.2.1: the app getter returns the borrowed registry itself,
+// not an interface and not an app-relative offset.
+void* Registry() {
+    cISC4App* app = App();
+    if (!app) return nullptr;
+    void* registry = reinterpret_cast<void*>(app->GetTutorialRegistry());
+    FC4_RELEASE(app);
+    return registry;
 }
-// TU6: the registry (cISC4App slot 49) has no interface: no entry, SetActive not made.
+
+template<class R, class... Args> R WindowSlot(uint64_t token, unsigned slot, Args... args) {
+    void* window = reinterpret_cast<void*>(static_cast<uintptr_t>(token));
+    auto** table = *reinterpret_cast<void***>(window);
+    using Fn = R(__thiscall*)(void*, Args...);
+    return reinterpret_cast<Fn>(table[slot])(window, args...);
+}
+
+// 4.2.2: allocate on the game's heap; the base constructor starts at zero
+// references. The assignment owns the first and the core takes the second.
+uint64_t CreateWindowCb(void* u) {
+    using Allocate = void*(__cdecl*)(uint32_t);
+    using Construct = void*(__thiscall*)(void*);
+    auto allocate = reinterpret_cast<Allocate>(fc4::compat::DirectCall(fc4::compat::Direct::GlobalHeapAllocate));
+    auto construct = reinterpret_cast<Construct>(fc4::compat::DirectCall(fc4::compat::Direct::TutorialWindowConstruct));
+    if (!allocate || !construct) return 0;
+    void* memory = allocate(100);
+    if (!memory) return 0;
+    auto* window = static_cast<cIGZUnknown*>(construct(memory));
+    FC4_ADDREF(window);
+    const uint64_t token = fc4::TokenOf(window);
+    Self(u)->RememberCreatedWindow(token);
+    return token;
+}
+
+void InitWindowCb(void*, uint64_t window) {
+    using Fn = void(__thiscall*)(void*);
+    auto fn = reinterpret_cast<Fn>(fc4::compat::DirectCall(fc4::compat::Direct::TutorialWindowInit));
+    if (window && fn) fn(reinterpret_cast<void*>(static_cast<uintptr_t>(window)));
+}
+void CloseWindowCb(void*, uint64_t window) {
+    using Fn = void(__thiscall*)(void*);
+    auto fn = reinterpret_cast<Fn>(fc4::compat::DirectCall(fc4::compat::Direct::TutorialWindowClose));
+    if (window && fn) fn(reinterpret_cast<void*>(static_cast<uintptr_t>(window)));
+}
+uint64_t WindowTaskCb(void*, uint64_t window) {
+    return window ? fc4::TokenOf(WindowSlot<cIGZUnknown*>(window, 9)) : 0;
+}
+bool TaskEdgeScrollingCb(void*, uint64_t task) {
+    // tutorial.md 4.4: current task slot 25, AL Boolean.
+    return !task || WindowSlot<bool>(task, 25);
+}
+void WindowFilterCb(void*, uint64_t window, uint32_t value) {
+    if (window) WindowSlot<void>(window, 6, value);
+}
+void WindowHintsCb(void*, uint64_t window) {
+    if (window) WindowSlot<void>(window, 7);
+}
+void WindowCatalogCb(void*, uint64_t window, uint64_t menu) {
+    if (window) WindowSlot<void>(window, 8, reinterpret_cast<void*>(static_cast<uintptr_t>(menu)));
+}
+bool WindowClickCb(void*, uint64_t window, int32_t* x, int32_t* z, int32_t n) {
+    return window && WindowSlot<bool>(window, 10, x, z, n);
+}
+int32_t WindowResetCb(void*, uint64_t window, int32_t guid, int32_t index) {
+    return window ? WindowSlot<int32_t>(window, 11, guid, index) : -1;
+}
+void WindowEventCb(void*, uint64_t window, uint32_t event) {
+    using Fn = bool(__thiscall*)(void*, uint32_t);
+    auto fn = reinterpret_cast<Fn>(fc4::compat::DirectCall(fc4::compat::Direct::TutorialWindowEvent));
+    if (window && fn) fn(reinterpret_cast<void*>(static_cast<uintptr_t>(window)), event);
+}
+
 bool RegistrySetActiveCb(void*, uint32_t guid, bool active) {
-    NoteOnce(g_noteRegistry, "the tutorial registry is not reachable (TU6): SetActive and the entry lookup answer "
-                             "false");
-    fc4::Log("tutorial: registry SetActive(0x%08X, %d) not made (TU6)", guid, active ? 1 : 0);
-    return false;
+    using Fn = bool(__thiscall*)(void*, uint32_t, bool);
+    auto fn = reinterpret_cast<Fn>(fc4::compat::DirectCall(fc4::compat::Direct::TutorialRegistrySetActive));
+    void* registry = Registry();
+    return fn && registry && fn(registry, guid, active);
 }
 bool RegistryEntryEnabledCb(void*, uint32_t guid, bool* enabled) {
-    NoteOnce(g_noteRegistry, "the tutorial registry is not reachable (TU6): SetActive and the entry lookup answer "
-                             "false");
-    fc4::Log("tutorial: registry entry 0x%08X not looked up (TU6): no window opens", guid);
-    if (enabled != nullptr) *enabled = false;
-    return false;
+    using Fn = const uint8_t*(__thiscall*)(void*, uint32_t);
+    auto fn = reinterpret_cast<Fn>(fc4::compat::DirectCall(fc4::compat::Direct::TutorialRegistryGetItem));
+    void* registry = Registry();
+    const uint8_t* item = fn && registry ? fn(registry, guid) : nullptr;
+    if (enabled) *enabled = item && item[0x10] != 0;
+    return item != nullptr;
 }
 // §4.2 (TU2, answered): endTutorial calls the 3D view, when present, slot 60
 // CloseTertiaryMenu then slot 59 CloseSecondaryMenu (docs/abi interfaces.tsv
@@ -160,8 +220,16 @@ fc4_tutorial_host MakeHost(cFC4TutorialSystem* self) {
     h.add_ref = &AddRefCb;
     h.release = &ReleaseCb;
     h.create_window = &CreateWindowCb;
-    // The window's slots are never reached: there is no window (create_window
-    // answers 0 and the core never keeps a window it was not given).
+    h.init_window = &InitWindowCb;
+    h.close_window = &CloseWindowCb;
+    h.window_current_task = &WindowTaskCb;
+    h.task_edge_scrolling_allowed = &TaskEdgeScrollingCb;
+    h.window_filter_value = &WindowFilterCb;
+    h.window_show_hints = &WindowHintsCb;
+    h.window_catalog_menu = &WindowCatalogCb;
+    h.window_left_click = &WindowClickCb;
+    h.window_reset = &WindowResetCb;
+    h.window_event = &WindowEventCb;
     h.registry_set_active = &RegistrySetActiveCb;
     h.registry_entry_enabled = &RegistryEntryEnabledCb;
     h.view_restore_controls = &ViewRestoreCb;
@@ -193,10 +261,36 @@ bool cFC4TutorialCheatHandler::DoMessage(cGZMessage&) {
 
 // ---- object -----------------------------------------------------------------------------------------------
 
+void cFC4TutorialSystem::RememberCreatedWindow(uint64_t token) {
+    if (token != 0) createdWindowRefs_[token] = 1;
+}
+
+void cFC4TutorialSystem::RetainHostObject(uint64_t token) {
+    if (cIGZUnknown* p = fc4::FromToken(token)) {
+        const auto found = createdWindowRefs_.find(token);
+        if (found != createdWindowRefs_.end()) ++found->second;
+        FC4_ADDREF(p);
+    }
+}
+
+void cFC4TutorialSystem::ReleaseHostObject(uint64_t token) {
+    if (cIGZUnknown* p = fc4::FromToken(token)) {
+        const auto found = createdWindowRefs_.find(token);
+        const bool created = found != createdWindowRefs_.end();
+        if (created && --found->second == 0) createdWindowRefs_.erase(found);
+        // tutorial 4.2.2: the two owner references may free this allocation.
+        // Erase our bookkeeping before Release can reenter the owner.
+        if (created) FC4_RELEASE_CREATED(p);
+        else FC4_RELEASE(p);
+    }
+}
+
 cFC4TutorialSystem::cFC4TutorialSystem() : cheat_(this) {
     host_ = MakeHost(this);
     core_ = fc4_tutorial_create(&host_, fc4::TokenOf(Primary()));
     if (core_ == nullptr) fc4::Log("cFC4TutorialSystem: core creation failed");
+    // 4.2.2: the retained original UI obtains its owner through this binding.
+    if (void** slot = fc4::compat::TutorialSystemGlobal()) *slot = Primary();
     {
         std::lock_guard<std::mutex> g(LiveLock());
         Live().insert(this);
@@ -211,6 +305,9 @@ cFC4TutorialSystem::~cFC4TutorialSystem() {
     }
     fc4_tutorial_destroy(core_);
     core_ = nullptr;
+    if (void** slot = fc4::compat::TutorialSystemGlobal()) {
+        if (*slot == Primary()) *slot = nullptr;
+    }
     fc4::Log("cFC4TutorialSystem destroyed (%u IsTutorial calls, %u off-main calls)", isTutorialCalls_.load(),
              lock_.OffMainCalls());
 }
@@ -411,13 +508,17 @@ int32_t cFC4TutorialSystem::GetTutorialGUID() {
     return static_cast<int32_t>(fc4_tutorial_guid(core_));
 }
 
-// §4.4 slot 13: the argument's layout ("a message of kind 3 with ID ...,
-// data field 2 / 3") is not specified (TU8): not decoded; with no window the
-// slot answers true without reading it, as the original.
-bool cFC4TutorialSystem::FilterMessage(uint32_t) {
-    NoteOnce(g_noteFilter, "FilterMessage's argument is not decoded (TU8); answered true");
+// 4.4.2: a plain four-dword prefix, not a COM message or a scalar ID.
+bool cFC4TutorialSystem::FilterMessage(uint32_t message) {
     fc4::CoreLock::Section s(lock_, "tutorial FilterMessage");
-    return fc4_tutorial_filter_message(core_, 0, 0, 0, 0);
+    uint32_t fields[4]{};
+    fc4_tutorial_state state{};
+    state.struct_size = sizeof(state);
+    fc4_tutorial_get_state(core_, &state);
+    if (message && state.window) {
+        std::memcpy(fields, reinterpret_cast<const void*>(static_cast<uintptr_t>(message)), sizeof(fields));
+    }
+    return fc4_tutorial_filter_message(core_, fields[0], fields[1], fields[2], fields[3]);
 }
 
 // §4.4 slot 14: no defined result ("—"); this object is returned.

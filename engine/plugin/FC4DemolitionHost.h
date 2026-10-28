@@ -58,6 +58,7 @@
 #include <vector>
 
 class cIGZUnknown;
+class cIGZMessageServer2;
 class cISC4City;
 class cISC4Occupant;
 class cISC4OccupantFilter;
@@ -351,6 +352,7 @@ struct DemolitionHostContext {
     // Lists from the occupant queries, each holding one reference per
     // occupant, kept until DemolitionHostReleaseHeld.
     std::vector<std::shared_ptr<void>> held;
+    uint32_t callDepth = 0;
 
     // Callbacks whose game call is not made (logged once each): the effects
     // are presentation only and the spec lets a replaced utility do nothing
@@ -361,16 +363,28 @@ struct DemolitionHostContext {
 // The host table over `ctx` (which must outlive the core).
 fc4_demolition_host MakeDemolitionHost(DemolitionHostContext* ctx);
 
-// Releases every held occupant query list (city shutdown, after the core is
-// destroyed) and destroys the two shared filters.
+// Releases the temporary query references after the outermost core call.
 void DemolitionHostReleaseHeld(DemolitionHostContext* ctx);
 void DemolitionHostReleaseAll(DemolitionHostContext* ctx);
+
+class DemolitionHostCall {
+public:
+    explicit DemolitionHostCall(DemolitionHostContext& ctx) : ctx_(ctx) { ++ctx_.callDepth; }
+    ~DemolitionHostCall() {
+        if (--ctx_.callDepth == 0) DemolitionHostReleaseHeld(&ctx_);
+    }
+    DemolitionHostCall(const DemolitionHostCall&) = delete;
+    DemolitionHostCall& operator=(const DemolitionHostCall&) = delete;
+
+private:
+    DemolitionHostContext& ctx_;
+};
 
 // The two shared occupant filters, created on first use and destroyed by
 // DemolitionHostReleaseAll. `DemolitionDefaultFilterIncludes` and
 // `DemolitionRealisticFilterIncludes` are the §4.2 step 1 verdicts.
 bool DemolitionDefaultFilterIncludes(cISC4Occupant* o);
-bool DemolitionRealisticFilterIncludes(cISC4Occupant* o);
+bool DemolitionRealisticFilterIncludes(cISC4Occupant* o, cISC4City* city = nullptr);
 
 // Visits query-owned references, then releases and clears each list value so
 // the SDK list destructor only frees nodes (one release per query reference).
@@ -388,5 +402,8 @@ std::shared_ptr<void> DemolitionOccupantsInRect(cISC4City* city, const fc4_cell_
 // The city's managers this host uses (borrowed; nullptr without a city).
 cISC4OccupantManager* DemolitionOccupantManager(cISC4City* city);
 cFC4Terrain* DemolitionTerrain(cISC4City* city);
+
+// Section 3: notify neighbours synchronously, holding the pole through delivery.
+void DemolitionSendPreDemolish(cIGZMessageServer2* server, cISC4Occupant* occupant);
 
 }  // namespace fc4

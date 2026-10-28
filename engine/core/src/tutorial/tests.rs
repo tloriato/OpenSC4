@@ -33,6 +33,7 @@ pub(crate) struct Game {
     pub click: Cell<bool>,
     pub reset_answer: Cell<i32>,
     pub registry_al: Cell<bool>,
+    pub on_window_init: RefCell<Option<Box<dyn Fn()>>>,
 }
 
 impl Game {
@@ -85,6 +86,9 @@ impl TutorialHost for Game {
     }
     fn init_window(&self, w: u64) {
         self.ev(format!("init_window {w:X}"));
+        if let Some(callback) = self.on_window_init.borrow().as_ref() {
+            callback();
+        }
     }
     fn close_window(&self, w: u64) {
         self.ev(format!("close_window {w:X}"));
@@ -166,6 +170,25 @@ fn identity_and_constructor() {
     assert_eq!(t.release(), 1);
     assert_eq!(t.release(), 0);
     assert!(t.snapshot().destroyed);
+}
+
+#[test]
+fn window_init_can_synchronously_query_and_advance_its_owner() {
+    let g = Game::new();
+    let t = Rc::new(system(&g));
+    g.task.set(Some(TASK));
+    let weak = Rc::downgrade(&t);
+    *g.on_window_init.borrow_mut() = Some(Box::new(move || {
+        let t = weak.upgrade().unwrap();
+        assert_eq!(t.current_task(), Some(TASK));
+        t.increment_task_number();
+        assert_eq!(t.task_number(), 1);
+    }));
+    t.start_tutorial();
+    assert_eq!(t.task_number(), 1);
+    assert_eq!(g.refs(WINDOW), 2);
+    t.end_tutorial(true);
+    assert_eq!(g.refs(WINDOW), 0);
 }
 
 #[test]

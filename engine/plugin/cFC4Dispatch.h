@@ -38,6 +38,7 @@
 
 class cIGZMessageServer2;
 class cISC4City;
+class cISC43DRender;
 
 static const uint32_t kFC4_CLSID_cSC4DispatchManager = 0x4990BD93;
 static const uint32_t kFC4_IID_cISC4DispatchManager = 0x694028EC;
@@ -95,6 +96,12 @@ public:
     cISC4City* City();
     void SetCity(cISC4City* c);
     void CountPost();
+    cIGZUnknown* NativeVehicleView() { return vehicleView_; }
+    cISC43DRender* ViewRenderer() { return viewRenderer_; }
+    void SetNativeVehicleView(cIGZUnknown* view, cISC43DRender* renderer) {
+        vehicleView_ = view;
+        viewRenderer_ = renderer;
+    }
 
 private:
     uint32_t refCount_ = 0;
@@ -104,6 +111,9 @@ private:
     cISC4City* city_ = nullptr;
     cIGZMessageServer2* msgServer_ = nullptr;
     std::atomic<uint32_t> posts_{0};
+    // The core owns the view token; the host holds its renderer until removal.
+    cIGZUnknown* vehicleView_ = nullptr;
+    cISC43DRender* viewRenderer_ = nullptr;
 };
 
 // Factory for the subsystem table (reference count 0).
