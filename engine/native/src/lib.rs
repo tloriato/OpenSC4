@@ -55,13 +55,19 @@ pub mod lot_developer;
 #[cfg(target_arch = "x86")]
 pub mod neighbors;
 #[cfg(target_arch = "x86")]
+pub mod network_tool;
+#[cfg(target_arch = "x86")]
 pub mod pollution;
 #[cfg(target_arch = "x86")]
 pub mod power;
 #[cfg(target_arch = "x86")]
 pub mod residential;
 #[cfg(target_arch = "x86")]
+pub mod shared;
+#[cfg(target_arch = "x86")]
 pub mod tract_developer;
+#[cfg(target_arch = "x86")]
+pub mod traffic;
 #[cfg(target_arch = "x86")]
 pub mod x87;
 #[cfg(target_arch = "x86")]
@@ -80,10 +86,13 @@ mod table {
         + crate::landvalue::PORTS.len()
         + crate::lot_developer::PORTS.len()
         + crate::neighbors::PORTS.len()
+        + crate::network_tool::PORTS.len()
         + crate::pollution::PORTS.len()
         + crate::power::PORTS.len()
         + crate::residential::PORTS.len()
+        + crate::shared::PORTS.len()
         + crate::tract_developer::PORTS.len()
+        + crate::traffic::PORTS.len()
         + crate::zone_developer::PORTS.len();
     const ALL: [Port; COUNT] = port::concat(&[
         crate::x87::PORTS,
@@ -92,10 +101,13 @@ mod table {
         crate::landvalue::PORTS,
         crate::lot_developer::PORTS,
         crate::neighbors::PORTS,
+        crate::network_tool::PORTS,
         crate::pollution::PORTS,
         crate::power::PORTS,
         crate::residential::PORTS,
+        crate::shared::PORTS,
         crate::tract_developer::PORTS,
+        crate::traffic::PORTS,
         crate::zone_developer::PORTS,
     ]);
     const _: () = assert!(port::addresses_unique(&ALL), "an address has two ports");
