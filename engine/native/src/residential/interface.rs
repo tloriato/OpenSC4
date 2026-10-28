@@ -7,7 +7,7 @@ use super::ResidentialSim;
 use crate::port::Port;
 
 game_fn! {
-    fn property_u32(holder: *mut u8, id: u32, value: *mut u32) -> u32 = "C" 0x005F_D480;
+    fn property_u32(holder: *mut u8, id: u32, value: *mut u32) -> u64 = "C" 0x005F_D480;
 }
 
 port! {
@@ -75,15 +75,36 @@ port! {
 }
 
 port! {
-    /// A building strikes when its strike-day property exists and is nonzero.
-    #[port(address = 0x006F_6F30, owner = "residential", name = "cSC4ResidentialSimulator::IsBuildingOnStrike")]
-    pub unsafe extern "thiscall" fn fc4p_006f6f30(_this: *mut u8, building: *mut u8) -> u32 {
-        unsafe {
-            let mut day = 0;
-            let holder = vcall!(building, 0x18 => fn() -> *mut u8);
-            let result = property_u32(holder, 0xEAA6_9F83, &mut day);
-            if result as u8 == 0 { result & !0xFF } else { u32::from(day != 0) }
-        }
+    /// A building strikes when its strike-day property exists and is nonzero. ECX returns the day word;
+    /// EDX is zero on success, otherwise it is retained from the property helper.
+    #[port(address = 0x006F_6F30, owner = "residential", name = "cSC4ResidentialSimulator::IsBuildingOnStrike", naked)]
+    pub unsafe extern "C" fn fc4p_006f6f30() {
+        core::arch::naked_asm!(
+            "sub esp, 12", "mov edx, esp", "push dword ptr [esp + 16]", "call {body}",
+            "mov eax, dword ptr [esp]", "mov edx, dword ptr [esp + 4]",
+            "mov ecx, dword ptr [esp + 8]", "add esp, 12", "ret 4",body=sym building_on_strike,
+        )
+    }
+}
+
+#[repr(C)]
+struct StrikeResult {
+    eax: u32,
+    edx: u32,
+    day: u32,
+}
+
+unsafe extern "fastcall" fn building_on_strike(_this: *mut u8, out: *mut StrikeResult, building: *mut u8) {
+    unsafe {
+        let mut day = 0;
+        let holder = vcall!(building,0x18 => fn()->*mut u8);
+        let result = property_u32(holder, 0xEAA6_9F83, &mut day);
+        let (eax, edx) = if result as u8 == 0 {
+            (result as u32 & !0xFF, (result >> 32) as u32)
+        } else {
+            (u32::from(day != 0), 0)
+        };
+        out.write(StrikeResult { eax, edx, day });
     }
 }
 

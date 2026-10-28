@@ -203,6 +203,11 @@ unsafe extern "C" fn property(holder: *mut u8, id: u32, out: *mut u32) -> u32 {
     })
 }
 
+#[unsafe(naked)]
+unsafe extern "thiscall" fn invoke_building_strike(_this: *mut u8, _building: *mut u8) -> u64 {
+    core::arch::naked_asm!("push dword ptr [esp + 4]", "call {port}", "mov edx, ecx", "ret 4",port=sym fc4p_006f6f30)
+}
+
 #[test]
 fn building_strike_day_missing_zero_nonzero_and_failure_residue() {
     let _fake = fake(0x005F_D480, property as *const () as usize);
@@ -218,7 +223,9 @@ fn building_strike_day_missing_zero_nonzero_and_failure_residue() {
         (1, 0, false, 0),
     ] {
         PROPERTY.with(|p| *p.borrow_mut() = (result, value, write));
-        assert_eq!(unsafe { fc4p_006f6f30(core::ptr::null_mut(), p) }, want);
+        let result = unsafe { invoke_building_strike(core::ptr::null_mut(), p) };
+        assert_eq!(result as u32, want);
+        assert_eq!((result >> 32) as u32, if write { value } else { 0 });
         assert_eq!(
             take(),
             [Call::Holder(p as usize), Call::Property(0x2468, 0xEAA6_9F83, 0)]

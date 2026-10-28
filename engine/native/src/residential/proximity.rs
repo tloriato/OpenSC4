@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 FreeCity4 contributors
 
-//! Shared byte-grid geometry and the four directional distance sweeps.
+//! Shared grid geometry and the four directional byte-distance sweeps.
 
 use crate::port::Port;
 use crate::x87::F80;
@@ -47,13 +47,15 @@ unsafe extern "fastcall" fn set_tract_size(this: *mut u8, stack: *mut u32, entry
         }
         grid.set_tract_size(size as i32);
         grid.set_tract_shift(0);
-        let mut n = size as i32;
-        let mut shift = 0;
-        while n > 1 {
-            n /= 2;
-            shift += 1;
+        if size as i32 > 1 {
+            let mut n = size as i32;
+            let mut shift = 0;
+            while n > 1 {
+                n /= 2;
+                shift += 1;
+            }
+            grid.set_tract_shift(shift);
         }
-        grid.set_tract_shift(shift);
         let city = *city();
         grid.set_count_x(vcall!(city, 0x174 => fn() -> i32).wrapping_shr(grid.tract_shift()));
         grid.set_count_z(vcall!(city, 0x178 => fn() -> i32).wrapping_shr(grid.tract_shift()));

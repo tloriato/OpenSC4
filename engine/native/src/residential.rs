@@ -46,9 +46,11 @@ layout! {
 
 pub mod interface;
 pub mod proximity;
+pub mod quotient;
+pub mod service;
 
-const COUNT: usize = interface::PORTS.len() + proximity::PORTS.len();
-const ALL: [Port; COUNT] = crate::port::concat(&[interface::PORTS, proximity::PORTS]);
+const COUNT: usize = interface::PORTS.len() + proximity::PORTS.len() + quotient::PORTS.len() + service::PORTS.len();
+const ALL: [Port; COUNT] = crate::port::concat(&[interface::PORTS, proximity::PORTS, quotient::PORTS, service::PORTS]);
 
 /// This module's replacements.
 pub const PORTS: &[Port] = &ALL;
