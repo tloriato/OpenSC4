@@ -6,9 +6,11 @@ Evidence lives in git, in `docs/lanes/` and in `build-runs/`, never here. Where 
 one, this one wins.
 
 State as of 2026-10-28 14:30: **run 8 is running** (12 Codex lanes, `build-runs/run8-state.json`). Landed today,
-each exact on its covers: zones, budget, parks, regionalcity, neighbors, citysit, commercial, propmgr, clock24. Also
+each exact on its covers (1-9 scenarios each, median about 62 game days; together 1.3% of the game's code): zones,
+budget, parks, regionalcity, neighbors, citysit, commercial, propmgr, clock24, tutorial. Also
 landed: the save round trip (save-roundtrip33), draw streams in exact checks (draw-check35), corpus35, the save layouts
-of every remaining record type (re-sr36, re-sr37) and the fast loop (fastloop36). All 189 references carry monthly
+of every remaining record type (re-sr36, re-sr37), the fast loop (fastloop36) and owner names for every save record
+(owners37). All 189 references carry monthly
 record hashes and snapshots (re-recorded 14:15 on pin r6).
 
 **Priority (the user, 08:30): the fast loop, not measurement.** Do not spend game slots on headline numbers. A check
