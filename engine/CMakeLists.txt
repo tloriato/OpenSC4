@@ -1610,3 +1610,11 @@ add_dependencies(fc4_capi_ready fc4_capi_cargo)
 add_executable(fc4_advisor_list_read_test tests/advisor_list_read_test.cpp)
 target_include_directories(fc4_advisor_list_read_test PRIVATE plugin capi/include)
 add_test(NAME advisor_list_read COMMAND fc4_advisor_list_read_test)
+
+# Dispatch's native pylon primary includes the occupant accessor omitted by the SDK.
+if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 4)
+    add_executable(fc4_dispatch_pylon_test tests/dispatch_pylon_test.cpp)
+    target_include_directories(fc4_dispatch_pylon_test PRIVATE plugin capi/include "${FC4_GZCOM_DIR}/include")
+    target_compile_options(fc4_dispatch_pylon_test PRIVATE /W3 /permissive- /utf-8 /EHsc)
+    add_test(NAME dispatch_pylon COMMAND fc4_dispatch_pylon_test)
+endif()

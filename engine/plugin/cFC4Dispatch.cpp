@@ -14,6 +14,7 @@
 #include "cFC4Dispatch.h"
 
 #include "FC4Diag.h"
+#include "FC4DispatchPylon.h"
 #include "FC4Fpu.h"
 #include "FC4Log.h"
 #include "FC4PropCityCommon.h"
@@ -67,7 +68,7 @@ cISC4App* App() {
 // Release pair, the terrain altitude, the dispatch sources' protection-side
 // slots (protection.md §8.2) and `resolve_ref` for the record's references.
 // The original vehicle-view companion is retained through dispatch.md 4.1.3's
-// native boundary. Pylon and new-vehicle creation remain unwired below.
+// native boundary. New pylon and vehicle creation remain unwired below.
 
 bool AcquireMessageServer(void* u) {
     cFC4DispatchManager* s = Self(u);
@@ -322,7 +323,8 @@ fc4_dispatch_host MakeHost(cFC4DispatchManager* self) {
     h.refresh_vehicle_view = &RefreshVehicleView;
     h.track_vehicle = &TrackVehicle;
     h.untrack_vehicle = &UntrackVehicle;
-    // NOT wired: begin_vehicle, create_pylon and the pylon_* callbacks.
+    fc4::WireDispatchPylon(h);
+    // NOT wired: begin_vehicle, create_pylon, pylon_place_at_unit and pylon_return_to_station.
     return h;
 }
 
