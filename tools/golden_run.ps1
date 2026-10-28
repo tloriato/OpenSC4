@@ -34,7 +34,10 @@ if ($userDir -match '\\\.' -or $userDir.StartsWith($docs, [StringComparison]::Or
 $claim = New-Object Threading.Mutex($false, "FC4QueueSlot-$Slot")
 $held = $false
 try {
-    try { $held = $claim.WaitOne(0) } catch [Threading.AbandonedMutexException] { $held = $true }
+    # A labelled queue verdict can precede release of its slot claim by a few
+    # seconds. Queue briefly behind it rather than fail a completed qcheck's
+    # immediate window re-check. The Python watchdog bounds the whole run.
+    try { $held = $claim.WaitOne(60000) } catch [Threading.AbandonedMutexException] { $held = $true }
     if (-not $held) { throw "Slot $Slot is claimed by the game queue; choose another --slot." }
     # The harness takes FC4UserDir itself; the queue claim prevents reuse during export.
     New-Item -ItemType Directory -Path $Output | Out-Null
