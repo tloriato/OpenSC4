@@ -1143,7 +1143,7 @@ fn float_environment() -> (u16, u16, u32, u32) {
     (cw, sw & 0x3800, mxcsr, flags & 0x400)
 }
 
-unsafe fn checked_call(entry: usize, this: *mut u8, args: &mut [u32], eax: u32, edx: u32, convention: Conv) -> u64 {
+pub(super) unsafe fn checked_call(entry: usize, this: *mut u8, args: &mut [u32], eax: u32, edx: u32, convention: Conv) -> u64 {
     let _fpu = crate::testing::GameFpu::new();
     let sentinel = 123.25f64;
     let mut restored = 0.0f64;

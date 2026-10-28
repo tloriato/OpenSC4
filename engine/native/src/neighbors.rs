@@ -27,29 +27,45 @@ layout! {
         0x1C => connections / set_connections: *mut u8,
         0x20 => deals / set_deals: *mut u8,
         0x3C => deals_dirty / set_deals_dirty: u8,
+        0x3D => stats_dirty / set_stats_dirty: u8,
     }
 }
 
 mod accounting;
+mod cities;
 mod geometry;
 mod lists;
 mod proposal;
 mod queries;
+mod regional;
+mod removal;
+mod selection;
 mod surface;
+mod terrain;
 
 const COUNT: usize = surface::PORTS.len()
+    + cities::PORTS.len()
     + queries::PORTS.len()
     + accounting::PORTS.len()
     + lists::PORTS.len()
     + proposal::PORTS.len()
-    + geometry::PORTS.len();
+    + removal::PORTS.len()
+    + regional::PORTS.len()
+    + selection::PORTS.len()
+    + geometry::PORTS.len()
+    + terrain::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
     surface::PORTS,
+    cities::PORTS,
     queries::PORTS,
     accounting::PORTS,
     lists::PORTS,
     proposal::PORTS,
+    removal::PORTS,
+    regional::PORTS,
+    selection::PORTS,
     geometry::PORTS,
+    terrain::PORTS,
 ]);
 pub const PORTS: &[Port] = &ALL;
 
