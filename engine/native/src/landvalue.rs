@@ -23,10 +23,36 @@ layout! {
     /// "Land-value native progress"). The altitude fields are the ones `SetupAltitudeEffect` (0x006BD750) reads
     /// and writes (§7.3).
     pub struct LandValueSim {
+        /// Terrain height service.
+        0x1C => terrain / set_terrain: *mut u8,
         /// The zone manager (`cISC4ZoneManager*`), taken in `Init`.
         0x20 => zone_manager / set_zone_manager: *mut u8,
         /// The intrinsic land value grid (`cISC4SimGrid<uint8>*`), the first grid `Init` creates (§2).
         0x24 => intrinsic_grid / set_intrinsic_grid: *mut u8,
+        /// Published total values.
+        0x28 => total_grid / set_total_grid: *mut u8,
+        /// Working land values.
+        0x2C => scratch_grid / set_scratch_grid: *mut u8,
+        /// Area slopes.
+        0x30 => slope_grid / set_slope_grid: *mut u8,
+        /// Current idle state.
+        0x38 => pipeline_state / set_pipeline_state: u32,
+        /// Tract scan cursor.
+        0x3C => tract_iterator / set_tract_iterator: *mut u8,
+        /// Slope scan cursor.
+        0x40 => slope_iterator / set_slope_iterator: *mut u8,
+        /// Running sum, with 32-bit wrapping.
+        0x44 => sum / set_sum: i32,
+        /// Number of counted tracts.
+        0x48 => count / set_count: i32,
+        /// Whether the scan includes unzoned land.
+        0x4C => ignore_zoning / set_ignore_zoning: u8,
+        /// First altitude histogram bin.
+        0x50 => histogram_begin / set_histogram_begin: *mut i32,
+        /// End of altitude histogram bins.
+        0x54 => histogram_end / set_histogram_end: *mut i32,
+        /// Altitude bin shift.
+        0x5C => histogram_shift / set_histogram_shift: u32,
         /// pivot (§7.3).
         0x60 => pivot / set_pivot: f32,
         /// lowRange (§7.3).
@@ -35,10 +61,24 @@ layout! {
         0x68 => high_range / set_high_range: f32,
         /// topIndex (§7.3).
         0x6C => top_index / set_top_index: i32,
+        /// Current developer map node.
+        0x70 => developer_cursor / set_developer_cursor: *mut u8,
+        /// Published average land value.
+        0x74 => average / set_average: u8,
         /// meanAlt (§3).
         0x78 => mean_altitude / set_mean_altitude: f32,
+        /// Base value for land.
+        0x7D => base_value / set_base_value: u8,
+        /// Water bonus at its source.
+        0x81 => water_near / set_water_near: u8,
+        /// Water effect radius.
+        0x82 => water_radius / set_water_radius: u8,
         /// The altitude curve (`cSC4ResponseCurve*`, tuning `0x47E2C320`).
         0x84 => altitude_curve / set_altitude_curve: *mut u8,
+        /// Curve used by developer contributions.
+        0x88 => desirability_curve / set_desirability_curve: *mut u8,
+        /// Developer map sentinel.
+        0x8C => developer_header / set_developer_header: *mut u8,
         /// minAlt (§3).
         0x98 => min_altitude / set_min_altitude: f32,
         /// maxAlt (§3).
