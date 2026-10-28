@@ -271,6 +271,9 @@ def exact_owners(dll):
 
 
 def run_each(args, rows, dll):
+    if getattr(args, 'from_date', None):
+        print('each: owner qualification uses full scenarios; ignoring --from', flush=True)
+        args = argparse.Namespace(**{**vars(args), 'from_date': None})
     covers = owner_covers()
     skipped = set(select('all', None, rows)[1])
     jobs = [(key, name) for key in sorted(covers) if key != 'simulator' for name in covers[key] if name not in skipped]
@@ -325,6 +328,8 @@ def run(args):
 
 
 def credit(args):
+    if getattr(args, 'from_date', None):
+        raise ValueError('credit requires full scenarios; use check.py run or qcheck.py for windows')
     rows = scenarios()
     dll = args.dll / 'engine/build-x86/FreeCity4.dll' if args.dll.is_dir() else args.dll
     keys = (exact_owners(dll) if args.replace == 'exact' else

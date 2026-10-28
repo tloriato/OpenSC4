@@ -80,6 +80,12 @@ def test_credit_always_captures_all_months_for_combined_owners():
     assert '--no-early-stop' in options
 
 
+def test_window_results_cannot_be_published_as_full_scenario_credit():
+    import pytest
+    with pytest.raises(ValueError, match='credit requires full scenarios'):
+        check.credit(argparse.Namespace(from_date='auto'))
+
+
 def test_envelope_verifies_monthly_snapshots_and_rejects_path_traversal(tmp_path):
     import hashlib
     import pytest

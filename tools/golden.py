@@ -186,8 +186,9 @@ def compare_artifacts(expected, actual):
         if not monthly['complete']:
             first = monthly['first_difference']
             report['first_digest_difference'] = None
-            total = len(load_json(actual / 'monthly.json')['months'][first['date']]['records'])
-            report['save'] = {'exact_records': total - len(first['records']),
+            a = load_json(expected / 'monthly.json')['months'][first['date']]['records']
+            b = load_json(actual / 'monthly.json')['months'][first['date']]['records']
+            report['save'] = {'exact_records': sum(a[k] == b[k] for k in a.keys() & b.keys()),
                               'different_records': len(first['records']), 'records': first['records']}
         else:
             a = golden_monthly.normalized_records(read_records(expected / 'end.sc4'))
@@ -374,7 +375,8 @@ def prepare(args):
     if getattr(args, 'monthly', False):
         args.checkpoint_start = golden_monthly.save_date(read_records(save))
         original = args.script.read_text(encoding='utf-8-sig') if args.script else ''
-        generated = golden_monthly.instrument(original, args.checkpoint_start, args.until)
+        generated = golden_monthly.instrument(original, args.checkpoint_start, args.until,
+                                               reloaded=getattr(args, 'window_reloaded', False))
         settings['monthly_records'] = golden_monthly.NORMALIZER
     if getattr(args, 'prepared_city', None):
         settings['window_parent'] = args.window_parent
@@ -617,6 +619,7 @@ def window_inputs(args, entry, parent, selected):
     if sha256(staged) != sha256(source):
         raise ValueError('staged window snapshot is corrupt')
     args.prepared_city, args.window_parent, args.until = staged, parent, until
+    args.window_reloaded = start in available
     print(f'window: {start}..{until} (original reload cached separately)', flush=True)
     return True
 

@@ -41,10 +41,19 @@ def test_normalization_does_not_shift_other_classes_when_one_is_added():
 
 def test_calendar_and_actions_at_boundary():
     assert monthly.dates('2000-01-31', '2000-03-02') == ['2000-02-29', '2000-03-02']
-    text = monthly.instrument('2000-01-31 mark OLD\n2000-02-29 funds 100\n', '2000-01-31', '2000-03-02')
+    text = monthly.instrument('2000-01-31 mark OLD\n2000-02-29 funds 100\n', '2000-01-31', '2000-03-02',
+                              reloaded=True)
     assert 'mark OLD' not in text
     assert text.index('funds 100') < text.index('2000-02-29 pause') < text.index('2000-02-29 save')
     assert text.count('GOLDEN_MONTH') == 2
+
+
+def test_initial_save_setup_is_not_discarded_as_if_it_were_a_checkpoint():
+    script = '1999-12-31 funds 100\n2000-01-01 establish Example\n2000-02-01 mark future\n'
+    assert '1999-12-31 funds 100' in monthly.instrument(script, '2000-01-01', '2000-01-31')
+    assert '2000-01-01 establish Example' in monthly.instrument(script, '2000-01-01', '2000-01-31')
+    assert 'mark future' not in monthly.instrument(script, '2000-01-01', '2000-01-31')
+    assert 'establish Example' not in monthly.instrument(script, '2000-01-01', '2000-01-31', reloaded=True)
 
 
 def timeline(values):

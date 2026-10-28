@@ -55,14 +55,14 @@ def dates(start, until):
     return found
 
 
-def instrument(text, start, until):
-    """Keep same-day original actions in order, then checkpoint. Never replay old actions."""
+def instrument(text, start, until, *, reloaded=False):
+    """Preserve full-run setup; skip already executed actions only on a checkpoint reload."""
     actions = {}
     for line in text.splitlines():
         words = line.split('#', 1)[0].split()
         if not words:
             continue
-        if start < words[0] <= until:
+        if words[0] <= until and (not reloaded or start < words[0]):
             actions.setdefault(words[0], []).append(line)
     checkpoints = dates(start, until)
     out = []
