@@ -252,5 +252,5 @@ pub const PORTS: &[Port] = &[
     fc4p_006e50d0::PORT,
     fc4p_006e50f0::PORT,
     fc4p_006e5110::PORT,
-    fc4p_006e5130::PORT
+    fc4p_006e5130::PORT,
 ];

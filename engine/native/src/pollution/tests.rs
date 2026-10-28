@@ -110,9 +110,15 @@ fn saved_recycling_counter_uses_full_int64_truncation_and_keeps_float_environmen
     unsafe {
         let sim = PollutionSim::from_ptr(this);
         for (value, expected) in [
-            (0.0, 0), (-0.0, 0), (123.875, 123), (-123.875, -123),
-            (3_000_000_000.0, 3_000_000_000), (1.0e19, i64::MIN),
-            (f64::INFINITY, i64::MIN), (f64::NEG_INFINITY, i64::MIN), (f64::NAN, i64::MIN),
+            (0.0, 0),
+            (-0.0, 0),
+            (123.875, 123),
+            (-123.875, -123),
+            (3_000_000_000.0, 3_000_000_000),
+            (1.0e19, i64::MIN),
+            (f64::INFINITY, i64::MIN),
+            (f64::NEG_INFINITY, i64::MIN),
+            (f64::NAN, i64::MIN),
             (9_223_372_036_854_774_784.0, 9_223_372_036_854_774_784),
         ] {
             sim.set_recycled_previous(value);
@@ -142,14 +148,22 @@ fn worst_tract_outputs_zero_extend_coordinates_and_allow_aliasing() {
             write_unaligned(this.add(offset + 4).cast::<u32>(), 0xDEAD_BEEF);
             let before = bytes(this);
             let mut out = [0u32; 3];
-            let args = [out.as_mut_ptr() as u32, out.as_mut_ptr().add(1) as u32, out.as_mut_ptr().add(2) as u32];
+            let args = [
+                out.as_mut_ptr() as u32,
+                out.as_mut_ptr().add(1) as u32,
+                out.as_mut_ptr().add(2) as u32,
+            ];
             assert_eq!(invoke(address, this, &args), registers(0xDEAD_BEEF, args[1]));
             assert_eq!(out, [0xFEDC, 0x8765, 0xDEAD_BEEF]);
             assert_eq!(bytes(this), before);
             // Writing x over the source coordinates replaces z before z is read.
             let mut z = 99u32;
             let mut value = 0u32;
-            let args = [this.add(offset) as u32, &mut z as *mut u32 as u32, &mut value as *mut u32 as u32];
+            let args = [
+                this.add(offset) as u32,
+                &mut z as *mut u32 as u32,
+                &mut value as *mut u32 as u32,
+            ];
             invoke(address, this, &args);
             assert_eq!(z, 0);
             assert_eq!(value, 0xDEAD_BEEF);
@@ -163,7 +177,12 @@ fn list_counts_walk_nodes_including_duplicate_occupants_and_keep_the_sentinel_in
     let this = object.ptr();
     // SAFETY: the list storage stays live for each count call.
     unsafe {
-        for (address, offset) in [(0x006E_50D0, 0x6C), (0x006E_50F0, 0x70), (0x006E_5110, 0x74), (0x006E_5130, 0x68)] {
+        for (address, offset) in [
+            (0x006E_50D0, 0x6C),
+            (0x006E_50F0, 0x70),
+            (0x006E_5110, 0x74),
+            (0x006E_5130, 0x68),
+        ] {
             for n in [0usize, 1, 2, 17] {
                 let mut nodes = vec![[0u32; 3]; n + 1];
                 let sentinel = nodes.as_mut_ptr().cast::<u8>();
@@ -187,12 +206,21 @@ fn list_counts_walk_nodes_including_duplicate_occupants_and_keep_the_sentinel_in
 fn supply_returns_delta_before_clamping_and_uses_wrapped_signed_comparisons() {
     // Core supply vectors, plus negative overflow where the wrapped sum is positive.
     let cases = [
-        (1000, 256, 256, 1256), (2_147_483_632, 100, 15, i32::MAX),
-        (50, -80, -50, 0), (50, -30, -30, 20), (7, 0, 0, 7),
-        (-40, 0, 0, 0), (-40, 10, 10, 0), (-40, 100, 100, 60), (-40, -5, 40, 0),
-        (i32::MIN, 0, 0, 0), (i32::MIN, -1, -1, i32::MAX),
-        (i32::MIN, i32::MAX, i32::MAX, 0), (-1000, 256, 256, 0),
-        (0x7FFF_FF00, 0x200, 0xFF, i32::MAX), (i32::MAX, 1, 0, i32::MAX),
+        (1000, 256, 256, 1256),
+        (2_147_483_632, 100, 15, i32::MAX),
+        (50, -80, -50, 0),
+        (50, -30, -30, 20),
+        (7, 0, 0, 7),
+        (-40, 0, 0, 0),
+        (-40, 10, 10, 0),
+        (-40, 100, 100, 60),
+        (-40, -5, 40, 0),
+        (i32::MIN, 0, 0, 0),
+        (i32::MIN, -1, -1, i32::MAX),
+        (i32::MIN, i32::MAX, i32::MAX, 0),
+        (-1000, 256, 256, 0),
+        (0x7FFF_FF00, 0x200, 0xFF, i32::MAX),
+        (i32::MAX, 1, 0, i32::MAX),
         (i32::MIN + 5, -10, -10, i32::MAX - 4),
     ];
     let mut object = Object::new(SIZE);
@@ -204,7 +232,11 @@ fn supply_returns_delta_before_clamping_and_uses_wrapped_signed_comparisons() {
             sim.set_supply(old);
             let before = bytes(this);
             let result = invoke(0x006E_32E0, this, &[delta as u32]);
-            assert_eq!(result, registers(accepted as u32, old.wrapping_add(accepted) as u32), "{old} + {delta}");
+            assert_eq!(
+                result,
+                registers(accepted as u32, old.wrapping_add(accepted) as u32),
+                "{old} + {delta}"
+            );
             assert_eq!(sim.supply(), stored, "{old} + {delta}");
             unchanged_except(&before, &bytes(this), &[(0x22C, 4)]);
         }
@@ -221,11 +253,16 @@ fn supply_returns_delta_before_clamping_and_uses_wrapped_signed_comparisons() {
 #[test]
 fn monthly_landfill_addition_wraps_at_signed_int64_bounds_with_low_word_adjustments() {
     let cases = [
-        (0, 100, 100), (100, -200, -100), (123, 0, 123),
+        (0, 100, 100),
+        (100, -200, -100),
+        (123, 0, 123),
         (0x1234_FFFF_FFFF, 1, 0x1235_0000_0000),
-        (i64::MAX, 1, i64::MAX), (i64::MAX - 5, 10, i64::MAX),
-        (i64::MIN, -1, i64::MIN), (i64::MIN + 5, -10, i64::MIN),
-        (0, i32::MIN, i64::from(i32::MIN)), (0, i32::MAX, i64::from(i32::MAX)),
+        (i64::MAX, 1, i64::MAX),
+        (i64::MAX - 5, 10, i64::MAX),
+        (i64::MIN, -1, i64::MIN),
+        (i64::MIN + 5, -10, i64::MIN),
+        (0, i32::MIN, i64::from(i32::MIN)),
+        (0, i32::MAX, i64::from(i32::MAX)),
     ];
     let mut object = Object::new(SIZE);
     let this = object.ptr();
@@ -258,8 +295,12 @@ enum Call {
     Query(u32, u32, u32),
 }
 thread_local! { static CALLS: RefCell<Vec<Call>> = const { RefCell::new(Vec::new()) }; }
-fn log(call: Call) { CALLS.with(|calls| calls.borrow_mut().push(call)); }
-fn take_calls() -> Vec<Call> { CALLS.with(|calls| std::mem::take(&mut *calls.borrow_mut())) }
+fn log(call: Call) {
+    CALLS.with(|calls| calls.borrow_mut().push(call));
+}
+fn take_calls() -> Vec<Call> {
+    CALLS.with(|calls| std::mem::take(&mut *calls.borrow_mut()))
+}
 
 #[repr(C)]
 struct Grid {
@@ -278,7 +319,9 @@ extern "fastcall" fn shift(this: *mut Grid, edx: u32) -> u64 {
     // SAFETY: test grid and simulator storage.
     unsafe {
         let grid = &*this;
-        if !grid.after_shift.is_null() { write_unaligned(grid.sim.add(grid.offset).cast(), grid.after_shift); }
+        if !grid.after_shift.is_null() {
+            write_unaligned(grid.sim.add(grid.offset).cast(), grid.after_shift);
+        }
         grid.shift
     }
 }
@@ -287,7 +330,9 @@ extern "fastcall" fn get(this: *mut Grid, edx: u32, x: u32, z: u32) -> u64 {
     // SAFETY: test grid and simulator storage.
     unsafe {
         let grid = &*this;
-        if !grid.after_get.is_null() { write_unaligned(grid.sim.add(grid.offset).cast(), grid.after_get); }
+        if !grid.after_get.is_null() {
+            write_unaligned(grid.sim.add(grid.offset).cast(), grid.after_get);
+        }
         grid.value
     }
 }
@@ -295,7 +340,14 @@ extern "fastcall" fn set(this: *mut Grid, _edx: u32, x: u32, z: u32, value: u32)
     // SAFETY: test grid and simulator storage.
     unsafe {
         let grid = &*this;
-        log(Call::Set(this as u32, x, z, value, *grid.sim.add(grid.dirty), PollutionSim::from_ptr(grid.sim).active_landfill_cells()));
+        log(Call::Set(
+            this as u32,
+            x,
+            z,
+            value,
+            *grid.sim.add(grid.dirty),
+            PollutionSim::from_ptr(grid.sim).active_landfill_cells(),
+        ));
         grid.set_result
     }
 }
@@ -327,12 +379,19 @@ impl World {
         grid_vtable[0x30 / 4] = zone as *const () as usize;
         let mut sim_vtable = Box::new([0usize; 80]);
         sim_vtable[0xC4 / 4] = active as *const () as usize;
-        let mut grids: Vec<_> = (0..3).map(|_| Grid {
-            vtable: grid_vtable.as_ptr(), sim: this, offset,
-            dirty: 0x209 + (offset - 0x50) / 4, shift: registers(1, 0x1234_5678),
-            value: registers(0xABCD_8064, 0xFEED_BEEF), set_result: registers(0x1234_5678, 0x8765_4321),
-            after_shift: core::ptr::null_mut(), after_get: core::ptr::null_mut(),
-        }).collect();
+        let mut grids: Vec<_> = (0..3)
+            .map(|_| Grid {
+                vtable: grid_vtable.as_ptr(),
+                sim: this,
+                offset,
+                dirty: 0x209 + (offset - 0x50) / 4,
+                shift: registers(1, 0x1234_5678),
+                value: registers(0xABCD_8064, 0xFEED_BEEF),
+                set_result: registers(0x1234_5678, 0x8765_4321),
+                after_shift: core::ptr::null_mut(),
+                after_get: core::ptr::null_mut(),
+            })
+            .collect();
         // SAFETY: simulator storage and stable vector elements.
         unsafe {
             write_unaligned(this.add(offset).cast(), (&mut grids[0] as *mut Grid).cast::<u8>());
@@ -340,15 +399,28 @@ impl World {
             write_unaligned(this.add(0x24).cast(), (&mut grids[2] as *mut Grid).cast::<u8>());
         }
         take_calls();
-        Self { object, grids, _grid_vtable: grid_vtable, _sim_vtable: sim_vtable }
+        Self {
+            object,
+            grids,
+            _grid_vtable: grid_vtable,
+            _sim_vtable: sim_vtable,
+        }
     }
-    fn this(&mut self) -> *mut u8 { self.object.ptr() }
-    fn grid(&mut self, i: usize) -> *mut u8 { (&mut self.grids[i] as *mut Grid).cast() }
+    fn this(&mut self) -> *mut u8 {
+        self.object.ptr()
+    }
+    fn grid(&mut self, i: usize) -> *mut u8 {
+        (&mut self.grids[i] as *mut Grid).cast()
+    }
 }
 
 #[test]
 fn cell_getters_sign_extend_then_garbage_clears_only_bit_fifteen() {
-    for (address, offset, mask) in [(0x006E_2EF0, 0x50, u32::MAX), (0x006E_2F10, 0x54, u32::MAX), (0x006E_2F30, 0x58, 0xFFFF_7FFF)] {
+    for (address, offset, mask) in [
+        (0x006E_2EF0, 0x50, u32::MAX),
+        (0x006E_2F10, 0x54, u32::MAX),
+        (0x006E_2F30, 0x58, 0xFFFF_7FFF),
+    ] {
         let mut world = World::new(offset);
         let this = world.this();
         let grid = world.grid(0) as u32;
@@ -359,7 +431,10 @@ fn cell_getters_sign_extend_then_garbage_clears_only_bit_fifteen() {
             unsafe {
                 let before = bytes(this);
                 let expected = (raw as u16 as i16 as i32 as u32) & mask;
-                assert_eq!(invoke(address, this, &[u32::MAX, 30, &mut output as *mut i32 as u32]), registers(expected, 0xCAFE_1234));
+                assert_eq!(
+                    invoke(address, this, &[u32::MAX, 30, &mut output as *mut i32 as u32]),
+                    registers(expected, 0xCAFE_1234)
+                );
                 assert_eq!(output as u32, expected);
                 assert_eq!(bytes(this), before);
             }
@@ -380,11 +455,20 @@ fn air_and_water_setters_shift_logically_reload_grid_and_set_only_the_dirty_byte
         // SAFETY: the test world.
         unsafe {
             let before = bytes(this);
-            assert_eq!(invoke(address, this, &[0x8000_0002, u32::MAX, 0xDEAD_1234]), registers(0x1234_5678, 0x8765_4321));
+            assert_eq!(
+                invoke(address, this, &[0x8000_0002, u32::MAX, 0xDEAD_1234]),
+                registers(0x1234_5678, 0x8765_4321)
+            );
             assert_eq!(*this.add(dirty), 1);
             unchanged_except(&before, &bytes(this), &[(offset, 4), (dirty, 1)]);
         }
-        assert_eq!(take_calls(), [Call::Shift(first as u32, EDX), Call::Set(second as u32, 0x4000_0001, 0x7FFF_FFFF, 0xDEAD_1234, 0, 0)]);
+        assert_eq!(
+            take_calls(),
+            [
+                Call::Shift(first as u32, EDX),
+                Call::Set(second as u32, 0x4000_0001, 0x7FFF_FFFF, 0xDEAD_1234, 0, 0)
+            ]
+        );
     }
 }
 
@@ -400,22 +484,33 @@ fn garbage_setter_reloads_after_both_calls_and_keeps_signed_high_bits() {
     // SAFETY: the test world.
     unsafe {
         let before = bytes(this);
-        assert_eq!(invoke(0x006E_30F0, this, &[u32::MAX, 12, 100]), world.grids[2].set_result);
+        assert_eq!(
+            invoke(0x006E_30F0, this, &[u32::MAX, 12, 100]),
+            world.grids[2].set_result
+        );
         assert_eq!(*this.add(0x20B), 1);
         unchanged_except(&before, &bytes(this), &[(0x58, 4), (0x20B, 1)]);
     }
-    assert_eq!(take_calls(), [
-        Call::Shift(first as u32, EDX),
-        Call::Get(second as u32, u32::MAX, 12, world._grid_vtable.as_ptr() as u32),
-        Call::Set(third as u32, 0x3FFF_FFFF, 3, 0xFFFF_8064, 0, 0),
-    ]);
+    assert_eq!(
+        take_calls(),
+        [
+            Call::Shift(first as u32, EDX),
+            Call::Get(second as u32, u32::MAX, 12, world._grid_vtable.as_ptr() as u32),
+            Call::Set(third as u32, 0x3FFF_FFFF, 3, 0xFFFF_8064, 0, 0),
+        ]
+    );
     // A supplied flag or high word is passed through even when the old cell was positive.
     world.grids[0].after_shift = core::ptr::null_mut();
     world.grids[2].after_get = core::ptr::null_mut();
     world.grids[2].value = registers(7, 0);
     // SAFETY: the test world.
-    unsafe { invoke(0x006E_30F0, this, &[0, 0, 0xABCD_8000]); }
-    assert!(matches!(take_calls().last(), Some(Call::Set(_, 0, 0, 0xABCD_8000, 1, 0))));
+    unsafe {
+        invoke(0x006E_30F0, this, &[0, 0, 0xABCD_8000]);
+    }
+    assert!(matches!(
+        take_calls().last(),
+        Some(Call::Set(_, 0, 0, 0xABCD_8000, 1, 0))
+    ));
 }
 
 #[test]
@@ -436,9 +531,12 @@ fn active_landfill_query_preserves_shifted_high_result_bits() {
 #[test]
 fn landfill_flag_changes_require_the_zone_and_actual_transition() {
     for (zone_value, requested, old_active, count, expected_value, expected_count) in [
-        (13, 1, 0, 0, None, 0), (14, 1, 1, 4, None, 4), (13, 0, 0, 4, None, 4),
+        (13, 1, 0, 0, None, 0),
+        (14, 1, 1, 4, None, 4),
+        (13, 0, 0, 4, None, 4),
         (14, 1, 0, u32::MAX, Some(0xABCD_8064), 0),
-        (13, 0, 1, 4, Some(100), 3), (13, 0, 1, 0, Some(100), 0),
+        (13, 0, 1, 4, Some(100), 3),
+        (13, 0, 1, 0, Some(100), 0),
         (14, 0x100, 1, 2, Some(100), 1),
     ] {
         let mut world = World::new(0x58);
@@ -478,10 +576,16 @@ fn pollution_grid_uses_unchecked_wrapping_index_and_special_radiation_source() {
     let this = object.ptr();
     // SAFETY: selected unchecked indexes all address allocated fields.
     unsafe {
-        for offset in (0x40..0x70).step_by(4) { write_unaligned(this.add(offset).cast::<u32>(), 0x1234_0000 + offset as u32); }
+        for offset in (0x40..0x70).step_by(4) {
+            write_unaligned(this.add(offset).cast::<u32>(), 0x1234_0000 + offset as u32);
+        }
         let before = bytes(this);
         for kind in [0u32, 1, 2, 3, 4, 7, u32::MAX, 0x4000_0000] {
-            let offset = if kind == 3 { 0x4C } else { kind.wrapping_mul(4).wrapping_add(0x50) };
+            let offset = if kind == 3 {
+                0x4C
+            } else {
+                kind.wrapping_mul(4).wrapping_add(0x50)
+            };
             assert_eq!(invoke(0x006E_3360, this, &[kind]), registers(0x1234_0000 + offset, EDX));
         }
         assert_eq!(bytes(this), before);
@@ -513,7 +617,9 @@ extern "C" fn free(this: *mut u8) -> u64 {
 extern "fastcall" fn query(this: *mut u8, edx: u32, iid: u32, output: *mut *mut u8) -> u64 {
     log(Call::Query(this as u32, edx, iid));
     // SAFETY: scalar output passed by the test.
-    unsafe { *output = this; }
+    unsafe {
+        *output = this;
+    }
     registers(0xAA55_CC01, 0x1122_3344)
 }
 
@@ -526,12 +632,21 @@ fn query_interface_recognizes_five_ids_retain_primary_and_keeps_failure_upper_by
     // SAFETY: test object and stable table.
     unsafe {
         write_unaligned(this.cast(), vt.as_ptr());
-        for (iid, offset) in [(1, 0), (0x8771_81EC, 0), (0x4522_94AA, 4), (0x89C4_98BE, 8), (0xE4FD_A3D4, 12)] {
+        for (iid, offset) in [
+            (1, 0),
+            (0x8771_81EC, 0),
+            (0x4522_94AA, 4),
+            (0x89C4_98BE, 8),
+            (0xE4FD_A3D4, 12),
+        ] {
             let sim = PollutionSim::from_ptr(this);
             sim.set_references(7);
             let mut output = core::ptr::null_mut::<u8>();
             let before = bytes(this);
-            assert_eq!(invoke(0x006E_2CD0, this, &[iid, &mut output as *mut *mut u8 as u32]), registers(0xAABB_CC01, 0x1234_5678));
+            assert_eq!(
+                invoke(0x006E_2CD0, this, &[iid, &mut output as *mut *mut u8 as u32]),
+                registers(0xAABB_CC01, 0x1234_5678)
+            );
             assert_eq!(output, this.add(offset));
             assert_eq!(sim.references(), 8);
             assert_eq!(take_calls(), [Call::AddRef(this as u32, 7)]);
@@ -539,8 +654,15 @@ fn query_interface_recognizes_five_ids_retain_primary_and_keeps_failure_upper_by
         }
         for iid in [0u32, 2, 0x4522_94A9, 0x4522_94AB, 0x8771_81EB, 0x8771_81ED, u32::MAX] {
             let mut output = 0x1234_5678usize as *mut u8;
-            let expected = if iid < 0x8771_81EC { iid.wrapping_sub(0x4522_94AA) } else { iid } & !0xFF;
-            assert_eq!(invoke(0x006E_2CD0, this, &[iid, &mut output as *mut *mut u8 as u32]), registers(expected, EDX));
+            let expected = if iid < 0x8771_81EC {
+                iid.wrapping_sub(0x4522_94AA)
+            } else {
+                iid
+            } & !0xFF;
+            assert_eq!(
+                invoke(0x006E_2CD0, this, &[iid, &mut output as *mut *mut u8 as u32]),
+                registers(expected, EDX)
+            );
             assert_eq!(output as u32, 0x1234_5678);
             assert_eq!(take_calls(), []);
         }
@@ -556,7 +678,14 @@ fn interface_thunks_call_the_original_query_address_with_adjusted_this() {
         let mut output = core::ptr::null_mut::<u8>();
         // SAFETY: test interfaces at their proper offsets.
         unsafe {
-            assert_eq!(invoke(address, this.add(offset), &[0x89C4_98BE, &mut output as *mut *mut u8 as u32]), registers(0xAA55_CC01, 0x1122_3344));
+            assert_eq!(
+                invoke(
+                    address,
+                    this.add(offset),
+                    &[0x89C4_98BE, &mut output as *mut *mut u8 as u32]
+                ),
+                registers(0xAA55_CC01, 0x1122_3344)
+            );
         }
         assert_eq!(output, this);
         assert_eq!(take_calls(), [Call::Query(this as u32, EDX, 0x89C4_98BE)]);
@@ -587,7 +716,14 @@ fn release_decrements_only_above_one_and_calls_shutdown_destroy_free_in_order() 
             sim.set_references(count);
             let before = bytes(this);
             assert_eq!(invoke(0x006E_5F20, this, &[]), registers(0, 0x9999_AAAA));
-            assert_eq!(take_calls(), [Call::Shutdown(this as u32), Call::Destroy(this as u32), Call::Free(this as u32)]);
+            assert_eq!(
+                take_calls(),
+                [
+                    Call::Shutdown(this as u32),
+                    Call::Destroy(this as u32),
+                    Call::Free(this as u32)
+                ]
+            );
             assert_eq!(bytes(this), before);
         }
     }
@@ -598,7 +734,105 @@ fn declared_fields_have_the_expected_widths_and_do_not_overlap() {
     assert!(PollutionSim::FIELDS.contains(&("garbage", 0x58, 4)));
     assert!(PollutionSim::FIELDS.contains(&("average_garbage", 0x128, 2)));
     assert!(PollutionSim::FIELDS.contains(&("recycled_previous", 0x190, 8)));
-    let mut fields: Vec<_> = PollutionSim::FIELDS.iter().map(|&(_, offset, len)| (offset, offset + len)).collect();
+    let mut fields: Vec<_> = PollutionSim::FIELDS
+        .iter()
+        .map(|&(_, offset, len)| (offset, offset + len))
+        .collect();
     fields.sort();
     assert!(fields.windows(2).all(|pair| pair[0].1 <= pair[1].0));
+}
+
+#[test]
+fn source_value_clamps_signed_words_and_retains_original_scratch_address_bits() {
+    let mut world = World::new(0x50);
+    let this = world.this();
+    // SAFETY: the source and value-grid fields refer to the same fake grid in this test.
+    unsafe {
+        PollutionSim::from_ptr(this).set_air_source(world.grid(0));
+        for (raw, stack, expected) in [
+            (0xAABB_1234, 0x1234_5678, 0x1234_1234),
+            (0xAABB_8000, 0x1234_5678, 0x1234_0000),
+            (0xFFFF_7FFF, 0x1234_FFFC, 0x1235_7FFF),
+            (0x1234_FFFF, 0x1234_0000, 0x1233_0000),
+        ] {
+            world.grids[0].value = registers(raw, 0x7788_99AA);
+            assert_eq!(
+                grids::pollution_value_body(this, stack, 0, 9, 10),
+                registers(expected, 0x7788_99AA)
+            );
+            assert_eq!(
+                take_calls(),
+                [Call::Get(
+                    world.grid(0) as u32,
+                    9,
+                    10,
+                    world._grid_vtable.as_ptr() as u32
+                )]
+            );
+            let before = bytes(this);
+            let result = invoke(0x006E_37E0, this, &[0, 9, 10]);
+            assert_eq!(result as u16, expected as u16);
+            assert_eq!((result >> 32) as u32, 0x7788_99AA);
+            assert_eq!(bytes(this), before);
+            take_calls();
+        }
+    }
+}
+
+thread_local! { static CAPACITY: RefCell<(u32, u32)> = const { RefCell::new((0, 0)) }; }
+extern "thiscall" fn current_recycling(this: *mut u8, id: u32, occupant: *mut u8, out: *mut u32) -> u32 {
+    assert_eq!(id, 0x88ED_1059);
+    assert_eq!(occupant as u32, 0x1234_5678);
+    // The original query destination initially holds the occupant argument.
+    assert_eq!(unsafe { *out }, occupant as u32);
+    log(Call::Query(this as u32, id, occupant as u32));
+    CAPACITY.with(|c| {
+        let (result, value) = *c.borrow();
+        // SAFETY: native port's query destination.
+        unsafe {
+            *out = value;
+        }
+        result
+    })
+}
+
+#[test]
+fn recycling_capacity_uses_unsigned_x87_scaling_and_preserves_query_result_bytes() {
+    let _fpu = GameFpu::new();
+    let mut object = Object::new(SIZE);
+    let this = object.ptr();
+    let mut vt = [0usize; 64];
+    vt[0xD4 / 4] = current_recycling as *const () as usize;
+    let mut default = 0x7F80_1234u32;
+    let _global = fake_data(0x00B4_9BC4, (&mut default as *mut u32).cast());
+    // SAFETY: live fake simulator table and output scalar.
+    unsafe {
+        write_unaligned(this.cast(), vt.as_ptr());
+        for (capacity, expected) in [
+            (0, 0.0f32),
+            (500, 5.0),
+            (12345, 123.45),
+            (0x8000_0001, 21_474_836.0),
+            (u32::MAX, 42_949_672.0),
+        ] {
+            CAPACITY.with(|c| *c.borrow_mut() = (0xAABB_CC01, capacity));
+            let mut output = 99f32;
+            let before = bytes(this);
+            assert_eq!(
+                invoke(0x006E_3720, this, &[0x1234_5678, &mut output as *mut f32 as u32]),
+                registers(0xAABB_CC01, &mut output as *mut f32 as u32)
+            );
+            assert_eq!(output.to_bits(), expected.to_bits(), "capacity {capacity}");
+            assert_eq!(bytes(this), before);
+            assert_eq!(take_calls(), [Call::Query(this as u32, 0x88ED_1059, 0x1234_5678)]);
+        }
+        CAPACITY.with(|c| *c.borrow_mut() = (0xAABB_CC00, u32::MAX));
+        let mut output = 99f32;
+        assert_eq!(
+            invoke(0x006E_3720, this, &[0x1234_5678, &mut output as *mut f32 as u32]),
+            registers(0xAABB_CC00, default)
+        );
+        assert_eq!(output.to_bits(), default);
+        take_calls();
+    }
 }

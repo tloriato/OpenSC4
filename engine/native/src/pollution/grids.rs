@@ -182,8 +182,43 @@ port! {
     }
 }
 
+port! {
+    /// Reads a source cell and clamps a negative low word to zero. The upper EAX word retains the original
+    /// scratch address's upper word, so the entry adapter passes the original stack address to the Rust body.
+    #[port(address = 0x006E_37E0, owner = "pollution", name = "cSC4PollutionSimulator::GetPollutionValue", naked)]
+    pub unsafe extern "C" fn fc4p_006e37e0() {
+        core::arch::naked_asm!("mov edx, esp", "jmp {body}", body = sym pollution_value_body);
+    }
+}
+
+pub(super) unsafe extern "fastcall" fn pollution_value_body(
+    this: *mut u8,
+    stack: u32,
+    kind: u32,
+    x: u32,
+    z: u32,
+) -> u64 {
+    // SAFETY: the unchecked source-grid index and its cell are accessible in the supplied game state.
+    unsafe {
+        let grid = read_unaligned(
+            this.wrapping_add(kind.wrapping_mul(4).wrapping_add(0x40) as usize)
+                .cast::<*mut u8>(),
+        );
+        let result = virtual_call(grid, 0x1C, x, table(grid), &[x, z]);
+        let value = result as u16;
+        let address = if (value as i16) < 0 {
+            stack.wrapping_sub(4)
+        } else {
+            stack.wrapping_add(4)
+        };
+        let low = if (value as i16) < 0 { 0 } else { u32::from(value) };
+        registers((address & 0xFFFF_0000) | low, (result >> 32) as u32)
+    }
+}
+
 /// This file's replacements.
 pub const PORTS: &[Port] = &[
+    fc4p_006e37e0::PORT,
     fc4p_006e2ef0::PORT,
     fc4p_006e2f10::PORT,
     fc4p_006e2f30::PORT,
@@ -192,5 +227,5 @@ pub const PORTS: &[Port] = &[
     fc4p_006e30f0::PORT,
     fc4p_006e31a0::PORT,
     fc4p_006e31c0::PORT,
-    fc4p_006e3360::PORT
+    fc4p_006e3360::PORT,
 ];

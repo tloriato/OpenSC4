@@ -96,12 +96,29 @@ unsafe fn table(object: *mut u8) -> u32 {
 }
 
 pub mod access;
+pub mod capacity;
 pub mod com;
 pub mod garbage;
 pub mod grids;
+pub mod lists;
+pub mod request;
 
-const COUNT: usize = access::PORTS.len() + com::PORTS.len() + garbage::PORTS.len() + grids::PORTS.len();
-const ALL: [Port; COUNT] = crate::port::concat(&[access::PORTS, com::PORTS, garbage::PORTS, grids::PORTS]);
+const COUNT: usize = access::PORTS.len()
+    + com::PORTS.len()
+    + garbage::PORTS.len()
+    + grids::PORTS.len()
+    + request::PORTS.len()
+    + lists::PORTS.len()
+    + capacity::PORTS.len();
+const ALL: [Port; COUNT] = crate::port::concat(&[
+    access::PORTS,
+    com::PORTS,
+    garbage::PORTS,
+    grids::PORTS,
+    request::PORTS,
+    lists::PORTS,
+    capacity::PORTS,
+]);
 
 /// This module's replacements.
 pub const PORTS: &[Port] = &ALL;
