@@ -190,60 +190,105 @@ fn add_stored(value: F80, operand: f32) -> F80 {
     result
 }
 port! {
-    /// Sum matching buildings in traversal order. Query failures still count and retain the previous
-    /// query's unwritten fields. Only the six total fields are reset and updated.
-    #[port(address=0x006F_A070,owner="residential",name="cSC4ResidentialSimulator::GetSystemTotals")]
-    pub unsafe extern "thiscall" fn fc4p_006fa070(this:*mut u8,lists:*mut u8,out:*mut u8,school:u32,groups:*mut u8)->u64 {
-        unsafe {
-            let mut memory=[MaybeUninit::<u32>::uninit();15];
-            let query=memory.as_mut_ptr().cast::<u8>();
-            let storage=allocate_string(8);
-            *storage=0;
-            query.cast::<u32>().write(0x00A8_0810);
-            query.add(4).cast::<*mut u8>().write(storage);
-            query.add(8).cast::<*mut u8>().write(storage);
-            query.add(12).cast::<*mut u8>().write(storage.wrapping_add(8));
-            for offset in [0x10,0x28,0x2C,0x34]{query.add(offset).cast::<u32>().write(0);}
-            let total=Query::from_ptr(out);
-            total.set_capacity(0);total.set_effective(0);total.set_capacity_staff(0);total.set_effective_staff(0);total.set_served(0);
-            out.add(0x28).cast::<u32>().write(*zero());
-            let lists=Vector::from_ptr(lists);let groups=Vector::from_ptr(groups);
-            let mut index=0u32;let mut count=0u32;
-            while index<vector_count(lists) {
-                let head= *lists.begin().wrapping_add(index as usize) as *mut u8;
-                let mut node= *head.cast::<*mut u8>();
-                while node!=head {
-                    let building= *node.add(8).cast::<*mut u8>();
-                    let mut group=0u32;let mut matched=false;
-                    while group<vector_count(groups) {
-                        if vcall!(building,0x58 => fn(u32)->u32,*groups.begin().wrapping_add(group as usize)) as u8!=0 {matched=true;break;}
-                        group=group.wrapping_add(1);
-                    }
-                    if matched {
-                        if school as u8!=0 {vcall!(this,0x68 => fn(*mut u8,*mut u8)->u32,building,query);}
-                        else{vcall!(this,0x6C => fn(*mut u8,*mut u8)->u32,building,query);}
-                        let q=Query::from_ptr(query);
-                        let grade=F80::from_f32(q.grade());
-                        let capacity=total.capacity().wrapping_add(q.capacity());
-                        let effective=total.effective().wrapping_add(q.effective());
-                        let cap_staff=total.capacity_staff().wrapping_add(q.capacity_staff());
-                        let eff_staff=total.effective_staff().wrapping_add(q.effective_staff());
-                        let served=total.served().wrapping_add(q.served());
-                        total.set_capacity(capacity);total.set_effective_staff(eff_staff);total.set_effective(effective);total.set_capacity_staff(cap_staff);total.set_served(served);
-                        count=count.wrapping_add(1);
-                        total.set_grade(add_stored(grade,total.grade()).to_f32());
-                    }
-                    node= *node.cast::<*mut u8>();
-                }
-                index=index.wrapping_add(1);
-            }
-            query.cast::<u32>().write(0x00A8_0810);
-            let buffer=Query::from_ptr(query).string();
-            let edx=if buffer.is_null(){lists.as_ptr() as u32}else{(free_string(buffer)>>32) as u32};
-            registers(count,edx)
-        }
+    /// Sum matching buildings in traversal order. Preserve the incoming bytes of temporary query fields
+    /// that construction leaves alone, so even a failed first query contributes those same words.
+    #[port(address=0x006F_A070,owner="residential",name="cSC4ResidentialSimulator::GetSystemTotals",naked)]
+    pub unsafe extern "C" fn fc4p_006fa070() {
+        core::arch::naked_asm!(
+            "mov edx,esp", "sub esp,0x60",
+            "push dword ptr [edx+16]", "push dword ptr [edx+12]",
+            "push dword ptr [edx+8]", "push dword ptr [edx+4]",
+            "call {body}", "add esp,0x60", "ret 16",
+            body=sym totals_body);
     }
 }
+
+// The adapter keeps the incoming frame above this function's own frame and all its callees.
+unsafe extern "fastcall" fn totals_body(
+    this: *mut u8,
+    entry_sp: *const u8,
+    lists: *mut u8,
+    out: *mut u8,
+    school: u32,
+    groups: *mut u8,
+) -> u64 {
+    unsafe {
+        let mut memory = [MaybeUninit::<u32>::uninit(); 15];
+        let query = memory.as_mut_ptr().cast::<u8>();
+        for offset in [0x14, 0x18, 0x1C, 0x20, 0x24, 0x30, 0x38] {
+            let incoming = entry_sp.sub(0x40).add(offset).cast::<u32>().read_unaligned();
+            query.add(offset).cast::<u32>().write(incoming);
+        }
+        let storage = allocate_string(8);
+        *storage = 0;
+        query.cast::<u32>().write(0x00A8_0810);
+        query.add(4).cast::<*mut u8>().write(storage);
+        query.add(8).cast::<*mut u8>().write(storage);
+        query.add(12).cast::<*mut u8>().write(storage.wrapping_add(8));
+        for offset in [0x10, 0x28, 0x2C, 0x34] {
+            query.add(offset).cast::<u32>().write(0);
+        }
+        let total = Query::from_ptr(out);
+        total.set_capacity(0);
+        total.set_effective(0);
+        total.set_capacity_staff(0);
+        total.set_effective_staff(0);
+        total.set_served(0);
+        out.add(0x28).cast::<u32>().write(*zero());
+        let lists = Vector::from_ptr(lists);
+        let groups = Vector::from_ptr(groups);
+        let mut index = 0u32;
+        let mut count = 0u32;
+        while index < vector_count(lists) {
+            let head = *lists.begin().wrapping_add(index as usize) as *mut u8;
+            let mut node = *head.cast::<*mut u8>();
+            while node != head {
+                let building = *node.add(8).cast::<*mut u8>();
+                let mut group = 0u32;
+                let mut matched = false;
+                while group < vector_count(groups) {
+                    if vcall!(building,0x58 => fn(u32)->u32,*groups.begin().wrapping_add(group as usize)) as u8 != 0 {
+                        matched = true;
+                        break;
+                    }
+                    group = group.wrapping_add(1);
+                }
+                if matched {
+                    if school as u8 != 0 {
+                        vcall!(this,0x68 => fn(*mut u8,*mut u8)->u32,building,query);
+                    } else {
+                        vcall!(this,0x6C => fn(*mut u8,*mut u8)->u32,building,query);
+                    }
+                    let q = Query::from_ptr(query);
+                    let grade = F80::from_f32(q.grade());
+                    let capacity = total.capacity().wrapping_add(q.capacity());
+                    let effective = total.effective().wrapping_add(q.effective());
+                    let cap_staff = total.capacity_staff().wrapping_add(q.capacity_staff());
+                    let eff_staff = total.effective_staff().wrapping_add(q.effective_staff());
+                    let served = total.served().wrapping_add(q.served());
+                    total.set_capacity(capacity);
+                    total.set_effective_staff(eff_staff);
+                    total.set_effective(effective);
+                    total.set_capacity_staff(cap_staff);
+                    total.set_served(served);
+                    count = count.wrapping_add(1);
+                    total.set_grade(add_stored(grade, total.grade()).to_f32());
+                }
+                node = *node.cast::<*mut u8>();
+            }
+            index = index.wrapping_add(1);
+        }
+        query.cast::<u32>().write(0x00A8_0810);
+        let buffer = Query::from_ptr(query).string();
+        let edx = if buffer.is_null() {
+            lists.as_ptr() as u32
+        } else {
+            (free_string(buffer) >> 32) as u32
+        };
+        registers(count, edx)
+    }
+}
+
 port! {
     /// Forward school lists, output record and requested groups to the shared totals function.
     #[port(address=0x006F_A240,owner="residential",name="cSC4ResidentialSimulator::GetSchoolSystemTotals")]

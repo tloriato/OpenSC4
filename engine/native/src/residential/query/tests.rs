@@ -31,6 +31,7 @@ struct State {
     query_calls: usize,
     query_ptr: usize,
     null_buffer: bool,
+    first_failure: bool,
 }
 thread_local! {
     static CALLS:RefCell<Vec<Call>>=const{RefCell::new(Vec::new())};
@@ -326,6 +327,9 @@ fn query(p: *mut u8, b: *mut u8, out: *mut u8, school: bool) -> u32 {
                 assert_eq!(*s.allocation, 0);
                 assert_eq!(*out.add(8).cast::<*mut u8>(), s.allocation);
                 assert_eq!(*out.add(12).cast::<*mut u8>(), s.allocation.add(8));
+                if s.first_failure {
+                    return;
+                }
                 let q = Query::from_ptr(out);
                 q.set_capacity(u32::MAX);
                 q.set_effective(700);
@@ -342,6 +346,71 @@ fn query(p: *mut u8, b: *mut u8, out: *mut u8, school: bool) -> u32 {
         }
     });
     0 // A failed query still contributes the fields left in its record.
+}
+
+#[unsafe(naked)]
+unsafe extern "C" fn seeded_totals() {
+    core::arch::naked_asm!(
+        "mov dword ptr [esp-0x2c],0x11111111",
+        "mov dword ptr [esp-0x28],0x22222222",
+        "mov dword ptr [esp-0x24],0x33333333",
+        "mov dword ptr [esp-0x20],0x44444444",
+        "mov dword ptr [esp-0x1c],0x55555555",
+        "mov dword ptr [esp-0x10],0x66666666",
+        "mov dword ptr [esp-0x08],0x77777777",
+        "jmp {entry}", entry=sym fc4p_006fa070);
+}
+
+#[test]
+fn failed_first_query_retains_the_original_frames_incoming_scalar_words() {
+    let mut w = World::new();
+    let _a = fake(0x0090CF54, allocate as *const () as usize);
+    let _f = fake(0x0090CF63, free as *const () as usize);
+    let _entry = fake(0x006FA070, seeded_totals as *const () as usize);
+    let mut storage = [0xA5u8; 8];
+    STATE.with(|s| {
+        let mut s = s.borrow_mut();
+        s.allocation = storage.as_mut_ptr();
+        s.first_failure = true;
+    });
+    let mut svt = [0usize; 28];
+    svt[26] = school_query as *const () as usize;
+    unsafe {
+        w.sim.ptr().cast::<*const usize>().write(svt.as_ptr());
+    }
+    let mut bvt = [0usize; 23];
+    bvt[22] = member as *const () as usize;
+    let mut buildings = [Building {
+        table: bvt.as_ptr(),
+        group: 10,
+    }];
+    let mut nodes = nodes(&mut buildings);
+    let mut heads = [nodes.as_mut_ptr() as u32];
+    let mut lists = [heads.as_mut_ptr() as u32, unsafe { heads.as_mut_ptr().add(1) } as u32];
+    let mut group = 10u32;
+    let mut groups = [
+        &mut group as *mut u32 as u32,
+        unsafe { (&mut group as *mut u32).add(1) } as u32,
+    ];
+    let mut out = Object::new(0x3C);
+    let p = out.ptr();
+    assert_eq!(
+        unsafe { system_totals(w.sim.ptr(), lists.as_mut_ptr().cast(), p, 1, groups.as_mut_ptr().cast()) },
+        registers(1, 0x22222222)
+    );
+    let q = unsafe { Query::from_ptr(p) };
+    assert_eq!(
+        (
+            q.capacity(),
+            q.effective(),
+            q.capacity_staff(),
+            q.effective_staff(),
+            q.served(),
+            q.grade().to_bits()
+        ),
+        (0x11111111, 0x22222222, 0x33333333, 0x44444444, 0x55555555, 0)
+    );
+    take();
 }
 fn nodes(buildings: &mut [Building]) -> Vec<[u32; 3]> {
     let mut nodes = vec![[0u32; 3]; buildings.len() + 1];
@@ -396,7 +465,7 @@ fn system_totals_filter_groups_count_failed_queries_reuse_record_and_leave_other
         ];
         let mut out = [0xA5u8; 0x50];
         let result = unsafe {
-            fc4p_006fa070(
+            system_totals(
                 w.sim.ptr(),
                 lists.as_mut_ptr().cast(),
                 out.as_mut_ptr(),
@@ -437,7 +506,7 @@ fn system_totals_filter_groups_count_failed_queries_reuse_record_and_leave_other
         groups[1] = groups[0];
         assert_eq!(
             unsafe {
-                fc4p_006fa070(
+                system_totals(
                     w.sim.ptr(),
                     lists.as_mut_ptr().cast(),
                     out.as_mut_ptr(),
@@ -456,7 +525,7 @@ fn system_totals_filter_groups_count_failed_queries_reuse_record_and_leave_other
         });
         assert_eq!(
             unsafe {
-                fc4p_006fa070(
+                system_totals(
                     w.sim.ptr(),
                     lists.as_mut_ptr().cast(),
                     out.as_mut_ptr(),
