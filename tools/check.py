@@ -441,7 +441,7 @@ def run(args):
     # capture draws. Keep explicitly selected rows, but do not add unrelated
     # draw sweeps to these focused save rechecks. Full queue checks still add
     # every required draw, and owner qualification verifies that coverage.
-    if not getattr(args, 'from_date', None) and args.backend != 'direct':
+    if not getattr(args, 'from_date', None) and args.backend != 'direct' and not args.no_draws:
         names = sorted(set(names) | draw_names(keys, draw_references(rows)))
     print(f'{len(names)} scenarios, owners {", ".join(keys) or "none"}' +
           (f'; not run (Lua or clockless): {", ".join(lua)}' if lua else ''), flush=True)
@@ -528,6 +528,7 @@ def main(argv=None):
         sub.add_argument('--dll', type=Path, required=True)
         sub.add_argument('--replace', required=True)
     chk.add_argument('--no-bisect', action='store_true')
+    chk.add_argument('--no-draws', action='store_true', help='do not add the draw scenarios to selected saves')
     cre.add_argument('--scenarios', default='all')
     chk.add_argument('--keys', help='with --replace each, measure only these keys (comma separated)')
     rec.add_argument('--rerun', action='store_true', help='independently audit existing references')
