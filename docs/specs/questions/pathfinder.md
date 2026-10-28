@@ -46,3 +46,8 @@ delivery 21 (lot developer). The prior matching original-only Braus
 control (`qcheck-31.log`) is exact. Please include this route case in
 the requested input-and-pop/update vector, or identify an earlier
 query/input difference. No route-order rule was changed.
+
+**Partial answer 2026-10-28 (re-blockers37a):** pathfinder §4.7.1 confirms native
+strict heap comparisons and gives two equal-score fixtures and eligible ring-1 cell
+order. Missing for Jinae/Braus: original start-node/score inputs, the preceding heap
+and earlier pop/update sequence. No native scenario replay or tie-rule change is claimed.

@@ -367,6 +367,81 @@ So a cut record of a current version reads partially and returns **false**. A cu
 *[quirk]*. A replacement may fail a short record atomically (all or nothing) *[choice]*. Every case where the original
 returns false stays false. The only case that changes is a cut base-only record, which no save contains.
 
+### 4.2 PostCityInit: retained native automata (AD6, partial) *[compat]*
+
+`PostCityInit` (`0x26D31EC1`) dispatches **primary manager slot 56**, not a periodic tick.
+The message target is the +0x0C view: the base message handler adjusts back to the primary
+manager before dispatch. The slot takes no stack arguments (`thiscall`, ret 0); its result
+is not consumed by the message handler, which returns true. Base implementation
+`0x0050F2C0` is inherited by aircraft/watercraft; pedestrian/vehicle use traffic override
+`0x0054F7B0`. The watercraft message handler has no separate PostCityInit branch: after its
+own message tests it delegates to base (`0x0057558B`–`0x0057558E`).
+
+The instruction-checked base order is:
+
+1. If the **loaded byte** is set (Read sets it at `0x0050FED4`), walk retained automata
+   in list order. These are primary `cISC4Automaton*` views resolved by IID `0xA9B40F05`.
+   For each, call slot 31 `CheckAutomataFlag(u32 0x8000)`, one stack word, result AL.
+2. True: unlink/free that manager-list node and decrement the u32 count; call manager
+   slot 62 `UnplaceAutomaton(A)` (borrowed primary automaton pointer); then A slot 4
+   `Shutdown()` and slot 2 `Release()`, each with no argument. Continue with the saved
+   next list node. False: call A slot 3 **`Init()` with no arguments**, result AL ignored,
+   then continue. This is not AddAutomaton or a second creation reference. The manager
+   already owns the reference acquired by Read; a surviving object's reference remains
+   in the existing list (`0x0050F2D8`–`0x0050F33F`).
+3. Still inside the loaded branch, when the old-version byte is set, recount source
+   building groups as specified above (§4). The restoration of each surviving automaton
+   precedes that recount (`0x0050F341`).
+4. Whether loaded or not, call manager slot 48 `UpdateViewRect()` **once at the end**
+   (`0x0050F67C`–`0x0050F686`). This copies current to previous view rectangle, reads
+   the global view bounds, expands each side by binary32 64, and calls slot 60 UpdateZoom
+   (`0x00506CD0`–`0x00506D44`). UpdateZoom runs the activation rule of
+   automata-managers §2.2 and, while active, calls each automaton's slot 74 with
+   `(int32 zoom, int32 rotation)` in list order (`0x0050A59E`–`0x0050A5C1`).
+
+Neither base PostCityInit nor the traffic override clears the loaded byte. Re-delivery
+therefore runs the restoration again; ordinary automaton Init guards its initialized state.
+Base Read appends the acquired reference to its list directly (`0x0050FF40`–`0x0050FF7E`):
+it does not invoke the usual AddAutomaton helper or duplicate that helper's callbacks.
+PostCityInit itself makes no separate AddCallback call.
+
+**What the surviving native object's Init does.** The manager calls the primary automaton
+slot, not occupant Init on an adjusted pointer. Base automaton Init first asks its +4 occupant
+view whether initialized; if false it calls primary slot 97 (no args, AL success), initializes
+the effects list only on success, then calls occupant Init **even if slot 97 failed**, returning
+the slot-97 result (`0x005101D0`–`0x0051020C`). The native object owns these model/effect
+operations. Traffic Init uses this base result; when successful and its byte +0x3C is clear,
+it refreshes behavior through slot 105 unless flag `0x4000` is set, then calls slot 134 unless
+flag `0x2000` is set (`0x0054D790`–`0x0054D7EF`). Watercraft Init's separate effects,
+timer, position and heading setup is watercraft §3; it is reached through the same virtual
+slot 3. A replacement manager retaining those native concrete objects should call that
+interface operation rather than reconstructing their internals or marking them initialized.
+
+**Traffic-only second pass.** After the entire base operation, if loaded, walk the remaining
+primary traffic-automaton pointers in list order (`0x0054F7BD`–`0x0054F88B`). For a stored
+network occupant, obtain its path-info view with network slot 49; retain the new view before
+releasing a different old view. If non-null, call path-info slot 3 with `(u32 savedPathID, 0)`
+and keep the returned borrowed path-collection pointer. Then call automaton slot 150
+(no args, AL predicate); if true obtain its model view through slot 148 (no args, EAX pointer),
+retain it before releasing a different old view. The original performs these reference swaps
+in concrete traffic-automaton fields (+0x1EC network, +0x1F0 path info, +0x1F4 path ID,
++0x1F8 collection, +0xB0 model). These offsets are evidence, **not an authorized replacement
+layout or a public setter contract**. The common Init call is public; this later repair is not
+expressed as a public automaton restoration call in the traced body.
+
+**Limit of the AD6 evidence.** Braus log
+`golden-runs/compare-20261028-063556-5c19c930/result/game.log:5295`–`:5333`
+reports a terminal-save fault in `0x0090D031`, an allocator node-unlink helper called via
+GlobalHeapFree and property-holder destruction. The failing write at `0x0090D03F` uses
+the first dword of the supplied node as a link and writes link+4. The logged node is
+`0x2007A800`, first-link register `0x00AA41D8`, so the attempted target is `0x00AA41DC`.
+This is invalid link state; it is not a model-position store or proof that omitted Init alone
+caused the damage. The deeper stack includes trailer Shutdown (`0x00556400`).
+Still open: the supported, version-checked boundary for the traffic-only private reference
+repair with native retained automata, the full placement/callback effects through overridden
+Init/Activate, and the operation that first corrupted this allocator node. Do not archive AD6
+or claim that the save failure is fixed from the call ordering alone.
+
 ## 5. The four managers
 
 ### 5.1 Vehicle (43) and pedestrian (44): the traffic automata manager, version 3

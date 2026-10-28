@@ -1153,6 +1153,10 @@ record).
 
 ### 4.9 CreateMaps (state 2, `0x0071A0C0`)
 
+TE33-PATH-1 remains a routing prerequisite for route-dependent map exactness:
+pathfinder §4.7.1 records the confirmed heap rules and missing native search inputs.
+The switch-cell floor below does not establish Jinae or Braus route equivalence.
+
 Per cell (x innermost), with `B` = peak volume grid, `D` = peak ratio grid:
 
 1. `B := 0`, `D := 0`.
@@ -1211,8 +1215,15 @@ Per cell (x innermost), with `B` = peak volume grid, `D` = peak ratio grid:
    * road (`n = 1`): `volume[1] := r24(volume[1] + GetBackgroundTraffic(x, z))` — background traffic therefore
      appears in the **next** cycle's maps.
 4. Transit switch at the cell: `prevUsage := usage`; `ratio := usage / capacity`; `D := max(D, ratio)`;
-   `switch.ratio := min(ratio, 1)`.
-5. If any network info exists at the cell: `B := max(B, 1.0)`.
+   `switch.ratio := min(ratio, 1)`. Update the switch statistics as in §4.9.2, once per
+   nonzero switch-ID **cell**, including cells without network info.
+5. If any network info exists **or the switch-ID grid is nonzero** at the cell:
+   `B := max(B, 1.0)` (TE33-MAPS-1 correction, `0x0071A5A6`–`0x0071A5C7`).
+   The switch branch jumps directly to this floor; it does not create a network-info
+   record. No reported network occupant is needed for it. D is the raw maximum ratio,
+   not floored by this step: for B=D=0 and a switch with usage=capacity>0, both become 1;
+   usage=0 instead gives B=1, D=0. A switch's saved flags can select no statistics rows
+   and its cell still receives this volume floor.
 
 At the end of the pass (`0x0071A5D7`–`0x0071A701`):
 
@@ -1334,6 +1345,55 @@ OneWayRoad 10, Street 458, Highway 100, GroundHighway 21, Avenue 37, Rail 143, S
 Roads: item 2 := 55, item 1 := 23, item 3 := 60, item 4 := 6. Mass transit: item 3 := 4, item 4 := 18, item 5 := 1,
 item 6 := 1.
 
+#### 4.9.2 The twelve switch-statistics rows (TC29-STATS-1, TE33-MAPS-1) *[compat]*
+
+These are independent of the thirteen network rows and bridge row. Each set's serialized
+offsets **314 + 18·i**, i=0…11, contain `(u16 cellCount, f32 averageOrSum,
+s32 minX, s32 minZ, f32 minRatio)`. They occupy 20 bytes each in memory (two padding
+bytes after count), 18 on disk. The working set holds the sum until publication.
+The last float and coordinates describe a **minimum**, not a maximum. Evidence is the
+strict less-than comparison at `0x0071A580`–`0x0071A59A`.
+
+**Entering state 2**, before any scanning work: reset all twelve working rows to
+`(0, +0.0f, 0, 0, float bits 0x3F8147AE)`; the last constant is binary32 1.01.
+The sum uses the static zero at `0x00B4B2E8` (zero in the executable's .data).
+The exact stores/widths are `0x007211DC`–`0x0072120D`. This reset is additional to
+the network-row reset, leaves the published switch rows alone, and replaces even
+nonzero values restored from a save. Read itself restores both sets; it does not
+pretend a pending state-2 entry has already occurred. A save resuming a state-2 scan
+continues its saved working sums rather than resetting them on every work slice.
+
+For **each cell** whose switch-ID grid is nonzero, fetch the switch with insert-if-missing
+lookup. Copy usage to prevUsage. Store `raw=r24(usage/capacity)`, update D only if raw
+is ordered-greater than D, and store `q = raw > 1.0f ? 1.0f : raw` in switch.ratio
+(so an unordered raw is retained). For i=0…11, test bit i of the switch's **u8 flags**:
+when set, sum becomes `r24(sum+q)` and cellCount increments modulo 2¹⁶; if q is
+ordered-strictly-less than minRatio, replace minRatio and both coordinates with the cell.
+Equal minima retain the first cell in scan order. No separate congested counter is
+present in these rows. A multi-cell station contributes once per tagged cell, not once
+per building or ID (`0x0071A50B`–`0x0071A5A4`).
+
+Flags are the category bits of traffic-network §2.4, not a travel-type index: i=0 Bus,
+1 Passenger train, 2 Subway, 3 Elevated train, 4 Monorail, and 6 the subway/elevated
+interchange bit. The other bits are used literally if present. Because flags is loaded
+as a byte, rows 8…11 cannot receive contributions from this pass. No network-info
+record is required for any switch-row contribution.
+
+At scan completion, for every row in order, divide its working sum by its **wrapped
+u16 count**, zero-extended, only when count is nonzero; store the binary32 result
+back to the working row. With count zero leave the sum as it stands (normally +0).
+Then copy the row to published statistics, including its minimum sentinel. This happens
+before cell-count replacement and department-cost updates (`0x0071A67D`–`0x0071A6C9`).
+The published empty row is `(0,0,0,0,1.01f)`, not an all-zero row. No RNG calls occur.
+
+Worked entry: a loaded working row `(7,3.5,112,146,0.5)` becomes `(0,0,0,0,1.01f)`
+on entering state 2. One eligible switch cell (112,146) at ratio 1 gives
+`(1,1,112,146,1)`. A later one at (120,146) at ratio 0.5 gives
+`(2,1.5,120,146,0.5)`; completion publishes and leaves working
+`(2,0.75,120,146,0.5)`. If no cell has the row's bit, its reset sentinel survives.
+These are the entry-reset bytes missing from TC29-STATS-1, independent of the
+peak-volume correction. Both are required even when the occupant callback reports no occupant.
+
 ### 4.10 CreateFinalMap (state 4, `0x0070F460`)
 
 Per cell with `b := B`:
@@ -1419,13 +1479,64 @@ counter, and destination bits plus `freeDest` on the off-map edge cells; not a n
 
    The pathfinder and `ConfirmRoute` treat state 1 as "on strike" (pathfinder.md, traffic-network.md).
 3. `CheckForAccident` (`0x007184E0`, §4.13).
-4. History (history warehouse slot 12 `+0x30`, `(id, u32)`): `0xEA5BA01D ← low32(ftol(r24(stats[0] × 100)))`,
+4. Snapshot the two department funding fractions into the published statistics (§4.12.1).
+5. History (history warehouse slot 12 `+0x30`, `(id, u32)`): `0xEA5BA01D ← low32(ftol(r24(stats[0] × 100)))`,
    `0x8A5D4116 ← low32(ftol(r24(avgCarCommute × 25.0f)))` (25 hard-coded, `0x00AB32C0`), `0xABB8FAAC + i ←
    typeCount[i]` (i = 0…8), `0xEC0BDBF8 ←` the ferry total.
 
+#### 4.12.1 Published funding snapshots (TC29-STATS-2) *[compat]*
+
+The unnamed binary32 values at serialized statistics offsets **530 and 534** are,
+respectively, the last monthly **roads funding fraction** and **mass-transit funding
+fraction**. Full funding is 1.0, not 100.0 (budget.md §1's SC4Percentage convention).
+After the accident check and before any monthly history writes, call roads department
+slot 10 (`+0x28`, no args, EAX points to its binary32 percentage), copy the pointed-to
+32 bits to published offset 530; then do the same with mass transit into offset 534.
+There is no ×100, clamp, curve, average or conversion here. The native destinations
+are primary simulator +0x40C and +0x410 (`0x00718AF9`–`0x00718B25`). These are
+fresh reads, in addition to the two department reads used earlier for ApplyFunding.
+
+The constructor initializes these snapshots to +0 and Read restores the saved values.
+State-2 entry and CreateMaps publication do **not** overwrite them from the working
+statistics: map publication copies individual network/switch rows, not the whole block.
+They retain their last monthly values until the next monthly snapshot, even if funding
+changes in the interim. `GetTrafficStats` (slot 34, `0x00720000`–`0x00720006`) is
+only a pointer getter to the published block; it performs no update and no RNG draw.
+It is not a lazy recomputation operation. A record check before a later delivery can
+therefore differ because an earlier monthly call already changed this block.
+
+Example: saved values 100.0/100.0 are initially restored literally. With both live
+departments returning full funding 1.0, the next monthly call replaces them with
+bits `0x3F800000`/`0x3F800000`, whatever the traffic cycle state. Subsequent map work
+leaves them there; it does not restore the saved 100.0 values or copy working snapshots.
+
+#### 4.12.2 Ferry total reset and history (TC29-FERRY-1) *[compat]*
+
+An ordinary transition **into state 19** first sets the city's saved **u32 ferry rider
+total to zero**, before walking any terminal (`0x0072134C`–`0x00721352`). For every
+terminal in list order, read current riders as u16, zero-extend for the addition,
+copy it to last riders (u16), clear current riders (u16), and add the zero-extended
+value to the city total modulo 2³² (`0x00721360`–`0x0072136F`). Then flag the terminal
+and rotate its two link-counter pairs as traffic-network §4.9.3 specifies. The sum
+counts terminal rider values, not the link counters. An empty terminal list gives zero.
+
+The total is initialized to zero by construction and restored by Read. Between ordinary
+state-19 entries, routing, ApplyTraffic's terminal-current-rider increments, terminal
+removal and monthly publication do not add to or clear this saved total. The monthly
+history call reads it unchanged for `0xEC0BDBF8` (`0x00718B92`–`0x00718BA6`).
+DoPostCityInit's special restart of an already-saved state 19 marks/restarts the pass
+without this rotation **or this total reset** (traffic-network §4.9.3).
+
+Worked second pass: load city total 93 and terminals whose new current riders sum to
+93. On the next ordinary state-19 entry, reset 93→0, rotate/add the terminal u16 values,
+and finish at 93, not 186. A monthly publication before the next state-19 entry writes
+93 even if new current riders have since accumulated. Loading a save already in state
+19 keeps its saved total 93 during the special post-load rerouting restart.
+
 ### 4.13 Accidents
 
-**CheckForAccident** runs only when the accident timer (wall clock, ms) has passed the next check time; next check
+**CheckForAccident** uses the running wall-clock stopwatch in **whole seconds**, not milliseconds. The
+complete timing and empty-list rules are in §4.13.1. It runs only when elapsed seconds have passed the next check time; next check
 := now + `ftol(accidentCheckPeriod)` *[compat: wall-clock driven]*. It computes the visible cell rect from the view
 (`0x00B43DD8` + `0x3EC`, world units / 16, rounded with the idiom and adjusted to the outer cells) and walks the
 accident-prone list in the order of a **linear random iterator** (foundations §12.4, prime-step mode: one `rand()`
@@ -1433,8 +1544,9 @@ at reset). For each entry: draw `u := RandomDoubleRangeUniform(0.0, 1.0)` on the
 and the cell is in the visible rect and has an occupant (network-occupant query, `+0x1C` grid slot 14): create an
 accident there (`cSC4TrafficAutomataManager::CreateAccident`, duration `ftol(r24(accidentDuration × 1000))` ms),
 post the accident message `0x0C05E4C3` (§5; data1 = x, data2 = z of the entry, queued) and stop. The result of
-`CreateAccident` is not checked: the message is posted even if the automata manager made no accident. *[choice]* FreeCity4 replaces the wall-clock period by the simulation clock
-(the check runs once per `accidentCheckPeriod` seconds of game time at the current speed) and keeps the draw order.
+`CreateAccident` is not checked: the message is posted even if the automata manager made no accident.
+For exact replacement under the fixed schedule, use the shared virtual counter of simulator §5.8,
+with the same stopwatch reads; a game-date or simulation-speed timer is insufficient.
 
 **CheckRailAccident(x, z)** (slot 17, `0x00711590`): if the cell is in the damaged-cell set (hash at +0x804, key
 `(x << 8 | z)` truncated to 16 bits, `x` the first argument): `u := RandomDoubleUniform()` on the simulator's
@@ -1444,6 +1556,69 @@ caller (train automata *[not traced]*).
 
 **IsRoadDamaged(x, z)** (slot 16, `0x00720070`): membership of `(x << 8 | z)` in the damaged-road list
 (traffic-network.md).
+
+#### 4.13.1 Accident clock and the monthly random boundary (TE33-ACCIDENT-1) *[compat]*
+
+Evidence: Init `0x0071F781`–`0x0071F798`, monthly call `0x00718AF4`, check
+`0x007184EF`–`0x00718515`, iterator reset `0x00718675`–`0x0071869A` and
+`0x005CF610`–`0x005CF636`, `0x005CF773`–`0x005CF784`; timer conversion
+`0x00890229`–`0x0089024C`. These instruction checks supersede the earlier ms description.
+
+- Init sets the unsigned 32-bit next-check field to **0**, calls timer `SetUnits(5)`
+  (which clears accumulated time and the start stamp), then `Start()` once. Unit 5 is seconds
+  (timers.md §1). This is not an initial deadline of 60 or 60,000. The stopwatch and deadline
+  are runtime state, absent from the traffic save record. Reading the traffic record does not
+  restore or restart them. At a fixed-schedule load, simulator §5.8 rebases the already running
+  stopwatch to the load with zero accumulated ticks; the Init deadline is still zero.
+- Every monthly call runs roads funding, mass-transit funding and UpdateStrikes, then this check,
+  before funding snapshots and history publication (`0x00718AC4`–`0x00718AF9`). The check makes
+  **one** `GetElapsedTime()` call, even if not due or the accident list is empty. A running unit-5
+  timer makes one performance-counter read; it subtracts timer overhead and converts the tick
+  interval using the stored binary32 seconds-per-tick factor, then truncates to integer seconds
+  (timers.md §1.3). It neither stops nor restarts the stopwatch. Do not add a second read for scheduling.
+- Compare the low unsigned 32-bit elapsed result `t` with the unsigned deadline: return immediately
+  when `t <= nextCheck`. If `t > nextCheck`, set `nextCheck := t + trunc(accidentCheckPeriod)`
+  modulo 2³², using the binary32 tuning value directly. There is **no ×1000** for this period,
+  no catch-up loop, and no addition to the old deadline. The separate accident *duration* is
+  converted to milliseconds by multiplication by 1000 (`0x0071875D`–`0x00718769`).
+- After advancing the deadline, convert the view's four world-coordinate binary32 bounds to the
+  inclusive cell rectangle (minima floor, maxima ceil, world scale 1/16). Then construct a fresh
+  linear random iterator of the current accident-copy vector's entry count, with random traversal
+  and reset-randomization enabled. With **zero entries**, Reset terminates without `rand()`;
+  with **one or more entries**, it consumes exactly one CRT `rand()` to choose its initial index
+  (`rand() % count`). The stride/visit rules are those of the linear random iterator (§4.15).
+- Each visited entry consumes one simulator-generator `RandomDoubleRangeUniform(0.0,1.0)`
+  **before** probability, rectangle or occupant rejection. Stop at the first qualifying entry
+  that has a network occupant; otherwise visit the whole list. These are separate streams:
+  the initial CRT draw does not replace a simulator-generator word. Controller attachment can
+  have further effects owned by automata; its concrete call contract is automata-managers §3.4.1.
+- The original directly dereferences the global view, without a null/unavailable-view branch
+  (`0x0071851B`–`0x00718525`). There is no native rule permitting a missing view to skip the
+  check or its CRT draw. A replacement needs a valid view-bounds provider for exact operation;
+  reporting no occupant still happens after the iterator and per-entry draws.
+
+Worked timing, shipped period 60: with `nextCheck=0`, a monthly read of 0 seconds consumes
+zero accident draws. A later monthly read of 1 second sets the deadline to 61 and, for a
+nonempty list of ten entries with no qualifying visible occupant, consumes **one CRT draw and
+ten simulator-generator words**. A read of exactly 61 consumes neither; a read of 62 sets
+122 and starts another check. This accounts for the type of January/February boundary in
+TE33-ACCIDENT-1: 22 and 54 frames contribute 726 and 1782 ms before counter-read ticks, so
+the first read can still truncate to zero and the second to one. The question's six measured
+one-advance CRT states are consistent with this reset site. Their exact original entry counts,
+probability outcomes and total counter-read ticks were not measured by that evidence and are
+not inferred from the CRT stamps alone.
+
+#### 4.13.2 Native accident creation boundary (AD5) *[compat]*
+
+On probability/visibility success, the simulator obtains the vehicle manager from city slot 43,
+then queries its network-info grid (slot 14) for the cell. If the network-info pointer and its first
+network-occupant pointer are both non-null, it calls network-occupant slot 48 `AsOccupant()`
+(no stack arguments), and directly calls the **concrete**, nonvirtual traffic-manager entry with
+`(occupantView, int32 radius=2, uint32 durationMs)`. The occupant view is `cISC4Occupant*`,
+not `cISC4NetworkOccupant*`. The duration is `trunc(r24(accidentDuration × 1000))`, low 32 bits.
+The manager lookup precedes the grid lookup, with no manager-null check. Evidence:
+`0x00718719`–`0x0071877E`; network-occupants §2.4 slot 48. See automata-managers §3.4.1
+for the returned effect token, ownership and the integration restriction when that manager is replaced.
 
 ### 4.14 Tuning (`ReadSimulatorTunableValues`, `0x00716AE0`)
 
@@ -1578,7 +1753,7 @@ delivery and compare draw sequences (reading changes nothing), or seed both gene
 |---|---|---|---|---|---|
 | 1 | strategy re-draw (§3.3) | simulator's `cRZRandomSuper` | `RandomUint32Uniform(100)` (1 word) | — | once per lot of the day's bucket, in multimap order, before any cycle work of that day |
 | 2 | `DoLotActivated` (§4.1.3) | same | `RandomUint32Uniform(100)` (1) | — | after the bucket registration; only when the lot is found again and the building's `0xE90E25A1`, if present, has a byte size that is a multiple of 4 |
-| 3 | `CheckForAccident` (§4.13) | C `rand()` (one call at iterator reset), then the simulator's generator | `RandomDoubleRangeUniform(0.0, 1.0)` (1 word per visited entry) | doubles 0.0, 1.0 | per accident-prone entry visited, until the first accident |
+| 3 | `CheckForAccident` (§4.13.1) | C `rand()` (one call at a due check's iterator reset **only if its entry count is nonzero**), then the simulator's generator | `RandomDoubleRangeUniform(0.0, 1.0)` (1 word per visited entry, before visibility/occupant rejection) | doubles 0.0, 1.0 | until the first created accident or list exhaustion; not-due checks take neither stream |
 | 4 | `CheckRailAccident` (slot 17) | same generator | `RandomDoubleUniform()` (1) | — | only for damaged cells; caller-driven (train automata) |
 | 6 | `ApplyPotholeChanges` (§4.12) | same generator | `RandomUint32Uniform(sourceCount)` (1 per moved cell) | current size of the source set | monthly: road moves first, then rail |
 | 7 | `UpdateStrikes` (§4.12) | same generator | `RandomDoubleUniform()` (1) | — | monthly, only in the normal state with `f < 0.7` and `E > 0`; after the pothole draws, before the accident check |
@@ -1910,7 +2085,7 @@ Not needed for the simulation:
 | Original read | Why not |
 |---|---|
 | The wall clock for the 4 ms slice deadline (§3.3) | replaced by the unit budget (§3.4) |
-| The accident check: the accident timer (wall clock), the view's visible cell rect (global view `0x00B43DD8` + `0x3EC`), the network-occupant test of the cell and `cSC4TrafficAutomataManager::CreateAccident` (§4.13) | `CheckForAccident` (`0x007184E0`) runs from `DoMonthlySimulation` (`0x00718AF4`) only when the wall-clock timer has expired, considers only visible cells, and its only results are an automaton and a message with no compiled receiver (§5). Its one simulation-side effect is the draws it takes from the simulator's generator, which is seeded from the wall clock (§4.15), so the effect is not reproducible in the original either. Leaving it out loses the visible car crashes only. |
+| The accident check's visible creation can be omitted only by a replacement that does not claim exact equivalence | **TE33-ACCIDENT-1 correction:** exact replacement requires the unit-5 stopwatch read and scheduling, the CRT iterator-reset draw and the simulator-generator draws (§4.13.1), plus a valid view rectangle and network-info/occupant provider. Omitting this check changes both shared randomness and the fixed schedule's counter-read clock. Omitting only creation also differs in controller/automata state. The earlier permission to omit the entire check lost more than visible crashes and is withdrawn. The native manager call additionally requires the concrete boundary of automata-managers §3.4.1. |
 | The occupant filter of pathfinder filter 2 | filter 2 is unreachable (pathfinder.md §4.10.3, Q2) |
 
 **TG1, a route deque.** The original fills it (pathfinder.md §4.13 step 5, §4.12 fallback), and the traffic

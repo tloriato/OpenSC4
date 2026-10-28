@@ -1062,8 +1062,11 @@ traffic-simulator.md).
 
 Entering the state (`0x0072134C`):
 
-1. For every terminal: last riders := current riders and current := 0. The simulator adds the last riders to a city
-   total. Each link's last := current and current := 0, for both counter pairs.
+1. **Reset the city u32 rider total to zero first** (`0x00721352`), then for every terminal:
+   last riders := current riders (u16) and current := 0. Add the zero-extended last riders to
+   that total (u32, wraps). Each link's last := current and current := 0, for both counter pairs.
+   The total is a replacement sum for this pass, not an accumulated lifetime count
+   (TC29-FERRY-1; worked second-pass/load cases: traffic-simulator §4.12.2).
 2. Set every terminal's re-route flag.
 3. Rebuild the vector of type-9 neighbour connection cells.
 4. Start at the first terminal.
@@ -1081,7 +1084,7 @@ computed again after load; in any other saved state it leaves the ferries alone 
 next state-19 pass (traffic-simulator.md §3.5 step 11; corrected by TS7). In state 19 it does **only** that
 (`0x00720C8A`–`0x00720CAE`): every terminal's re-route flag := 1, the pass points at the first terminal, and its
 sub-step := 0 (TN8). Unlike entering state 19:
-- it does **not** rotate any counter (riders and link counters keep their loaded values);
+- it does **not** rotate any counter or reset the city ferry rider total (all keep their loaded values);
 - it does **not** rebuild the vector of type-9 neighbour connection cells.
 
 So the post-load pass reroutes every pair of terminals. Its neighbour step walks whatever the vector already holds:
