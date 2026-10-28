@@ -16,6 +16,7 @@
 use crate::abi::{call_raw, vslot, Conv, RawCall};
 use crate::port::Port;
 use core::ptr::{read_unaligned, write_unaligned};
+use core::mem::MaybeUninit;
 
 // Some helpers leave a callee's EDX visible, including when that callee changes only a byte.
 fn registers(eax: u32, edx: u32) -> u64 {
@@ -56,6 +57,194 @@ game_fn! { #[allow(dead_code)] fn destroy_controller_list(this: *mut u8) -> u64 
 game_fn! { #[allow(dead_code)] fn destroy_controller(this: *mut u8) -> u64 = "thiscall" 0x0051_7F80; }
 game_fn! { fn write_vehicle(this: *mut u8, stream: *mut u8) -> u32 = "thiscall" 0x0055_F640; }
 game_fn! { fn remove_automaton(this: *mut u8, first: u32, second: u32) -> u32 = "thiscall" 0x0050_C990; }
+game_fn! { #[allow(dead_code)] fn message_allocate(size: u32) -> *mut u8 = "C" 0x0091_33DA; }
+game_fn! { #[allow(dead_code)] fn message_construct(this: *mut u8) -> *mut u8 = "thiscall" 0x0091_34D6; }
+game_fn! { #[allow(dead_code)] fn find_source_count(this: *mut u8, out: *mut u32, key: *const u32) -> u64 = "thiscall" 0x006F_1530; }
+game_fn! { fn find_group(this: *mut u8, out: *mut u32, key: *const u32) = "thiscall" 0x0049_7520; }
+game_fn! { #[allow(dead_code)] fn release_mesh_storage(this: *mut u8, data: u32, size: u32) -> u64 = "thiscall" 0x0061_4380; }
+game_fn! { #[allow(dead_code)] fn free_mesh(object: *mut u8, size: u32) -> u64 = "C" 0x0080_0EC0; }
+game_fn! { fn erase_string_tree(this: *mut u8, node: *mut u8) = "thiscall" 0x0051_1900; }
+
+game_data! { static source_building_service: *mut u8 = 0x00B4_3D28; }
+
+port! {
+    /// Sends one standard message to each nonnull observer, taking each successor before the callback.
+    /// Empty lists allocate nothing. The sentinel is read again after every callback.
+    #[port(address = 0x0050_B540, owner = "shared", name = "NotifyObservers")]
+    pub unsafe extern "fastcall" fn fc4p_0050b540(this: *mut u8, entry_edx: u32, first: u32, second: u32) -> u64 {
+        // SAFETY: the original owner, observer list, message allocator and virtual signatures.
+        unsafe {
+            let header = word(this, 0x188);
+            if word(header as *mut u8, 0) == header { return registers(header, entry_edx); }
+            let allocation = invoke(Conv::Cdecl, crate::abi::target(0x0091_33DA), this, header, entry_edx, &[0x2C]);
+            let constructed = if allocation as u32 == 0 { allocation } else {
+                invoke(Conv::Thiscall, crate::abi::target(0x0091_34D6), allocation as u32 as *mut u8,
+                    allocation as u32, (allocation >> 32) as u32, &[])
+            };
+            let message = constructed as u32 as *mut u8;
+            let result = virtual_call(message, 4, word(message, 0), (constructed >> 32) as u32, &[]);
+            let result = virtual_call(message, 0x14, result as u32, word(message, 0), &[0x09D9_2FC3]);
+            virtual_call(message, 0x30, word(message, 0), (result >> 32) as u32, &[this as u32]);
+            virtual_call(message, 0x40, first, word(message, 0), &[first]);
+            let mut result = virtual_call(message, 0x54, second, word(message, 0), &[second]);
+            let header = word(this, 0x188);
+            let mut node = word(header as *mut u8, 0);
+            result = registers(header, (result >> 32) as u32);
+            while node != word(this, 0x188) {
+                let observer = word(node as *mut u8, 8) as *mut u8;
+                node = word(node as *mut u8, 0);
+                if !observer.is_null() {
+                    result = virtual_call(observer, 0x0C, result as u32, word(observer, 0), &[message as u32]);
+                }
+            }
+            virtual_call(message, 8, word(message, 0), (result >> 32) as u32, &[])
+        }
+    }
+}
+
+port! {
+    /// Returns the source-building count for a group. Groups 0x1402 and 0x1406 use the global service;
+    /// the others look up a hash node and read its value at +8. Missing services and nodes yield zero.
+    #[port(address = 0x0050_BE30, owner = "shared", name = "GetSourceBuildingCount")]
+    pub unsafe extern "fastcall" fn fc4p_0050be30(this: *mut u8, entry_edx: u32, group: u32) -> u64 {
+        // SAFETY: the game's manager, global service, hash lookup and returned node layout.
+        unsafe {
+            if group == 0x1402 || group == 0x1406 {
+                let service = source_building_service().read();
+                if service.is_null() { return registers(0, entry_edx); }
+                return virtual_call(service, 0x2C, word(service, 0), entry_edx, &[]);
+            }
+            let mut output = MaybeUninit::<[u32; 2]>::uninit();
+            let output = output.as_mut_ptr().cast::<u32>();
+            let result = invoke(Conv::Thiscall, crate::abi::target(0x006F_1530), this.add(0xA64),
+                &group as *const u32 as u32, output as u32, &[output as u32, &group as *const u32 as u32]);
+            let node = output.read() as *mut u8;
+            registers(if node.is_null() { 0 } else { word(node, 8) }, (result >> 32) as u32)
+        }
+    }
+}
+
+port! {
+    /// Reports whether the group lookup returned a node other than the manager's current tree sentinel.
+    /// EDX retains that returned node, even if the lookup has replaced the sentinel.
+    #[port(address = 0x0050_C300, owner = "shared", name = "CanCreateGroup")]
+    pub unsafe extern "thiscall" fn fc4p_0050c300(this: *mut u8, group: u32) -> u64 {
+        let mut node = this as u32;
+        // SAFETY: the original manager's group tree and single-word iterator output.
+        unsafe {
+            find_group(this.add(0xA24), &mut node, &group);
+            registers(u32::from(node != word(this, 0xA24)), node)
+        }
+    }
+}
+
+port! {
+    /// Decrements the unsigned 16-bit count when it exceeds one. Counts zero and one destroy storage
+    /// when present, then free the 0x30-byte mesh without changing the count field, and return zero.
+    #[port(address = 0x0050_C660, owner = "shared", name = "ReleaseMesh")]
+    pub unsafe extern "fastcall" fn fc4p_0050c660(this: *mut u8, entry_edx: u32) -> u64 {
+        // SAFETY: the game's mesh fields and original storage/free signatures.
+        unsafe {
+            let count = this.add(0x2C).cast::<u16>().read_unaligned();
+            if count > 1 {
+                this.add(0x2C).cast::<u16>().write_unaligned(count - 1);
+                return registers(u32::from(count - 1), entry_edx);
+            }
+            let data = word(this, 8);
+            let result = if data == 0 { registers(0, entry_edx) } else {
+                let size = word(this, 0x10).wrapping_sub(data);
+                invoke(Conv::Thiscall, crate::abi::target(0x0061_4380), this.add(0x10), data, size, &[data, size])
+            };
+            let result = invoke(Conv::Cdecl, crate::abi::target(0x0080_0EC0), this,
+                result as u32, (result >> 32) as u32, &[this as u32, 0x30]);
+            result & 0xFFFF_FFFF_0000_0000
+        }
+    }
+}
+
+port! {
+    /// Calls each nonnull vector entry's first slot with the owner, then frees it. The end is reloaded
+    /// after each entry; clearing writes only the end pointer. EAX retains the previous end.
+    #[port(address = 0x0050_D510, owner = "shared", name = "DestroyOwnedVectorEntries")]
+    pub unsafe extern "fastcall" fn fc4p_0050d510(this: *mut u8, entry_edx: u32) -> u64 {
+        // SAFETY: the original owner's pointer vector and entry destructor/free signatures.
+        unsafe {
+            let mut cursor = word(this, 0xB4);
+            let mut edx = entry_edx;
+            while cursor != word(this, 0xB8) {
+                let entry = word(cursor as *mut u8, 0) as *mut u8;
+                if !entry.is_null() {
+                    let result = virtual_call(entry, 0, word(entry, 0), edx, &[this as u32]);
+                    let result = invoke(Conv::Cdecl, crate::abi::target(0x005E_5620), this,
+                        result as u32, (result >> 32) as u32, &[entry as u32]);
+                    edx = (result >> 32) as u32;
+                }
+                cursor = cursor.wrapping_add(4);
+            }
+            let previous_end = word(this, 0xB8);
+            store(this, 0xB8, word(this, 0xB4));
+            registers(previous_end, edx)
+        }
+    }
+}
+
+port! {
+    /// Erases right subtrees recursively through the original entry, then each node's two strings,
+    /// then the node allocation, continuing down the saved left link. Null buffers are not freed.
+    #[port(address = 0x0051_1900, owner = "shared", name = "EraseStringTree")]
+    pub unsafe extern "thiscall" fn fc4p_00511900(this: *mut u8, node: *mut u8) {
+        let mut node = node;
+        // SAFETY: the original tree's node links and two embedded string layouts.
+        unsafe {
+            while !node.is_null() {
+                erase_string_tree(this, word(node, 0x0C) as *mut u8);
+                let left = word(node, 8) as *mut u8;
+                store(node, 0x2C, 0x00A8_0810);
+                let buffer = word(node, 0x30) as *mut u8;
+                if !buffer.is_null() { array_free(buffer); }
+                store(node, 0x10, 0x00A8_0810);
+                let buffer = word(node, 0x14) as *mut u8;
+                if !buffer.is_null() { array_free(buffer); }
+                array_free(node);
+                node = left;
+            }
+        }
+    }
+}
+
+port! {
+    /// Erases a nonempty string tree, restores its sentinel links, frees the sentinel if present,
+    /// and releases the retained interface. The sentinel pointer and retained pointer are not cleared.
+    #[port(address = 0x0051_3E00, owner = "shared", name = "DestroyStringTreeOwner")]
+    pub unsafe extern "fastcall" fn fc4p_00513e00(this: *mut u8, entry_edx: u32) -> u64 {
+        // SAFETY: the original owner, tree sentinel, and retained interface.
+        unsafe {
+            let count = word(this, 0x0C);
+            let mut result = registers(count, entry_edx);
+            if count != 0 {
+                let header = word(this, 8) as *mut u8;
+                erase_string_tree(this.add(8), word(header, 4) as *mut u8);
+                let header = word(this, 8);
+                store(header as *mut u8, 8, header);
+                let header = word(this, 8);
+                store(header as *mut u8, 4, 0);
+                let last_header = word(this, 8);
+                store(last_header as *mut u8, 0x0C, last_header);
+                store(this, 0x0C, 0);
+                result = registers(last_header, header);
+            }
+            let header = word(this, 8);
+            if header != 0 {
+                result = invoke(Conv::Cdecl, crate::abi::target(0x0090_CF63), this,
+                    result as u32, (result >> 32) as u32, &[header]);
+            }
+            let retained = word(this, 4) as *mut u8;
+            if retained.is_null() { result } else {
+                virtual_call(retained, 8, word(retained, 0), (result >> 32) as u32, &[])
+            }
+        }
+    }
+}
 
 layout! {
     /// Controller fields used by its destructor, from the primary interface.
@@ -322,6 +511,13 @@ port! {
 
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
+    fc4p_0050b540::PORT,
+    fc4p_0050be30::PORT,
+    fc4p_0050c300::PORT,
+    fc4p_0050c660::PORT,
+    fc4p_0050d510::PORT,
+    fc4p_00511900::PORT,
+    fc4p_00513e00::PORT,
     fc4p_00517f70::PORT,
     fc4p_00517f80::PORT,
     fc4p_005183b0::PORT,
@@ -356,6 +552,7 @@ mod tests {
     thread_local! {
         static CALLS: RefCell<Vec<Call>> = const { RefCell::new(Vec::new()) };
         static MUTATION: RefCell<Option<Mutation>> = const { RefCell::new(None) };
+        static FOUND: RefCell<u32> = const { RefCell::new(0) };
     }
 
     fn log(id: u32, this: *mut u8, args: &[u32]) {
@@ -763,6 +960,252 @@ mod tests {
             unsafe { fc4p_0054ed10(p.add(delta), p) };
             assert_eq!(bytes(p, 0x80), expected);
         }
+        assert!(calls().is_empty());
+    }
+
+    extern "C" fn allocate_message(size: u32) -> *mut u8 {
+        log(0x0091_33DA, core::ptr::null_mut(), &[size]);
+        FOUND.with(|found| *found.borrow() as *mut u8)
+    }
+    extern "thiscall" fn construct_message(this: *mut u8) -> *mut u8 {
+        log(0x0091_34D6, this, &[]);
+        this
+    }
+    extern "thiscall" fn message_type(this: *mut u8, value: u32) -> u64 { log(0x14, this, &[value]); RESULT }
+    extern "thiscall" fn message_owner(this: *mut u8, value: u32) -> u64 { log(0x30, this, &[value]); RESULT }
+    extern "thiscall" fn message_first(this: *mut u8, value: u32) -> u64 { log(0x40, this, &[value]); RESULT }
+    extern "thiscall" fn message_second(this: *mut u8, value: u32) -> u64 { log(0x54, this, &[value]); RESULT }
+    extern "thiscall" fn observe(this: *mut u8, value: u32) -> u64 { log(0x0C, this, &[value]); RESULT }
+
+    #[test]
+    fn observer_notification_skips_empty_and_null_entries_and_reuses_one_message() {
+        let _allocate = fake(0x0091_33DA, allocate_message as *const () as usize);
+        let _construct = fake(0x0091_34D6, construct_message as *const () as usize);
+        let mut message_table = [0usize; 0x58 / 4];
+        for (slot, entry) in [(4, retain as *const ()), (8, release as *const ()), (0x14, message_type as *const ()),
+            (0x30, message_owner as *const ()), (0x40, message_first as *const ()), (0x54, message_second as *const ())] {
+            message_table[slot / 4] = entry as usize;
+        }
+        let mut message = [message_table.as_ptr() as usize];
+        let message = message.as_mut_ptr().cast::<u8>();
+        FOUND.with(|found| *found.borrow_mut() = message as u32);
+        let observer_table = [0usize, 0, 0, observe as *const () as usize];
+        let mut observer = [observer_table.as_ptr() as usize];
+        let observer = observer.as_mut_ptr().cast::<u8>();
+        let mut owner = Object::new(0x190);
+        let owner = owner.ptr();
+        let mut header = [0u32; 3];
+        let h = header.as_mut_ptr() as u32;
+        header[0] = h;
+        unsafe { store(owner, 0x188, h) };
+        assert_eq!(run(fc4p_0050b540 as *const (), owner, &[0, u32::MAX], 0, 0xCAFE_BABE), registers(h, 0xCAFE_BABE));
+        assert!(calls().is_empty());
+        let mut last = [h, 0, observer as u32];
+        let mut middle = [last.as_mut_ptr() as u32, 0, 0];
+        let mut first = [middle.as_mut_ptr() as u32, 0, observer as u32];
+        header[0] = first.as_mut_ptr() as u32;
+        let before = bytes(owner, 0x190);
+        // The callback changes the first node's successor. Iteration must use the saved successor.
+        mutation(0x0C, first.as_mut_ptr().cast(), 0, h);
+        assert_eq!(run(fc4p_0050b540 as *const (), owner, &[0x1234_5678, 0x8765_4321], 0, 0), RESULT);
+        assert_eq!(calls(), [
+            Call(0x0091_33DA, 0, vec![0x2C]), Call(0x0091_34D6, message as usize, vec![]),
+            Call(4, message as usize, vec![]), Call(0x14, message as usize, vec![0x09D9_2FC3]),
+            Call(0x30, message as usize, vec![owner as u32]), Call(0x40, message as usize, vec![0x1234_5678]),
+            Call(0x54, message as usize, vec![0x8765_4321]), Call(0x0C, observer as usize, vec![message as u32]),
+            Call(0x0C, observer as usize, vec![message as u32]), Call(8, message as usize, vec![]),
+        ]);
+        assert_eq!(bytes(owner, 0x190), before);
+        // Keep the rewritten header read visible to the fixture as well.
+        assert_eq!(header[0], first.as_mut_ptr() as u32);
+    }
+
+    extern "thiscall" fn source_lookup(this: *mut u8, out: *mut u32, key: *const u32) -> u64 {
+        // SAFETY: the port supplies its two-word iterator and readable key.
+        unsafe {
+            log(0x006F_1530, this, &[key.read()]);
+            out.write(FOUND.with(|found| *found.borrow()));
+            out.add(1).write(this as u32);
+        }
+        RESULT
+    }
+    extern "thiscall" fn group_lookup(this: *mut u8, out: *mut u32, key: *const u32) {
+        // SAFETY: the port supplies a one-word iterator and readable key.
+        unsafe {
+            log(0x0049_7520, this, &[key.read()]);
+            out.write(FOUND.with(|found| *found.borrow()));
+        }
+    }
+    extern "thiscall" fn source_total(this: *mut u8) -> u64 { log(0x2C, this, &[]); RESULT }
+
+    #[test]
+    fn source_count_routes_special_groups_and_preserves_lookup_edx() {
+        let _lookup = fake(0x006F_1530, source_lookup as *const () as usize);
+        let mut service_pointer = core::ptr::null_mut::<u8>();
+        let _global = crate::testing::fake_data(0x00B4_3D28, (&mut service_pointer as *mut *mut u8).cast());
+        let mut table = [0usize; 12];
+        table[0x2C / 4] = source_total as *const () as usize;
+        let mut service = [table.as_ptr() as usize];
+        let mut object = Object::new(0xA80);
+        let p = object.ptr();
+        for group in [0x1402, 0x1406] {
+            assert_eq!(run(fc4p_0050be30 as *const (), p, &[group], 0, 0x1357_9BDF), registers(0, 0x1357_9BDF));
+            assert!(calls().is_empty());
+        }
+        service_pointer = service.as_mut_ptr().cast();
+        for group in [0x1402, 0x1406] {
+            assert_eq!(run(fc4p_0050be30 as *const (), p, &[group], 0, 7), RESULT);
+            assert_eq!(calls(), [Call(0x2C, service_pointer as usize, vec![])]);
+        }
+        let mut node = [0, 0, 0xFFFF_FF80u32];
+        for found in [0, node.as_mut_ptr() as u32] {
+            FOUND.with(|slot| *slot.borrow_mut() = found);
+            for group in [0, 0x1401, 0x1403, 0x1405, 0x1407, u32::MAX] {
+                assert_eq!(run(fc4p_0050be30 as *const (), p, &[group], 0, 0),
+                    registers(if found == 0 { 0 } else { node[2] }, (RESULT >> 32) as u32));
+                assert_eq!(calls(), [Call(0x006F_1530, p as usize + 0xA64, vec![group])]);
+            }
+        }
+    }
+
+    #[test]
+    fn group_presence_uses_the_current_sentinel_after_the_lookup() {
+        let _lookup = fake(0x0049_7520, group_lookup as *const () as usize);
+        let mut object = Object::new(0xA80);
+        let p = object.ptr();
+        unsafe { store(p, 0xA24, 0x1234) };
+        for found in [0x1234, 0x5678, 0] {
+            FOUND.with(|slot| *slot.borrow_mut() = found);
+            assert_eq!(run(fc4p_0050c300 as *const (), p, &[0x8765_4321], 0, 0), registers(u32::from(found != 0x1234), found));
+            assert_eq!(calls(), [Call(0x0049_7520, p as usize + 0xA24, vec![0x8765_4321])]);
+        }
+        FOUND.with(|slot| *slot.borrow_mut() = 0x5678);
+        mutation(0x0049_7520, p, 0xA24, 0x5678);
+        assert_eq!(run(fc4p_0050c300 as *const (), p, &[7], 0, 0), registers(0, 0x5678));
+        assert_eq!(calls(), [Call(0x0049_7520, p as usize + 0xA24, vec![7])]);
+    }
+
+    extern "thiscall" fn storage_release(this: *mut u8, data: u32, size: u32) -> u64 {
+        log(0x0061_4380, this, &[data, size]); RESULT
+    }
+    extern "C" fn mesh_free(this: *mut u8, size: u32) -> u64 { log(0x0080_0EC0, this, &[size]); RESULT }
+
+    #[test]
+    fn mesh_release_decrements_unsigned_counts_or_frees_storage_in_order() {
+        let _storage = fake(0x0061_4380, storage_release as *const () as usize);
+        let _free = fake(0x0080_0EC0, mesh_free as *const () as usize);
+        let mut object = Object::new(0x40);
+        let p = object.ptr();
+        for count in [2u16, 0x8000, u16::MAX] {
+            unsafe {
+                core::ptr::write_bytes(p, 0xA5, 0x40);
+                p.add(0x2C).cast::<u16>().write_unaligned(count);
+            }
+            let mut expected = bytes(p, 0x40);
+            expected[0x2C..0x2E].copy_from_slice(&(count - 1).to_le_bytes());
+            assert_eq!(run(fc4p_0050c660 as *const (), p, &[], 0, 0x7654_3210), registers(u32::from(count - 1), 0x7654_3210));
+            assert_eq!(bytes(p, 0x40), expected);
+            assert!(calls().is_empty());
+        }
+        for count in [0u16, 1] {
+            for data in [0, 0x1234, 0xFFFF_FFF0] {
+                unsafe {
+                    p.add(0x2C).cast::<u16>().write_unaligned(count);
+                    store(p, 8, data); store(p, 0x10, 0x100);
+                }
+                let before = bytes(p, 0x40);
+                assert_eq!(run(fc4p_0050c660 as *const (), p, &[], 0, 0x1234), RESULT & !0xFFFF_FFFF);
+                let mut expected = vec![];
+                if data != 0 { expected.push(Call(0x0061_4380, p as usize + 0x10, vec![data, 0x100u32.wrapping_sub(data)])); }
+                expected.push(Call(0x0080_0EC0, p as usize, vec![0x30]));
+                assert_eq!(calls(), expected);
+                assert_eq!(bytes(p, 0x40), before);
+            }
+        }
+    }
+
+    extern "thiscall" fn entry_destroy(this: *mut u8, owner: *mut u8) -> u64 { log(0, this, &[owner as u32]); RESULT }
+
+    #[test]
+    fn vector_entry_destruction_skips_nulls_and_only_resets_the_end() {
+        let _free = fake(0x005E_5620, free as *const () as usize);
+        let table = [entry_destroy as *const () as usize];
+        let mut entry = [table.as_ptr() as usize];
+        let entry = entry.as_mut_ptr().cast::<u8>();
+        let mut data = [entry as u32, 0, entry as u32];
+        let begin = data.as_mut_ptr() as u32;
+        let mut object = Object::new(0xC0);
+        let p = object.ptr();
+        for count in [0, 3] {
+            unsafe { store(p, 0xB4, begin); store(p, 0xB8, begin + count * 4); }
+            let mut expected = bytes(p, 0xC0);
+            expected[0xB8..0xBC].copy_from_slice(&begin.to_le_bytes());
+            assert_eq!(run(fc4p_0050d510 as *const (), p, &[], 0, 0x5678),
+                registers(begin + count * 4, if count == 0 { 0x5678 } else { (RESULT >> 32) as u32 }));
+            let pair = [Call(0, entry as usize, vec![p as u32]), Call(0x005E_5620, entry as usize, vec![])];
+            assert_eq!(calls(), if count == 0 { vec![] } else { pair.into_iter().chain([
+                Call(0, entry as usize, vec![p as u32]), Call(0x005E_5620, entry as usize, vec![])]).collect() });
+            assert_eq!(bytes(p, 0xC0), expected);
+        }
+        unsafe { store(p, 0xB8, begin + 12) };
+        mutation(0, p, 0xB8, begin + 4);
+        assert_eq!(run(fc4p_0050d510 as *const (), p, &[], 0, 0) as u32, begin + 4);
+        assert_eq!(calls(), [Call(0, entry as usize, vec![p as u32]), Call(0x005E_5620, entry as usize, vec![])]);
+    }
+
+    extern "thiscall" fn erase_nodes(this: *mut u8, root: *mut u8) { log(0x0051_1900, this, &[root as u32]); }
+
+    #[test]
+    fn string_tree_erasure_visits_right_before_node_before_left_and_restores_both_string_tables() {
+        let _free = fake(0x0090_CF63, free_array as *const () as usize);
+        let mut root = Object::new(0x50);
+        let mut right = Object::new(0x50);
+        let mut left = Object::new(0x50);
+        let (r, a, b) = (root.ptr(), right.ptr(), left.ptr());
+        unsafe {
+            store(r, 8, b as u32); store(r, 0x0C, a as u32);
+            store(r, 0x14, 0x1000); store(r, 0x30, 0x2000);
+            store(a, 0x30, 0x3000); store(b, 0x14, 0x4000);
+        }
+        let owner = 0x1234usize as *mut u8;
+        unsafe { fc4p_00511900(owner, r) };
+        assert_eq!(calls(), [Call(0x0090_CF63, 0x3000, vec![]), Call(0x0090_CF63, a as usize, vec![]),
+            Call(0x0090_CF63, 0x2000, vec![]), Call(0x0090_CF63, 0x1000, vec![]), Call(0x0090_CF63, r as usize, vec![]),
+            Call(0x0090_CF63, 0x4000, vec![]), Call(0x0090_CF63, b as usize, vec![])]);
+        for node in [r, a, b] { assert_eq!(unsafe { (word(node, 0x10), word(node, 0x2C)) }, (0x00A8_0810, 0x00A8_0810)); }
+        unsafe { fc4p_00511900(owner, core::ptr::null_mut()) };
+        assert!(calls().is_empty());
+    }
+
+    #[test]
+    fn tree_owner_destruction_restores_sentinel_only_for_nonempty_trees() {
+        let _erase = fake(0x0051_1900, erase_nodes as *const () as usize);
+        let _free = fake(0x0090_CF63, free_array as *const () as usize);
+        let table = [0usize, 0, release as *const () as usize];
+        let mut retained = [table.as_ptr() as usize];
+        let retained = retained.as_mut_ptr().cast::<u8>();
+        let mut header = [0xA5A5_A5A5u32, 0x1122, 0x3344, 0x5566];
+        let h = header.as_mut_ptr() as u32;
+        let mut object = Object::new(0x20);
+        let p = object.ptr();
+        for count in [0, 1, u32::MAX] {
+            for has_retained in [false, true] {
+                header[1..].copy_from_slice(&[0x1122, 0x3344, 0x5566]);
+                unsafe { store(p, 4, if has_retained { retained as u32 } else { 0 }); store(p, 8, h); store(p, 0x0C, count); }
+                let mut expected = bytes(p, 0x20);
+                if count != 0 { expected[0x0C..0x10].fill(0); }
+                assert_eq!(run(fc4p_00513e00 as *const (), p, &[], 0, 0), RESULT);
+                let mut expected_calls = vec![];
+                if count != 0 { expected_calls.push(Call(0x0051_1900, p as usize + 8, vec![0x1122])); }
+                expected_calls.push(Call(0x0090_CF63, h as usize, vec![]));
+                if has_retained { expected_calls.push(Call(8, retained as usize, vec![])); }
+                assert_eq!(calls(), expected_calls);
+                assert_eq!(bytes(p, 0x20), expected);
+                assert_eq!(header, if count == 0 { [0xA5A5_A5A5, 0x1122, 0x3344, 0x5566] } else { [0xA5A5_A5A5, 0, h, h] });
+            }
+        }
+        unsafe { store(p, 4, 0); store(p, 8, 0); store(p, 0x0C, 0); }
+        assert_eq!(run(fc4p_00513e00 as *const (), p, &[], 0xFEDC_BA98, 0x1234_5678), registers(0, 0x1234_5678));
         assert!(calls().is_empty());
     }
 }
