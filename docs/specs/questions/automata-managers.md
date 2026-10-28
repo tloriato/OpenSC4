@@ -53,3 +53,11 @@
   This does not establish the cause of the save fault. It isolates a replacement-only
   failure while the current bridge retains loaded objects without restoring them.
   No native owner forwarding, guessed layout, or schedule modification was used.
+
+  **Partial answer 2026-10-28 (re-blockers37a):** automata.md §4.2 now gives the
+  ordered loaded-list flag test, removal/Unplace/Shutdown/Release path, survivor virtual
+  Init ABI, source recount, view/zoom update and traffic path/model repair. The watercraft
+  handler delegates this message to base. The save address is an allocator-link write,
+  not a placement write. Still unproved: the supported boundary for the traffic-only
+  private repair, full overridden Init/Activate placement and callback effects, and the
+  operation that corrupts the allocator link in the cited run. AD6 remains open.
