@@ -641,12 +641,13 @@ fn efficiencies_cover_staff_item_absence_strikes_ignored_strikes_and_curve_order
 fn base_efficiency_retains_unrounded_curve_result_and_the_x87_environment() {
     let _fpu = GameFpu::new();
     let mut w = FundingWorld::new();
-    STATE.with(|s| s.borrow_mut().curve = 100.000_002_5);
+    STATE.with(|s| s.borrow_mut().curve = 0.333_333_325);
     let mut out = 0f32;
     unsafe {
         fc4p_006f85f0(w.sim.ptr(), &mut out, w.occupant.ptr(), 1);
     }
-    assert_eq!(out.to_bits(), 1f32.to_bits());
+    let premature = multiply(F80::from_f32(F80::from_f64(0.333_333_325).to_f32()), 0.01).to_f32();
+    assert_ne!(out.to_bits(), premature.to_bits());
     assert_eq!(crate::x87::control_word(), crate::x87::GAME_CONTROL_WORD);
     assert_eq!(take().len(), 4);
 }

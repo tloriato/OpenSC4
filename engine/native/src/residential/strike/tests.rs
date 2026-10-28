@@ -289,3 +289,235 @@ fn department_probabilities_cover_active_empty_multiple_groups_and_return_regist
         )
     );
 }
+
+#[derive(Debug, PartialEq, Eq)]
+enum TransitionCall {
+    Clock(usize),
+    Calendar(usize),
+    Day(usize),
+    Properties(usize),
+    UInt(usize, u32),
+    Float(usize, u32),
+    Curve(usize, u32),
+    Random(usize, u64, u64),
+    Write(usize, u32, u32),
+    Controller(usize),
+    String(usize),
+    Add(usize, usize, u32),
+    Remove(usize, usize),
+    Free(usize),
+}
+#[derive(Default)]
+struct TransitionState {
+    clock: *mut u8,
+    day: u32,
+    old: u32,
+    value: f32,
+    present: bool,
+    curve: f64,
+    draw: f64,
+    controller: *mut u8,
+    buffer: *mut u8,
+}
+thread_local! {static TCALLS:RefCell<Vec<TransitionCall>>=const{RefCell::new(vec![])};static TRANSITION:RefCell<TransitionState>=RefCell::new(TransitionState::default());}
+fn tlog(c: TransitionCall) {
+    TCALLS.with(|v| v.borrow_mut().push(c));
+}
+fn ttake() -> Vec<TransitionCall> {
+    TCALLS.with(|v| core::mem::take(&mut *v.borrow_mut()))
+}
+extern "thiscall" fn tclock(p: *mut u8) -> *mut u8 {
+    tlog(TransitionCall::Clock(p as usize));
+    TRANSITION.with(|s| s.borrow().clock)
+}
+extern "thiscall" fn tcalendar(p: *mut u8) -> *mut u8 {
+    tlog(TransitionCall::Calendar(p as usize));
+    p
+}
+extern "thiscall" fn tday(p: *mut u8) -> u32 {
+    tlog(TransitionCall::Day(p as usize));
+    TRANSITION.with(|s| s.borrow().day)
+}
+extern "thiscall" fn tproperties(p: *mut u8) -> *mut u8 {
+    tlog(TransitionCall::Properties(p as usize));
+    p
+}
+extern "C" fn tuint(p: *mut u8, id: u32, out: *mut u32) -> u32 {
+    tlog(TransitionCall::UInt(p as usize, id));
+    unsafe {
+        *out = TRANSITION.with(|s| s.borrow().old);
+    }
+    1
+}
+extern "C" fn tfloat(p: *mut u8, id: u32, out: *mut f32) -> u32 {
+    tlog(TransitionCall::Float(p as usize, id));
+    TRANSITION.with(|s| {
+        let s = s.borrow();
+        if s.present {
+            unsafe {
+                *out = s.value;
+            }
+            1
+        } else {
+            0
+        }
+    })
+}
+extern "thiscall" fn tcurve(p: *mut u8, x: f32) -> f64 {
+    tlog(TransitionCall::Curve(p as usize, x.to_bits()));
+    TRANSITION.with(|s| s.borrow().curve)
+}
+extern "thiscall" fn trandom(p: *mut u8, min: f64, max: f64) -> f64 {
+    tlog(TransitionCall::Random(p as usize, min.to_bits(), max.to_bits()));
+    TRANSITION.with(|s| s.borrow().draw)
+}
+extern "C" fn twrite(p: *mut u8, id: u32, value: u32) -> u32 {
+    tlog(TransitionCall::Write(p as usize, id, value));
+    1
+}
+extern "thiscall" fn tcontroller(p: *mut u8) -> *mut u8 {
+    tlog(TransitionCall::Controller(p as usize));
+    TRANSITION.with(|s| s.borrow().controller)
+}
+extern "thiscall" fn tstring(p: *mut u8, text: *const u8) -> *mut u8 {
+    tlog(TransitionCall::String(text as usize));
+    unsafe {
+        p.add(4).cast::<*mut u8>().write(TRANSITION.with(|s| s.borrow().buffer));
+    }
+    p
+}
+extern "thiscall" fn tadd(p: *mut u8, _name: *mut u8, building: *mut u8, zero: u32) -> u32 {
+    tlog(TransitionCall::Add(p as usize, building as usize, zero));
+    0
+}
+extern "thiscall" fn tremove(p: *mut u8, _name: *mut u8, building: *mut u8) -> u32 {
+    tlog(TransitionCall::Remove(p as usize, building as usize));
+    0
+}
+extern "C" fn tfree(p: *mut u8) -> u32 {
+    tlog(TransitionCall::Free(p as usize));
+    0
+}
+
+#[test]
+fn strike_transition_covers_roll_boundaries_unsigned_duration_staff_threshold_nan_and_controller_order() {
+    let _fpu = GameFpu::new();
+    let _constants = Constants::new();
+    let mut min = 0f64;
+    let mut max = 100f64;
+    let mut health = 0x1111usize as *const u8;
+    let mut school = 0x2222usize as *const u8;
+    let mut city_vt = [0usize; 51];
+    city_vt[50] = tclock as *const () as usize;
+    let mut clock_vt = [0usize; 27];
+    clock_vt[7] = tcalendar as *const () as usize;
+    clock_vt[26] = tday as *const () as usize;
+    let mut building_vt = [0usize; 7];
+    building_vt[6] = tproperties as *const () as usize;
+    let mut simulator_vt = [0usize; 48];
+    simulator_vt[47] = tcontroller as *const () as usize;
+    let mut controller_vt = [0usize; 13];
+    controller_vt[10] = tadd as *const () as usize;
+    controller_vt[12] = tremove as *const () as usize;
+    let mut city = city_vt.as_ptr();
+    let cp = (&mut city as *mut *const usize).cast::<u8>();
+    let mut clock = clock_vt.as_ptr();
+    let kp = (&mut clock as *mut *const usize).cast::<u8>();
+    let mut building = building_vt.as_ptr();
+    let bp = (&mut building as *mut *const usize).cast::<u8>();
+    let mut simulator = simulator_vt.as_ptr();
+    let sp = (&mut simulator as *mut *const usize).cast::<u8>();
+    let mut controller = controller_vt.as_ptr();
+    let ap = (&mut controller as *mut *const usize).cast::<u8>();
+    let mut global = sp;
+    let _min = fake_data(0x00A80990, (&mut min as *mut f64).cast());
+    let _max = fake_data(0x00A80AC0, (&mut max as *mut f64).cast());
+    let _health = fake_data(0x00B0D438, (&mut health as *mut *const u8).cast());
+    let _school = fake_data(0x00B0D43C, (&mut school as *mut *const u8).cast());
+    let _global = fake_data(0x00B43CEC, (&mut global as *mut *mut u8).cast());
+    let _fakes: Vec<_> = [
+        (0x005FD480, tuint as *const () as usize),
+        (0x005FD4F0, tfloat as *const () as usize),
+        (0x005F4250, tcurve as *const () as usize),
+        (0x00913761, trandom as *const () as usize),
+        (0x005FE3C0, twrite as *const () as usize),
+        (0x00408480, tstring as *const () as usize),
+        (0x0090CF63, tfree as *const () as usize),
+    ]
+    .into_iter()
+    .map(|(a, f)| fake(a, f))
+    .collect();
+    let mut sim = Object::new(0x400);
+    let p = sim.ptr();
+    unsafe { TransitionSim::from_ptr(p) }.set_city(cp);
+    let mut department = Object::new(0x60);
+    let dp = department.ptr();
+    let d = unsafe { Department::from_ptr(dp) };
+    d.set_count(50);
+    d.set_fourth(1f32.to_bits());
+    for (old, today, value, present, draw, chance, changed) in [
+        (0, 100, 0.4, true, 49.9, 50.0, true),
+        (0, 100, 0.4, true, 50.0, 50.0, false),
+        (0, 100, 0.4, true, f64::NAN, 50.0, false),
+        (0, 100, 0.4, true, 0.0, f64::NAN, false),
+        (50, 100, 0.9, true, 0.0, 50.0, false),
+        (50, 101, 0.9, true, 0.0, 50.0, true),
+        (50, 100, 1.0, true, 0.0, 50.0, true),
+        (50, 100, f32::NAN, true, 0.0, 50.0, false),
+        (u32::MAX, 1, 0.1, true, 0.0, 50.0, false),
+        (50, 100, 0.0, false, 0.0, 50.0, true),
+        (0, 0, 0.4, true, 0.0, 50.0, false),
+    ] {
+        ttake();
+        TRANSITION.with(|s| {
+            *s.borrow_mut() = TransitionState {
+                clock: kp,
+                day: today,
+                old,
+                value,
+                present,
+                curve: chance,
+                draw,
+                controller: ap,
+                buffer: 0x9999usize as *mut u8,
+            }
+        });
+        d.set_final_word(if old == 0 { 0x077ACCD2 } else { 0x12345678 });
+        assert_eq!(unsafe { fc4p_006fa280(p, bp, dp, 77, 88) } as u8, u8::from(changed));
+        let mut expected = vec![
+            TransitionCall::Clock(cp as usize),
+            TransitionCall::Calendar(kp as usize),
+            TransitionCall::Day(kp as usize),
+            TransitionCall::Properties(bp as usize),
+            TransitionCall::UInt(bp as usize, 0xEAA69F83),
+            TransitionCall::Properties(bp as usize),
+            TransitionCall::Float(bp as usize, if old == 0 { 88 } else { 77 }),
+        ];
+        if old == 0 {
+            expected.push(TransitionCall::Curve(
+                unsafe { dp.add(0x24) } as usize,
+                (value * 100.0).to_bits(),
+            ));
+            expected.push(TransitionCall::Random(
+                unsafe { p.add(0xB8) } as usize,
+                0f64.to_bits(),
+                100f64.to_bits(),
+            ));
+        }
+        if changed {
+            expected.extend([
+                TransitionCall::Properties(bp as usize),
+                TransitionCall::Write(bp as usize, 0xEAA69F83, if old == 0 { today } else { 0 }),
+                TransitionCall::Controller(sp as usize),
+                TransitionCall::String(if old == 0 { 0x1111 } else { 0x2222 }),
+            ]);
+            expected.push(if old == 0 {
+                TransitionCall::Add(ap as usize, bp as usize, 0)
+            } else {
+                TransitionCall::Remove(ap as usize, bp as usize)
+            });
+            expected.push(TransitionCall::Free(0x9999));
+        }
+        assert_eq!(ttake(), expected);
+    }
+}

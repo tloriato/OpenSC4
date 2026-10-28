@@ -448,6 +448,25 @@ fn system_totals_filter_groups_count_failed_queries_reuse_record_and_leave_other
             registers(0, 0x22222222)
         );
         assert_eq!(take(), [Call::Allocate(8), Call::Free(storage.as_ptr() as usize)]);
+        groups[1] = unsafe { group_data.as_mut_ptr().add(2) } as u32;
+        STATE.with(|s| {
+            let mut s = s.borrow_mut();
+            s.query_calls = 0;
+            s.null_buffer = true;
+        });
+        assert_eq!(
+            unsafe {
+                fc4p_006fa070(
+                    w.sim.ptr(),
+                    lists.as_mut_ptr().cast(),
+                    out.as_mut_ptr(),
+                    school,
+                    groups.as_mut_ptr().cast(),
+                )
+            },
+            registers(2, lists.as_ptr() as u32)
+        );
+        assert!(!take().iter().any(|c| matches!(c, Call::Free(_))));
     }
 }
 extern "thiscall" fn totals(p: *mut u8, lists: *mut u8, out: *mut u8, school: u32, groups: *mut u8) -> u64 {
