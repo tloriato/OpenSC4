@@ -37,6 +37,7 @@ layout! {
         0x6C => incinerator_list / set_incinerator_list: *mut u8,
         0x70 => energy_list / set_energy_list: *mut u8,
         0x74 => recycling_list / set_recycling_list: *mut u8,
+        0x100 => average_air / set_average_air: u32,
         0x104 => average_water / set_average_water: i32,
         0x128 => average_garbage / set_average_garbage: u16,
         0x134 => recycling_effect / set_recycling_effect: f32,
@@ -51,6 +52,7 @@ layout! {
         0x209 => dirty_air / set_dirty_air: u8,
         0x20A => dirty_water / set_dirty_water: u8,
         0x20B => dirty_garbage / set_dirty_garbage: u8,
+        0x20C => effects_visible / set_effects_visible: u8,
         0x210 => worst_air_x / set_worst_air_x: u16,
         0x212 => worst_air_z / set_worst_air_z: u16,
         0x214 => worst_air_value / set_worst_air_value: u32,
@@ -97,19 +99,21 @@ unsafe fn table(object: *mut u8) -> u32 {
 
 pub mod access;
 pub mod aging;
-pub mod io;
-pub mod maintenance;
-pub mod occupants;
-pub mod release;
-pub mod recycling;
-pub mod visual;
 pub mod capacity;
 pub mod com;
+pub mod cycle;
 pub mod disposal;
 pub mod garbage;
 pub mod grids;
+pub mod io;
 pub mod lists;
+pub mod maintenance;
+pub mod messages;
+pub mod occupants;
+pub mod recycling;
+pub mod release;
 pub mod request;
+pub mod visual;
 
 const COUNT: usize = access::PORTS.len()
     + aging::PORTS.len()
@@ -125,7 +129,9 @@ const COUNT: usize = access::PORTS.len()
     + grids::PORTS.len()
     + request::PORTS.len()
     + lists::PORTS.len()
-    + capacity::PORTS.len();
+    + capacity::PORTS.len()
+    + messages::PORTS.len()
+    + cycle::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
     access::PORTS,
     aging::PORTS,
@@ -142,6 +148,8 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     request::PORTS,
     lists::PORTS,
     capacity::PORTS,
+    messages::PORTS,
+    cycle::PORTS,
 ]);
 
 /// This module's replacements.
