@@ -30,6 +30,7 @@ layout! {
         0x40 => zone_manager / set_zone_manager: *mut u8,
         0x48 => street_tool / set_street_tool: *mut u8,
         0x4C => road_tool / set_road_tool: *mut u8,
+        0x50 => lot_configuration / set_lot_configuration: *mut u8,
         0x99 => real_mode / set_real_mode: u8,
         0xA0 => current_zone / set_current_zone: u32,
         0xA4 => restriction / set_restriction: *mut u8,
@@ -47,6 +48,7 @@ mod lot;
 mod manager;
 mod occupancy;
 mod face;
+mod region;
 
 /// Call a virtual method with its incoming scratch-register values and retain EDX:EAX.
 unsafe fn virtual_registers(this: *mut u8, slot: usize, eax: u32, edx: u32, args: &[u32]) -> u64 {
@@ -74,6 +76,7 @@ pub const PORTS: &[Port] = &crate::port::concat::<
             + occupancy::PORTS.len()
             + altitude::PORTS.len()
             + face::PORTS.len()
+            + region::PORTS.len()
     },
 >(&[
     basic::PORTS,
@@ -83,4 +86,5 @@ pub const PORTS: &[Port] = &crate::port::concat::<
     occupancy::PORTS,
     altitude::PORTS,
     face::PORTS,
+    region::PORTS,
 ]);
