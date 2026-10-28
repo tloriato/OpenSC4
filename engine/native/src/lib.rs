@@ -43,11 +43,29 @@ mod abi;
 mod testing;
 
 #[cfg(target_arch = "x86")]
+pub mod building;
+#[cfg(target_arch = "x86")]
+pub mod demand;
+#[cfg(target_arch = "x86")]
 pub mod game;
 #[cfg(target_arch = "x86")]
 pub mod landvalue;
 #[cfg(target_arch = "x86")]
+pub mod lot_developer;
+#[cfg(target_arch = "x86")]
+pub mod neighbors;
+#[cfg(target_arch = "x86")]
+pub mod pollution;
+#[cfg(target_arch = "x86")]
+pub mod power;
+#[cfg(target_arch = "x86")]
+pub mod residential;
+#[cfg(target_arch = "x86")]
+pub mod tract_developer;
+#[cfg(target_arch = "x86")]
 pub mod x87;
+#[cfg(target_arch = "x86")]
+pub mod zone_developer;
 
 #[cfg(target_arch = "x86")]
 pub use table::{fc4native_ports, PORTS};
@@ -56,8 +74,30 @@ pub use table::{fc4native_ports, PORTS};
 mod table {
     use crate::port::{self, Port, PortTable};
 
-    const COUNT: usize = crate::x87::PORTS.len() + crate::landvalue::PORTS.len();
-    const ALL: [Port; COUNT] = port::concat(&[crate::x87::PORTS, crate::landvalue::PORTS]);
+    const COUNT: usize = crate::x87::PORTS.len()
+        + crate::building::PORTS.len()
+        + crate::demand::PORTS.len()
+        + crate::landvalue::PORTS.len()
+        + crate::lot_developer::PORTS.len()
+        + crate::neighbors::PORTS.len()
+        + crate::pollution::PORTS.len()
+        + crate::power::PORTS.len()
+        + crate::residential::PORTS.len()
+        + crate::tract_developer::PORTS.len()
+        + crate::zone_developer::PORTS.len();
+    const ALL: [Port; COUNT] = port::concat(&[
+        crate::x87::PORTS,
+        crate::building::PORTS,
+        crate::demand::PORTS,
+        crate::landvalue::PORTS,
+        crate::lot_developer::PORTS,
+        crate::neighbors::PORTS,
+        crate::pollution::PORTS,
+        crate::power::PORTS,
+        crate::residential::PORTS,
+        crate::tract_developer::PORTS,
+        crate::zone_developer::PORTS,
+    ]);
     const _: () = assert!(port::addresses_unique(&ALL), "an address has two ports");
 
     /// Every port, in the order of the exported table.
