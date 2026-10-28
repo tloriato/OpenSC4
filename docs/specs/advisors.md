@@ -1057,9 +1057,12 @@ blocked `0xCA8DCDB4` (data2 > 2) → `0xCA3FCEFA` (data1 0) or `0xCA3FCEF4` (dat
 
 `DisasterPeriodStarted` `0xCA1B1E64`: `g_disasters_in_progress` := 1; the disaster type from the instance
 (`0x621CDA33` fire, `0xCA380B06` riot, `0x4A1332E8` pipe burst); `g_disasters_fire_started`, `_fire_ended` := 0,
-`g_disasters_riot_started`, `_riot_ended`; for fires the cause (`+0x38`): 1, 3 user; 2 arson; 4 effects (and user);
-5 flammability → `g_disasters_fire_cause_{arson,effects,flammability}` *[inferred: variable names from
-adv_game_data.lua]*. Any type other than fire, riot or pipe burst counts as a user disaster. Event `0xCC3298DC XOR
+`g_disasters_riot_started`, `_riot_ended`; for fires the cause is obtained by QI `49B43F58` followed by its
+**virtual slot 14 (`+0x38`) GetCause**, not an object-field read. Generic instance QI `22223BA4` precedes subject
+creation; the type comes from generic GetManager followed by manager GetID. The counted pointer identity,
+typed slots, reference ownership and exact call order are disasters.md §3.2.1 (DSEX33-DS01).
+Causes 1, 3 are user; 2 arson; 4 effects (and user); 5 flammability →
+`g_disasters_fire_cause_{arson,effects,flammability}`. Any type other than fire, riot or pipe burst counts as a user disaster. Event `0xCC3298DC XOR
 type` for a user disaster, else `0xCA1B1E64 XOR type`, subject cell (data2, data3); then, if not a user disaster,
 event `0xCA3C0412`.
 `DisasterPeriodEnded` `0xAA1B2002`: `g_disasters_in_progress` := 0; from the disaster layer's statistics:

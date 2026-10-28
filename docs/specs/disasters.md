@@ -563,6 +563,68 @@ Fire and riot use phases 0, 1 and 3. **Phase 2 is used by the volcano**: its `Ge
 (state 5) is therefore not "active" for `GetActiveInstanceCount`. The earthquake and the pipe burst always answer
 phase 1 (a shared constant function, `0x008CD450`); they leave their manager when they end.
 
+#### 3.2.1 Counted period-start identity and the safety consumer (DSEX33-DS01) *[compat]*
+
+The IID of the eight-slot generic `cISC4DisasterInstance` table above is **`22223BA4`**. This is a required
+QI route on the instance, including when it is already supplied through that generic view. It is not an
+advisor-specific interface. The native primary-to-generic offsets are:
+
+| Instance | Generic pointer relative to native complete object | Primary QI evidence |
+|---|---|---|
+| Fire | `+0x0C`, vtable `00A9E590` | `005791B0–00579214` |
+| Riot | `+0x08`, vtable `00A9E818` | `0057D200–0057D225` |
+| Earthquake | `+0x08` | `00576F00–00576F25` |
+| Effect | `+0x08`, vtable `00A9E258` | constructor `005772B0`; primary table `00A9E27C` shares `00576F00` |
+| Pipe burst | `+0x08`, vtable `00A9E730` | constructor `0057CED0`; primary table `00A9E750` shares `00576F00` |
+| Toxic | `+0x08` | `0057EB10–0057EB36` |
+| Volcano | `+0x00` | `0057F480–0057F4BD` |
+
+Successful QI writes the typed pointer, calls the primary AddRef once, and returns true in AL (two 32-bit
+arguments, pop 8). Secondary table QI/AddRef/Release thunks return to the same owner's count; for example
+fire generic QI subtracts `0x0C` (`0057AD40`), whereas fire-specific QI subtracts `0x08` (`0057AD20`). Generic
+slots 3–7 use the arguments/results in §3.2: Shutdown (Boolean), borrowed manager pointer in EAX, u32 ID in
+EAX, `(int32* outX,int32* outZ)` location with Boolean AL, u32 phase in EAX. Slots 3/4/5/7 pop no arguments;
+slot 6 pops 8. An implementation may use its own complete-object layout, provided these typed identities,
+QI round trips, methods and shared lifetime work.
+
+**Message construction preserves the supplied view.** `DisasterHasBegun` receives the generic instance pointer
+used by its location lookup and generic GetID. It passes that same pointer unchanged to standard-message
+slot 33 (`+0x84`, counted unknown setter), then posts with delivery argument zero
+(`00579077–00579099`). It does not QI to canonical IUnknown or substitute a concrete fire interface. The
+message retains the instance, and message destruction releases it. The type/count/cell payload is independent
+of that reference; setting a void pointer instead of the counted unknown does not satisfy this contract.
+
+**Native safety advisor, in order** (`cSC4AdvisorSafety::DoMessage`, `00417126–0041745C`):
+
+1. Read the message's counted unknown with message slot 32 (`+0x80`), and AddRef the non-null result for a
+   local hold. Set the generic-interface local to null and QI the held pointer for `22223BA4`
+   (`00417153–00417163`). Failure bypasses the period-start subject construction. It is therefore possible
+   for count/cell/type logging to match while the native advisor creates no subject.
+2. On success set `g_disasters_in_progress=1`, create one `cSC4AdviceSubject` (CLSID `6A26D049`, IID
+   `6A26D050`), call **generic slot 4 GetManager**, then **manager slot 5 GetID** to classify the disaster
+   (`004171B1–004171CB`). It does not call generic GetID on this path. Form the event key by XOR with
+   `CA1B1E64`. Give the subject the unsigned data2/data3 cell coordinates converted separately to float32;
+   the message's data4 is not used for this type decision.
+3. For a fire, QI the generic view for **fire IID `49B43F58`** (`0041727B–004172A7`). Native fire returns
+   complete object `+8`, vtable `00A9E5B0`. After clearing the three cause variables, call that interface's
+   **slot 14 / vtable offset `+0x38` GetCause**, no arguments, u32 result in EAX (`004172F1–004172F7`).
+   The native getter `00441090` reads fire-view `+0xD4` (complete object `+0xDC`), not generic-view `+0x38`.
+   Portable replacements need the virtual call, not a padding word at a guessed object offset. Fire slot 13
+   SetCause (`00579230`) accepts one u32, pop 4, stores only when the old cause is zero, and returns the
+   retained cause in EAX. QI failure for this required fire interface has no safe fallback in the consumer.
+4. Cause 1 or 3 marks a user disaster; 2 sets arson, 4 sets effects and marks user, 5 sets flammability;
+   other causes leave these cause flags clear. Release the fire interface. Riot sets its started flag;
+   any type other than fire, riot and pipe burst marks a user disaster. User events use `CC3298DC XOR type`;
+   other events use `CA1B1E64 XOR type`. Submit the subject and release it. If the advisor's retained user
+   flag is clear, submit `CA3C0412` with null subject. Finally release the generic view and local unknown
+   hold (`00417340–0041745C`). The retained user flag's lifecycle is advisors.md §7.6.
+
+No QI, classification, subject creation or cause dispatch above draws CRT `rand()`. For the observed fire
+and riot messages at `(167,6)` and `(9,8)`, successful generic QI reaches subject creation at both cells even
+though neither path calls generic GetID. A rejected `22223BA4` request skips it before the first subject
+factory call. This establishes the interface dependency; it does not assert that it explains every record
+in the cited comparison or that storing a cause word alone can repair it.
+
 ## 4. Who starts disasters
 
 | Source | Call | Spec |
