@@ -4,8 +4,8 @@
 
 //! Flag access, interface adjustment, and developer category adapters.
 
-use crate::port::Port;
 use crate::abi::{call_raw, Conv, RawCall};
+use crate::port::Port;
 
 game_fn! { #[cfg(test)] fn query(this: *mut u8, iid: u32, out: *mut *mut u8) -> u64 = "thiscall" 0x0069_5290; }
 game_fn! { #[cfg(test)] fn release(this: *mut u8) -> u64 = "thiscall" 0x0069_59B0; }
@@ -111,9 +111,15 @@ port! {
 }
 
 pub const PORTS: &[Port] = &[
-    fc4p_00698d00::PORT, fc4p_00698d10::PORT, fc4p_00698d20::PORT,
-    fc4p_00698d50::PORT, fc4p_00698d60::PORT, fc4p_00698d80::PORT,
-    fc4p_00698d90::PORT, fc4p_00698dc0::PORT, fc4p_00698dd0::PORT,
+    fc4p_00698d00::PORT,
+    fc4p_00698d10::PORT,
+    fc4p_00698d20::PORT,
+    fc4p_00698d50::PORT,
+    fc4p_00698d60::PORT,
+    fc4p_00698d80::PORT,
+    fc4p_00698d90::PORT,
+    fc4p_00698dc0::PORT,
+    fc4p_00698dd0::PORT,
 ];
 
 #[cfg(test)]
