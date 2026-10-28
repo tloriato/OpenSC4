@@ -11,6 +11,9 @@ use core::ptr::{read_unaligned, write_unaligned};
 game_fn! {
     fn building_fits(building_zone: i32, cell_zone: i32) -> u32 = "C" 0x0069_5390;
 }
+game_fn! {
+    fn demolition_property(holder: *mut u8, property: u32, out: *mut u64) -> u32 = "C" 0x005F_D4B0;
+}
 game_data! {
     static world_to_cell: f32 = 0x00B0_D1DC;
 }
@@ -24,6 +27,162 @@ layout! {
         0x11 => max_land_value / set_max_land_value: u8,
         0x1C => x / set_x: i32,
         0x20 => z / set_z: i32,
+    }
+}
+
+/// Calls a virtual integer method with the register inputs retained by the original caller.
+unsafe fn integer_call(object: *mut u8, slot: usize, args: &[u32], eax: u32, edx: u32) -> u64 {
+    // SAFETY: the enclosing port supplies the live interface and its exact stack arguments.
+    unsafe {
+        let mut call = crate::abi::RawCall::new(
+            crate::abi::Conv::Thiscall,
+            crate::abi::vslot(object, slot),
+            object as u32,
+            args,
+        );
+        call.eax = eax;
+        call.edx = edx;
+        crate::abi::call_raw(&mut call);
+        (u64::from(call.edx) << 32) | u64::from(call.eax)
+    }
+}
+
+fn registers(eax: u32, edx: u32) -> u64 {
+    (u64::from(edx) << 32) | u64::from(eax)
+}
+
+port! {
+    /// Keeps the three argument words available as the coordinate outputs and occupant output.
+    #[port(address = 0x0069_5590, owner = "building", name = "cSC4BuildingDevelopmentSimulator::LocationIsOKForNewBuilding", naked)]
+    pub unsafe extern "C" fn fc4p_00695590() {
+        core::arch::naked_asm!(
+            "lea eax, [esp + 4]", "push dword ptr [esp + 12]",
+            "push dword ptr [esp + 12]", "push dword ptr [esp + 12]", "push eax",
+            "call {body}", "ret 12", body = sym location_ok,
+        );
+    }
+}
+
+/// # Safety
+/// The entry supplies a live simulator and the three writable original argument words.
+unsafe extern "fastcall" fn location_ok(
+    this: *mut u8,
+    entry_edx: u32,
+    args: *mut u32,
+    candidate: u32,
+    x: u32,
+    z: u32,
+) -> u64 {
+    // SAFETY: all interfaces and stack outputs are the ones supplied to the original method.
+    unsafe {
+        let sim = BuildingSim::from_ptr(this);
+        let check_args = [candidate];
+        let mut check = crate::abi::RawCall::new(
+            crate::abi::Conv::Thiscall,
+            crate::abi::vslot(this, 0x3C),
+            this as u32,
+            &check_args,
+        );
+        check.eax = read_unaligned(this.cast());
+        check.edx = entry_edx;
+        crate::abi::call_raw(&mut check);
+        if check.eax as u8 == 0 {
+            return (u64::from(check.edx) << 32) | u64::from(check.eax);
+        }
+        let city = sim.city();
+        write_unaligned(args, 0);
+        vcall!(city, 0x17C => fn(u32, u32, *mut u32, *mut u32), x, z, args.add(1), args.add(2));
+        let occupants = sim.occupants();
+        let table = read_unaligned(occupants.cast::<u32>());
+        let words = [
+            args as u32,
+            read_unaligned(args.add(1)),
+            read_unaligned(args.add(2)),
+            0x2781_28A0,
+        ];
+        let mut call = crate::abi::RawCall::new(
+            crate::abi::Conv::Thiscall,
+            crate::abi::vslot(occupants, 0x84),
+            occupants as u32,
+            &words,
+        );
+        call.eax = args as u32;
+        call.edx = table;
+        crate::abi::call_raw(&mut call);
+        let occupant = read_unaligned(args) as *mut u8;
+        let present = !occupant.is_null();
+        if present {
+            let mut release = crate::abi::RawCall::new(
+                crate::abi::Conv::Thiscall,
+                crate::abi::vslot(occupant, 8),
+                occupant as u32,
+                &[],
+            );
+            release.eax = call.eax;
+            release.edx = read_unaligned(occupant.cast());
+            crate::abi::call_raw(&mut release);
+            call.edx = release.edx;
+        }
+        (u64::from(call.edx) << 32) | u64::from(!present)
+    }
+}
+
+port! {
+    /// Reads the signed 64-bit demolition property through the occupant's two property interfaces.
+    /// The second stack argument is ignored.
+    #[port(address = 0x0069_5700, owner = "building", name = "cSC4BuildingDevelopmentSimulator::GetCostOfOccupantDemolition")]
+    pub unsafe extern "thiscall" fn fc4p_00695700(_this: *mut u8, occupant: *mut u8, _flags: u32) -> u64 {
+        // SAFETY: the game supplies the occupant and both zero-argument interface getters.
+        unsafe {
+            let mut result = 0u64;
+            let first = vcall!(occupant, 0x0C => fn() -> *mut u8);
+            let holder = vcall!(first, 0x18 => fn() -> *mut u8);
+            demolition_property(holder, 0x099A_FACD, &mut result);
+            result
+        }
+    }
+}
+
+port! {
+    /// Preserves incoming EDX on the absent-manager path.
+    #[port(address = 0x0069_5740, owner = "building", name = "InsertOccupantResource", naked)]
+    pub unsafe extern "C" fn fc4p_00695740() {
+        core::arch::naked_asm!("jmp {body}", body = sym insert_occupant_resource);
+    }
+}
+
+/// # Safety
+/// The game supplies a live simulator, incoming EDX, and an occupant resource interface.
+unsafe extern "fastcall" fn insert_occupant_resource(this: *mut u8, entry_edx: u32, occupant: *mut u8) -> u64 {
+    // SAFETY: the simulator's occupant manager and the occupant's getter have these signatures.
+    unsafe {
+        let sim = BuildingSim::from_ptr(this);
+        let manager = sim.occupants();
+        if manager.is_null() {
+            return u64::from(entry_edx) << 32;
+        }
+        let table = read_unaligned(manager.cast::<*const usize>());
+        let mut get = crate::abi::RawCall::new(
+            crate::abi::Conv::Thiscall,
+            crate::abi::vslot(occupant, 0x0C),
+            occupant as u32,
+            &[],
+        );
+        get.eax = manager as u32;
+        get.edx = read_unaligned(occupant.cast());
+        crate::abi::call_raw(&mut get);
+        let manager = sim.occupants();
+        let args = [get.eax, 0];
+        let mut insert = crate::abi::RawCall::new(
+            crate::abi::Conv::Thiscall,
+            read_unaligned(table.add(0x50 / 4)),
+            manager as u32,
+            &args,
+        );
+        insert.eax = get.eax;
+        insert.edx = get.edx;
+        crate::abi::call_raw(&mut insert);
+        (u64::from(insert.edx) << 32) | u64::from(insert.eax)
     }
 }
 
@@ -97,7 +256,7 @@ port! {
     /// Checks zoning, lot presence, power, land value, and lot state in that order.
     /// Failure writes its reason; success leaves the reason word untouched.
     #[port(address = 0x0069_5430, owner = "building", name = "cSC4BuildingDevelopmentSimulator::IsSuitableForConstruction")]
-    pub unsafe extern "thiscall" fn fc4p_00695430(this: *mut u8, candidate: *mut u8, reason: *mut u32) -> u32 {
+    pub unsafe extern "thiscall" fn fc4p_00695430(this: *mut u8, candidate: *mut u8, reason: *mut u32) -> u64 {
         // SAFETY: all pointers and virtual interfaces belong to the game's live candidate and simulator.
         unsafe {
             let sim = BuildingSim::from_ptr(this);
@@ -106,39 +265,48 @@ port! {
             let fit = building_fits(c.zone(), i32::from(zone as i8));
             if fit as u8 == 0 {
                 write_unaligned(reason, 0);
-                return fit;
+                return registers(fit, reason as u32);
             }
-            let lot = vcall!(sim.lots(), 0x18 => fn(i32, i32, u32) -> *mut u8, c.x(), c.z(), 1);
+            let lots = sim.lots();
+            let lot_result = integer_call(lots, 0x18, &[c.x() as u32, c.z() as u32, 1], read_unaligned(lots.cast()), c.z() as u32);
+            let lot = lot_result as u32 as *mut u8;
+            let mut edx = (lot_result >> 32) as u32;
             if lot.is_null() {
                 write_unaligned(reason, 3);
-                return reason as u32 & !255;
+                return registers(reason as u32 & !255, edx);
             }
             if sim.ignore_power() == 0 {
-                let power = vcall!(sim.power(), 0x4C => fn(i32, i32) -> u32, c.x(), c.z());
+                let service = sim.power();
+                let power = integer_call(service, 0x4C, &[c.x() as u32, c.z() as u32], c.x() as u32, read_unaligned(service.cast()));
                 if power as u8 == 0 {
                     write_unaligned(reason, 5);
                     return power;
                 }
             }
             if c.min_land_value() == 0 && c.max_land_value() == 0 {
-                let value = vcall!(sim.land_value(), 0x14 => fn(i32, i32) -> u32, c.x(), c.z());
+                let service = sim.land_value();
+                let value = integer_call(service, 0x14, &[c.x() as u32, c.z() as u32], c.x() as u32, read_unaligned(service.cast()));
+                edx = (value >> 32) as u32;
+                let value = value as u32;
                 if !matches!(c.zone(), 7..=9) && value != c.land_value() {
                     write_unaligned(reason, 2);
-                    return value & !255;
+                    return registers(value & !255, edx);
                 }
             } else {
-                let value = vcall!(sim.land_value(), 0x18 => fn(i32, i32) -> u32, c.x(), c.z()) as u8;
+                let service = sim.land_value();
+                let value = integer_call(service, 0x18, &[c.x() as u32, c.z() as u32], c.x() as u32, read_unaligned(service.cast())) as u8;
                 if value < c.min_land_value() || value > c.max_land_value() {
                     write_unaligned(reason, 1);
-                    return 0;
+                    return registers(0, reason as u32);
                 }
+                edx = u32::from(c.max_land_value());
             }
-            let state = vcall!(lot, 0x84 => fn() -> u32);
-            if state != 1 {
+            let state = integer_call(lot, 0x84, &[], read_unaligned(lot.cast()), edx);
+            if state as u32 != 1 {
                 write_unaligned(reason, 4);
                 return state & !255;
             }
-            1
+            (state & 0xFFFF_FFFF_0000_0000) | 1
         }
     }
 }
@@ -240,7 +408,10 @@ pub const PORTS: &[Port] = &[
     fc4p_00695340::PORT,
     fc4p_00695390::PORT,
     fc4p_00695430::PORT,
+    fc4p_00695590::PORT,
     fc4p_00695610::PORT,
+    fc4p_00695700::PORT,
+    fc4p_00695740::PORT,
     fc4p_00695790::PORT,
     fc4p_00695840::PORT,
     fc4p_006958b0::PORT,

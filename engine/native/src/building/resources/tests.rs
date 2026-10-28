@@ -386,3 +386,85 @@ fn monthly_developers_follow_tree_successors() {
         assert_eq!(sim.state(), 1);
     }
 }
+
+extern "thiscall" fn city_stage(this: *mut u8) -> u64 {
+    // SAFETY: the city fake stores its selected stage after the vtable word.
+    0xABCD_EF01_0000_0000 | u64::from(unsafe { read_unaligned(this.add(4).cast::<u32>()) })
+}
+
+#[test]
+fn stage_multiplier_returns_st0_and_city_integer_registers() {
+    let _fpu = GameFpu::new();
+    let mut object = Object::new(0xE4);
+    let mut table = [0usize; 25];
+    table[24] = city_stage as *const () as usize;
+    let mut city = [table.as_ptr() as usize, 0usize];
+    let multipliers = [0.0f32, 0.5, 1.0, f32::from_bits(0x7FC1_2345)];
+    // SAFETY: each selected index is in the table, and the entry returns one x87 value.
+    unsafe {
+        let sim = BuildingSim::from_ptr(object.ptr());
+        sim.set_city(city.as_mut_ptr().cast());
+        sim.set_population_multipliers(multipliers.as_ptr());
+        for (index, expected) in multipliers.into_iter().enumerate() {
+            city[1] = index;
+            let mut call = RawCall::new(
+                Conv::Thiscall,
+                fc4p_00696040 as *const () as usize,
+                sim.as_ptr() as u32,
+                &[],
+            );
+            call.take_st0 = 1;
+            call_raw(&mut call);
+            assert_eq!((call.eax, call.edx), (index as u32, 0xABCD_EF01));
+            assert_eq!(call.st0.to_f32().to_bits(), expected.to_bits());
+        }
+    }
+}
+
+fn environment() -> (u16, u16, u32, u32) {
+    let mut mxcsr = 0u32;
+    let flags: u32;
+    // SAFETY: only reads floating point control and processor flags.
+    unsafe {
+        core::arch::asm!("stmxcsr [{mx}]", "pushfd", "pop eax",
+            mx = in(reg) &mut mxcsr, lateout("eax") flags);
+    }
+    (
+        crate::x87::control_word(),
+        crate::x87::status_word() & 0x3800,
+        mxcsr,
+        flags & 0x400,
+    )
+}
+
+#[test]
+fn resource_ports_preserve_float_environment_and_an_existing_x87_value() {
+    let _fpu = GameFpu::new();
+    let table = node_table();
+    let mut node = Node {
+        table: table.as_ptr(),
+        supply: 100.0,
+        demand: 90.0,
+    };
+    let mut object = Object::new(0xE4);
+    // SAFETY: the test provides all demand slots and leaves one sentinel below the ports' temporary values.
+    unsafe {
+        let sim = BuildingSim::from_ptr(object.ptr());
+        sim.set_construction(node.ptr());
+        let sentinel = 1.234_567_890_123_456_7f64;
+        core::arch::asm!("fld qword ptr [{value}]", value = in(reg) &sentinel, out("st(0)") _);
+        let before = environment();
+        fc4p_006958e0(sim.as_ptr());
+        assert_eq!(environment(), before);
+        fc4p_00695910(sim.as_ptr());
+        assert_eq!(environment(), before);
+        call_thiscall_with_eax(fc4p_00695920 as *const () as usize, sim.as_ptr(), &[1], 0);
+        assert_eq!(environment(), before);
+        call_thiscall_with_eax(fc4p_00695980 as *const () as usize, sim.as_ptr(), &[1], 0);
+        assert_eq!(environment(), before);
+        let mut restored = 0f64;
+        core::arch::asm!("fstp qword ptr [{value}]", value = in(reg) &mut restored, out("st(0)") _);
+        assert_eq!(restored.to_bits(), sentinel.to_bits());
+        assert_eq!(events().len(), 9);
+    }
+}

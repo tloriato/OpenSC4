@@ -27,6 +27,39 @@ unsafe fn demand_call(node: *mut u8, slot: usize, args: &[u32], floating: bool, 
 }
 
 port! {
+    /// Returns the city's selected stage multiplier in ST0 while retaining the city's EDX:EAX.
+    #[port(address = 0x0069_6040, owner = "building", name = "cSC4BuildingDevelopmentSimulator::GetStagePopulationMultiplier", naked)]
+    pub unsafe extern "C" fn fc4p_00696040() {
+        core::arch::naked_asm!(
+            "sub esp, 12", "lea eax, [esp]", "push eax", "call {body}",
+            "fld tbyte ptr [esp]", "add esp, 12", "ret", body = sym stage_multiplier,
+        );
+    }
+}
+
+/// # Safety
+/// The entry supplies a live simulator and storage for the ST0 result.
+unsafe extern "fastcall" fn stage_multiplier(this: *mut u8, entry_edx: u32, out: *mut F80) -> u64 {
+    // SAFETY: the city selects an accessible entry in the simulator's multiplier table.
+    unsafe {
+        let sim = BuildingSim::from_ptr(this);
+        let city = sim.city();
+        let mut call = RawCall::new(Conv::Thiscall, vslot(city, 0x60), city as u32, &[]);
+        call.eax = read_unaligned(city.cast());
+        call.edx = entry_edx;
+        call_raw(&mut call);
+        let value = read_unaligned(
+            sim.population_multipliers()
+                .cast::<u8>()
+                .wrapping_add(call.eax.wrapping_mul(4) as usize)
+                .cast::<f32>(),
+        );
+        write_unaligned(out, F80::from_f32(value));
+        (u64::from(call.edx) << 32) | u64::from(call.eax)
+    }
+}
+
+port! {
     /// Truncates float32 supply minus unrounded demand; clamps only the signed low word to zero.
     #[port(address = 0x0069_58E0, owner = "building", name = "cSC4BuildingDevelopmentSimulator::GetFreeConstructionResources")]
     pub unsafe extern "thiscall" fn fc4p_006958e0(this: *mut u8) -> u64 {
@@ -204,6 +237,7 @@ pub const PORTS: &[Port] = &[
     fc4p_00695910::PORT,
     fc4p_00695920::PORT,
     fc4p_00695980::PORT,
+    fc4p_00696040::PORT,
     fc4p_00696130::PORT,
 ];
 

@@ -8,6 +8,7 @@ use std::cell::RefCell;
 
 thread_local! {
     static CALLS: RefCell<Vec<(usize, Vec<u32>)>> = const { RefCell::new(Vec::new()) };
+    static FOUND: RefCell<usize> = const { RefCell::new(0) };
 }
 
 fn record(this: *mut u8, args: &[u32]) {
@@ -148,15 +149,15 @@ fn zone_fits_and_full_integer_results() {
     }
 }
 
-extern "thiscall" fn pair(this: *mut u8, x: i32, z: i32) -> u32 {
+extern "thiscall" fn pair(this: *mut u8, x: i32, z: i32) -> u64 {
     record(this, &[x as u32, z as u32]);
     // SAFETY: test service objects store their configured return value after the table.
-    unsafe { read_unaligned(this.add(4).cast()) }
+    0x5566_7788_0000_0000 | u64::from(unsafe { read_unaligned(this.add(4).cast::<u32>()) })
 }
-extern "thiscall" fn triple(this: *mut u8, x: i32, z: i32, exact: u32) -> *mut u8 {
+extern "thiscall" fn triple(this: *mut u8, x: i32, z: i32, exact: u32) -> u64 {
     record(this, &[x as u32, z as u32, exact]);
     // SAFETY: the same test service layout.
-    unsafe { read_unaligned(this.add(4).cast()) }
+    0x5566_7788_0000_0000 | u64::from(unsafe { read_unaligned(this.add(4).cast::<u32>()) })
 }
 extern "thiscall" fn noargs(this: *mut u8) -> u32 {
     record(this, &[]);
@@ -256,7 +257,16 @@ fn construction_checks_short_circuit_in_order() {
                 }
             };
             let mut reason = 99;
-            let result = fc4p_00695430(sim.as_ptr(), c.as_ptr(), &mut reason);
+            let full_result = fc4p_00695430(sim.as_ptr(), c.as_ptr(), &mut reason);
+            let result = full_result as u32;
+            let expected_edx = if mode == 1 || mode == 6 || mode == 7 {
+                &mut reason as *mut u32 as u32
+            } else {
+                0x5566_7788
+            };
+            if mode == 1 || mode == 2 || mode == 3 || mode == 4 || mode == 6 || mode == 7 {
+                assert_eq!((full_result >> 32) as u32, expected_edx);
+            }
             let expected_result = if expected_result == u32::MAX {
                 &mut reason as *mut u32 as u32 & !255
             } else {
@@ -398,8 +408,172 @@ fn suitability_calls_the_building_helper_address() {
         let c = Candidate::from_ptr(candidate.ptr());
         c.set_zone(1);
         let mut reason = 9;
-        assert_eq!(fc4p_00695430(sim.as_ptr(), c.as_ptr(), &mut reason), 0xABCD_1200);
+        assert_eq!(fc4p_00695430(sim.as_ptr(), c.as_ptr(), &mut reason) as u32, 0xABCD_1200);
         assert_eq!(reason, 0);
         assert_eq!(calls().len(), 1);
+    }
+}
+
+extern "thiscall" fn location_check(this: *mut u8, candidate: u32) -> u64 {
+    record(this, &[candidate]);
+    // SAFETY: the test uses the reference count field to configure this fake's low return word.
+    let result = unsafe { BuildingSim::from_ptr(this).references() as u32 };
+    0x1122_3344_0000_0000 | u64::from(result)
+}
+extern "thiscall" fn coordinates(this: *mut u8, x: u32, z: u32, out_x: *mut u32, out_z: *mut u32) {
+    record(this, &[x, z, out_x as u32, out_z as u32]);
+    // SAFETY: the location entry passes its two writable original coordinate words.
+    unsafe {
+        write_unaligned(out_x, 17);
+        write_unaligned(out_z, (-9i32) as u32);
+    }
+}
+extern "thiscall" fn occupant_at(this: *mut u8, out: *mut u32, x: u32, z: u32, kind: u32) -> u64 {
+    record(this, &[out as u32, x, z, kind]);
+    let found = FOUND.with(|f| *f.borrow());
+    // SAFETY: the location entry passes its original first argument word as the occupant output.
+    unsafe {
+        write_unaligned(out, found as u32);
+    }
+    0x5566_7788_AABB_CCDD
+}
+extern "thiscall" fn release_at(this: *mut u8) -> u64 {
+    record(this, &[]);
+    0x99AA_BBCC_1234_5678
+}
+
+#[test]
+fn location_checks_reuse_argument_words_and_release_found_occupants() {
+    let mut object = Object::new(0xE4);
+    let p = object.ptr();
+    let mut primary = [0usize; 60];
+    primary[15] = location_check as *const () as usize;
+    let mut city_table = [0usize; 96];
+    city_table[95] = coordinates as *const () as usize;
+    let mut occupant_table = [0usize; 34];
+    occupant_table[33] = occupant_at as *const () as usize;
+    let mut found_table = [0usize; 3];
+    found_table[2] = release_at as *const () as usize;
+    let mut city = [city_table.as_ptr() as usize];
+    let city_p = city.as_mut_ptr().cast::<u8>();
+    let mut manager = [occupant_table.as_ptr() as usize];
+    let manager_p = manager.as_mut_ptr().cast::<u8>();
+    let mut found = [found_table.as_ptr() as usize];
+    let found_p = found.as_mut_ptr().cast::<u8>();
+    // SAFETY: all four interfaces have the exact methods reached by this port.
+    unsafe {
+        let sim = BuildingSim::from_ptr(p);
+        sim.set_vtable(primary.as_ptr());
+        sim.set_city(city_p);
+        sim.set_occupants(manager_p);
+        for present in [false, true] {
+            sim.set_references(1);
+            FOUND.with(|f| *f.borrow_mut() = if present { found_p as usize } else { 0 });
+            let mut args = [0xAABB_CCDD, 1.25f32.to_bits(), (-2.5f32).to_bits()];
+            let a = args.as_mut_ptr();
+            let result = location_ok(p, 0, a, args[0], args[1], args[2]);
+            assert_eq!(args, [if present { found_p as u32 } else { 0 }, 17, (-9i32) as u32]);
+            assert_eq!(
+                result,
+                if present {
+                    0x99AA_BBCC_0000_0000
+                } else {
+                    0x5566_7788_0000_0001
+                }
+            );
+            let mut expected = vec![
+                (p as usize, vec![0xAABB_CCDD]),
+                (
+                    city_p as usize,
+                    vec![1.25f32.to_bits(), (-2.5f32).to_bits(), a.add(1) as u32, a.add(2) as u32],
+                ),
+                (manager_p as usize, vec![a as u32, 17, (-9i32) as u32, 0x2781_28A0]),
+            ];
+            if present {
+                expected.push((found_p as usize, vec![]));
+            }
+            assert_eq!(calls(), expected);
+        }
+        sim.set_references(0xAABB_CC00u32 as i32);
+        let mut args = [7, 8, 9];
+        assert_eq!(location_ok(p, 0, args.as_mut_ptr(), 7, 8, 9), 0x1122_3344_AABB_CC00);
+        assert_eq!(args, [7, 8, 9]);
+        assert_eq!(calls(), [(p as usize, vec![7])]);
+        assert_eq!(
+            call_thiscall_with_eax(fc4p_00695590 as *const () as usize, p, &[7, 8, 9], 0),
+            (0xAABB_CC00, 0x1122_3344)
+        );
+        assert_eq!(calls(), [(p as usize, vec![7])]);
+    }
+}
+
+extern "C" fn demolition_fake(holder: *mut u8, property: u32, out: *mut u64) -> u32 {
+    record(holder, &[property]);
+    // SAFETY: the port's result local starts at zero; the test holder's word selects whether to write it.
+    unsafe {
+        assert_eq!(read_unaligned(out), 0);
+        if read_unaligned(holder.add(4).cast::<u32>()) != 0 {
+            write_unaligned(out, 0xFEDC_BA98_7654_3210);
+        }
+    }
+    0
+}
+#[test]
+fn demolition_cost_initializes_full_word_and_delegates_property_read() {
+    let _property = fake(0x005F_D4B0, demolition_fake as *const () as usize);
+    let mut table = [0usize; 7];
+    table[3] = noargs as *const () as usize;
+    table[6] = noargs as *const () as usize;
+    let mut holder = [0usize, 0usize];
+    let mut middle = [table.as_ptr() as usize, holder.as_mut_ptr() as usize];
+    let mut occupant = [table.as_ptr() as usize, middle.as_mut_ptr() as usize];
+    // SAFETY: the interface getters return the next interface and the property fake writes the result.
+    unsafe {
+        for write in [false, true] {
+            holder[1] = usize::from(write);
+            let result = fc4p_00695700(core::ptr::null_mut(), occupant.as_mut_ptr().cast(), u32::MAX);
+            assert_eq!(result, if write { 0xFEDC_BA98_7654_3210 } else { 0 });
+            assert_eq!(
+                calls(),
+                [
+                    (occupant.as_ptr() as usize, vec![]),
+                    (middle.as_ptr() as usize, vec![]),
+                    (holder.as_ptr() as usize, vec![0x099A_FACD])
+                ]
+            );
+        }
+    }
+}
+
+extern "thiscall" fn insert_resource(this: *mut u8, key: u32, zero: u32) -> u64 {
+    record(this, &[key, zero]);
+    0x9876_5432_ABCD_EF01
+}
+#[test]
+fn occupant_resource_insertion_handles_absent_manager_and_forwards_key() {
+    let mut object = Object::new(0xE4);
+    let p = object.ptr();
+    let mut table = [0usize; 21];
+    table[20] = insert_resource as *const () as usize;
+    table[3] = noargs as *const () as usize;
+    let mut manager = [table.as_ptr() as usize];
+    let m = manager.as_mut_ptr().cast::<u8>();
+    let mut occupant = [table.as_ptr() as usize, 0x7654_3210];
+    let o = occupant.as_mut_ptr().cast::<u8>();
+    // SAFETY: both virtual methods are installed and the absent-manager path never reads the occupant.
+    unsafe {
+        assert_eq!(
+            insert_occupant_resource(p, 0x1234_5678, core::ptr::null_mut()),
+            0x1234_5678_0000_0000
+        );
+        assert!(calls().is_empty());
+        BuildingSim::from_ptr(p).set_occupants(m);
+        assert_eq!(insert_occupant_resource(p, 0, o), 0x9876_5432_ABCD_EF01);
+        assert_eq!(calls(), [(o as usize, vec![]), (m as usize, vec![0x7654_3210, 0])]);
+        assert_eq!(
+            call_thiscall_with_eax(fc4p_00695740 as *const () as usize, p, &[o as u32], 0),
+            (0xABCD_EF01, 0x9876_5432)
+        );
+        assert_eq!(calls().len(), 2);
     }
 }

@@ -41,11 +41,12 @@ layout! {
 }
 
 pub mod checks;
+pub mod containers;
 pub mod resources;
 pub mod shared;
 
-const COUNT: usize = checks::PORTS.len() + resources::PORTS.len() + shared::PORTS.len();
-const ALL: [Port; COUNT] = crate::port::concat(&[checks::PORTS, resources::PORTS, shared::PORTS]);
+const COUNT: usize = checks::PORTS.len() + containers::PORTS.len() + resources::PORTS.len() + shared::PORTS.len();
+const ALL: [Port; COUNT] = crate::port::concat(&[checks::PORTS, containers::PORTS, resources::PORTS, shared::PORTS]);
 
 /// This module's complete replacements.
 pub const PORTS: &[Port] = &ALL;
