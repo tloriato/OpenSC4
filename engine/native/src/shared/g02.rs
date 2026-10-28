@@ -1767,6 +1767,593 @@ register_port!(
     }
 );
 
+game_data! { static audio_song_tables: [u8; 0x60] = 0x00B2_1A88; }
+game_data! { static audio_song_bases: [u32; 2] = 0x00B0_987C; }
+game_data! { static audio_resource_manager: *mut u8 = 0x00B4_3CA8; }
+game_fn! {
+    #[allow(dead_code)]
+    fn append_song_record(this: *mut u8, record: *const u32) = "thiscall" 0x004B_2400;
+}
+
+port! {
+    /// Load up to thirty song properties, carrying each explicit enable byte into subsequent records.
+    /// The resource output reuses the caller's argument. Reserve the original local words so the three
+    /// untouched padding bytes of each appended record keep their incoming values.
+    #[port(address = 0x004F_2910, owner = "shared", name = "LoadAudioSongTable", naked)]
+    pub unsafe extern "C" fn fc4p_004f2910() {
+        core::arch::naked_asm!(
+            "sub esp, 0x28", "push edx", "push ecx", "push eax", "mov ecx, esp",
+            "lea edx, [esp + 0x34]", "push edx", "call {}",
+            "pop eax", "pop ecx", "pop edx", "add esp, 0x28", "ret",
+            sym load_audio_song_table,
+        );
+    }
+}
+
+unsafe extern "thiscall" fn load_audio_song_table(r: &mut Registers, stack: *mut u32) {
+    unsafe {
+        r.eax = arg(stack, 1);
+        if (r.eax as i32) < 0 || r.eax as i32 >= 2 {
+            return;
+        }
+        r.ecx = (audio_song_tables() as u32).wrapping_add(r.eax * 0x30);
+        stack.sub(8).write(r.ecx);
+        if r.ecx == 0 {
+            return;
+        }
+        let mut id = audio_song_bases().cast::<u32>().add(r.eax as usize).read();
+        r.eax = load(r.ecx, 0x14);
+        r.ecx = audio_resource_manager().read() as u32;
+        stack.sub(5).write(r.eax);
+        r.eax = stack.add(1) as u32;
+        stack.add(1).write(0);
+        let key = stack.sub(7);
+        r.eax = key as u32;
+        key.write(0x6534_284A);
+        key.add(1).write(0xCA25_875D);
+        r.edx = load(r.ecx, 0);
+        for i in 2..=4 {
+            stack.sub(i).write(0);
+        }
+        stack.sub(1).cast::<u8>().write(1);
+        virtual_call(r, 0x0C, &[r.eax, 0xA521_60F5, stack.add(1) as u32, 0, 0]);
+        r.ecx = arg(stack, 1);
+        if r.eax as u8 == 0 {
+            if r.ecx != 0 {
+                r.edx = load(r.ecx, 0);
+                virtual_call(r, 8, &[]);
+            }
+            return;
+        }
+        r.eax = load(r.ecx, 0);
+        virtual_call(r, 0x1C, &[]);
+        let holder = r.eax;
+        let delta = 0x8A5E_7B50u32.wrapping_sub(id);
+        r.eax = delta;
+        for remaining in (0..30u32).rev() {
+            r.edx = load(holder, 0);
+            r.eax = r.eax.wrapping_add(id);
+            r.ecx = holder;
+            virtual_call(r, 0x24, &[r.eax]);
+            if r.eax != 0 {
+                r.edx = load(r.eax, 0);
+                r.ecx = r.eax;
+                virtual_call(r, 0x14, &[]);
+                let variant = r.eax;
+                r.eax = load(variant, 0);
+                r.ecx = variant;
+                virtual_call(r, 0x19C, &[]);
+                let data = r.eax;
+                r.edx = load(variant, 0);
+                r.ecx = variant;
+                virtual_call(r, 0x10, &[]);
+                if r.eax >= 2 {
+                    r.ecx = load(data, 0);
+                    r.edx = load(data, 4);
+                    stack.sub(4).write(id);
+                    stack.sub(2).write(r.ecx);
+                    stack.sub(3).write(r.edx);
+                    if r.eax >= 3 {
+                        let enabled = (data.wrapping_add(8) as *const u8).read();
+                        r.eax = (r.eax & !0xFF) | u32::from(enabled);
+                        stack.sub(1).cast::<u8>().write(enabled);
+                    }
+                    r.ecx = stack.sub(4) as u32;
+                    let record = r.ecx;
+                    r.ecx = stack.sub(8).read().wrapping_add(8);
+                    invoke(r, crate::abi::target(0x004B_2400), &[record], Conv::Thiscall);
+                }
+            }
+            id = id.wrapping_add(1);
+            r.eax = remaining;
+            if remaining != 0 {
+                r.eax = delta;
+            }
+        }
+        r.ecx = arg(stack, 1);
+        if r.ecx != 0 {
+            stack.add(1).write(0);
+            r.edx = load(r.ecx, 0);
+            virtual_call(r, 8, &[]);
+            r.ecx = arg(stack, 1);
+            if r.ecx != 0 {
+                r.eax = load(r.ecx, 0);
+                virtual_call(r, 8, &[]);
+            }
+        }
+    }
+}
+
+game_data! { static simulation_clock: *mut u8 = 0x00B4_3D44; }
+game_data! { static city_preferences: *mut u8 = 0x00B4_3C94; }
+game_data! { static automaton_time_scale: u32 = 0x00B0_9964; }
+game_data! { static automata_stopped: u8 = 0x00B2_1B9C; }
+game_data! { static automata_speed_scales: [u32; 4] = 0x00B2_1D18; }
+game_data! { static occupant_manager: *mut u8 = 0x00B4_3D0C; }
+game_data! { static model_manager: *mut u8 = 0x00B4_3DD0; }
+game_data! { static automaton_random: [u32; 4] = 0x00B2_1D78; }
+game_data! { static speed_conversion_scale: f32 = 0x00A9_52E8; }
+game_data! { static unit_opacity: f32 = 0x00A8_1228; }
+game_data! { static retirement_delay: f32 = 0x00A9_52D8; }
+
+game_fn! {
+    #[allow(dead_code)]
+    fn random_integer_range(this: *mut u8, low: i32, high: i32) -> i32 = "thiscall" 0x0091_3A14;
+}
+game_fn! {
+    #[allow(dead_code)]
+    fn random_float_range(this: *mut u8, low_lo: u32, low_hi: u32, high_lo: u32, high_hi: u32) -> St0 = "thiscall" 0x0091_3A46;
+}
+game_fn! {
+    #[allow(dead_code)]
+    fn current_opacity(this: *mut u8) -> St0 = "thiscall" 0x004F_A960;
+}
+
+/// Take a game's floating return without rounding it or losing its integer scratch results.
+unsafe fn invoke_st0(r: &mut Registers, target: usize, args: &[u32]) -> F80 {
+    let mut value = [0u8; 10];
+    unsafe {
+        invoke(r, target, args, Conv::Thiscall);
+        core::arch::asm!("fstp tbyte ptr [{value}]", value = in(reg) value.as_mut_ptr(), out("st(0)") _);
+    }
+    F80::from_bytes(value)
+}
+
+fn multiply_stored(value: F80, operand: f32) -> F80 {
+    let mut result = [0u8; 10];
+    unsafe {
+        core::arch::asm!("fld tbyte ptr [{value}]", "fmul dword ptr [{operand}]", "fstp tbyte ptr [{result}]",
+            value = in(reg) &value, operand = in(reg) &operand,
+            result = in(reg) result.as_mut_ptr(), out("st(0)") _);
+    }
+    F80::from_bytes(result)
+}
+
+register_port!(
+    0x0050_7BF0,
+    fc4p_00507bf0,
+    update_automaton_time_scale,
+    0,
+    "UpdateAutomatonTimeScale",
+    |r, _stack| {
+        unsafe {
+            let simulation = simulation_service().read() as u32;
+            r.eax &= !0xFF;
+            automaton_time_scale().write(1.0f32.to_bits());
+            automata_stopped().write(0);
+            if simulation == 0 {
+                return;
+            }
+            r.ecx = simulation_clock().read() as u32;
+            r.eax = load(r.ecx, 0);
+            virtual_call(r, 0x34, &[]);
+            if r.eax as u8 != 0 {
+                r.ecx = automata_speed_scales().cast::<u32>().add(3).read();
+                r.eax = (r.eax & !0xFF) | u32::from(automata_stopped().read());
+                automaton_time_scale().write(r.ecx);
+                return;
+            }
+            r.edx = load(simulation, 0);
+            r.ecx = simulation;
+            virtual_call(r, 0x44, &[]);
+            if r.eax as u8 == 0 {
+                r.ecx = city_preferences().read() as u32;
+                r.eax = load(r.ecx, 0);
+                virtual_call(r, 0x98, &[]);
+                let enabled = (r.eax.wrapping_add(0xF18) as *const u8).read();
+                r.ecx = (r.ecx & !0xFF) | u32::from(enabled);
+                if enabled != 0 {
+                    r.edx = load(simulation, 0);
+                    r.ecx = simulation;
+                    virtual_call(r, 0x3C, &[]);
+                    if r.eax as u8 != 0 {
+                        r.eax = (r.eax & !0xFF) | 1;
+                        automaton_time_scale().write(0);
+                        automata_stopped().write(1);
+                        return;
+                    }
+                    r.eax = load(simulation, 0);
+                    r.ecx = simulation;
+                    virtual_call(r, 0x6C, &[]);
+                    if r.eax == 0 {
+                        r.eax = automata_speed_scales().cast::<u32>().read();
+                        automaton_time_scale().write(r.eax);
+                        r.eax = (r.eax & !0xFF) | u32::from(automata_stopped().read());
+                        return;
+                    }
+                    r.eax = r.eax.wrapping_sub(2);
+                    let speed_two = r.eax == 0;
+                    r.eax = (r.eax & !0xFF) | u32::from(automata_stopped().read());
+                    if speed_two {
+                        r.edx = automata_speed_scales().cast::<u32>().add(2).read();
+                        automaton_time_scale().write(r.edx);
+                    } else {
+                        r.ecx = automata_speed_scales().cast::<u32>().add(1).read();
+                        automaton_time_scale().write(r.ecx);
+                    }
+                    return;
+                }
+            }
+            r.ecx = automata_speed_scales().cast::<u32>().read();
+            r.eax = (r.eax & !0xFF) | u32::from(automata_stopped().read());
+            automaton_time_scale().write(r.ecx);
+        }
+    }
+);
+
+register_port!(
+    0x0050_5780,
+    fc4p_00505780,
+    configure_random_speed,
+    4,
+    "ConfigureRandomSpeed",
+    |r, stack| {
+        unsafe {
+            let this = r.ecx;
+            let tuning = arg(stack, 1);
+            let mut speed = f32::from_bits(load(this, 0x80));
+            r.eax = load(tuning, 0x38);
+            let mut count = r.eax;
+            stack.add(1).write(count);
+            if r.eax as i32 > 0 {
+                r.ecx = load(tuning, 0x3C);
+                if r.ecx as i32 > 0 {
+                    if r.eax != r.ecx {
+                        let high = r.ecx;
+                        r.ecx = automaton_random() as u32;
+                        invoke(r, crate::abi::target(0x0091_3A14), &[r.eax, high], Conv::Thiscall);
+                        count = r.eax;
+                        stack.add(1).write(count);
+                    }
+                    speed = multiply_stored(F80::from_i32(count as i32), speed_conversion_scale().read()).to_f32();
+                }
+            }
+            let low = f32::from_bits(load(tuning, 0x30));
+            let high = f32::from_bits(load(tuning, 0x34));
+            let status: u16;
+            core::arch::asm!("fld dword ptr [{high}]", "fld dword ptr [{low}]", "fucompp", "fnstsw ax",
+            high = in(reg) &high, low = in(reg) &low, out("ax") status,
+            out("st(0)") _, out("st(1)") _);
+            r.eax = (r.eax & 0xFFFF_0000) | u32::from(status);
+            let scaled = if status & 0x4400 == 0 || status & 0x4400 == 0x4400 {
+                // Unequal or unordered endpoints draw once; equal endpoints use the first value.
+                let high_bits = F80::from_f32(high).to_f64().to_bits();
+                let low_bits = F80::from_f32(low).to_f64().to_bits();
+                r.ecx = automaton_random() as u32;
+                let factor = invoke_st0(
+                    r,
+                    crate::abi::target(0x0091_3A46),
+                    &[
+                        low_bits as u32,
+                        (low_bits >> 32) as u32,
+                        high_bits as u32,
+                        (high_bits >> 32) as u32,
+                    ],
+                );
+                multiply_stored(factor, speed)
+            } else {
+                multiply_stored(F80::from_f32(speed), low)
+            };
+            r.eax = load(tuning, 0x40);
+            let scaled_bits = scaled.to_f32().to_bits();
+            r.ecx = scaled_bits;
+            r.edx = load(this, 0);
+            let value = r.ecx;
+            r.ecx = this;
+            virtual_call(r, 0x90, &[value, r.eax]);
+            r.ecx = scaled_bits;
+        }
+    }
+);
+
+register_port!(
+    0x0050_7E60,
+    fc4p_00507e60,
+    set_occupant_registration,
+    4,
+    "SetOccupantRegistration",
+    |r, stack| {
+        unsafe {
+            let this = r.ecx;
+            let flags = (this.wrapping_add(0x33) as *const u8).read();
+            r.edx = (r.edx & !0xFF) | u32::from(flags);
+            r.ecx = (r.ecx & !0xFF) | (arg(stack, 1) & 0xFF);
+            r.eax = (r.eax & !0xFF) | u32::from(flags & 1);
+            if r.eax as u8 == r.ecx as u8 {
+                r.eax = (r.eax & !0xFF) | 1;
+                return;
+            }
+            r.ecx = occupant_manager().read() as u32;
+            if r.ecx == 0 {
+                r.eax &= !0xFF;
+                return;
+            }
+            if r.eax as u8 != 0 {
+                if flags & 2 != 0 {
+                    r.eax = model_manager().read() as u32;
+                    if r.eax != 0 {
+                        r.eax = load(this, 0x114);
+                        let mut cursor = load(this, 0x110);
+                        while cursor != r.eax {
+                            r.ecx = load(cursor, 0);
+                            if r.ecx != 0 {
+                                let manager = model_manager().read() as u32;
+                                r.eax = load(r.ecx, 0);
+                                let table = load(manager, 0);
+                                virtual_call(r, 0, &[]);
+                                r.ecx = manager;
+                                invoke(r, load(table, 0x74) as usize, &[r.eax], Conv::Thiscall);
+                            }
+                            r.eax = load(this, 0x114);
+                            cursor = cursor.wrapping_add(4);
+                        }
+                    }
+                    r.edx = load(this, 4);
+                    r.ecx = this.wrapping_add(4);
+                    virtual_call(r, 0x7C, &[2]);
+                    r.ecx = occupant_manager().read() as u32;
+                }
+                r.eax = load(r.ecx, 0);
+                virtual_call(r, 0x54, &[this.wrapping_add(4), 0, 0]);
+                r.edx = load(this, 4);
+                r.ecx = this.wrapping_add(4);
+                virtual_call(r, 0x7C, &[1]);
+                r.eax = (r.eax & !0xFF) | 1;
+                return;
+            }
+            r.eax = load(this, 0x110);
+            if r.eax != load(this, 0x114) {
+                r.edx = r.eax;
+                r.eax = load(r.edx, 0);
+                if r.eax != 0 {
+                    r.edx = load(r.eax, 4);
+                    r.edx = load(r.edx, 4);
+                    r.eax = r.edx.wrapping_add(r.eax).wrapping_add(4);
+                    if r.eax != 0 {
+                        r.edx = load(r.eax, 0);
+                        let output = this.wrapping_add(0x170);
+                        r.ecx = r.eax;
+                        virtual_call(r, 0x20, &[output]);
+                        r.ecx = occupant_manager().read() as u32;
+                    }
+                }
+            }
+            r.edx = load(r.ecx, 0);
+            virtual_call(r, 0x50, &[this.wrapping_add(4), 0]);
+            if r.eax as u8 == 0 {
+                r.eax &= !0xFF;
+                return;
+            }
+            r.eax = load(this, 4);
+            r.ecx = this.wrapping_add(4);
+            virtual_call(r, 0x74, &[1]);
+            r.eax = (r.eax & !0xFF) | 1;
+        }
+    }
+);
+
+register_port!(
+    0x0050_7F70,
+    fc4p_00507f70,
+    set_model_registration,
+    4,
+    "SetModelRegistration",
+    |r, stack| {
+        unsafe {
+            let this = r.ecx;
+            r.edx = (r.edx & !0xFF) | (arg(stack, 1) & 0xFF);
+            let flags = (this.wrapping_add(0x33) as *const u8).read();
+            r.ecx = (r.ecx & !0xFF) | u32::from(flags);
+            r.eax = (r.eax & !0xFF) | u32::from((flags >> 1) & 1);
+            if r.eax as u8 == r.edx as u8 {
+                r.eax = (r.eax & !0xFF) | 1;
+                r.ecx = this;
+                return;
+            }
+            r.edx = model_manager().read() as u32;
+            if r.edx == 0 {
+                r.eax &= !0xFF;
+                r.ecx = this;
+                return;
+            }
+            if r.eax as u8 != 0 {
+                let mut cursor = load(this, 0x110);
+                while cursor != load(this, 0x114) {
+                    r.ecx = load(cursor, 0);
+                    if r.ecx != 0 {
+                        let manager = model_manager().read() as u32;
+                        r.eax = load(r.ecx, 0);
+                        let table = load(manager, 0);
+                        virtual_call(r, 0, &[]);
+                        r.ecx = manager;
+                        invoke(r, load(table, 0x74) as usize, &[r.eax], Conv::Thiscall);
+                    }
+                    r.eax = load(this, 0x114);
+                    cursor = cursor.wrapping_add(4);
+                }
+                r.edx = load(this, 4);
+                r.ecx = this.wrapping_add(4);
+                virtual_call(r, 0x7C, &[2]);
+                r.eax = (r.eax & !0xFF) | 1;
+                r.ecx = this;
+                return;
+            }
+            if flags & 1 == 0 {
+                r.eax = load(this, 0);
+                r.ecx = this;
+                virtual_call(r, 0x118, &[1]);
+            }
+            if (this.wrapping_add(0x33) as *const u8).read() & 1 == 0 {
+                r.eax &= !0xFF;
+                r.ecx = this;
+                return;
+            }
+            r.ecx = this.wrapping_add(0x1B0);
+            let opacity = invoke_st0(r, crate::abi::target(0x004F_A960), &[]).to_f32();
+            stack.add(1).write(opacity.to_bits());
+            let mut scratch = this;
+            let mut cursor = load(this, 0x110);
+            r.eax = (r.eax & !0xFF) | 1;
+            let mut complete = true;
+            while cursor != load(this, 0x114) {
+                if r.eax as u8 == 0 {
+                    complete = false;
+                    break;
+                }
+                let model = load(cursor, 0);
+                if model != 0 {
+                    r.edx = load(model, 0);
+                    r.ecx = model;
+                    let status = compare_stored(F80::from_f32(opacity), unit_opacity().read());
+                    r.eax = (r.eax & 0xFFFF_0000) | u32::from(status);
+                    if status & 0x0500 == 0x0100 || status & 0x0500 == 0x0400 {
+                        // Ordered opacity below one selects the tweened value.
+                        r.eax = opacity.to_bits();
+                        virtual_call(r, 0x48, &[1, r.eax]);
+                    } else {
+                        virtual_call(r, 0x48, &[0, 1.0f32.to_bits()]);
+                    }
+                    let manager = model_manager().read() as u32;
+                    r.eax = load(manager, 0);
+                    r.edx = load(model, 0);
+                    r.ecx = model;
+                    let table = r.eax;
+                    scratch = table;
+                    virtual_call(r, 0, &[]);
+                    let handle = r.eax;
+                    r.eax = table;
+                    r.ecx = manager;
+                    invoke(r, load(table, 0x70) as usize, &[handle], Conv::Thiscall);
+                    r.eax = (r.eax & !0xFF) | u32::from(r.eax as u8 != 0);
+                }
+                r.ecx = load(this, 0x114);
+                cursor = cursor.wrapping_add(4);
+            }
+            if complete && r.eax as u8 != 0 {
+                r.eax = load(this, 4);
+                r.ecx = this.wrapping_add(4);
+                virtual_call(r, 0x74, &[2]);
+            }
+            r.eax &= !0xFF;
+            r.ecx = scratch;
+        }
+    }
+);
+
+register_port!(
+    0x0050_8610,
+    fc4p_00508610,
+    publish_automaton_models,
+    8,
+    "PublishAutomatonModels",
+    |r, stack| {
+        unsafe {
+            let this = r.ecx;
+            r.eax = load(this, 0x110);
+            if r.eax != load(this, 0x114) {
+                r.ecx = r.eax;
+                r.eax = load(r.ecx, 0);
+                if r.eax == 0 {
+                    r.ecx = 0;
+                } else {
+                    r.edx = load(r.eax, 4);
+                    r.ecx = load(r.edx, 4).wrapping_add(r.eax).wrapping_add(4);
+                }
+                r.edx = load(r.ecx, 0);
+                r.eax = this.wrapping_add(0x170);
+                virtual_call(r, 0x20, &[r.eax]);
+            }
+            r.edx = load(this, 4);
+            r.ecx = this.wrapping_add(4);
+            virtual_call(r, 0x80, &[4]);
+            if r.eax as u8 != 0 {
+                let flags = (this.wrapping_add(0x33) as *const u8).read();
+                r.eax = (r.eax & !0xFF) | u32::from(flags);
+                if flags & 2 != 0 {
+                    r.eax = load(this, 0x114);
+                    let mut cursor = load(this, 0x110);
+                    while cursor != r.eax {
+                        r.ecx = load(cursor, 0);
+                        if r.ecx != 0 {
+                            r.eax = (r.eax & !0xFF) | (arg(stack, 1) & 0xFF);
+                            if r.eax as u8 != 0 {
+                                let manager = model_manager().read() as u32;
+                                r.eax = load(r.ecx, 0);
+                                let table = load(manager, 0);
+                                virtual_call(r, 0, &[]);
+                                r.ecx = manager;
+                                invoke(r, load(table, 0x78) as usize, &[r.eax], Conv::Thiscall);
+                            } else {
+                                r.eax = (r.eax & !0xFF) | (arg(stack, 2) & 0xFF);
+                                if r.eax as u8 != 0 {
+                                    let manager = model_manager().read() as u32;
+                                    r.edx = load(r.ecx, 0);
+                                    let table = load(manager, 0);
+                                    virtual_call(r, 0, &[]);
+                                    r.ecx = manager;
+                                    invoke(r, load(table, 0x7C) as usize, &[r.eax, 3], Conv::Thiscall);
+                                }
+                            }
+                        }
+                        r.eax = load(this, 0x114);
+                        cursor = cursor.wrapping_add(4);
+                    }
+                    if (this.wrapping_add(0x33) as *const u8).read() & 1 != 0 {
+                        r.ecx = occupant_manager().read() as u32;
+                        r.edx = load(r.ecx, 0);
+                        r.eax = this.wrapping_add(4);
+                        virtual_call(r, 0x60, &[r.eax, 0]);
+                    }
+                } else {
+                    if flags & 1 != 0 {
+                        r.ecx = occupant_manager().read() as u32;
+                        r.eax = load(r.ecx, 0);
+                        virtual_call(r, 0x60, &[this.wrapping_add(4), 0]);
+                    } else {
+                        r.edx = load(this, 0);
+                        r.ecx = this;
+                        virtual_call(r, 0x118, &[1]);
+                    }
+                    if (this.wrapping_add(0x33) as *const u8).read() & 1 != 0 {
+                        r.eax = load(this, 0);
+                        r.ecx = this;
+                        virtual_call(r, 0x11C, &[1]);
+                    }
+                }
+            }
+            let elapsed = f32::from_bits(load(this, 0x1C0));
+            let status = compare_stored(F80::from_f32(elapsed), retirement_delay().read());
+            r.eax = (r.eax & 0xFFFF_0000) | u32::from(status);
+            if status & 0x4100 == 0 {
+                r.edx = load(this, 0);
+                r.ecx = this;
+                virtual_call(r, 0x198, &[9, 0]);
+                store(this, 0x1C0, 0);
+            }
+        }
+    }
+);
+
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
     fc4p_004980a0::PORT,
@@ -1793,6 +2380,7 @@ pub const PORTS: &[Port] = &[
     fc4p_004e8380::PORT,
     fc4p_004ed910::PORT,
     fc4p_004f0240::PORT,
+    fc4p_004f2910::PORT,
     fc4p_004f5290::PORT,
     fc4p_004f5310::PORT,
     fc4p_004f59c0::PORT,
@@ -1819,9 +2407,14 @@ pub const PORTS: &[Port] = &[
     fc4p_00505190::PORT,
     fc4p_005051c0::PORT,
     fc4p_00505370::PORT,
+    fc4p_00505780::PORT,
     fc4p_00505820::PORT,
     fc4p_00505c70::PORT,
     fc4p_00506940::PORT,
+    fc4p_00507bf0::PORT,
+    fc4p_00507e60::PORT,
+    fc4p_00507f70::PORT,
+    fc4p_00508610::PORT,
     fc4p_005089f0::PORT,
     fc4p_00509440::PORT,
     fc4p_00509600::PORT,
@@ -1917,6 +2510,615 @@ mod tests {
     stub!(count_stub, 0, 0, 26);
     stub!(index_stub, 0, 0, 27);
     stub!(set_flag_stub, 8, 2, 28);
+    stub!(clock_mode_stub, 0, 0, 29);
+    stub!(simulation_paused_stub, 0, 0, 30);
+    stub!(simulation_speed_stub, 0, 0, 31);
+    stub!(preferences_stub, 0, 0, 32);
+    stub!(simulation_gate_stub, 0, 0, 33);
+    stub!(integer_range_stub, 8, 2, 34);
+    stub!(speed_stub, 8, 2, 35);
+    stub!(model_handle_stub, 0, 0, 36);
+    stub!(model_remove_stub, 4, 1, 37);
+    stub!(occupant_remove_stub, 12, 3, 38);
+    stub!(occupant_add_stub, 8, 2, 39);
+    stub!(flag_clear_stub, 4, 1, 40);
+    stub!(flag_add_stub, 4, 1, 41);
+    stub!(model_opacity_stub, 8, 2, 42);
+    stub!(model_add_stub, 4, 1, 43);
+    stub!(occupant_enable_stub, 4, 1, 44);
+    stub!(retirement_gate_stub, 4, 1, 45);
+    stub!(model_retire_stub, 4, 1, 46);
+    stub!(model_fade_stub, 8, 2, 47);
+    stub!(occupant_retire_stub, 8, 2, 48);
+    stub!(retirement_state_stub, 8, 2, 49);
+    stub!(model_disable_stub, 4, 1, 50);
+    stub!(model_position_stub, 4, 1, 51);
+
+    thread_local! {
+        static FLOAT_RESULT: RefCell<u32> = const { RefCell::new(0) };
+    }
+    macro_rules! float_stub {
+        ($name:ident, $pop:literal, $count:literal, $id:literal) => {
+            #[unsafe(naked)]
+            unsafe extern "C" fn $name() {
+                core::arch::naked_asm!(
+                    "sub esp, 4", "push edx", "push ecx", "push eax", "mov ecx, esp",
+                    "lea edx, [esp + 16]", "push edx", "call {}",
+                    "pop eax", "pop ecx", "pop edx", "fld dword ptr [esp]", "add esp, 4", "ret {}",
+                    sym $name::body, const $pop,
+                );
+            }
+            mod $name {
+                use super::*;
+                pub unsafe extern "thiscall" fn body(r: &mut Registers, stack: *mut u32) {
+                    let call = Call { id: $id, registers: *r,
+                        args: unsafe { std::slice::from_raw_parts(stack.add(1), $count) }.to_vec() };
+                    HOOK.with(|h| { if let Some(hook) = *h.borrow() { hook(&call); } });
+                    CALLS.with(|c| c.borrow_mut().push(call));
+                    *r = RESULTS.with(|v| v.borrow_mut().pop_front()).unwrap_or(RESULT);
+                    let value = FLOAT_RESULT.with(|v| *v.borrow());
+                    unsafe { (r as *mut Registers).cast::<u32>().add(3).write(value); }
+                }
+            }
+        };
+    }
+    float_stub!(float_range_stub, 16, 4, 52);
+    float_stub!(opacity_stub, 0, 0, 53);
+    stub!(song_lookup_stub, 4, 1, 54);
+    stub!(song_variant_stub, 0, 0, 55);
+    stub!(song_data_stub, 0, 0, 56);
+    stub!(song_length_stub, 0, 0, 57);
+    stub!(song_append_stub, 4, 1, 58);
+
+    thread_local! {
+        static SONG_RESOURCE: RefCell<u32> = const { RefCell::new(0) };
+        static SONG_RECORDS: RefCell<Vec<[u32; 4]>> = const { RefCell::new(Vec::new()) };
+    }
+
+    #[test]
+    fn song_table_carries_enable_bytes_skips_short_and_missing_properties_and_retains_record_padding() {
+        // Song discovery and inherited enable flags follow the audio preferences worked case.
+        let mut tables = [0xA5u8; 0x60];
+        let table_p = tables.as_mut_ptr() as u32;
+        let mut bases = [0x2A5B_A8A7u32, 0x3A5B_A8A7];
+        let mut resource_table = [0usize; 8];
+        resource_table[0x1C / 4] = method_zero as *const () as usize;
+        resource_table[8 / 4] = filter_release_stub as *const () as usize;
+        let mut resource = [resource_table.as_ptr() as u32];
+        let resource_p = resource.as_mut_ptr() as u32;
+        let mut manager_table = [0usize; 4];
+        manager_table[3] = method_five as *const () as usize;
+        let mut manager = [manager_table.as_ptr() as u32];
+        let mut manager_global = manager.as_mut_ptr() as u32;
+        let mut holder_table = [0usize; 10];
+        holder_table[9] = song_lookup_stub as *const () as usize;
+        let mut holder = [holder_table.as_ptr() as u32];
+        let holder_p = holder.as_mut_ptr() as u32;
+        let mut property_table = [0usize; 6];
+        property_table[5] = song_variant_stub as *const () as usize;
+        let mut property = [property_table.as_ptr() as u32];
+        let property_p = property.as_mut_ptr() as u32;
+        let mut variant_table = [0usize; 104];
+        variant_table[0x19C / 4] = song_data_stub as *const () as usize;
+        variant_table[0x10 / 4] = song_length_stub as *const () as usize;
+        let mut variant = [variant_table.as_ptr() as u32];
+        let variant_p = variant.as_mut_ptr() as u32;
+        let mut values = [[10u32, 11, 0], [20, 21, 99], [30, 31, 99], [40, 41, 1], [50, 51, 99]];
+        let _data = [
+            fake_data(0x00B2_1A88, tables.as_mut_ptr()),
+            fake_data(0x00B0_987C, bases.as_mut_ptr().cast()),
+            fake_data(0x00B4_3CA8, (&mut manager_global as *mut u32).cast()),
+        ];
+        let _fake = fake(0x004B_2400, song_append_stub as *const () as usize);
+        SONG_RESOURCE.with(|v| *v.borrow_mut() = resource_p);
+        HOOK.with(|h| {
+            *h.borrow_mut() = Some(|c| unsafe {
+                if c.id == 14 {
+                    assert_eq!(c.args[1], 0xA521_60F5);
+                    assert_eq!(&c.args[3..], &[0, 0]);
+                    assert_eq!(load(c.args[0], 0), 0x6534_284A);
+                    assert_eq!(load(c.args[0], 4), 0xCA25_875D);
+                    store(c.args[2], 0, SONG_RESOURCE.with(|v| *v.borrow()));
+                } else if c.id == 58 {
+                    let p = c.args[0];
+                    SONG_RECORDS.with(|v| v.borrow_mut().push([load(p, 0), load(p, 4), load(p, 8), load(p, 12)]));
+                }
+            })
+        });
+        for bank in 0..2 {
+            let mut results = vec![1, holder_p];
+            for (i, count) in [3u32, 2, 1, 3, 2].into_iter().enumerate() {
+                results.extend([property_p, variant_p, values[i].as_mut_ptr() as u32, count]);
+                if count >= 2 {
+                    results.push(RESULT.eax);
+                }
+            }
+            results.extend([0; 25]);
+            results.push(RESULT.eax);
+            responses(&results);
+            SONG_RECORDS.with(|v| v.borrow_mut().clear());
+            let mut original_stack = [0xA5A5_A5A5u32; 12];
+            let stack = unsafe { original_stack.as_mut_ptr().add(9) };
+            unsafe {
+                stack.add(1).write(bank);
+            }
+            let mut r = Registers {
+                ecx: 0x8765_4321,
+                ..ENTRY
+            };
+            unsafe {
+                load_audio_song_table(&mut r, stack);
+            }
+            assert_eq!(unsafe { stack.add(1).read() }, 0);
+            assert_eq!(r, Registers { ecx: 0, ..RESULT });
+            let expected: Vec<_> = [(0, 11, 10, 0), (1, 21, 20, 0), (3, 41, 40, 1), (4, 51, 50, 1)]
+                .into_iter()
+                .map(|(i, file, title, enabled)| [bases[bank as usize] + i, file, title, 0xA5A5_A500 | enabled])
+                .collect();
+            assert_eq!(SONG_RECORDS.with(|v| v.borrow().clone()), expected);
+            let calls = take_calls();
+            let lookups: Vec<_> = calls.iter().filter(|c| c.id == 54).map(|c| c.args[0]).collect();
+            assert_eq!(lookups, (0..30).map(|i| 0x8A5E_7B50 + i).collect::<Vec<_>>());
+            assert!(calls
+                .iter()
+                .filter(|c| c.id == 58)
+                .all(|c| c.registers.ecx == table_p + bank * 0x30 + 8));
+            assert_eq!(calls.last().unwrap().id, 20);
+        }
+        responses(&[0, RESULT.eax]);
+        run(0x004F_2910, 0x8765, &[0], true);
+        assert_eq!(take_calls().iter().map(|c| c.id).collect::<Vec<_>>(), [14, 20]);
+        SONG_RESOURCE.with(|v| *v.borrow_mut() = 0);
+        responses(&[0xAABB_CC00]);
+        assert_eq!(run(0x004F_2910, 0x8765, &[0], true).eax, 0xAABB_CC00);
+        assert_eq!(take_calls().len(), 1);
+        HOOK.with(|h| *h.borrow_mut() = None);
+        for index in [2u32, u32::MAX, 0x8000_0000] {
+            assert_eq!(
+                run(0x004F_2910, 0x8765, &[index], true),
+                Registers {
+                    eax: index,
+                    ecx: 0x8765,
+                    ..ENTRY
+                }
+            );
+        }
+        assert!(take_calls().is_empty());
+        assert!(tables.iter().all(|&v| v == 0xA5));
+    }
+
+    fn responses(values: &[u32]) {
+        RESULTS.with(|r| *r.borrow_mut() = values.iter().map(|&eax| Registers { eax, ..RESULT }).collect());
+        take_calls();
+    }
+
+    #[test]
+    fn time_scale_handles_missing_simulation_clock_override_pause_preferences_and_every_speed() {
+        let mut sim_table = [0usize; 0x70 / 4];
+        sim_table[0x44 / 4] = simulation_gate_stub as *const () as usize;
+        sim_table[0x3C / 4] = simulation_paused_stub as *const () as usize;
+        sim_table[0x6C / 4] = simulation_speed_stub as *const () as usize;
+        let mut simulation = [sim_table.as_ptr() as u32];
+        let sim_p = simulation.as_mut_ptr() as u32;
+        let mut clock_table = [0usize; 14];
+        clock_table[13] = clock_mode_stub as *const () as usize;
+        let mut clock = [clock_table.as_ptr() as u32];
+        let mut prefs_table = [0usize; 39];
+        prefs_table[38] = preferences_stub as *const () as usize;
+        let mut prefs = [prefs_table.as_ptr() as u32];
+        let mut prefs_memory = Object::new(0xF20);
+        let pref_p = prefs_memory.ptr() as u32;
+        let mut sim_global = sim_p;
+        let mut clock_global = clock.as_mut_ptr() as u32;
+        let mut pref_global = prefs.as_mut_ptr() as u32;
+        let mut scale = 0xDEAD_BEEFu32;
+        let mut stopped = 0xCCu8;
+        let mut scales = [0x3EAA_AAABu32, 0x3F00_0000, 0x3F80_0000, 0x4000_0000];
+        let _data = [
+            fake_data(0x00B4_3D5C, (&mut sim_global as *mut u32).cast()),
+            fake_data(0x00B4_3D44, (&mut clock_global as *mut u32).cast()),
+            fake_data(0x00B4_3C94, (&mut pref_global as *mut u32).cast()),
+            fake_data(0x00B0_9964, (&mut scale as *mut u32).cast()),
+            fake_data(0x00B2_1B9C, &mut stopped),
+            fake_data(0x00B2_1D18, scales.as_mut_ptr().cast()),
+        ];
+        sim_global = 0;
+        assert_eq!(sim_global, 0);
+        responses(&[]);
+        assert_eq!(
+            run(0x0050_7BF0, 0x7654, &[], true),
+            Registers {
+                eax: ENTRY.eax & !0xFF,
+                ecx: 0x7654,
+                ..ENTRY
+            }
+        );
+        assert_eq!((scale, stopped), (1.0f32.to_bits(), 0));
+        assert!(take_calls().is_empty());
+        sim_global = sim_p;
+        assert_eq!(sim_global, sim_p);
+        responses(&[0xAABB_CC01]);
+        assert_eq!(
+            run(0x0050_7BF0, 0, &[], true),
+            Registers {
+                eax: 0xAABB_CC00,
+                ecx: scales[3],
+                ..RESULT
+            }
+        );
+        assert_eq!((scale, stopped), (scales[3], 0));
+        assert_eq!(take_calls().iter().map(|c| c.id).collect::<Vec<_>>(), [29]);
+        for (gate, enabled, pause, speed, expected, ids) in [
+            (1, 1, 0, 0, scales[0], vec![29, 33]),
+            (0, 0, 0, 0, scales[0], vec![29, 33, 32]),
+            (0, 1, 1, 0, 0, vec![29, 33, 32, 30]),
+            (0, 1, 0, 0, scales[0], vec![29, 33, 32, 30, 31]),
+            (0, 1, 0, 1, scales[1], vec![29, 33, 32, 30, 31]),
+            (0, 1, 0, 2, scales[2], vec![29, 33, 32, 30, 31]),
+            (0, 1, 0, u32::MAX, scales[1], vec![29, 33, 32, 30, 31]),
+        ] {
+            unsafe {
+                (pref_p.wrapping_add(0xF18) as *mut u8).write(enabled);
+            }
+            responses(&[0, gate, pref_p, pause, speed]);
+            run(0x0050_7BF0, 0, &[], true);
+            assert_eq!((scale, stopped), (expected, u8::from(pause != 0)));
+            assert_eq!(take_calls().iter().map(|c| c.id).collect::<Vec<_>>(), ids);
+        }
+        RESULTS.with(|r| r.borrow_mut().clear());
+    }
+
+    #[test]
+    fn random_speed_uses_signed_ranges_double_endpoints_and_original_argument_scratch() {
+        let _fpu = GameFpu::new();
+        let mut table = [0usize; 37];
+        table[36] = speed_stub as *const () as usize;
+        let mut object = Object::new(0x90);
+        let p = object.ptr() as u32;
+        let mut tuning = [0u32; 17];
+        let q = tuning.as_mut_ptr() as u32;
+        let mut random = [0u32; 4];
+        let mut scale = 0.001f32;
+        let _data = [
+            fake_data(0x00B2_1D78, random.as_mut_ptr().cast()),
+            fake_data(0x00A9_52E8, (&mut scale as *mut f32).cast()),
+        ];
+        let _fakes = [
+            fake(0x0091_3A14, integer_range_stub as *const () as usize),
+            fake(0x0091_3A46, float_range_stub as *const () as usize),
+        ];
+        unsafe {
+            store(p, 0, table.as_ptr() as u32);
+            store(p, 0x80, 8.0f32.to_bits());
+        }
+        for (min, max, low, high, ids, expected, scratch) in [
+            (0, 20, 2.0f32, 2.0f32, vec![35], 16.0f32, 0),
+            (20, 0, 2.0, 2.0, vec![35], 16.0, 20),
+            (u32::MAX, 20, 2.0, 2.0, vec![35], 16.0, u32::MAX),
+            (1000, 1000, 2.0, 2.0, vec![35], 2.0, 1000),
+            (500, 2000, 2.0, 2.0, vec![34, 35], 2.0, 1000),
+            (0, 0, 1.0, 3.0, vec![52, 35], 12.0, 0),
+            (0, 0, f32::NAN, 3.0, vec![52, 35], 12.0, 0),
+        ] {
+            tuning[12] = low.to_bits();
+            tuning[13] = high.to_bits();
+            tuning[14] = min;
+            tuning[15] = max;
+            tuning[16] = 0xDEAD_BEEF;
+            FLOAT_RESULT.with(|v| *v.borrow_mut() = 1.5f32.to_bits());
+            let values: Vec<u32> = ids.iter().map(|&id| if id == 34 { 1000 } else { RESULT.eax }).collect();
+            responses(&values);
+            let mut r = Registers { ecx: p, ..ENTRY };
+            let mut stack = [0, q];
+            unsafe {
+                configure_random_speed(&mut r, stack.as_mut_ptr());
+            }
+            assert_eq!(stack[1], scratch);
+            assert_eq!(
+                r,
+                Registers {
+                    ecx: expected.to_bits(),
+                    ..RESULT
+                }
+            );
+            let calls = take_calls();
+            assert_eq!(calls.iter().map(|c| c.id).collect::<Vec<_>>(), ids);
+            assert_eq!(calls.last().unwrap().args, [expected.to_bits(), 0xDEAD_BEEF]);
+            assert_eq!(calls.last().unwrap().registers.ecx, p);
+            if let Some(draw) = calls.iter().find(|c| c.id == 52) {
+                let lo = f64::from(low).to_bits();
+                let hi = f64::from(high).to_bits();
+                assert_eq!(draw.args, [lo as u32, (lo >> 32) as u32, hi as u32, (hi >> 32) as u32]);
+                assert_eq!(draw.registers.ecx, random.as_ptr() as u32);
+            }
+        }
+        responses(&[RESULT.eax]);
+        tuning[12] = 2.0f32.to_bits();
+        tuning[13] = tuning[12];
+        assert_eq!(tuning[13], 2.0f32.to_bits());
+        assert_eq!(run(0x0050_5780, p, &[q], false).ecx, 16.0f32.to_bits());
+        take_calls();
+    }
+
+    #[test]
+    fn occupant_registration_keeps_raw_boolean_bytes_and_releases_models_before_occupant() {
+        let mut object = Object::new(0x1D0);
+        let p = object.ptr() as u32;
+        let mut interface_table = [0usize; 33];
+        interface_table[0x74 / 4] = flag_add_stub as *const () as usize;
+        interface_table[0x7C / 4] = flag_clear_stub as *const () as usize;
+        let mut manager_table = [0usize; 22];
+        manager_table[0x50 / 4] = occupant_add_stub as *const () as usize;
+        manager_table[0x54 / 4] = occupant_remove_stub as *const () as usize;
+        let mut manager = [manager_table.as_ptr() as u32];
+        let mut manager_global = manager.as_mut_ptr() as u32;
+        let mut model_table = [0usize; 30];
+        model_table[0x74 / 4] = model_remove_stub as *const () as usize;
+        let mut model_manager_object = [model_table.as_ptr() as u32];
+        let mut model_global = model_manager_object.as_mut_ptr() as u32;
+        let child_table = [model_handle_stub as *const () as usize];
+        let mut child = [child_table.as_ptr() as u32];
+        let c = child.as_mut_ptr() as u32;
+        let mut children = [c, 0, c];
+        let begin = children.as_mut_ptr() as u32;
+        let _data = [
+            fake_data(0x00B4_3D0C, (&mut manager_global as *mut u32).cast()),
+            fake_data(0x00B4_3DD0, (&mut model_global as *mut u32).cast()),
+        ];
+        unsafe {
+            store(p, 4, interface_table.as_ptr() as u32);
+            store(p, 0x110, begin);
+            store(p, 0x114, begin + 12);
+        }
+        for flags in [0u8, 1, 2, 3, 0xFF] {
+            unsafe {
+                (p.wrapping_add(0x33) as *mut u8).write(flags);
+            }
+            responses(&[]);
+            assert_eq!(
+                run(0x0050_7E60, p, &[u32::from(flags & 1) | 0xFFFF_0000], false).eax,
+                (ENTRY.eax & !0xFF) | 1
+            );
+            assert!(take_calls().is_empty());
+        }
+        unsafe {
+            (p.wrapping_add(0x33) as *mut u8).write(3);
+        }
+        responses(&[0x1234, 0x5678, 0x1235, 0x5679, 1, 2, 0xAABB_CC80]);
+        assert_eq!(run(0x0050_7E60, p, &[0], false).eax, 0xAABB_CC01);
+        let calls = take_calls();
+        assert_eq!(
+            calls.iter().map(|c| c.id).collect::<Vec<_>>(),
+            [36, 37, 36, 37, 40, 38, 40]
+        );
+        assert_eq!(calls[1].args, [0x1234]);
+        assert_eq!(calls[3].args, [0x1235]);
+        assert_eq!(calls[4].args, [2]);
+        assert_eq!(calls[5].args, [p + 4, 0, 0]);
+        assert_eq!(calls[6].args, [1]);
+        assert_eq!(calls[5].registers.ecx, manager_global);
+        assert_eq!(calls[6].registers.ecx, p + 4);
+        unsafe {
+            (p.wrapping_add(0x33) as *mut u8).write(0);
+            store(p, 0x114, begin);
+        }
+        for accepted in [0xAABB_CC00, 0xAABB_CC80] {
+            responses(&[accepted, 0x1234_5680]);
+            let result = run(0x0050_7E60, p, &[0xFF], false);
+            assert_eq!(result.eax, if accepted as u8 == 0 { accepted } else { 0x1234_5601 });
+            let calls = take_calls();
+            assert_eq!(calls[0].args, [p + 4, 0]);
+            assert_eq!(calls.len(), if accepted as u8 == 0 { 1 } else { 2 });
+        }
+        manager_global = 0;
+        assert_eq!(manager_global, 0);
+        responses(&[]);
+        assert_eq!(run(0x0050_7E60, p, &[2], false).eax, ENTRY.eax & !0xFF);
+        assert!(take_calls().is_empty());
+    }
+
+    #[test]
+    fn model_registration_observes_occupant_flag_reloads_opacity_and_partial_add_failure() {
+        let _fpu = GameFpu::new();
+        let mut object = Object::new(0x1D0);
+        let p = object.ptr() as u32;
+        let mut main_table = [0usize; 72];
+        main_table[0x118 / 4] = occupant_enable_stub as *const () as usize;
+        let mut interface_table = [0usize; 32];
+        interface_table[0x74 / 4] = flag_add_stub as *const () as usize;
+        interface_table[0x7C / 4] = flag_clear_stub as *const () as usize;
+        let mut manager_table = [0usize; 32];
+        manager_table[0x70 / 4] = model_add_stub as *const () as usize;
+        manager_table[0x74 / 4] = model_remove_stub as *const () as usize;
+        let mut manager = [manager_table.as_ptr() as u32];
+        let mut manager_global = manager.as_mut_ptr() as u32;
+        let mut child_table = [0usize; 19];
+        child_table[0] = model_handle_stub as *const () as usize;
+        child_table[0x48 / 4] = model_opacity_stub as *const () as usize;
+        let mut child = [child_table.as_ptr() as u32];
+        let c = child.as_mut_ptr() as u32;
+        let mut children = [c, 0, c];
+        let begin = children.as_mut_ptr() as u32;
+        let mut one = 1.0f32;
+        let _data = [
+            fake_data(0x00B4_3DD0, (&mut manager_global as *mut u32).cast()),
+            fake_data(0x00A8_1228, (&mut one as *mut f32).cast()),
+        ];
+        let _fake = fake(0x004F_A960, opacity_stub as *const () as usize);
+        unsafe {
+            store(p, 0, main_table.as_ptr() as u32);
+            store(p, 4, interface_table.as_ptr() as u32);
+            store(p, 0x110, begin);
+            store(p, 0x114, begin + 12);
+        }
+        for opacity in [0.0f32, 0.5, 1.0, f32::INFINITY, f32::NAN] {
+            for success in [false, true] {
+                unsafe {
+                    (p.wrapping_add(0x33) as *mut u8).write(1);
+                }
+                FLOAT_RESULT.with(|v| *v.borrow_mut() = opacity.to_bits());
+                responses(&[
+                    RESULT.eax,
+                    0xDEAD_BEEF,
+                    0x77,
+                    if success { 1 } else { 0 },
+                    0xDEAD_BEEF,
+                    0x78,
+                    1,
+                    0xABCD_EF80,
+                ]);
+                let mut r = Registers { ecx: p, ..ENTRY };
+                let mut stack = [0, 0xFFFF_0001];
+                unsafe {
+                    set_model_registration(&mut r, stack.as_mut_ptr());
+                }
+                assert_eq!(stack[1], opacity.to_bits());
+                assert_eq!(r.eax as u8, 0);
+                assert_eq!(r.ecx, manager_table.as_ptr() as u32);
+                let calls = take_calls();
+                assert_eq!(
+                    calls.iter().map(|c| c.id).collect::<Vec<_>>(),
+                    if success {
+                        vec![53, 42, 36, 43, 42, 36, 43, 41]
+                    } else {
+                        vec![53, 42, 36, 43]
+                    }
+                );
+                assert_eq!(calls[0].registers.ecx, p + 0x1B0);
+                assert_eq!(
+                    calls[1].args,
+                    if opacity < 1.0 {
+                        vec![1, opacity.to_bits()]
+                    } else {
+                        vec![0, 1.0f32.to_bits()]
+                    }
+                );
+                assert_eq!(calls[3].args, [0x77]);
+            }
+        }
+        unsafe {
+            (p.wrapping_add(0x33) as *mut u8).write(0);
+        }
+        responses(&[0x1234_5680]);
+        assert_eq!(run(0x0050_7F70, p, &[1], false).eax, 0x1234_5600);
+        assert_eq!(take_calls().iter().map(|c| c.id).collect::<Vec<_>>(), [44]);
+        unsafe {
+            (p.wrapping_add(0x33) as *mut u8).write(2);
+        }
+        responses(&[7, 8, 9, 10, 0xAABB_CC80]);
+        assert_eq!(
+            run(0x0050_7F70, p, &[0], false),
+            Registers {
+                eax: 0xAABB_CC01,
+                ecx: p,
+                ..RESULT
+            }
+        );
+        assert_eq!(
+            take_calls().iter().map(|c| c.id).collect::<Vec<_>>(),
+            [36, 37, 36, 37, 40]
+        );
+        manager_global = 0;
+        assert_eq!(manager_global, 0);
+        responses(&[]);
+        assert_eq!(run(0x0050_7F70, p, &[0], false).eax, ENTRY.eax & !0xFF);
+        assert!(take_calls().is_empty());
+    }
+
+    #[test]
+    fn retirement_routes_model_actions_and_uses_strict_elapsed_delay_including_nan() {
+        let _fpu = GameFpu::new();
+        let mut object = Object::new(0x1D0);
+        let p = object.ptr() as u32;
+        let mut main_table = [0usize; 103];
+        main_table[0x118 / 4] = occupant_enable_stub as *const () as usize;
+        main_table[0x11C / 4] = model_disable_stub as *const () as usize;
+        main_table[0x198 / 4] = retirement_state_stub as *const () as usize;
+        let mut interface_table = [0usize; 33];
+        interface_table[0x80 / 4] = retirement_gate_stub as *const () as usize;
+        let mut manager_table = [0usize; 32];
+        manager_table[0x78 / 4] = model_retire_stub as *const () as usize;
+        manager_table[0x7C / 4] = model_fade_stub as *const () as usize;
+        let mut manager = [manager_table.as_ptr() as u32];
+        let mut manager_global = manager.as_mut_ptr() as u32;
+        let mut occupant_table = [0usize; 25];
+        occupant_table[0x60 / 4] = occupant_retire_stub as *const () as usize;
+        let mut occupant = [occupant_table.as_ptr() as u32];
+        let mut occupant_global = occupant.as_mut_ptr() as u32;
+        let mut model_table = [0usize; 9];
+        model_table[0] = model_handle_stub as *const () as usize;
+        model_table[0x20 / 4] = model_position_stub as *const () as usize;
+        let mut vbtable = [0u32, (-4i32) as u32];
+        let mut model = [model_table.as_ptr() as u32, vbtable.as_mut_ptr() as u32];
+        // The virtual base is the primary interface itself.
+        let c = model.as_mut_ptr() as u32;
+        let mut children = [c, 0, c];
+        let begin = children.as_mut_ptr() as u32;
+        let mut delay = 10.0f32;
+        let _data = [
+            fake_data(0x00B4_3DD0, (&mut manager_global as *mut u32).cast()),
+            fake_data(0x00B4_3D0C, (&mut occupant_global as *mut u32).cast()),
+            fake_data(0x00A9_52D8, (&mut delay as *mut f32).cast()),
+        ];
+        unsafe {
+            store(p, 0, main_table.as_ptr() as u32);
+            store(p, 4, interface_table.as_ptr() as u32);
+            store(p, 0x110, begin);
+            store(p, 0x114, begin + 12);
+        }
+        for (first, second, action) in [(1, 1, Some(46)), (0, 1, Some(47)), (0, 0, None)] {
+            unsafe {
+                (p.wrapping_add(0x33) as *mut u8).write(3);
+                store(p, 0x1C0, 10.0f32.to_bits());
+            }
+            responses(&[1, 1, 0x55, 1, 0x56, 1, 1]);
+            run(0x0050_8610, p, &[first, second], false);
+            let calls = take_calls();
+            let mut ids = vec![51, 45];
+            if let Some(id) = action {
+                ids.extend([36, id, 36, id]);
+            }
+            ids.push(48);
+            assert_eq!(calls.iter().map(|c| c.id).collect::<Vec<_>>(), ids);
+            assert_eq!(calls[0].args, [p + 0x170]);
+            if action == Some(47) {
+                assert_eq!(calls[3].args, [0x55, 3]);
+            }
+            assert_eq!(unsafe { load(p, 0x1C0) }, 10.0f32.to_bits());
+        }
+        unsafe {
+            store(p, 0x114, begin);
+        }
+        for elapsed in [0.0f32, 10.0, 11.0, f32::INFINITY, f32::NAN] {
+            unsafe {
+                store(p, 0x1C0, elapsed.to_bits());
+            }
+            responses(&[0, 0xAABB_CC80]);
+            run(0x0050_8610, p, &[0, 0], false);
+            let calls = take_calls();
+            assert_eq!(
+                calls.iter().map(|c| c.id).collect::<Vec<_>>(),
+                if elapsed > delay { vec![45, 49] } else { vec![45] }
+            );
+            assert_eq!(
+                unsafe { load(p, 0x1C0) },
+                if elapsed > delay { 0 } else { elapsed.to_bits() }
+            );
+        }
+        for flags in [0u8, 1] {
+            unsafe {
+                (p.wrapping_add(0x33) as *mut u8).write(flags);
+                store(p, 0x1C0, 0);
+            }
+            responses(&[1, 1, 1]);
+            run(0x0050_8610, p, &[0, 0], false);
+            assert_eq!(
+                take_calls().iter().map(|c| c.id).collect::<Vec<_>>(),
+                if flags == 0 { vec![45, 44] } else { vec![45, 48, 50] }
+            );
+        }
+        RESULTS.with(|r| r.borrow_mut().clear());
+    }
 
     fn run(address: u32, this: u32, args: &[u32], cdecl: bool) -> Registers {
         let mut r = Registers { ecx: this, ..ENTRY };
