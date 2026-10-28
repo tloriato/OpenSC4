@@ -25,6 +25,8 @@ struct State {
     property_present: bool,
     top: f64,
     bottom: f64,
+    allowed: bool,
+    suitable: bool,
 }
 
 impl Default for State {
@@ -45,6 +47,8 @@ impl Default for State {
             property_present: true,
             top: 310.0,
             bottom: 304.0,
+            allowed: true,
+            suitable: true,
         }
     }
 }
@@ -560,5 +564,176 @@ fn exports_use_the_original_stack_cleanup() {
         assert_eq!(call.edx, 0x1234_5678);
         assert_eq!(call.eax as u8, u8::from(matches!(loader, Loader::Building)));
         events();
+    }
+}
+
+extern "thiscall" fn allowed(this: *mut u8, kind: u32) -> u64 {
+    event("allowed", this, &[kind]);
+    0x1122_3344_AABB_CC00 | u64::from(STATE.with(|s| s.borrow().allowed))
+}
+extern "thiscall" fn suitable(this: *mut u8, kind: u32, x: u32, z: u32) -> u64 {
+    event("suitable", this, &[kind, x, z]);
+    0x5566_7788_AABB_CC00 | u64::from(STATE.with(|s| s.borrow().suitable))
+}
+extern "thiscall" fn get_box(this: *mut u8, minimum: *mut f32, maximum: *mut f32) -> u64 {
+    event("get box", this, &[]);
+    unsafe {
+        core::ptr::copy_nonoverlapping([-1.0f32, 0.0, -2.0].as_ptr(), minimum, 3);
+        core::ptr::copy_nonoverlapping([10.0f32, 20.0, 30.0].as_ptr(), maximum, 3);
+    }
+    0
+}
+
+fn building_world() -> World {
+    let mut w = World::new();
+    w._tables[0][0x3C / 4] = allowed as *const () as usize;
+    w._tables[0][0x14 / 4] = suitable as *const () as usize;
+    w._tables[0][0x20 / 4] = insert as *const () as usize;
+    w._tables[1][0x20 / 4] = bounding_box as *const () as usize;
+    w._tables[1][0x3C / 4] = orientation as *const () as usize;
+    w._tables[2][0x28 / 4] = get_box as *const () as usize;
+    // The lot-developer table follows the resource-manager table in this fixture.
+    let lot = unsafe { BuildingSim::from_ptr(w.sim.ptr()) }.lot_developer();
+    unsafe { *(table(lot) as *mut usize).add(0x40 / 4) = altitude as *const () as usize };
+    w._guards.extend([
+        fake(0x0045_8A60, allocate as *const () as usize),
+        fake(0x0045_8E90, construct as *const () as usize),
+        fake(0x0069_8490, load_properties as *const () as usize),
+    ]);
+    w
+}
+
+#[test]
+fn building_factory_rotates_only_odd_cardinal_boxes_and_keeps_raw_orientation() {
+    let _fpu = GameFpu::new();
+    let mut w = building_world();
+    let p = w.sim.ptr();
+    let o = w.occupant();
+    let before = unsafe { core::slice::from_raw_parts(p, 0xE4) }.to_vec();
+    for orientation in [0, 1, 2, 3, 4, u32::MAX] {
+        let mut position = [96.0, 100.0, 184.0];
+        assert_eq!(
+            unsafe { fc4p_00698de0(p, 0xDEAD_BEEF, 0x100, position.as_mut_ptr(), orientation) },
+            0x1234_5678_0000_0000 | u64::from(o)
+        );
+        let calls = events();
+        assert_eq!(
+            calls.iter().map(|e| e.0).collect::<Vec<_>>(),
+            [
+                "allowed",
+                "suitable",
+                "allocate",
+                "construct",
+                "addref",
+                "type",
+                "load",
+                "get box",
+                "box",
+                "position",
+                "orientation",
+                "init",
+                "insert",
+                "release"
+            ]
+        );
+        assert_eq!(calls[1].2, [0x100, 96.0f32.to_bits(), 184.0f32.to_bits()]);
+        assert_eq!(calls[6], Event("load", p as usize, vec![o, 0x100]));
+        let values: [f32; 6] = if orientation == 1 || orientation == 3 {
+            [-2.0, 0.0, -1.0, 30.0, 20.0, 10.0]
+        } else {
+            [-1.0, 0.0, -2.0, 10.0, 20.0, 30.0]
+        };
+        assert_eq!(calls[8].2, values.map(f32::to_bits));
+        assert_eq!(calls[10].2, [orientation]);
+        assert_eq!(position, [96.0, 100.0, 184.0]);
+        assert_eq!(unsafe { core::slice::from_raw_parts(p, 0xE4) }, before);
+    }
+}
+
+#[test]
+fn building_factory_short_circuits_and_always_releases_created_occupants() {
+    let _fpu = GameFpu::new();
+    let mut w = building_world();
+    for failure in 0..4 {
+        STATE.with(|s| {
+            let mut s = s.borrow_mut();
+            s.allowed = failure != 0;
+            s.suitable = failure != 1;
+            s.load_result = if failure == 2 { 0xFFFF_FF00 } else { 1 };
+            s.insert_result = if failure == 3 { 0xFFFF_FF00 } else { 1 };
+        });
+        let mut position = [96.0, 100.0, 184.0];
+        let result = unsafe { fc4p_00698de0(w.sim.ptr(), 0xDEAD_BEEF, 0x100, position.as_mut_ptr(), 1) };
+        assert_eq!(result as u32, 0);
+        assert_eq!(
+            result >> 32,
+            match failure {
+                0 => 0x1122_3344,
+                1 => 0x5566_7788,
+                _ => 0x1234_5678,
+            }
+        );
+        let calls = events();
+        let expected: &[&str] = match failure {
+            0 => &["allowed"],
+            1 => &["allowed", "suitable"],
+            2 => &[
+                "allowed",
+                "suitable",
+                "allocate",
+                "construct",
+                "addref",
+                "type",
+                "load",
+                "release",
+            ],
+            _ => &[
+                "allowed",
+                "suitable",
+                "allocate",
+                "construct",
+                "addref",
+                "type",
+                "load",
+                "get box",
+                "box",
+                "position",
+                "orientation",
+                "init",
+                "insert",
+                "release",
+            ],
+        };
+        assert_eq!(calls.iter().map(|e| e.0).collect::<Vec<_>>(), expected);
+    }
+}
+
+#[test]
+fn building_factory_queries_only_strictly_negative_heights_and_rounds_st0_at_the_store() {
+    let _fpu = GameFpu::new();
+    let mut w = building_world();
+    STATE.with(|s| s.borrow_mut().top = 310.000_01);
+    for y in [-1.0, -0.0, f32::NAN, f32::INFINITY] {
+        let mut position = [96.0, y, 184.0];
+        unsafe { fc4p_00698de0(w.sim.ptr(), 0, 0x100, position.as_mut_ptr(), 1) };
+        let calls = events();
+        let altitude = calls.iter().find(|e| e.0 == "altitude");
+        if y < 0.0 {
+            assert_eq!(position[1].to_bits(), 310.000_01f32.to_bits());
+            assert_eq!(
+                altitude.unwrap().2,
+                [
+                    (-2.0f32).to_bits(),
+                    (-1.0f32).to_bits(),
+                    30.0f32.to_bits(),
+                    10.0f32.to_bits(),
+                    0,
+                    1
+                ]
+            );
+        } else {
+            assert!(altitude.is_none());
+            assert_eq!(position[1].to_bits(), y.to_bits());
+        }
     }
 }

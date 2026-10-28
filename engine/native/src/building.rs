@@ -54,6 +54,7 @@ pub mod checks;
 pub mod containers;
 pub mod daily;
 pub mod foundation;
+pub mod growth_tree;
 pub mod io;
 pub mod queries;
 pub mod resources;
@@ -66,7 +67,8 @@ const COUNT: usize = checks::PORTS.len()
     + shared::PORTS.len()
     + access::PORTS.len()
     + trees::PORTS.len()
-    + queries::PORTS.len();
+    + queries::PORTS.len()
+    + growth_tree::PORTS.len();
 const ALL: [Port; COUNT + foundation::PORTS.len() + daily::PORTS.len() + io::PORTS.len() + catalogue::PORTS.len()] =
     crate::port::concat(&[
         checks::PORTS,
@@ -80,6 +82,7 @@ const ALL: [Port; COUNT + foundation::PORTS.len() + daily::PORTS.len() + io::POR
         daily::PORTS,
         io::PORTS,
         catalogue::PORTS,
+        growth_tree::PORTS,
     ]);
 
 /// This module's complete replacements.

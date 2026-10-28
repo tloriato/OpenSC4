@@ -12,6 +12,9 @@ use core::ptr::{null_mut, read_unaligned};
 
 game_fn! { fn allocate_foundation(size: u32) -> *mut u8 = "C" 0x005D_6220; }
 game_fn! { fn construct_foundation(this: *mut u8) -> *mut u8 = "thiscall" 0x005D_6440; }
+game_fn! { fn allocate_building(size: u32) -> *mut u8 = "C" 0x0045_8A60; }
+game_fn! { fn construct_building(this: *mut u8) -> *mut u8 = "thiscall" 0x0045_8E90; }
+game_fn! { #[allow(dead_code)] fn load_building_properties(this: *mut u8, occupant: *mut u8, kind: u32) -> u64 = "thiscall" 0x0069_8490; }
 game_fn! { fn foundation_cells(this: *mut u8, rect: *mut f32, cells: *mut i32) = "thiscall" 0x0069_5610; }
 game_fn! { #[allow(dead_code)] fn property_float(holder: *mut u8, id: u32, out: *mut f32) -> u64 = "C" 0x005F_D4F0; }
 game_data! { static half_double: f64 = 0x00A9_2D28; }
@@ -314,11 +317,67 @@ unsafe extern "fastcall" fn load_building(this: *mut u8, args: *mut u32) -> u64 
     unsafe { load(this, args, Loader::Building) }
 }
 
+port! {
+    /// Creates an allowed, suitable building, rotates its box, sets its position and inserts it.
+    /// Negative position height is replaced by the area's highest altitude. Release is always called once.
+    #[port(address = 0x0069_8DE0, owner = "building", name = "CreateBuildingOccupant")]
+    pub unsafe extern "fastcall" fn fc4p_00698de0(this: *mut u8, entry_edx: u32, kind: u32, position: *mut f32, orientation: u32) -> u64 {
+        // SAFETY: the simulator, caller-owned position and game's freshly allocated building interfaces.
+        unsafe {
+            let sim = BuildingSim::from_ptr(this);
+            let mut r = invoke(this, 0x3C, &[kind], table(this), entry_edx);
+            if r.eax as u8 == 0 { return r.bits() & !0xFFFF_FFFF; }
+            r = invoke(this, 0x14, &[kind, read_unaligned(position.cast()), read_unaligned(position.add(2).cast())],
+                read_unaligned(position.add(2).cast()), table(this));
+            if r.eax as u8 == 0 { return r.bits() & !0xFFFF_FFFF; }
+            let allocation = allocate_building(0x5C);
+            let occupant = if allocation.is_null() { null_mut() } else { construct_building(allocation) };
+            r = invoke(occupant, 4, &[], occupant as u32, table(occupant));
+            r = invoke(occupant, 0x14, &[kind], table(occupant), r.edx);
+            let words = [occupant as u32, kind];
+            let mut call = RawCall::new(Conv::Thiscall, crate::abi::target(0x0069_8490), this as u32, &words);
+            call.eax = r.eax; call.edx = r.edx;
+            call_raw(&mut call);
+            r = Registers { eax: call.eax, edx: call.edx };
+            let mut result = 0;
+            if r.eax as u8 != 0 {
+                let primary = occupant.add(4);
+                let (mut minimum, mut maximum) = (MaybeUninit::<[f32; 3]>::uninit(), MaybeUninit::<[f32; 3]>::uninit());
+                invoke(primary, 0x28, &[minimum.as_mut_ptr() as u32, maximum.as_mut_ptr() as u32], maximum.as_mut_ptr() as u32, table(primary));
+                let (mut minimum, mut maximum) = (minimum.assume_init(), maximum.assume_init());
+                if orientation == 1 || orientation == 3 {
+                    let x = F80::from_f32(minimum[0]);
+                    let z = minimum[2];
+                    minimum[2] = x.to_f32();
+                    let x = F80::from_f32(maximum[0]);
+                    let max_z = maximum[2];
+                    minimum[0] = z;
+                    maximum[2] = x.to_f32();
+                    maximum[0] = max_z;
+                }
+                r = invoke(occupant, 0x20, &[minimum.as_mut_ptr() as u32, maximum.as_mut_ptr() as u32], maximum.as_mut_ptr() as u32, table(occupant));
+                if F80::from_f32(*position.add(1)).compare(F80::from_f32(*zero())).less() {
+                    let mut rect = [minimum[0], minimum[2], maximum[0], maximum[2]];
+                    *position.add(1) = vcall_st0!(sim.lot_developer(), 0x40, rect.as_mut_ptr(), 0u32, 1u32).to_f32();
+                }
+                invoke(primary, 0x24, &[position as u32], table(primary), r.edx);
+                r = invoke(occupant, 0x3C, &[orientation], orientation, table(occupant));
+                r = invoke(primary, 0x0C, &[], r.eax, table(primary));
+                r = invoke(this, 0x20, &[occupant as u32], table(this), r.edx);
+                if r.eax as u8 != 0 { result = occupant as u32; }
+            }
+            let release = invoke(occupant, 8, &[], r.eax, table(occupant));
+            (u64::from(release.edx) << 32) | u64::from(result)
+        }
+    }
+}
+
 pub const PORTS: &[Port] = &[
     fc4p_00695af0::PORT,
     fc4p_006982b0::PORT,
     fc4p_006983c0::PORT,
     fc4p_00698490::PORT,
+    fc4p_00698de0::PORT,
 ];
 
 #[cfg(test)]
