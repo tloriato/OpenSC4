@@ -138,6 +138,10 @@ pub mod capacity;
 pub mod containers;
 pub mod maps;
 pub mod queries;
+pub mod network;
+pub mod trees;
+pub mod trips;
+pub mod refresh;
 #[cfg(test)]
 mod test_support;
 
@@ -145,6 +149,7 @@ mod test_support;
 pub const PORTS: &[Port] = &crate::port::concat::<
     {
         queries::PORTS.len() + containers::PORTS.len() + budget::PORTS.len() + capacity::PORTS.len() + maps::PORTS.len()
+            + network::PORTS.len() + trees::PORTS.len() + trips::PORTS.len() + refresh::PORTS.len()
     },
 >(&[
     queries::PORTS,
@@ -152,4 +157,8 @@ pub const PORTS: &[Port] = &crate::port::concat::<
     budget::PORTS,
     capacity::PORTS,
     maps::PORTS,
+    network::PORTS,
+    trees::PORTS,
+    trips::PORTS,
+    refresh::PORTS,
 ]);
