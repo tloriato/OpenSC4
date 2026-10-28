@@ -11,7 +11,7 @@
 // copy of the license along with this program (see LICENSE at the repository
 // root); if not, see <https://www.gnu.org/licenses/>.
 
-//! `cSC4ZoneDeveloper`, converted one function at a time. Its game functions and globals are declared in this file.
+//! `cSC4ZoneDeveloper`, converted one function at a time. Game functions and globals are declared beside the ports.
 
 use crate::port::Port;
 
@@ -23,6 +23,7 @@ layout! {
         0x08 => message_vtable / set_message_vtable: u32,
         0x0C => serializable_vtable / set_serializable_vtable: u32,
         0x14 => references / set_references: i32,
+        0x24 => city / set_city: *mut u8,
         0x28 => cells_x / set_cells_x: i32,
         0x2C => cells_z / set_cells_z: i32,
         0x34 => terrain / set_terrain: *mut u8,
@@ -30,6 +31,7 @@ layout! {
         0x40 => zone_manager / set_zone_manager: *mut u8,
         0x48 => street_tool / set_street_tool: *mut u8,
         0x4C => road_tool / set_road_tool: *mut u8,
+        0x50 => lot_configuration / set_lot_configuration: *mut u8,
         0x99 => real_mode / set_real_mode: u8,
         0xA0 => current_zone / set_current_zone: u32,
         0xA4 => restriction / set_restriction: *mut u8,
@@ -43,9 +45,15 @@ layout! {
 mod altitude;
 mod basic;
 mod edges;
+mod face;
 mod lot;
 mod manager;
 mod occupancy;
+mod placement;
+mod region;
+mod registers;
+mod remnants;
+mod street;
 
 /// Call a virtual method with its incoming scratch-register values and retain EDX:EAX.
 unsafe fn virtual_registers(this: *mut u8, slot: usize, eax: u32, edx: u32, args: &[u32]) -> u64 {
@@ -72,6 +80,11 @@ pub const PORTS: &[Port] = &crate::port::concat::<
             + manager::PORTS.len()
             + occupancy::PORTS.len()
             + altitude::PORTS.len()
+            + face::PORTS.len()
+            + region::PORTS.len()
+            + placement::PORTS.len()
+            + street::PORTS.len()
+            + remnants::PORTS.len()
     },
 >(&[
     basic::PORTS,
@@ -80,4 +93,9 @@ pub const PORTS: &[Port] = &crate::port::concat::<
     manager::PORTS,
     occupancy::PORTS,
     altitude::PORTS,
+    face::PORTS,
+    region::PORTS,
+    placement::PORTS,
+    street::PORTS,
+    remnants::PORTS,
 ]);
