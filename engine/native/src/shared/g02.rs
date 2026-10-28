@@ -2354,6 +2354,559 @@ register_port!(
     }
 );
 
+game_data! { static footprint_wide_margin: f32 = 0x00A8_825C; }
+game_data! { static footprint_half_scale: f32 = 0x00A8_4D2C; }
+game_data! { static footprint_unit_length: f32 = 0x00B0_9978; }
+game_data! { static footprint_zero: f32 = 0x00A8_1054; }
+game_fn! {
+    #[allow(dead_code)]
+    fn multiply_footprint_axes(this: *mut u8, output: *mut f32, other: *const f32) -> *mut f32 = "thiscall" 0x0050_5240;
+}
+
+fn divide_into_stored(value: F80, numerator: f32) -> F80 {
+    let mut result = [0u8; 10];
+    unsafe {
+        core::arch::asm!("fld tbyte ptr [{value}]", "fdivr dword ptr [{numerator}]", "fstp tbyte ptr [{result}]",
+            value = in(reg) &value, numerator = in(reg) &numerator,
+            result = in(reg) result.as_mut_ptr(), out("st(0)") _);
+    }
+    F80::from_bytes(result)
+}
+
+fn add_popped(first: F80, second: F80) -> F80 {
+    let mut result = [0u8; 10];
+    unsafe {
+        core::arch::asm!("fld tbyte ptr [{first}]", "fld tbyte ptr [{second}]", "faddp st(1), st(0)",
+            "fstp tbyte ptr [{result}]", first = in(reg) &first, second = in(reg) &second,
+            result = in(reg) result.as_mut_ptr(), out("st(0)") _, out("st(1)") _);
+    }
+    F80::from_bytes(result)
+}
+
+fn subtract_popped(first: F80, second: F80) -> F80 {
+    let mut result = [0u8; 10];
+    unsafe {
+        core::arch::asm!("fld tbyte ptr [{first}]", "fld tbyte ptr [{second}]", "fsubp st(1), st(0)",
+            "fstp tbyte ptr [{result}]", first = in(reg) &first, second = in(reg) &second,
+            result = in(reg) result.as_mut_ptr(), out("st(0)") _, out("st(1)") _);
+    }
+    F80::from_bytes(result)
+}
+
+port! {
+    /// Test the four separating axes in order. Invalid footprints reject immediately; touching edges
+    /// and unordered comparisons overlap. The caller's second-footprint argument becomes the negative
+    /// sine of the relative axes, even when a later axis rejects the overlap.
+    #[port(address = 0x0050_6450, owner = "shared", name = "FootprintsOverlap", naked)]
+    pub unsafe extern "C" fn fc4p_00506450() {
+        core::arch::naked_asm!(
+            "sub esp, 0x18", "push edx", "push ecx", "push eax", "mov ecx, esp",
+            "lea edx, [esp + 0x24]", "push edx", "call {}",
+            "pop eax", "pop ecx", "pop edx", "add esp, 0x18", "ret 4",
+            sym footprints_overlap,
+        );
+    }
+}
+
+unsafe extern "thiscall" fn footprints_overlap(r: &mut Registers, stack: *mut u32) {
+    unsafe {
+        let first = r.ecx;
+        if (first as *const u8).read() == 0 {
+            r.eax &= !0xFF;
+            return;
+        }
+        let second = arg(stack, 1);
+        if (second as *const u8).read() == 0 {
+            r.eax &= !0xFF;
+            return;
+        }
+        let dx = subtract_stored(
+            F80::from_f32(f32::from_bits(load(second, 4))),
+            f32::from_bits(load(first, 4)),
+        );
+        r.eax = load(first, 0x1C);
+        r.ecx = r.eax;
+        let dz = subtract_stored(
+            F80::from_f32(f32::from_bits(load(second, 8))),
+            f32::from_bits(load(first, 8)),
+        );
+        let ax = f32::from_bits(r.eax);
+        let az = (-F80::from_f32(f32::from_bits(load(first, 0x20)))).to_f32();
+        let axes = stack.sub(6).cast::<f32>();
+        axes.write(ax);
+        axes.add(1).write(az);
+        let output = stack.sub(4).cast::<f32>();
+        output.write(ax);
+        output.add(1).write(az);
+        let tx = subtract_popped(F80::from_f32(ax) * dx, F80::from_f32(az) * dz).to_f32();
+        stack.sub(2).write(tx.to_bits());
+        let tz = add_popped(multiply_stored(dz, ax), F80::from_f32(az) * dx).to_f32();
+        stack.sub(1).write(tz.to_bits());
+        let az = (-F80::from_f32(f32::from_bits(load(first, 0x20)))).to_f32();
+        axes.add(1).write(az);
+        r.eax = second.wrapping_add(0x1C);
+        r.edx = az.to_bits();
+        r.ecx = axes as u32;
+        invoke(
+            r,
+            crate::abi::target(0x0050_5240),
+            &[output as u32, r.eax],
+            Conv::Thiscall,
+        );
+        let m = output.read();
+        let s = output.add(1).read();
+        let negative_s = -F80::from_f32(s);
+        stack.add(1).write(negative_s.to_f32().to_bits());
+        let abs_tx = F80::from_f32(tx).abs();
+        let other = multiply_stored(negative_s, f32::from_bits(load(second, 16))).abs();
+        let term = multiply_stored(F80::from_f32(m), f32::from_bits(load(second, 12))).abs();
+        let _ = term.to_f32();
+        let radius = add_stored(add_popped(other, term), f32::from_bits(load(first, 12)));
+        let status = compare_stored(subtract_popped(abs_tx, radius), footprint_zero().read());
+        r.eax = (r.eax & 0xFFFF_0000) | u32::from(status);
+        if status & 0x4100 == 0 {
+            r.eax &= !0xFF;
+            return;
+        }
+        let abs_tz = F80::from_f32(tz).abs();
+        let other = multiply_stored(F80::from_f32(m), f32::from_bits(load(second, 16))).abs();
+        let term = multiply_stored(F80::from_f32(s), f32::from_bits(load(second, 12))).abs();
+        let _ = term.to_f32();
+        let radius = add_stored(add_popped(other, term), f32::from_bits(load(first, 16)));
+        let status = compare_stored(subtract_popped(abs_tz, radius), footprint_zero().read());
+        r.eax = (r.eax & 0xFFFF_0000) | u32::from(status);
+        if status & 0x4100 == 0 {
+            r.eax &= !0xFF;
+            return;
+        }
+        let abs_m = F80::from_f32(m).abs().to_f32();
+        let projected = add_popped(
+            multiply_stored(F80::from_f32(s), tz),
+            multiply_stored(F80::from_f32(m), tx),
+        )
+        .abs();
+        let radius = add_stored(
+            add_popped(
+                multiply_stored(F80::from_f32(s).abs(), f32::from_bits(load(first, 16))),
+                multiply_stored(F80::from_f32(abs_m), f32::from_bits(load(first, 12))),
+            ),
+            f32::from_bits(load(second, 12)),
+        );
+        let status = compare_stored(subtract_popped(projected, radius), footprint_zero().read());
+        r.eax = (r.eax & 0xFFFF_0000) | u32::from(status);
+        if status & 0x4100 == 0 {
+            r.eax &= !0xFF;
+            return;
+        }
+        let negative_s = f32::from_bits(arg(stack, 1));
+        let projected = add_popped(
+            multiply_stored(F80::from_f32(m), tz),
+            multiply_stored(F80::from_f32(negative_s), tx),
+        )
+        .abs();
+        let radius = add_stored(
+            add_popped(
+                multiply_stored(F80::from_f32(negative_s).abs(), f32::from_bits(load(first, 12))),
+                multiply_stored(F80::from_f32(abs_m), f32::from_bits(load(first, 16))),
+            ),
+            f32::from_bits(load(second, 16)),
+        );
+        let status = compare_stored(subtract_popped(projected, radius), footprint_zero().read());
+        r.eax = (r.eax & 0xFFFF_0000) | u32::from(status);
+        r.eax = (r.eax & !0xFF) | u32::from(status & 0x4100 != 0);
+    }
+}
+
+port! {
+    /// Build a horizontal footprint from the first model's bounds and transform. A missing model keeps
+    /// validity and axis bytes; successful construction ignores the vertical offset and retains the
+    /// original argument scratch writes. Local transform padding keeps its incoming bytes.
+    #[port(address = 0x0050_A310, owner = "shared", name = "BuildModelFootprint", naked)]
+    pub unsafe extern "C" fn fc4p_0050a310() {
+        core::arch::naked_asm!(
+            "sub esp, 0x5C", "push edx", "push ecx", "push eax", "mov ecx, esp",
+            "lea edx, [esp + 0x68]", "push edx", "call {}",
+            "pop eax", "pop ecx", "pop edx", "add esp, 0x5C", "ret 20",
+            sym build_model_footprint,
+        );
+    }
+}
+
+unsafe extern "thiscall" fn build_model_footprint(r: &mut Registers, stack: *mut u32) {
+    unsafe {
+        let this = r.ecx;
+        let automaton = arg(stack, 1);
+        for offset in [4, 8, 12, 16, 20, 24] {
+            store(this, offset, 0);
+        }
+        let bounds = stack.sub(20).cast::<f32>();
+        for i in 0..6 {
+            bounds.add(i).write(if i < 3 { 1.0 } else { 0.0 });
+        }
+        r.eax = load(automaton, 0);
+        r.ecx = automaton;
+        virtual_call(r, 0x148, &[]);
+        if r.eax == 0 {
+            r.eax = this;
+            return;
+        }
+        r.ecx = load(r.eax, 4);
+        r.edx = load(r.ecx, 4);
+        let geometry = r.edx.wrapping_add(r.eax).wrapping_add(4);
+        if geometry == 0 {
+            r.eax = this;
+            return;
+        }
+        r.eax = load(geometry, 0);
+        r.ecx = geometry;
+        virtual_call(r, 0x1C, &[bounds as u32]);
+        let dx = stack.sub(23).cast::<f32>();
+        let dz = stack.sub(21).cast::<f32>();
+        dx.write(subtract_stored(F80::from_f32(bounds.add(3).read()), bounds.read()).to_f32());
+        r.edx = load(automaton, 0);
+        r.eax = stack.add(1) as u32;
+        r.ecx = automaton;
+        stack.add(1).write(0);
+        dz.write(subtract_stored(F80::from_f32(bounds.add(5).read()), bounds.add(2).read()).to_f32());
+        virtual_call(r, 0, &[0x4A41_6254, r.eax]);
+        let x_margin = if r.eax as u8 != 0 {
+            footprint_wide_margin().read()
+        } else {
+            footprint_half_scale().read()
+        };
+        dx.write(subtract_stored(F80::from_f32(dx.read()), x_margin).to_f32());
+        let z_margin = if r.eax as u8 != 0 {
+            unit_opacity().read()
+        } else {
+            footprint_half_scale().read()
+        };
+        dz.write(subtract_stored(F80::from_f32(dz.read()), z_margin).to_f32());
+        r.ecx = arg(stack, 1);
+        if r.ecx != 0 {
+            r.edx = load(r.ecx, 0);
+            virtual_call(r, 8, &[]);
+        }
+        let transform = stack.sub(14).cast::<u8>();
+        for i in 0..13 {
+            let value = if [0, 4, 8, 12].contains(&i) { 1.0f32 } else { 0.0 };
+            write_unaligned(transform.add(4 + i * 4).cast::<f32>(), value);
+        }
+        transform.write(0);
+        transform.add(1).write(0);
+        r.ecx = transform as u32;
+        r.eax = load(geometry, 0);
+        let transform_p = r.ecx;
+        r.ecx = geometry;
+        virtual_call(r, 0x24, &[transform_p]);
+        let tx = read_unaligned(transform.add(0x28).cast::<f32>());
+        let tz = read_unaligned(transform.add(0x30).cast::<f32>());
+        let x = add_stored(F80::from_f32(f32::from_bits(arg(stack, 2))), tx);
+        let z = add_stored(F80::from_f32(f32::from_bits(arg(stack, 4))), tz);
+        store(this, 4, x.to_f32().to_bits());
+        store(this, 8, z.to_f32().to_bits());
+        let half_x = multiply_stored(F80::from_f32(dx.read()), footprint_half_scale().read());
+        let half_z = multiply_stored(F80::from_f32(dz.read()), footprint_half_scale().read()).to_f32();
+        stack.add(3).write(half_z.to_bits());
+        let extent_x = multiply_stored(half_x, f32::from_bits(arg(stack, 5)));
+        let extent_z = multiply_stored(F80::from_f32(half_z), f32::from_bits(arg(stack, 5)));
+        store(this, 12, extent_x.to_f32().to_bits());
+        store(this, 16, extent_z.to_f32().to_bits());
+        let axis_z = (-F80::from_f32(read_unaligned(transform.add(0xC).cast::<f32>()))).to_f32();
+        stack.add(3).write(axis_z.to_bits());
+        let axis_x = read_unaligned(transform.add(4).cast::<f32>());
+        let x2 = multiply_stored(F80::from_f32(axis_x), axis_x);
+        let z2 = multiply_stored(F80::from_f32(axis_z), axis_z);
+        // The reciprocal uses the length, with a stored rounding step before either axis product.
+        let reciprocal = divide_into_stored(add_popped(x2, z2).sqrt(), footprint_unit_length().read()).to_f32();
+        (this as *mut u8).write(1);
+        stack.add(5).write(reciprocal.to_bits());
+        let x = multiply_stored(F80::from_f32(axis_x), reciprocal);
+        let z = multiply_stored(F80::from_f32(axis_z), reciprocal);
+        store(this, 0x1C, x.to_f32().to_bits());
+        store(this, 0x20, z.to_f32().to_bits());
+        r.eax = this;
+    }
+}
+
+game_data! { static automaton_city: *mut u8 = 0x00B4_3CEC; }
+game_data! { static finished_animation_threshold: f32 = 0x00A8_C950; }
+game_fn! {
+    #[allow(dead_code)]
+    fn random_unit_interval(this: *mut u8) -> St0 = "thiscall" 0x0091_3A29;
+}
+game_fn! {
+    #[allow(dead_code)]
+    fn refresh_automaton_clock() -> u32 = "C" 0x0050_7BF0;
+}
+
+register_port!(
+    0x0050_96B0,
+    fc4p_005096b0,
+    update_location_behavior,
+    0,
+    "UpdateLocationBehavior",
+    |r, _stack| {
+        unsafe {
+            let this = r.ecx;
+            r.eax = load(this, 0);
+            virtual_call(r, 0x7C, &[0x4000]);
+            if r.eax as u8 != 0 {
+                return;
+            }
+            r.ecx = automaton_city().read() as u32;
+            r.edx = load(r.ecx, 0);
+            virtual_call(r, 0xBC, &[]);
+            r.edx = load(r.eax, 0);
+            r.ecx = r.eax;
+            virtual_call(
+                r,
+                0x58,
+                &[
+                    this.wrapping_add(4),
+                    this.wrapping_add(0xA4),
+                    this.wrapping_add(0x9C),
+                    this.wrapping_add(0xA0),
+                ],
+            );
+            let location = r.eax;
+            if location != 0 {
+                r.edx = load(location, 0);
+                r.ecx = location;
+                virtual_call(r, 4, &[]);
+            }
+            r.eax = load(this, 0x98);
+            if location != r.eax {
+                if r.eax != 0 {
+                    r.eax = load(this, 0);
+                    r.ecx = this;
+                    virtual_call(r, 0xE0, &[]);
+                    while r.eax != 0 {
+                        r.ecx = load(r.eax, 8);
+                        if r.ecx != load(this, 0x98) {
+                            break;
+                        }
+                        r.edx = load(this, 0);
+                        r.ecx = this;
+                        virtual_call(r, 0xD4, &[]);
+                        r.eax = load(this, 0);
+                        r.ecx = this;
+                        virtual_call(r, 0xE0, &[]);
+                    }
+                }
+                let old = load(this, 0x98);
+                if location != old {
+                    if location != 0 {
+                        r.edx = load(location, 0);
+                        r.ecx = location;
+                        virtual_call(r, 4, &[]);
+                    }
+                    store(this, 0x98, location);
+                    if old != 0 {
+                        r.eax = load(old, 0);
+                        r.ecx = old;
+                        virtual_call(r, 8, &[]);
+                    }
+                }
+            }
+            r.ecx = load(this, 0x98);
+            if r.ecx != 0 {
+                r.edx = load(r.ecx, 0);
+                r.eax = load(this, 0x9C);
+                virtual_call(r, 0x80, &[r.eax, this.wrapping_add(0x40)]);
+                let behavior = r.eax;
+                if behavior != 0 {
+                    let probability = f32::from_bits(load(behavior, 8));
+                    r.ecx = automaton_random() as u32;
+                    let draw = invoke_st0(r, crate::abi::target(0x0091_3A29), &[]);
+                    let status = F80::from_f32(probability).compare(draw).status_word();
+                    r.eax = (r.eax & 0xFFFF_0000) | u32::from(status);
+                    if status & 0x0100 == 0 {
+                        r.edx = load(this, 0);
+                        r.ecx = this;
+                        virtual_call(r, 0xE0, &[]);
+                        let mut action = r.eax;
+                        let mut already_active = false;
+                        while action != 0 {
+                            r.eax = load(action, 8);
+                            if r.eax != 0 {
+                                let current_location = load(this, 0x98);
+                                r.ecx = r.eax;
+                                r.eax = load(r.ecx, 0);
+                                virtual_call(r, 0x18, &[]);
+                                let action_location_id = r.eax;
+                                r.edx = load(current_location, 0);
+                                r.ecx = current_location;
+                                virtual_call(r, 0x18, &[]);
+                                r.ecx = action_location_id;
+                                if r.ecx == r.eax {
+                                    r.ecx = behavior;
+                                    r.eax = load(action, 4);
+                                    if r.eax != load(behavior, 0) {
+                                        r.edx = load(this, 0);
+                                        r.ecx = this;
+                                        virtual_call(r, 0xD4, &[]);
+                                        r.eax = load(this, 0);
+                                        r.ecx = this;
+                                        virtual_call(r, 0xE0, &[]);
+                                        action = r.eax;
+                                        continue;
+                                    }
+                                }
+                            }
+                            r.ecx = load(action, 0x24);
+                            already_active = r.ecx == behavior;
+                            break;
+                        }
+                        if !already_active {
+                            r.eax = load(this, 0x98);
+                            r.ecx = behavior;
+                            r.edx = load(this, 0);
+                            let current_location = r.eax;
+                            r.ecx = this;
+                            virtual_call(r, 0xDC, &[behavior, current_location]);
+                        }
+                    }
+                }
+            }
+            if location != 0 {
+                r.edx = load(location, 0);
+                r.ecx = location;
+                virtual_call(r, 8, &[]);
+            }
+        }
+    }
+);
+
+register_port!(
+    0x0050_A7B0,
+    fc4p_0050a7b0,
+    tick_managed_automata,
+    8,
+    "TickManagedAutomata",
+    |r, stack| {
+        unsafe {
+            let this = r.ecx;
+            let mut scratch = this;
+            invoke(r, crate::abi::target(0x0050_7BF0), &[], Conv::Cdecl);
+            r.eax = load(this, 0x48);
+            if r.eax == 0 {
+                r.ecx = scratch;
+                return;
+            }
+            let paused = (this.wrapping_add(0x4D) as *const u8).read();
+            r.eax = (r.eax & !0xFF) | u32::from(paused);
+            if paused != 0 {
+                r.ecx = scratch;
+                return;
+            }
+            r.ecx = selected_object_service().read() as u32;
+            r.edx = &mut scratch as *mut u32 as u32;
+            scratch = 0;
+            r.eax = load(r.ecx, 0);
+            virtual_call(r, 0x48, &[r.edx]);
+            r.eax = load(this, 0x44);
+            let mut node = load(r.eax, 0);
+            while node != load(this, 0x44) {
+                let automaton = load(node, 8);
+                r.eax = load(automaton, 4);
+                node = load(node, 0);
+                r.ecx = automaton.wrapping_add(4);
+                virtual_call(r, 0x84, &[]);
+                let mut tick = r.eax as u8 & 4 != 0;
+                if !tick {
+                    r.edx = load(automaton, 0);
+                    r.ecx = automaton;
+                    virtual_call(r, 0x154, &[]);
+                    if r.eax as u8 != 0 {
+                        r.eax = load(this, 0);
+                        r.ecx = this;
+                        virtual_call(r, 0x20, &[automaton, 1]);
+                    } else {
+                        let stopped = automata_stopped().read();
+                        r.eax = (r.eax & !0xFF) | u32::from(stopped);
+                        if stopped == 0 {
+                            r.edx = load(automaton, 0);
+                            r.ecx = automaton;
+                            virtual_call(r, 0x7C, &[0x21_0040]);
+                            tick = r.eax as u8 != 0;
+                        }
+                    }
+                }
+                if tick {
+                    r.eax = load(automaton, 0);
+                    r.ecx = automaton;
+                    virtual_call(r, 0x7C, &[0x0400_0000]);
+                    if r.eax as u8 == 0 {
+                        r.edx = load(automaton, 0);
+                        r.ecx = automaton;
+                        virtual_call(r, 0x78, &[0x0400_0000, 1]);
+                        r.eax = load(automaton, 0);
+                        r.ecx = automaton;
+                        virtual_call(r, 0x194, &[]);
+                        if r.eax as u8 == 0 {
+                            r.edx = load(this, 0);
+                            r.ecx = this;
+                            virtual_call(r, 0x20, &[automaton, 0]);
+                        }
+                    }
+                    r.eax = load(automaton, 4);
+                    r.ecx = automaton.wrapping_add(4);
+                    virtual_call(r, 0x14, &[]);
+                    if r.eax as u8 != 0 {
+                        r.eax = arg(stack, 2);
+                        r.ecx = arg(stack, 1);
+                        r.edx = load(automaton, 0);
+                        r.ecx = automaton;
+                        virtual_call(r, 0x120, &[arg(stack, 1), r.eax]);
+                        if r.eax as u8 == 0 {
+                            r.edx = load(this, 0);
+                            r.ecx = this;
+                            virtual_call(r, 0x20, &[automaton, 0]);
+                        }
+                    }
+                    r.eax = load(automaton, 0);
+                    r.ecx = automaton;
+                    virtual_call(r, 0x154, &[]);
+                    let mut remove_finished = false;
+                    if r.eax as u8 != 0 {
+                        r.edx = load(automaton, 0);
+                        r.ecx = automaton;
+                        let value = invoke_st0(r, crate::abi::vslot(automaton as *mut u8, 0x80), &[]);
+                        let status = compare_stored(value, finished_animation_threshold().read());
+                        r.eax = (r.eax & 0xFFFF_0000) | u32::from(status);
+                        remove_finished = status & 0x0500 == 0x0100 || status & 0x0500 == 0x0400;
+                    }
+                    if remove_finished {
+                        r.eax = load(this, 0);
+                        r.ecx = this;
+                        virtual_call(r, 0x20, &[automaton, 1]);
+                    } else {
+                        r.edx = load(automaton, 0);
+                        r.ecx = automaton;
+                        virtual_call(r, 0x7C, &[0x1_0000]);
+                        if r.eax as u8 == 0 {
+                            r.eax = load(this, 0);
+                            r.ecx = this;
+                            virtual_call(r, 0xA4, &[automaton]);
+                            if r.eax as u8 == 0 {
+                                r.edx = load(this, 0);
+                                r.ecx = this;
+                                virtual_call(r, 0x20, &[automaton, 0]);
+                            }
+                        }
+                    }
+                }
+            }
+            r.ecx = scratch;
+            if r.ecx != 0 {
+                r.eax = load(r.ecx, 0);
+                virtual_call(r, 8, &[]);
+            }
+            r.ecx = scratch;
+        }
+    }
+);
+
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
     fc4p_004980a0::PORT,
@@ -2410,6 +2963,7 @@ pub const PORTS: &[Port] = &[
     fc4p_00505780::PORT,
     fc4p_00505820::PORT,
     fc4p_00505c70::PORT,
+    fc4p_00506450::PORT,
     fc4p_00506940::PORT,
     fc4p_00507bf0::PORT,
     fc4p_00507e60::PORT,
@@ -2419,9 +2973,12 @@ pub const PORTS: &[Port] = &[
     fc4p_00509440::PORT,
     fc4p_00509600::PORT,
     fc4p_00509660::PORT,
+    fc4p_005096b0::PORT,
+    fc4p_0050a310::PORT,
     fc4p_0050a670::PORT,
     fc4p_0050a6b0::PORT,
     fc4p_0050a740::PORT,
+    fc4p_0050a7b0::PORT,
 ];
 
 #[cfg(test)]
@@ -2569,6 +3126,529 @@ mod tests {
     stub!(song_data_stub, 0, 0, 56);
     stub!(song_length_stub, 0, 0, 57);
     stub!(song_append_stub, 4, 1, 58);
+    stub!(clock_refresh_stub, 0, 0, 59);
+    stub!(location_service_stub, 0, 0, 60);
+    stub!(location_lookup_stub, 16, 4, 61);
+    stub!(location_add_ref_stub, 0, 0, 62);
+    stub!(location_release_stub, 0, 0, 63);
+    stub!(top_action_stub, 0, 0, 64);
+    stub!(pop_action_stub, 0, 0, 65);
+    stub!(location_behavior_stub, 8, 2, 66);
+    stub!(location_id_stub, 0, 0, 67);
+    stub!(push_behavior_stub, 8, 2, 68);
+    float_stub!(unit_random_stub, 0, 0, 69);
+    stub!(animation_flags_stub, 0, 0, 70);
+    stub!(animation_finished_stub, 0, 0, 71);
+    stub!(automaton_flag_stub, 4, 1, 72);
+    stub!(automaton_set_flag_stub, 8, 2, 73);
+    stub!(animation_initialize_stub, 0, 0, 74);
+    stub!(animation_active_stub, 0, 0, 75);
+    stub!(animation_tick_stub, 8, 2, 76);
+    float_stub!(animation_progress_stub, 0, 0, 77);
+    stub!(manager_remove_stub, 8, 2, 78);
+    stub!(manager_post_tick_stub, 4, 1, 79);
+    stub!(selected_filter_stub, 4, 1, 80);
+    stub!(footprint_model_stub, 0, 0, 81);
+    stub!(footprint_query_stub, 8, 2, 82);
+    stub!(footprint_bounds_stub, 4, 1, 83);
+    stub!(footprint_transform_stub, 4, 1, 84);
+    stub!(footprint_axes_stub, 8, 2, 85);
+
+    thread_local! {
+        static FOOTPRINT_BOUNDS: RefCell<[f32; 6]> = const { RefCell::new([-4.0, -1.0, -8.0, 6.0, 3.0, 12.0]) };
+        static FOOTPRINT_TRANSFORM: RefCell<[f32; 13]> = const { RefCell::new([
+            1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 100.0, 5.0, 200.0, 1.0]) };
+        static FOOTPRINT_AXES: RefCell<[f32; 2]> = const { RefCell::new([1.0, 0.0]) };
+    }
+
+    #[test]
+    fn model_footprint_moves_core_bounds_margin_and_rotation_cases_and_keeps_failure_fields_and_stack_scratch() {
+        let _fpu = GameFpu::new();
+        let mut object = Object::new(0x30);
+        let p = object.ptr() as u32;
+        let mut source_table = [0usize; 83];
+        source_table[0] = footprint_query_stub as *const () as usize;
+        source_table[0x148 / 4] = footprint_model_stub as *const () as usize;
+        let mut source = [source_table.as_ptr() as u32];
+        let source_p = source.as_mut_ptr() as u32;
+        let mut geometry_table = [0usize; 10];
+        geometry_table[0x1C / 4] = footprint_bounds_stub as *const () as usize;
+        geometry_table[0x24 / 4] = footprint_transform_stub as *const () as usize;
+        let mut vbtable = [0u32, (-4i32) as u32];
+        let mut geometry = [geometry_table.as_ptr() as u32, vbtable.as_mut_ptr() as u32];
+        let geometry_p = geometry.as_mut_ptr() as u32;
+        let mut resource_table = [0usize; 3];
+        resource_table[2] = location_release_stub as *const () as usize;
+        let mut resource = [resource_table.as_ptr() as u32];
+        SONG_RESOURCE.with(|v| *v.borrow_mut() = resource.as_mut_ptr() as u32);
+        let mut half = 0.5f32;
+        let mut one = 1.0f32;
+        let mut wide = 2.0f32;
+        let _data = [
+            fake_data(0x00A8_825C, (&mut wide as *mut f32).cast()),
+            fake_data(0x00A8_4D2C, (&mut half as *mut f32).cast()),
+            fake_data(0x00A8_1228, (&mut one as *mut f32).cast()),
+            fake_data(0x00B0_9978, (&mut one as *mut f32).cast()),
+        ];
+        HOOK.with(|h| {
+            *h.borrow_mut() = Some(|c| unsafe {
+                match c.id {
+                    82 => {
+                        assert_eq!(c.args[0], 0x4A41_6254);
+                        assert_eq!(load(c.args[1], 0), 0);
+                        store(c.args[1], 0, SONG_RESOURCE.with(|v| *v.borrow()));
+                    }
+                    83 => {
+                        assert_eq!(
+                            std::slice::from_raw_parts(c.args[0] as *const f32, 6),
+                            &[1.0, 1.0, 1.0, 0.0, 0.0, 0.0]
+                        );
+                        FOOTPRINT_BOUNDS.with(|v| {
+                            for (i, &f) in v.borrow().iter().enumerate() {
+                                store(c.args[0], i as u32 * 4, f.to_bits());
+                            }
+                        });
+                    }
+                    84 => {
+                        assert_eq!(load(c.args[0], 0) & 0xFFFF, 0);
+                        assert_eq!(
+                            std::slice::from_raw_parts((c.args[0] + 4) as *const f32, 13),
+                            &[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+                        );
+                        FOOTPRINT_TRANSFORM.with(|v| {
+                            for (i, &f) in v.borrow().iter().enumerate() {
+                                store(c.args[0], 4 + i as u32 * 4, f.to_bits());
+                            }
+                        });
+                    }
+                    _ => {}
+                }
+            })
+        });
+        for tagged in [false, true] {
+            unsafe {
+                core::ptr::write_bytes(p as *mut u8, 0xCC, 0x30);
+            }
+            responses(&[geometry_p, 0, u32::from(tagged), 0, RESULT.eax]);
+            let mut original_stack = [0xA5A5_A5A5u32; 32];
+            let stack = unsafe { original_stack.as_mut_ptr().add(24) };
+            for (i, value) in [
+                source_p,
+                3.0f32.to_bits(),
+                99.0f32.to_bits(),
+                (-4.0f32).to_bits(),
+                2.0f32.to_bits(),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                unsafe {
+                    stack.add(i + 1).write(value);
+                }
+            }
+            let mut r = Registers { ecx: p, ..ENTRY };
+            unsafe {
+                build_model_footprint(&mut r, stack);
+            }
+            assert_eq!(r, Registers { eax: p, ..RESULT });
+            let calls = take_calls();
+            assert_eq!(calls.iter().map(|c| c.id).collect::<Vec<_>>(), [81, 83, 82, 63, 84]);
+            assert_eq!(
+                unsafe { (load(p, 4), load(p, 8)) },
+                (103.0f32.to_bits(), 196.0f32.to_bits())
+            );
+            let extents = if tagged { [8.0f32, 19.0f32] } else { [9.5f32, 19.5f32] };
+            assert_eq!(
+                unsafe { (load(p, 12), load(p, 16)) },
+                (extents[0].to_bits(), extents[1].to_bits())
+            );
+            assert_eq!(unsafe { load(p, 0) }, 0xCCCC_CC01);
+            assert_eq!(
+                unsafe { (load(p, 0x14), load(p, 0x18), load(p, 0x1C), load(p, 0x20)) },
+                (0, 0, 1.0f32.to_bits(), (-0.0f32).to_bits())
+            );
+            assert_eq!(unsafe { stack.add(1).read() }, resource.as_ptr() as u32);
+            assert_eq!(unsafe { stack.add(3).read() }, (-0.0f32).to_bits());
+            assert_eq!(unsafe { stack.add(5).read() }, 1.0f32.to_bits());
+            assert_eq!(unsafe { stack.sub(14).read() }, 0xA5A5_0000);
+        }
+        FOOTPRINT_TRANSFORM.with(|v| {
+            let mut v = v.borrow_mut();
+            v[0] = 0.0;
+            v[2] = 2.0;
+        });
+        responses(&[geometry_p, 0, 0, 0, RESULT.eax]);
+        run(0x0050_A310, p, &[source_p, 0, 0, 0, 1.0f32.to_bits()], false);
+        assert_eq!(
+            unsafe { (load(p, 0x1C), load(p, 0x20)) },
+            (0.0f32.to_bits(), (-1.0f32).to_bits())
+        );
+        take_calls();
+        let before = bytes(p, 0x30);
+        responses(&[0]);
+        run(0x0050_A310, p, &[source_p, 1, 2, 3, 4], false);
+        assert_eq!(take_calls().iter().map(|c| c.id).collect::<Vec<_>>(), [81]);
+        let after = bytes(p, 0x30);
+        assert_eq!(&after[..4], &before[..4]);
+        assert_eq!(&after[4..0x1C], &[0; 24]);
+        assert_eq!(&after[0x1C..], &before[0x1C..]);
+        HOOK.with(|h| *h.borrow_mut() = None);
+    }
+
+    #[test]
+    fn footprint_overlap_moves_core_touch_and_invalid_cases_and_rejects_each_separating_axis_in_order() {
+        let _fpu = GameFpu::new();
+        let mut first = [0u32; 9];
+        first[0] = 1;
+        first[3] = 1.0f32.to_bits();
+        first[4] = 1.0f32.to_bits();
+        first[7] = 1.0f32.to_bits();
+        let p = first.as_mut_ptr() as u32;
+        let mut second = first;
+        let q = second.as_mut_ptr() as u32;
+        let mut zero = 0.0f32;
+        let _data = fake_data(0x00A8_1054, (&mut zero as *mut f32).cast());
+        let _axes = fake(0x0050_5240, footprint_axes_stub as *const () as usize);
+        HOOK.with(|h| {
+            *h.borrow_mut() = Some(|c| unsafe {
+                if c.id == 85 {
+                    assert_eq!(
+                        std::slice::from_raw_parts(c.registers.ecx as *const f32, 2),
+                        &[1.0, -0.0]
+                    );
+                    FOOTPRINT_AXES.with(|v| {
+                        for (i, &f) in v.borrow().iter().enumerate() {
+                            store(c.args[0], i as u32 * 4, f.to_bits());
+                        }
+                    });
+                }
+            })
+        });
+        FOOTPRINT_AXES.with(|v| *v.borrow_mut() = [1.0, 0.0]);
+        for (x, z, overlap) in [
+            (2.0f32, 0.0f32, true),
+            (2.0001, 0.0, false),
+            (0.0, 2.0001, false),
+            (0.0, 0.0, true),
+            (f32::NAN, 0.0, true),
+        ] {
+            second[1] = x.to_bits();
+            second[2] = z.to_bits();
+            assert_eq!(second[1], x.to_bits());
+            responses(&[RESULT.eax]);
+            let mut scratch = [0u32; 10];
+            let stack = unsafe { scratch.as_mut_ptr().add(7) };
+            unsafe {
+                stack.add(1).write(q);
+            }
+            let mut r = Registers { ecx: p, ..ENTRY };
+            unsafe {
+                footprints_overlap(&mut r, stack);
+            }
+            assert_eq!(r.eax as u8 != 0, overlap);
+            assert_eq!((r.ecx, r.edx), (RESULT.ecx, RESULT.edx));
+            assert_eq!(unsafe { stack.add(1).read() }, (-0.0f32).to_bits());
+            let calls = take_calls();
+            assert_eq!(calls.len(), 1);
+            assert_eq!(calls[0].args[1], q + 0x1C);
+        }
+        first[3] = 2.0f32.to_bits();
+        first[4] = 0.2f32.to_bits();
+        let diagonal = core::f32::consts::FRAC_1_SQRT_2;
+        FOOTPRINT_AXES.with(|v| *v.borrow_mut() = [diagonal, diagonal]);
+        for (bh, bk, z, status) in [(0.2f32, 2.0f32, 1.0f32, 0u32), (2.0, 0.2, -1.0, 0)] {
+            second[1] = 3.0f32.to_bits();
+            second[2] = z.to_bits();
+            second[3] = bh.to_bits();
+            second[4] = bk.to_bits();
+            assert_eq!(second[4], bk.to_bits());
+            responses(&[RESULT.eax]);
+            assert_eq!(run(0x0050_6450, p, &[q], false).eax & 0xFFFF, status);
+            assert_eq!(take_calls().len(), 1);
+        }
+        first[0] = 0;
+        assert_eq!(first[0], 0);
+        responses(&[]);
+        assert_eq!(run(0x0050_6450, p, &[0], false).eax, ENTRY.eax & !0xFF);
+        first[0] = 1;
+        second[0] = 0;
+        assert_eq!((first[0], second[0]), (1, 0));
+        assert_eq!(run(0x0050_6450, p, &[q], false).eax, ENTRY.eax & !0xFF);
+        assert!(take_calls().is_empty());
+        HOOK.with(|h| *h.borrow_mut() = None);
+    }
+
+    #[test]
+    fn location_behavior_balances_references_pops_old_actions_and_obeys_probability_and_identity_gates() {
+        let _fpu = GameFpu::new();
+        let mut table = [0usize; 57];
+        table[0x7C / 4] = automaton_flag_stub as *const () as usize;
+        table[0xE0 / 4] = top_action_stub as *const () as usize;
+        table[0xD4 / 4] = pop_action_stub as *const () as usize;
+        table[0xDC / 4] = push_behavior_stub as *const () as usize;
+        let mut object = Object::new(0xB0);
+        let p = object.ptr() as u32;
+        let mut location_table = [0usize; 33];
+        location_table[1] = location_add_ref_stub as *const () as usize;
+        location_table[2] = location_release_stub as *const () as usize;
+        location_table[6] = location_id_stub as *const () as usize;
+        location_table[32] = location_behavior_stub as *const () as usize;
+        let mut old = [location_table.as_ptr() as u32];
+        let old_p = old.as_mut_ptr() as u32;
+        let mut new = [location_table.as_ptr() as u32];
+        let new_p = new.as_mut_ptr() as u32;
+        let mut city_table = [0usize; 48];
+        city_table[47] = location_service_stub as *const () as usize;
+        let mut city = [city_table.as_ptr() as u32];
+        let mut city_global = city.as_mut_ptr() as u32;
+        let mut service_table = [0usize; 23];
+        service_table[22] = location_lookup_stub as *const () as usize;
+        let mut service = [service_table.as_ptr() as u32];
+        let service_p = service.as_mut_ptr() as u32;
+        let mut random = [0u32; 4];
+        let _data = [
+            fake_data(0x00B4_3CEC, (&mut city_global as *mut u32).cast()),
+            fake_data(0x00B2_1D78, random.as_mut_ptr().cast()),
+        ];
+        let _fake = fake(0x0091_3A29, unit_random_stub as *const () as usize);
+        unsafe {
+            store(p, 0, table.as_ptr() as u32);
+        }
+        responses(&[0xAABB_CC01]);
+        assert_eq!(run(0x0050_96B0, p, &[], false).eax, 0xAABB_CC01);
+        assert_eq!(take_calls().iter().map(|c| c.id).collect::<Vec<_>>(), [72]);
+        let mut action = [0u32; 10];
+        action[2] = old_p;
+        let action_p = action.as_mut_ptr() as u32;
+        unsafe {
+            store(p, 0x98, old_p);
+        }
+        responses(&[0, service_p, new_p, 1, action_p, 1, 0, 1, 1, 0, 0xAABB_CC80]);
+        HOOK.with(|h| {
+            *h.borrow_mut() = Some(|c| unsafe {
+                if c.id == 61 {
+                    store(c.args[1], 0, 0xAA);
+                    store(c.args[2], 0, 0xBB);
+                    store(c.args[3], 0, 0xCC);
+                }
+            })
+        });
+        assert_eq!(run(0x0050_96B0, p, &[], false).eax, 0xAABB_CC80);
+        HOOK.with(|h| *h.borrow_mut() = None);
+        let calls = take_calls();
+        assert_eq!(
+            calls.iter().map(|c| c.id).collect::<Vec<_>>(),
+            [72, 60, 61, 62, 64, 65, 64, 62, 63, 66, 63]
+        );
+        assert_eq!(calls[2].args, [p + 4, p + 0xA4, p + 0x9C, p + 0xA0]);
+        assert_eq!(calls[9].args, [0xBB, p + 0x40]);
+        assert_eq!(
+            unsafe { (load(p, 0x98), load(p, 0x9C), load(p, 0xA0), load(p, 0xA4)) },
+            (new_p, 0xBB, 0xCC, 0xAA)
+        );
+        let mut behavior = [0x44u32, 0, 0.5f32.to_bits()];
+        let behavior_p = behavior.as_mut_ptr() as u32;
+        for probability in [0.0f32, 0.5, 1.0, f32::NAN] {
+            behavior[2] = probability.to_bits();
+            assert_eq!(behavior[2], probability.to_bits());
+            FLOAT_RESULT.with(|v| *v.borrow_mut() = 0.5f32.to_bits());
+            let admitted = probability >= 0.5;
+            let mut values = vec![0, service_p, new_p, 1, behavior_p, 0];
+            if admitted {
+                values.extend([0, 1]);
+            }
+            values.push(0x1234_5680);
+            responses(&values);
+            assert_eq!(run(0x0050_96B0, p, &[], false).eax, 0x1234_5680);
+            let calls = take_calls();
+            assert_eq!(
+                calls.iter().map(|c| c.id).collect::<Vec<_>>(),
+                if admitted {
+                    vec![72, 60, 61, 62, 66, 69, 64, 68, 63]
+                } else {
+                    vec![72, 60, 61, 62, 66, 69, 63]
+                }
+            );
+            if admitted {
+                assert_eq!(calls[7].args, [behavior_p, new_p]);
+            }
+        }
+        action[2] = old_p;
+        action[1] = 0x45;
+        action[9] = 0;
+        behavior[2] = 0.5f32.to_bits();
+        assert_eq!(behavior[2], 0.5f32.to_bits());
+        assert_eq!(action[1], 0x45);
+        responses(&[
+            0,
+            service_p,
+            new_p,
+            1,
+            behavior_p,
+            0,
+            action_p,
+            7,
+            7,
+            1,
+            0,
+            1,
+            0x9876_5480,
+        ]);
+        run(0x0050_96B0, p, &[], false);
+        assert_eq!(
+            take_calls().iter().map(|c| c.id).collect::<Vec<_>>(),
+            [72, 60, 61, 62, 66, 69, 64, 67, 67, 65, 64, 68, 63]
+        );
+        action[2] = 0;
+        action[9] = behavior_p;
+        assert_eq!(action[9], behavior_p);
+        responses(&[0, service_p, new_p, 1, behavior_p, 0, action_p, 1]);
+        run(0x0050_96B0, p, &[], false);
+        assert_eq!(
+            take_calls().iter().map(|c| c.id).collect::<Vec<_>>(),
+            [72, 60, 61, 62, 66, 69, 64, 63]
+        );
+        // Losing a location releases the old owner and never queries a behavior.
+        responses(&[0, service_p, 0, 0, 1]);
+        run(0x0050_96B0, p, &[], false);
+        assert_eq!(unsafe { load(p, 0x98) }, 0);
+        assert_eq!(
+            take_calls().iter().map(|c| c.id).collect::<Vec<_>>(),
+            [72, 60, 61, 64, 63]
+        );
+    }
+
+    #[test]
+    fn manager_tick_routes_inactive_finished_frozen_and_active_nodes_and_releases_selected_filter() {
+        let _fpu = GameFpu::new();
+        let mut table = [0usize; 42];
+        table[0x20 / 4] = manager_remove_stub as *const () as usize;
+        table[0xA4 / 4] = manager_post_tick_stub as *const () as usize;
+        let mut object = Object::new(0x60);
+        let p = object.ptr() as u32;
+        let mut automaton_table = [0usize; 102];
+        automaton_table[0x154 / 4] = animation_finished_stub as *const () as usize;
+        automaton_table[0x7C / 4] = automaton_flag_stub as *const () as usize;
+        automaton_table[0x78 / 4] = automaton_set_flag_stub as *const () as usize;
+        automaton_table[0x194 / 4] = animation_initialize_stub as *const () as usize;
+        automaton_table[0x120 / 4] = animation_tick_stub as *const () as usize;
+        automaton_table[0x80 / 4] = animation_progress_stub as *const () as usize;
+        let mut interface_table = [0usize; 34];
+        interface_table[0x84 / 4] = animation_flags_stub as *const () as usize;
+        interface_table[0x14 / 4] = animation_active_stub as *const () as usize;
+        let mut automaton = [automaton_table.as_ptr() as u32, interface_table.as_ptr() as u32];
+        let a = automaton.as_mut_ptr() as u32;
+        let mut sentinel = [0u32; 3];
+        let sentinel_p = sentinel.as_mut_ptr() as u32;
+        let mut node = [sentinel_p, 0, a];
+        sentinel[0] = node.as_mut_ptr() as u32;
+        assert_eq!(sentinel[0], node.as_ptr() as u32);
+        let mut filter_table = [0usize; 19];
+        filter_table[0x48 / 4] = selected_filter_stub as *const () as usize;
+        let mut filter_service = [filter_table.as_ptr() as u32];
+        let mut filter_global = filter_service.as_mut_ptr() as u32;
+        let mut retained_table = [0usize; 3];
+        retained_table[2] = location_release_stub as *const () as usize;
+        let mut retained = [retained_table.as_ptr() as u32];
+        let mut stopped = 0u8;
+        let mut threshold = 0.1f32;
+        let _data = [
+            fake_data(0x00B4_3DC4, (&mut filter_global as *mut u32).cast()),
+            fake_data(0x00B2_1B9C, &mut stopped),
+            fake_data(0x00A8_C950, (&mut threshold as *mut f32).cast()),
+        ];
+        let _clock = fake(0x0050_7BF0, clock_refresh_stub as *const () as usize);
+        SONG_RESOURCE.with(|v| *v.borrow_mut() = retained.as_mut_ptr() as u32);
+        HOOK.with(|h| {
+            *h.borrow_mut() = Some(|c| unsafe {
+                if c.id == 80 {
+                    store(c.args[0], 0, SONG_RESOURCE.with(|v| *v.borrow()));
+                }
+            })
+        });
+        unsafe {
+            store(p, 0, table.as_ptr() as u32);
+            store(p, 0x44, sentinel_p);
+            store(p, 0x48, 0);
+        }
+        responses(&[1]);
+        assert_eq!(
+            run(0x0050_A7B0, p, &[0xAB, 0xCD], false),
+            Registers {
+                eax: 0,
+                ecx: p,
+                ..RESULT
+            }
+        );
+        assert_eq!(take_calls().iter().map(|c| c.id).collect::<Vec<_>>(), [59]);
+        unsafe {
+            store(p, 0x48, 1);
+            (p.wrapping_add(0x4D) as *mut u8).write(1);
+        }
+        responses(&[1]);
+        assert_eq!(run(0x0050_A7B0, p, &[0xAB, 0xCD], false).eax, 1);
+        assert_eq!(take_calls().len(), 1);
+        unsafe {
+            (p.wrapping_add(0x4D) as *mut u8).write(0);
+        }
+        for (values, expected_ids) in [
+            (vec![1, 1, 0, 1, 1, 0xAABB_CC80], vec![59, 80, 70, 71, 78, 63]),
+            (vec![1, 1, 0, 0, 0, 0xAABB_CC80], vec![59, 80, 70, 71, 72, 63]),
+            (
+                vec![1, 1, 4, 1, 0, 0, 1, 0xAABB_CC80],
+                vec![59, 80, 70, 72, 75, 71, 72, 63],
+            ),
+            (
+                vec![1, 1, 4, 1, 1, 0, 1, 0, 1, 0xAABB_CC80],
+                vec![59, 80, 70, 72, 75, 76, 78, 71, 72, 63],
+            ),
+            (
+                vec![1, 1, 4, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0xAABB_CC80],
+                vec![59, 80, 70, 72, 73, 74, 78, 75, 71, 72, 79, 78, 63],
+            ),
+        ] {
+            responses(&values);
+            let result = run(0x0050_A7B0, p, &[0xAB, 0xCD], false);
+            assert_eq!(result.ecx, retained.as_ptr() as u32);
+            let calls = take_calls();
+            assert_eq!(calls.iter().map(|c| c.id).collect::<Vec<_>>(), expected_ids);
+            if let Some(c) = calls.iter().find(|c| c.id == 76) {
+                assert_eq!(c.args, [0xAB, 0xCD]);
+                assert_eq!(c.registers.ecx, a);
+            }
+        }
+        stopped = 1;
+        assert_eq!(stopped, 1);
+        responses(&[1, 1, 0, 0, 0xAABB_CC80]);
+        run(0x0050_A7B0, p, &[0, 0], false);
+        assert_eq!(
+            take_calls().iter().map(|c| c.id).collect::<Vec<_>>(),
+            [59, 80, 70, 71, 63]
+        );
+        for progress in [0.0f32, 0.1, 0.2, f32::NAN] {
+            FLOAT_RESULT.with(|v| *v.borrow_mut() = progress.to_bits());
+            let mut values = vec![1, 1, 4, 1, 0, 1, 0];
+            if progress < 0.1 {
+                values.push(1);
+            } else {
+                values.extend([0, 0, 1]);
+            }
+            values.push(RESULT.eax);
+            responses(&values);
+            run(0x0050_A7B0, p, &[0, 0], false);
+            let calls = take_calls();
+            assert_eq!(
+                calls.iter().map(|c| c.id).collect::<Vec<_>>(),
+                if progress < 0.1 {
+                    vec![59, 80, 70, 72, 75, 71, 77, 78, 63]
+                } else {
+                    vec![59, 80, 70, 72, 75, 71, 77, 72, 79, 78, 63]
+                }
+            );
+        }
+        HOOK.with(|h| *h.borrow_mut() = None);
+        RESULTS.with(|r| r.borrow_mut().clear());
+    }
 
     thread_local! {
         static SONG_RESOURCE: RefCell<u32> = const { RefCell::new(0) };
