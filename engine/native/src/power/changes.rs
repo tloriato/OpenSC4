@@ -80,7 +80,7 @@ port! {
     pub unsafe extern "C" fn fc4p_006ed6e0() {
         core::arch::naked_asm!(
             "sub esp, 0x7c", "push esi", "push edi", "push ebx", "push ebp",
-            "mov edx, esp", "call {body}",
+            "mov edx, esp", "call {body}", "mov ecx, [esp + 0x14]",
             "pop ebp", "pop ebx", "pop edi", "pop esi", "add esp, 0x7c", "ret 8",
             body = sym update_wire,
         );
@@ -224,8 +224,23 @@ unsafe extern "fastcall" fn update_wire(this: *mut u8, frame: *mut u8) -> u64 {
         clear_occupants(list);
         let saved = list.read();
         let alloc = allocator(occupant_allocator(), frame.add(0x1C).cast());
-        vcall!(alloc, 0x10 => fn(u32) -> u64, saved)
+        deallocate_with_ecx(alloc, saved, frame.add(0x14).cast())
     }
+}
+
+/// Preserve the allocator's ECX as well as its result words for the wire rebuild's caller.
+unsafe fn deallocate_with_ecx(alloc: *mut u8, head: u32, ecx_out: *mut u32) -> u64 {
+    let mut call = [alloc as u32, head, 0, 0, 0];
+    unsafe {
+        core::arch::asm!(
+            "push dword ptr [edi + 4]", "mov ecx, [edi]", "mov eax, [ecx]",
+            "call dword ptr [eax + 0x10]", "mov [edi + 8], eax",
+            "mov [edi + 12], edx", "mov [edi + 16], ecx",
+            in("edi") call.as_mut_ptr(), clobber_abi("C"),
+        );
+        ecx_out.write(call[4]);
+    }
+    (u64::from(call[3]) << 32) | u64::from(call[2])
 }
 
 port! {

@@ -45,6 +45,8 @@ enum Call {
 #[derive(Default)]
 struct State {
     calls: Vec<Call>,
+    // Linked nodes keep their addresses when the allocation log grows.
+    #[allow(clippy::vec_box)]
     nodes: Vec<Box<[u32; 3]>>,
     connections: Vec<usize>,
     allocator: usize,
@@ -100,9 +102,15 @@ extern "thiscall" fn allocate(_this: *mut u8, size: u32) -> *mut u8 {
     log(Call::Allocate(size));
     node()
 }
-extern "thiscall" fn free_head(_this: *mut u8, _head: u32) -> u64 {
+extern "C" fn free_head_result() -> u64 {
     log(Call::Free);
     0x4455_6677_AABB_CCDD
+}
+#[unsafe(naked)]
+unsafe extern "thiscall" fn free_head(_this: *mut u8, _head: u32) -> u64 {
+    core::arch::naked_asm!(
+        "call {body}", "mov ecx, 0x13579bdf", "ret 4", body = sym free_head_result,
+    );
 }
 unsafe extern "thiscall" fn width(this: *mut u8) -> i32 {
     log(Call::Width);
@@ -960,4 +968,130 @@ fn terrain_empty_reversed_bounds_keeps_the_caller_words() {
             Call::ManagerRef(8)
         ]
     );
+}
+
+#[test]
+fn connection_null_entry_reuses_the_existing_coordinate_words() {
+    let mut f = Fixture::new();
+    f.select(8, 9);
+    STATE.with(|s| s.borrow_mut().connections = vec![0]);
+    let mut frame = [0u32; 12];
+    frame[0x14 / 4] = 8;
+    frame[0x20 / 4] = 9;
+    let result = unsafe { find_connection(f.sim.ptr(), frame.as_mut_ptr().cast()) };
+    assert_eq!(result as u8, 1);
+    assert_eq!(
+        calls(),
+        [
+            Call::Allocate(12),
+            Call::Connections(4, 9),
+            Call::Width,
+            Call::Clear,
+            Call::Free
+        ]
+    );
+}
+
+#[test]
+fn wire_rebuild_returns_the_final_allocators_ecx() {
+    let mut f = Fixture::new();
+    let mut rect = Rect {
+        x0: 2,
+        z0: 2,
+        x1: 1,
+        z1: 1,
+    };
+    let mut record = [
+        fc4p_006ed6e0 as *const () as u32,
+        f.sim.ptr() as u32,
+        &mut rect as *mut Rect as u32,
+        0,
+    ];
+    unsafe {
+        core::arch::asm!(
+            "push 0", "push dword ptr [edi + 8]", "mov ecx, [edi + 4]",
+            "call dword ptr [edi]", "mov [edi + 12], ecx",
+            in("edi") record.as_mut_ptr(), clobber_abi("C"),
+        );
+    }
+    assert_eq!(record[3], 0x1357_9BDF);
+}
+
+#[test]
+fn wire_rebuild_failed_queries_and_nonconducting_networks_do_not_set_bits() {
+    let mut f = Fixture::new();
+    let table = occupant_table();
+    let mut objects: Vec<_> = [0x2890_D4DE, 0x0990_B2EA, 0xC772_BF98, 0xC772_BF98]
+        .into_iter()
+        .enumerate()
+        .map(|(id, kind)| Occupant {
+            table: table.as_ptr(),
+            id: id as u32,
+            kind,
+            x: 5,
+            z: 5,
+            rect: Rect::default(),
+            query_ok: id == 3,
+            flags: 0x8000_0000,
+            endpoints: [core::ptr::null_mut(); 2],
+        })
+        .collect();
+    STATE.with(|s| {
+        let mut s = s.borrow_mut();
+        s.query_ok = true;
+        s.occupants = objects.iter_mut().map(|o| o as *mut Occupant as usize).collect();
+    });
+    let mut r = Rect {
+        x0: 2,
+        z0: 2,
+        x1: 1,
+        z1: 1,
+    };
+    f.wire(&mut r, core::ptr::null_mut(), 0);
+    let all = calls();
+    assert!(!all
+        .iter()
+        .any(|c| matches!(c, Call::Expand(..) | Call::SetWire(..) | Call::ObjectCell(..))));
+    assert_eq!(all.iter().filter(|c| **c == Call::Release(3)).count(), 2);
+    for id in 0..3 {
+        assert_eq!(all.iter().filter(|c| **c == Call::Release(id)).count(), 1);
+    }
+}
+
+#[test]
+fn terrain_reversed_pairs_are_distinct_connections() {
+    let mut f = Fixture::new();
+    let table = occupant_table();
+    let mut objects: Vec<_> = [0x2890_D4DE, 0x2890_D4DE, 0x0990_B2EA, 0x0990_B2EA]
+        .into_iter()
+        .enumerate()
+        .map(|(id, kind)| Occupant {
+            table: table.as_ptr(),
+            id: id as u32,
+            kind,
+            x: 30,
+            z: 30,
+            rect: Rect::default(),
+            query_ok: true,
+            flags: 0,
+            endpoints: [core::ptr::null_mut(); 2],
+        })
+        .collect();
+    let a = (&mut objects[0] as *mut Occupant).cast();
+    let b = (&mut objects[1] as *mut Occupant).cast();
+    objects[2].endpoints = [a, b];
+    objects[3].endpoints = [b, a];
+    STATE.with(|s| {
+        let mut s = s.borrow_mut();
+        s.query_ok = true;
+        s.occupants = objects.iter_mut().map(|o| o as *mut Occupant as usize).collect();
+    });
+    f.terrain(&mut [10, 10], &mut [20, 20]);
+    let all = calls();
+    let removed: Vec<_> = all.iter().filter(|c| matches!(c, Call::RemoveConnection(..))).collect();
+    assert_eq!(
+        removed,
+        [&Call::RemoveConnection(0, 1, 0), &Call::RemoveConnection(1, 0, 0)]
+    );
+    assert!(!all.iter().any(|c| matches!(c, Call::Break(..) | Call::Remove(..))));
 }
