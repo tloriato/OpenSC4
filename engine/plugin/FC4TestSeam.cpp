@@ -397,7 +397,7 @@ extern "C" __declspec(dllexport) intptr_t __cdecl FC4TestSeam(uint32_t op, void*
             return 0;
         }
         case kFC4SeamPowerCreate: {
-            cIGZUnknown* power = CreatePowerSimulator();
+            cIGZUnknown* power = CreateFC4PowerSimulator();
             power->AddRef();
             return reinterpret_cast<intptr_t>(power);
         }
