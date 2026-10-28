@@ -282,7 +282,7 @@ def describe(name, report, owners, reference, replaced):
     if report['verdict'] == 'error':
         return f'{name}: ERROR {report["error"]}'
     if report['verdict'] == 'exact':
-        return f'{name}: exact'
+        return f'{name}: exact' + (f'; run {report["run"]}' if report.get('run') else '')
     parts = [f'{name}: {report["verdict"]}']
     if 'monthly' in report:
         monthly = report['monthly']
