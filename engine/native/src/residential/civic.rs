@@ -159,7 +159,7 @@ port! {
 }
 
 /// Multiply an x87 value by a stored single, keeping the stored operand's NaN behavior.
-fn multiply(value: F80, operand: f32) -> F80 {
+pub(super) fn multiply(value: F80, operand: f32) -> F80 {
     let mut result = F80::ZERO;
     unsafe {
         core::arch::asm!("fld tbyte ptr [{value}]", "fmul dword ptr [{operand}]", "fstp tbyte ptr [{result}]",

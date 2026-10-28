@@ -47,17 +47,26 @@ layout! {
 pub mod civic;
 pub mod interface;
 pub mod proximity;
+pub mod query;
 pub mod quotient;
 pub mod service;
+pub mod strike;
 
-const COUNT: usize =
-    interface::PORTS.len() + proximity::PORTS.len() + quotient::PORTS.len() + service::PORTS.len() + civic::PORTS.len();
+const COUNT: usize = interface::PORTS.len()
+    + proximity::PORTS.len()
+    + quotient::PORTS.len()
+    + service::PORTS.len()
+    + civic::PORTS.len()
+    + strike::PORTS.len()
+    + query::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
     interface::PORTS,
     proximity::PORTS,
     quotient::PORTS,
     service::PORTS,
     civic::PORTS,
+    strike::PORTS,
+    query::PORTS,
 ]);
 
 /// This module's replacements.
