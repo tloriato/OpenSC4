@@ -56,3 +56,23 @@ the earlier retained date actually loaded and keeps the requested window end.
 A window's exact verdict applies to that reload/window, not the full scenario;
 run full credit after a fix. Cold windows include an original recording, and
 very short scenarios may have no time saving. Qcheck prints wall seconds.
+
+## Validation on 2026-10-28
+
+The tooling gate passes 421 tests. On `timbuktu-rush-hour`, the full advisors run,
+controlled early stop and cached window agree on 2010-05-31 and the same 41
+differing TGIs. Full/early took 164.389/76.346 seconds before the final scanner
+optimization; the cached window took 28.725 seconds. A zones window was exact.
+On a real 157-record checkpoint, the final scanner preserved every normalized
+hash and reduced normalization from 4.603 to 1.408 seconds.
+
+**The five-scenario timing proof is incomplete.** The 731-day generated reference,
+a full zones check and combined-owner credit hit watchdog stalls on the shared
+host. The final watcher suspends the game during decompression/normalization;
+this is not yet established to be safe against the observer's ten-second
+no-tick watchdog under load. Initial recording attempts also exposed a terminal
+capture race, now covered by a regression test and a terminal hash completion
+wait. Failed and superseded runs are retained separately in the lane's
+`build-runs/evidence-fastloop36-v1` through `-v4`/golden run directories.
+Resolve the watchdog interaction and complete the five timing/credit checks
+before the coordinator performs the one-time corpus re-record described above.
