@@ -13,6 +13,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import golden
 import golden_dbpf as records
+import golden_monthly
 
 
 def package(path, entries, *, width=20, time=0):
@@ -235,8 +236,13 @@ class GoldenTests(unittest.TestCase):
         struct.pack_into('<H', payload, 12, 4)
         struct.pack_into('<I', payload, 87, 2451545)
         key = (0x2990C1E5, 0, 0)
-        self.assertEqual(golden.save_date({key: bytes(payload)}), '2000-01-01')
+        self.assertEqual(golden_monthly.save_date({key: bytes(payload)}), '2000-01-01')
         self.assertEqual(records._fields(key, payload)['julian_day'], 2451545)
+        # Version 3 (shipped unfounded cities) carries a 10-byte timer before julianDay.
+        old = bytearray(101)
+        struct.pack_into('<H', old, 12, 3)
+        struct.pack_into('<I', old, 97, 2451552)
+        self.assertEqual(golden_monthly.save_date({key: bytes(old)}), '2000-01-08')
 
     def test_log_requires_completed_window_and_exact_subsystems(self):
         text = ("subsystem 'netmgr': enabled\nsubsystem 'nettool': enabled\n"

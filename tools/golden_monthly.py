@@ -32,10 +32,12 @@ STORE_BUDGET = 18 * 1024 ** 3
 
 
 def save_date(records):
+    # simulator.md §8: julianDay is the record's last u32; version 3 (the shipped regions' unfounded cities) has a
+    # 10-byte timer before it.
     values = [v for k, v in records.items() if k[0] == 0x2990C1E5]
-    if len(values) != 1 or len(values[0]) != 91 or values[0][12:14] != b'\x04\x00':
-        raise ValueError('save has no unique supported simulator v4 record')
-    day = struct.unpack_from('<I', values[0], 87)[0]
+    if len(values) != 1 or (len(values[0]), values[0][12:14]) not in ((91, b'\x04\x00'), (101, b'\x03\x00')):
+        raise ValueError('save has no unique supported simulator v3/v4 record')
+    day = struct.unpack_from('<I', values[0], len(values[0]) - 4)[0]
     return str(dt.date(2000, 1, 1) + dt.timedelta(days=day - 2451545))
 
 
@@ -300,9 +302,9 @@ class Watcher:
                 dest = self.result / 'months' / (day + '.sc4')
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source, dest)
+                # A scripted real-time wait (uiwait, virtual ms under the fixed schedule) can carry the game past
+                # this month's end: its save is then taken at a later, still deterministic, date kept in 'date'.
                 month = record_hashes(dest)
-                if month['date'] != day:
-                    raise ValueError(f'missed monthly save: {day}, captured {month["date"]}')
                 self.data['months'][day] = month
                 differs = self.reference and difference(self.reference['months'][day], month)
                 if differs and self.early_stop and day != self.until:

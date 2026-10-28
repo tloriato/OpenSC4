@@ -398,9 +398,6 @@ def prepare(args):
     settings['queue_parallel'] = args.backend == 'queue'
     generated = '' if args.draw_capture else input_script(
         args.script, args.until, truncate=bool(getattr(args, 'prepared_city', None)))
-    if getattr(args, 'monthly', False) and not any(k[0] == 0x2990C1E5 for k in read_records(save)):
-        # An unfounded start city (the script founds it) has no simulator date: end save only.
-        args.monthly = False
     if getattr(args, 'monthly', False):
         args.checkpoint_start = golden_monthly.save_date(read_records(save))
         original = args.script.read_text(encoding='utf-8-sig') if args.script else ''
@@ -591,7 +588,7 @@ def run_game(args, generated, selected, dll, tag, *, allow_window_drift=False):
     if not digests:
         raise ValueError(f'no DIGEST observations; see {result}')
     saved_records = read_records(result / 'end.sc4')
-    saved_date = save_date(saved_records)
+    saved_date = golden_monthly.save_date(saved_records)
     if saved_date != stop_date and not allow_window_drift:
         raise ValueError(f'end save is dated {saved_date}, expected {args.until}; not cached: {result}')
     write_json(result / 'digests.json', digests)
@@ -624,16 +621,6 @@ def validate_harness_sources(args):
         raise ValueError('--game-root differs from the executable the harness launches')
     if args.backend == 'queue' and args.harness_root.resolve() != main_checkout(REPO).resolve():
         raise ValueError('queue backend must fingerprint the main checkout harness actually run by the queue')
-
-
-def save_date(saved_records):
-    """Simulator v4: class-object framing + engine/core/src/save.rs RECORD_LAYOUT_V4."""
-    import struct
-    values = [value for key, value in saved_records.items() if key[0] == 0x2990C1E5]
-    if len(values) != 1 or len(values[0]) != 91 or values[0][12:14] != b'\x04\x00':
-        raise ValueError('end save has no unique supported simulator v4 record')
-    julian = struct.unpack_from('<I', values[0], 87)[0]
-    return str(dt.date(2000, 1, 1) + dt.timedelta(days=julian - 2451545))
 
 
 def comparison_history(entry, selected, candidate=None):
