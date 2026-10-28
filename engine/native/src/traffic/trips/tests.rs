@@ -82,6 +82,10 @@ unsafe extern "thiscall" fn next_route(this: *mut u8, step: *mut u8) -> u64 {
 unsafe extern "C" fn next_route_entry() {
     core::arch::naked_asm!("push dword ptr [esp + 4]", "call {body}", "mov ecx, 0x12345678", "ret 4", body = sym next_route);
 }
+#[unsafe(naked)]
+unsafe extern "C" fn next_with_iterator_ecx() {
+    core::arch::naked_asm!("push ecx", "push dword ptr [esp + 8]", "call {body}", "pop ecx", "ret 4", body = sym next_route);
+}
 fn step(x: i16, z: i16, from: u8, to: u8, entry: u8, exit: u16) -> [u8; 12] {
     let mut step = [0u8; 12]; step[..2].copy_from_slice(&x.to_le_bytes()); step[2..4].copy_from_slice(&z.to_le_bytes());
     step[4] = from; step[5] = to; step[7] = entry; step[8..10].copy_from_slice(&exit.to_le_bytes()); step
@@ -153,6 +157,24 @@ fn confirm_route_skips_outside_and_no_exit_cells_and_keeps_call_order() {
         assert_eq!(calls, [Call(99, 0x006D_64B0, vec![0x1122_3344]), Call(99, 0x006D_6510, vec![]), Call(99, 0x006D_6510, vec![]), Call(99, 0x006D_6510, vec![]), Call(99, 0x006D_6510, vec![])]);
         assert_eq!(bytes(sim_mem.ptr(), 0xD00), before);
     }
+}
+
+#[test]
+fn confirm_route_keeps_the_original_iterator_address_in_ecx() {
+    let _begin = fake(0x006D_64B0, begin_route as *const () as usize);
+    let _next = fake(0x006D_6510, next_with_iterator_ecx as *const () as usize);
+    STATE.with(|s| *s.borrow_mut() = State::default());
+    let mut sim = Object::new(0xD00);
+    let mut pointers = [0u32; 2];
+    unsafe {
+        core::arch::asm!(
+            "push 0x11223344", "lea eax, [esp - 28]", "mov [edi], eax",
+            "call {target}", "mov [edi + 4], ecx", target = sym fc4p_0070e320,
+            in("edi") pointers.as_mut_ptr(), inlateout("ecx") sim.ptr() => _, clobber_abi("C"),
+        );
+    }
+    assert_eq!(pointers[0], pointers[1]);
+    assert_eq!(pointers[0] as usize, STATE.with(|s| s.borrow().iterator));
 }
 
 #[test]

@@ -41,6 +41,10 @@ unsafe extern "thiscall" fn previous(iterator: *mut u32) {
         unsafe { iterator.write_unaligned(s.previous as u32); }
     });
 }
+#[unsafe(naked)]
+unsafe extern "C" fn previous_with_iterator_ecx() {
+    core::arch::naked_asm!("push ecx", "call {body}", "pop ecx", "ret", body = sym previous);
+}
 unsafe extern "thiscall" fn cloning(this: *mut u8, source: *mut u8, parent: *mut u8) -> *mut u8 {
     STATE.with(|s| s.borrow_mut().calls.push(Call::Clone(this as usize, source as usize, parent as usize)));
     unsafe { invoke(fc4p_00710b80 as *const () as usize, this, &[source as u32, parent as u32], 0, 0, false).eax as *mut u8 }
@@ -233,4 +237,27 @@ fn pointer_range_walks_empty_partial_and_segmented_ranges() {
         let mut blocks = [0x1000u32, 0x2000, 0x3000];
         assert_eq!(fc4p_0070fec0(0x107C, 0, 0x1080, blocks.as_mut_ptr(), 0x300C), 0x300C);
     }
+}
+
+#[test]
+fn unique_word_search_uses_the_original_argument_slot_for_its_iterator() {
+    reset();
+    let _previous = fake(0x0068_09E0, previous_with_iterator_ecx as *const () as usize);
+    let mut tree = Tree::new(); let mut root = Object::new(24); let mut predecessor = Object::new(24);
+    let mut key = 21u16; let mut destination = [0u32; 2];
+    let mut record = [&mut key as *mut u16 as u32, destination.as_mut_ptr() as u32, 0, 0];
+    unsafe {
+        node(root.ptr(), 28, tree.header.ptr(), core::ptr::null_mut(), core::ptr::null_mut());
+        node(predecessor.ptr(), 22, tree.header.ptr(), core::ptr::null_mut(), core::ptr::null_mut());
+        store(tree.header.ptr(), 4, root.ptr() as u32); store(tree.header.ptr(), 8, predecessor.ptr() as u32);
+        STATE.with(|s| s.borrow_mut().previous = predecessor.ptr() as usize);
+        core::arch::asm!(
+            "push dword ptr [edi]", "push dword ptr [edi + 4]", "lea eax, [esp + 4]", "mov [edi + 8], eax",
+            "call {target}", "mov [edi + 12], ecx", target = sym fc4p_007109b0,
+            in("edi") record.as_mut_ptr(), inlateout("ecx") tree.object.ptr() => _, clobber_abi("C"),
+        );
+        assert_eq!(destination, [predecessor.ptr() as u32, 0]);
+    }
+    assert_eq!(record[2], record[3]);
+    assert_eq!(calls(), [Call::Previous(root.ptr() as usize)]);
 }

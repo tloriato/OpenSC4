@@ -4,7 +4,7 @@
 //! Trip search configuration.
 
 use super::*;
-use super::network::{register_port, registers};
+use super::network::registers;
 use crate::abi::{Conv, RawCall};
 
 game_fn! { #[allow(dead_code)] fn route_iterator(this: *mut u8, route: *mut u8) -> u64 = "thiscall" 0x006D_64B0; }
@@ -25,19 +25,31 @@ unsafe fn route_connections(sim: TrafficSim, x: i32, z: i32) -> *mut u8 {
 }
 fn low_byte(value: u32, byte: u8) -> u32 { (value & !255) | u32::from(byte) }
 
-register_port!(0x0070_E320, fc4p_0070e320, "cSC4TrafficSimulator::ConfirmRoute", confirm_route, 4, [8]);
-unsafe extern "fastcall" fn confirm_route(this: *mut u8, out: *mut Registers, route: *mut u8) {
+port! {
+    /// Keeps the iterator and its step at their original stack offsets, including the iterator pointer
+    /// a completed route can leave in ECX.
+    #[port(address = 0x0070_E320, owner = "traffic", name = "cSC4TrafficSimulator::ConfirmRoute", naked)]
+    pub unsafe extern "C" fn fc4p_0070e320() {
+        core::arch::naked_asm!(
+            "sub esp, 0x28", "push ebp", "mov ebp, esp", "sub esp, 12", "lea edx, [esp]",
+            "lea eax, [ebp + 8]", "push eax", "lea eax, [ebp + 20]", "push eax",
+            "push dword ptr [ebp + 48]", "call {body}",
+            "mov eax, [ebp - 12]", "mov ecx, [ebp - 8]", "mov edx, [ebp - 4]",
+            "mov esp, ebp", "pop ebp", "add esp, 0x28", "ret 4", body = sym confirm_route,
+        );
+    }
+}
+unsafe extern "fastcall" fn confirm_route(this: *mut u8, out: *mut Registers, route: *mut u8, iterator: *mut u8, step_buffer: *mut u8) {
     unsafe {
         let sim = TrafficSim::from_ptr(this);
         let strike = u8::from(sim.strike_state() == 1);
-        let mut iterator = [0u32; 6];
-        let mut step = [0u8; 12];
         let args = [route as u32];
-        let mut call = RawCall::new(Conv::Thiscall, crate::abi::target(0x006D_64B0), iterator.as_mut_ptr() as u32, &args);
+        let mut call = RawCall::new(Conv::Thiscall, crate::abi::target(0x006D_64B0), iterator as u32, &args);
         call.eax = route as u32;
         let mut result = registers(call);
-        result = next(iterator.as_mut_ptr().cast(), step.as_mut_ptr(), result);
+        result = next(iterator, step_buffer, result);
         if result.eax as u8 == 0 { out.write(result); return; }
+        let step: [u8; 10] = read_unaligned(step_buffer.cast());
         let x = i32::from(read_unaligned(step.as_ptr().cast::<i16>()));
         let z = i32::from(read_unaligned(step.as_ptr().add(2).cast::<i16>()));
         result.eax = x as u32;
@@ -67,12 +79,13 @@ unsafe extern "fastcall" fn confirm_route(this: *mut u8, out: *mut Registers, ro
             if !accepted { result.eax &= !255; out.write(result); return; }
         }
         loop {
-            result = next(iterator.as_mut_ptr().cast(), step.as_mut_ptr(), result);
+            result = next(iterator, step_buffer, result);
             if result.eax as u8 == 0 {
                 result.eax = low_byte(result.eax, 1);
                 out.write(result);
                 return;
             }
+            let step: [u8; 10] = read_unaligned(step_buffer.cast());
             let x = i32::from(read_unaligned(step.as_ptr().cast::<i16>()));
             let z = i32::from(read_unaligned(step.as_ptr().add(2).cast::<i16>()));
             result.eax = x as u32;

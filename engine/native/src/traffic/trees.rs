@@ -70,8 +70,20 @@ port! {
     }
 }
 
-register_port!(0x0071_09B0, fc4p_007109b0, "InsertUniqueTrafficWord", insert_unique, 8, [12, 8]);
-unsafe extern "fastcall" fn insert_unique(this: *mut u8, out: *mut Registers, destination: *mut u8, key: *mut u16) {
+port! {
+    /// Uses the second argument word as the iterator scratch slot, including calls that leave its
+    /// address in ECX.
+    #[port(address = 0x0071_09B0, owner = "traffic", name = "InsertUniqueTrafficWord", naked)]
+    pub unsafe extern "C" fn fc4p_007109b0() {
+        core::arch::naked_asm!(
+            "push ebp", "mov ebp, esp", "sub esp, 12", "lea edx, [esp]",
+            "lea eax, [ebp + 12]", "push eax", "push dword ptr [ebp + 12]", "push dword ptr [ebp + 8]",
+            "call {body}", "mov eax, [ebp - 12]", "mov ecx, [ebp - 8]", "mov edx, [ebp - 4]",
+            "mov esp, ebp", "pop ebp", "ret 8", body = sym insert_unique,
+        );
+    }
+}
+unsafe extern "fastcall" fn insert_unique(this: *mut u8, out: *mut Registers, destination: *mut u8, key: *mut u16, iterator: *mut u32) {
     unsafe {
         let header = word(this, 0) as *mut u8;
         let mut node = word(header, 4) as *mut u8;
@@ -82,17 +94,17 @@ unsafe extern "fastcall" fn insert_unique(this: *mut u8, out: *mut Registers, de
             parent = node;
             node = word(node, if left { 8 } else { 12 }) as *mut u8;
         }
+        write_unaligned(iterator, parent as u32);
         let mut candidate = parent as u32;
         let mut result = Registers { eax: 0, ecx: header as u32, edx: candidate };
         let at_minimum = left && parent == word(header, 8) as *mut u8;
         if left && !at_minimum {
-            let args = [&mut candidate as *mut u32 as u32];
-            result = registers(RawCall::new(Conv::Thiscall, crate::abi::target(0x0068_09E0), args[0], &[]));
+            result = registers(RawCall::new(Conv::Thiscall, crate::abi::target(0x0068_09E0), iterator as u32, &[]));
+            candidate = read_unaligned(iterator);
             result.edx = candidate;
         }
         if at_minimum || read_unaligned((candidate as *mut u8).add(0x10).cast::<u16>()) < read_unaligned(key) {
-            let mut inserted = candidate;
-            let args = [&mut inserted as *mut u32 as u32, node as u32, parent as u32, key as u32, 0];
+            let args = [iterator as u32, node as u32, parent as u32, key as u32, 0];
             result = registers(RawCall::new(Conv::Thiscall, crate::abi::target(0x0070_FE00), this as u32, &args));
             // The insertion helper returns the address of its output, which need not be the input address.
             let inserted = word(result.eax as *mut u8, 0);
