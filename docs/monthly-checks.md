@@ -65,23 +65,48 @@ the earlier retained date actually loaded and keeps the requested window end.
 A window's exact verdict applies to that reload/window, not the full scenario;
 run full credit after a fix. Cold windows include an original recording, and
 very short scenarios may have no time saving. Qcheck prints wall seconds.
+`--store <path>` selects the coordinator's reference pin and store, including
+cached window originals; run outputs still go to the lane. After a coordinator
+repin, merge main and rebuild before comparing, and wait for its `RECORDING`
+marker to disappear. An older pin's measurements remain historical evidence.
 
 ## Validation on 2026-10-28
 
-The tooling gate passes 421 tests. On `timbuktu-rush-hour`, the full advisors run,
+Before the r6 repin, the tooling gate passed 424 tests. On `timbuktu-rush-hour`, the full advisors run,
 controlled early stop and cached window agree on 2010-05-31 and the same 41
 differing TGIs. Full/early took 164.389/76.346 seconds before the final scanner
 optimization; the cached window took 28.725 seconds. A zones window was exact.
 On a real 157-record checkpoint, the final scanner preserved every normalized
 hash and reduced normalization from 4.603 to 1.408 seconds.
 
-**The five-scenario timing proof is incomplete.** The 731-day generated reference,
-a full zones check and combined-owner credit hit watchdog stalls on the shared
-host. The final watcher suspends the game during decompression/normalization;
-this is not yet established to be safe against the observer's ten-second
-no-tick watchdog under load. Initial recording attempts also exposed a terminal
-capture race, now covered by a regression test and a terminal hash completion
-wait. Failed and superseded runs are retained separately in the lane's
-`build-runs/evidence-fastloop36-v1` through `-v4`/golden run directories.
-Resolve the watchdog interaction and complete the five timing/credit checks
-before the coordinator performs the one-time corpus re-record described above.
+The existing stall allowance and faster scanner let all five test references
+complete, including the 731-day generated case (762.353 seconds). Cached windows
+were exact for the 3-, 32- and 62-day controls (130.110, 158.121 and 32.498 seconds).
+Those timings used the lane's direct slot 13 harness; earlier full-check timings
+used main's queue. Host load/startup varied, so these are observations, not a
+controlled blanket speedup claim. The long case's window was not run before
+main started recording a new pin.
+
+Pre-r6 measurements in seconds (cold originals are excluded from cached windows):
+
+| Scenario | Days | Main full qcheck | Cached lane window | Window verdict |
+|---|---:|---:|---:|---|
+| span565-buffer | 3 | 32.393 | 130.110 | exact |
+| reach29-house | 32 | 38.540 | 158.121 | exact |
+| maxisland-simicon-valley | 62 | 59.029 | 32.498 | exact; full had an unowned difference |
+| timbuktu-rush-hour | 92 | 37.384 | 117.997 | zones exact |
+| gen28-konradshohe-s0-default | 731 | 99.668 | pending | interrupted by repin |
+
+**The five-scenario proof remains incomplete for the active r6 pin.** Main was
+merged as authorized, retaining its schedule, draw checks and explicit store.
+After that merge, the full tooling run printed `435 passed, 3 failed`: a native
+cache probe failed through the Cargo corpus round-trip test, and two Lua staging
+tests timed out. The two Lua cases plus the save/draw-focused tests subsequently
+passed (`63 passed`). The required qbuild's Rust stage printed 8453 passed and
+one failed (`golden_supported_owners_roundtrip_when_corpus_is_present`, missing
+map key at `formats/tests/city_save.rs:449`); clippy passed without diagnostics.
+The native worker and main's r6 recording are separate outstanding gates.
+Failed and superseded runs remain in `build-runs/evidence-fastloop36-v1` through
+`-v4`; r6 proof uses a separate directory and a byte-identical coordinator pin.
+Complete active-pin timing, full zones and combined credit before the one-time
+monthly corpus re-record described above; the current r6 re-record is separate.
