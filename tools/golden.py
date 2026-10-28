@@ -482,6 +482,10 @@ def run_game(args, generated, selected, dll, tag, *, allow_window_drift=False):
                                  'early_stop': not args.no_early_stop, 'seconds': args.seconds})
         with ini.open('a', encoding='utf-8') as stream:
             stream.write(f'golden_monthly = {config_path.resolve()}\n')
+            # OS suspension also stops the watchdog thread, but its wall clock
+            # keeps running. Use the existing suite grace for monthly capture;
+            # neither the fixed schedule nor the outer run deadline changes.
+            stream.write(f'autotest_stall_grace_ms = {SAVE_GRACE_MS}\n')
     # Explicitly turn every known shadow/compare off, also for a queue worker
     # whose environment may contain developer overrides.
     config = (args.harness_root / 'engine/plugin/FC4Config.cpp').read_text(encoding='utf-8')

@@ -4,15 +4,15 @@
   python tools/check.py record [--scenarios SEL] [--jobs 12]
       the pinned reference DLL's result for each selected scenario that has none (tools/golden.py record)
   python tools/check.py run --dll <worktree or DLL> --replace <keys> [--scenarios SEL] [--jobs 12] [--no-bisect]
-      each scenario with those owners switched on: exact, or the first differing delivery, day, record and
-      owner; on a difference with several owners, each owner alone, to name the ones that differ
+      each scenario with those owners switched on: exact, or the first differing month, records and owners;
+      --legacy retains delivery/digest hints and the per-owner bisect
   python tools/check.py run --dll <worktree or DLL> --replace each [--jobs 12]
       every owner alone on each scenario of its cover; per owner, how many are exact; the table is written to
       build-runs/golden/owner-check.tsv
   python tools/check.py credit --dll <worktree or DLL> --replace <keys or exact> [--jobs 12]
       every scenario (all) with those owners switched on together, written to build-runs/golden/credit.json, the
       input of Exact-replaced in tools/coverage.py; `exact` is the owners exact on their whole cover in
-      owner-check.tsv (written with the same DLL) and the owners they need
+      combined monthly credit or owner-check.tsv (written with the same DLL), plus the owners they need
 
 SEL is `cover` (the default: for each owner, the scenarios of its greedy reach cover in
 build-runs/golden/owner-scenarios.tsv, written by `tools/coverage.py --owner-scenarios`), `all`, a set from
@@ -261,14 +261,15 @@ def exact_owners(dll):
     credit_path = REPO / 'build-runs/golden/credit.json'
     if credit_path.is_file():
         data = json.loads(credit_path.read_text(encoding='utf-8'))
-        if data.get('dll_sha256') == sha256(dll) and data.get('owner_verdicts'):
+        if (data.get('dll_sha256') == sha256(dll) and data.get('owner_verdicts') and
+                any(r.get('monthly') for r in data.get('scenarios', {}).values())):
             covers = owner_covers()
             skipped = set(select('all', None, scenarios())[1])
             eligible = []
             for key in data['keys']:
                 needed = set(covers.get(key, [])) - skipped
                 reports = [data['scenarios'].get(name, {}) for name in needed]
-                if needed and all(r.get('monthly', {}).get('complete') and
+                if needed and all((r.get('monthly') or {}).get('complete') and
                                   r.get('owners', {}).get(key, {}).get('verdict') == 'exact' for r in reports):
                     eligible.append(key)
             return sorted({k for key in eligible for k in alone(key)})

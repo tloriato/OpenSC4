@@ -137,6 +137,20 @@ def test_exact_keys_can_come_from_combined_credit_without_each(tmp_path, monkeyp
         check.exact_owners(dll)
 
 
+def test_legacy_credit_keeps_the_each_table_working(tmp_path, monkeypatch):
+    monkeypatch.setattr(check, 'REPO', tmp_path)
+    dll = tmp_path / 'candidate.dll'
+    dll.write_bytes(b'candidate')
+    cache = tmp_path / 'build-runs/golden'
+    cache.mkdir(parents=True)
+    (cache / 'credit.json').write_text(json.dumps({
+        'dll_sha256': check.sha256(dll), 'owner_verdicts': {'zones': {'verdict': 'unobserved'}},
+        'scenarios': {'city': {'monthly': None}}}))
+    (cache / 'owner-check.tsv').write_text(
+        f'# sha256 {check.sha256(dll)}\nkey\tscenario\tverdict\nzones\tcity\texact\n')
+    assert check.exact_owners(dll) == ['zones']
+
+
 def test_window_results_cannot_be_published_as_full_scenario_credit():
     import pytest
     with pytest.raises(ValueError, match='credit requires full scenarios'):

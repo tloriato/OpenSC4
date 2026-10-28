@@ -18,6 +18,11 @@ hashing, and rejects a missed date. The engine and fixed schedule are unchanged.
 There is no generated pause/speed/UIWait gap: under the pinned fixed scheduler,
 UIWait can advance the calendar despite Pause or speed zero. Only the watcher's
 OS process suspension holds time during capture.
+Monthly runs set the existing `autotest_stall_grace_ms` to 60000, matching the
+full-save grace. Suspension stops the watchdog thread, but its wall clock keeps
+running; the ordinary ten-second limit can otherwise mistake capture work for
+a stuck simulator. The outer run deadline still bounds failures. This is a
+watchdog allowance, not a fixed-schedule or simulation input.
 
 `monthly.json` contains SHA-256 hashes keyed by date and full TGI, after DBPF/QFS
 decompression and class-aware object-ID normalization. Monthly and terminal
@@ -32,6 +37,10 @@ Record ownership describes observed state, including downstream effects; it does
 not prove which replacement caused a difference. Missing records are unobserved;
 owners after a controlled stop are incomplete. `--replace each` still works and
 uses full scenarios for its qualification table. Credit rejects window inputs.
+`credit --replace exact` can reuse combined credit from the same DLL when every
+scenario in an owner's cover has complete, exact owned-record evidence. It also
+accepts the old `each` table. An owner with no records in a selected scenario is
+reported separately as unobserved; an errored scenario makes its credit incomplete.
 
 ```powershell
 python .claude/lane-bin/qcheck.py --wt <WT> --replace zones --scenarios timbuktu-rush-hour
