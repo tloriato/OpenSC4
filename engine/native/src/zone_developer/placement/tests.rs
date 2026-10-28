@@ -5,6 +5,9 @@ use super::*;
 use crate::testing::{fake, fake_data, Fake, GameFpu, Object};
 use std::cell::RefCell;
 
+game_fn! { #[allow(clippy::too_many_arguments)] fn invoke(configuration:*mut u8,record:*mut u8,bounds:*const i32,facing:i32,
+x:*mut i32,z:*mut i32,mask1:*mut u32,mask2:*mut u32,kind:*mut u32)->u64 = "C" 0x0072_AD00; }
+
 #[derive(Debug, PartialEq)]
 enum Call {
     Size(usize),
@@ -96,7 +99,7 @@ impl World {
         r.set_payload(self.payload.as_ptr());
         let origin = [40, 40, 42, 41];
         unsafe {
-            fc4p_0072ad00(
+            invoke(
                 self.configuration.as_mut_ptr().cast(),
                 self.record.ptr(),
                 origin.as_ptr(),
@@ -167,7 +170,7 @@ fn aliased_masks_are_written_then_rotated_in_sequence() {
     let p = output.as_mut_ptr();
     let bounds = [40, 40];
     unsafe {
-        fc4p_0072ad00(
+        invoke(
             w.configuration.as_mut_ptr().cast(),
             w.record.ptr(),
             bounds.as_ptr(),
@@ -200,4 +203,67 @@ fn midpoint_uses_x87_extended_exponent_and_stores_only_after_multiplication() {
     );
     assert_eq!(crate::x87::control_word(), crate::x87::GAME_CONTROL_WORD);
     assert_eq!(crate::x87::status_word() & 0x3800, 0);
+}
+
+extern "C" fn leave_rotation_unwritten(_f: i32, _w: i32, _h: i32, _input: *const i32, _output: *mut i32) {}
+
+#[test]
+fn original_cdecl_argument_is_overwritten_and_unwritten_rotation_keeps_original_scratch() {
+    let _fpu = GameFpu::new();
+    let mut w = World::new();
+    let _rotate = fake(0x004B_DFD0, leave_rotation_unwritten as *const () as usize);
+    let mut frame = [0xA5A5_A5A5u32; 32];
+    let stack = unsafe { frame.as_mut_ptr().add(16) };
+    let bounds = [40i32, 50];
+    let mut out = [0u32; 5];
+    let r = unsafe { Placement::from_ptr(w.record.ptr()) };
+    r.set_payload(w.payload.as_ptr());
+    let args = [
+        w.configuration.as_mut_ptr() as u32,
+        w.record.ptr() as u32,
+        bounds.as_ptr() as u32,
+        99,
+        out.as_mut_ptr() as u32,
+        unsafe { out.as_mut_ptr().add(1) } as u32,
+        unsafe { out.as_mut_ptr().add(2) } as u32,
+        unsafe { out.as_mut_ptr().add(3) } as u32,
+        unsafe { out.as_mut_ptr().add(4) } as u32,
+    ];
+    unsafe {
+        core::ptr::copy_nonoverlapping(args.as_ptr(), stack.add(1), 9);
+        stack.sub(4).cast::<[i32; 4]>().write([7, 9, 11, 13]);
+        network_cell_and_masks(stack);
+    }
+    assert_eq!(
+        unsafe { stack.add(1).read() },
+        0,
+        "the configuration argument becomes the converted X cell"
+    );
+    assert_eq!(&out[..2], &[47, 59]);
+    assert_eq!(unsafe { stack.sub(4).cast::<[i32; 4]>().read() }, [7, 9, 11, 13]);
+    assert_eq!(unsafe { core::slice::from_raw_parts(stack.add(2), 8) }, &args[1..]);
+}
+
+#[test]
+fn placement_keeps_an_existing_x87_value_control_word_and_mxcsr() {
+    #[repr(C, align(16))]
+    struct FpuState([u8; 512]);
+    let _fpu = GameFpu::new();
+    let mut w = World::new();
+    let mut out = [0; 5];
+    let mut before = FpuState([0; 512]);
+    let mut after = FpuState([0; 512]);
+    unsafe {
+        core::arch::asm!("fld1","fxsave [{p}]",p=in(reg)&mut before,out("st(0)") _,options(nostack));
+        w.run(1, 0, &mut out);
+        core::arch::asm!("fxsave [{p}]","fstp st(0)",p=in(reg)&mut after,out("st(0)") _,options(nostack));
+    }
+    assert_eq!(&before.0[..2], &after.0[..2]);
+    assert_eq!(
+        u16::from_le_bytes([before.0[2], before.0[3]]) & 0x3800,
+        u16::from_le_bytes([after.0[2], after.0[3]]) & 0x3800
+    );
+    assert_eq!(before.0[4], after.0[4]);
+    assert_eq!(&before.0[24..28], &after.0[24..28]);
+    assert_eq!(&before.0[32..42], &after.0[32..42]);
 }

@@ -5,6 +5,8 @@ use super::*;
 use crate::testing::{fake, Fake, Object};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+game_fn! {fn compress(slot:*mut *mut u8)->u64 = "stdcall" 0x0072_AF30;}
+game_fn! {fn update(this:*mut u8,region:*mut u8)->u64 = "thiscall" 0x0072_B180;}
 
 #[derive(Debug, PartialEq, Clone)]
 enum Call {
@@ -459,7 +461,7 @@ fn compress_corner_region_preserves_holes_and_frees_columns_before_shell() {
     let old = source.view();
     let mut slot = old.as_ptr();
     STATE.with(|s| s.borrow_mut().source = slot as usize);
-    let result = unsafe { fc4p_0072af30(&mut slot) };
+    let result = unsafe { compress(&mut slot) };
     assert_eq!(result, (0xFACE_CAFEu64 << 32) | &mut slot as *mut *mut u8 as u32 as u64);
     let r = unsafe { Region::from_ptr(slot) };
     assert_eq!([r.x1(), r.z1(), r.x2(), r.z2()], [12, 51, 13, 54]);
@@ -484,7 +486,7 @@ fn compress_full_extent_and_single_or_zero_cell_empty_maps_keep_allocation() {
         let before = source.bytes();
         let p = source.view().as_ptr();
         let mut slot = p;
-        unsafe { fc4p_0072af30(&mut slot) };
+        unsafe { compress(&mut slot) };
         assert_eq!(slot, p);
         assert_eq!(source.bytes(), before);
         assert!(calls().is_empty());
@@ -496,7 +498,7 @@ fn compress_empty_map_crops_to_one_clear_origin_cell() {
     let _w = World::new();
     let mut source = NativeRegion::new([-3, -5, 2, 40], &[]);
     let mut slot = source.view().as_ptr();
-    unsafe { fc4p_0072af30(&mut slot) };
+    unsafe { compress(&mut slot) };
     let r = unsafe { Region::from_ptr(slot) };
     assert_eq!([r.x1(), r.z1(), r.x2(), r.z2()], [-3, -5, -3, -5]);
     assert!(cells(r).is_empty());
@@ -628,7 +630,7 @@ fn update_zone_type_updates_origins_and_dezones_only_uncovered_set_cells() {
     let mut source = NativeRegion::new([10, 20, 12, 21], &[(10, 20), (11, 20), (12, 20), (10, 21)]);
     let before = source.bytes();
     assert_eq!(
-        unsafe { fc4p_0072b180(w.dev.ptr(), source.view().as_ptr()) },
+        unsafe { update(w.dev.ptr(), source.view().as_ptr()) },
         0x89AB_CDEF_7654_3210
     );
     assert_eq!(source.bytes(), before);
@@ -675,7 +677,7 @@ fn texture_refresh_uses_low_force_byte_signed_lot_state_and_zone_change() {
             s.new_zones.insert(1, i32::from(changed));
         });
         let mut source = NativeRegion::new([0, 0, 0, 0], &[(0, 0)]);
-        unsafe { fc4p_0072b180(w.dev.ptr(), source.view().as_ptr()) };
+        unsafe { update(w.dev.ptr(), source.view().as_ptr()) };
         let c = calls();
         assert_eq!(c.contains(&Call::Texture(1)), refresh);
         assert_eq!(c.contains(&Call::LotState(1)), changed && force as u8 == 0);
@@ -693,7 +695,7 @@ fn update_observes_source_bit_changes_made_by_lot_callbacks() {
         s.source = source.view().as_ptr() as usize;
         s.mutate_source_on_get = true;
     });
-    unsafe { fc4p_0072b180(w.dev.ptr(), source.view().as_ptr()) };
+    unsafe { update(w.dev.ptr(), source.view().as_ptr()) };
     assert_eq!(
         calls(),
         [
@@ -773,7 +775,7 @@ fn region_components_and_compression_match_corner_and_isolated_cell_cases() {
         (4, 4, [4, 4, 4, 4], vec![(4, 4)]),
     ] {
         let mut slot = unsafe { fc4p_0072cda0(source.view().as_ptr(), x, z) } as u32 as *mut u8;
-        unsafe { fc4p_0072af30(&mut slot) };
+        unsafe { compress(&mut slot) };
         let r = unsafe { Region::from_ptr(slot) };
         assert_eq!([r.x1(), r.z1(), r.x2(), r.z2()], bounds);
         assert_eq!(cells(r), expected);
@@ -789,4 +791,58 @@ fn connected_component_crosses_packed_word_boundary_without_touching_other_bits(
     let r = unsafe { Region::from_ptr(result as u32 as *mut u8) };
     assert_eq!(cells(r), [(-2, 20), (-2, 21), (-2, 22), (-1, 22)]);
     assert_eq!(cells(source.view()), [(-1, -10)]);
+}
+
+#[unsafe(naked)]
+unsafe extern "C" fn free_registers() {
+    core::arch::naked_asm!(
+        "mov eax, 0x12345678",
+        "mov edx, 0x89abcdef",
+        "mov ecx, 0x55667788",
+        "ret"
+    );
+}
+
+#[unsafe(naked)]
+unsafe extern "C" fn destroy_registers() {
+    core::arch::naked_asm!(
+        "mov eax, 0x76543210",
+        "mov edx, 0xfedcba98",
+        "mov ecx, 0xaabbccdd",
+        "ret"
+    );
+}
+
+#[test]
+fn compression_restores_ecx_from_the_boundary_or_final_free_and_keeps_edx() {
+    let _w = World::new();
+    for crop in [false, true] {
+        let mut source = NativeRegion::new([0, 0, 1, 2], if crop { &[(1, 1)] } else { &[(0, 0), (1, 2)] });
+        let mut slot = source.view().as_ptr();
+        let args = [&mut slot as *mut *mut u8 as u32];
+        let _free = fake(0x005E_5620, free_registers as *const () as usize);
+        let mut call = RawCall::new(Conv::Stdcall, fc4p_0072af30 as *const () as usize, 0, &args);
+        unsafe { super::super::registers::call(&mut call) };
+        if crop {
+            assert_eq!((call.eax, call.ecx, call.edx), (args[0], 0x5566_7788, 0x89AB_CDEF));
+        } else {
+            assert_eq!((call.eax, call.ecx, call.edx), (2, 2, 1));
+        }
+    }
+}
+
+#[test]
+fn update_zone_type_restores_the_packed_map_destructors_ecx() {
+    let mut w = World::new();
+    let mut source = NativeRegion::new([0, 0, 0, 0], &[]);
+    let _destroy = fake(0x0044_1A60, destroy_registers as *const () as usize);
+    let args = [source.view().as_ptr() as u32];
+    let mut call = RawCall::new(
+        Conv::Thiscall,
+        fc4p_0072b180 as *const () as usize,
+        w.dev.ptr() as u32,
+        &args,
+    );
+    unsafe { super::super::registers::call(&mut call) };
+    assert_eq!((call.eax, call.ecx, call.edx), (0x7654_3210, 0xAABB_CCDD, 0xFEDC_BA98));
 }

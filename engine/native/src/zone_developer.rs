@@ -11,7 +11,7 @@
 // copy of the license along with this program (see LICENSE at the repository
 // root); if not, see <https://www.gnu.org/licenses/>.
 
-//! `cSC4ZoneDeveloper`, converted one function at a time. Its game functions and globals are declared in this file.
+//! `cSC4ZoneDeveloper`, converted one function at a time. Game functions and globals are declared beside the ports.
 
 use crate::port::Port;
 
@@ -23,6 +23,7 @@ layout! {
         0x08 => message_vtable / set_message_vtable: u32,
         0x0C => serializable_vtable / set_serializable_vtable: u32,
         0x14 => references / set_references: i32,
+        0x24 => city / set_city: *mut u8,
         0x28 => cells_x / set_cells_x: i32,
         0x2C => cells_z / set_cells_z: i32,
         0x34 => terrain / set_terrain: *mut u8,
@@ -44,12 +45,14 @@ layout! {
 mod altitude;
 mod basic;
 mod edges;
+mod face;
 mod lot;
 mod manager;
 mod occupancy;
-mod face;
-mod region;
 mod placement;
+mod region;
+mod registers;
+mod remnants;
 mod street;
 
 /// Call a virtual method with its incoming scratch-register values and retain EDX:EAX.
@@ -81,6 +84,7 @@ pub const PORTS: &[Port] = &crate::port::concat::<
             + region::PORTS.len()
             + placement::PORTS.len()
             + street::PORTS.len()
+            + remnants::PORTS.len()
     },
 >(&[
     basic::PORTS,
@@ -93,4 +97,5 @@ pub const PORTS: &[Port] = &crate::port::concat::<
     region::PORTS,
     placement::PORTS,
     street::PORTS,
+    remnants::PORTS,
 ]);

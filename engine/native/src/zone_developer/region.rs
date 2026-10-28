@@ -4,6 +4,7 @@
 //! Packed cell regions, cropping, lot filtering and zone reconciliation.
 
 use super::{Port, ZoneDeveloper};
+use crate::abi::{Conv, RawCall};
 use core::mem::MaybeUninit;
 use core::ptr::{read_unaligned, write_unaligned};
 
@@ -23,9 +24,9 @@ layout! {
 }
 
 game_fn! { fn allocate(size: u32) -> *mut u8 = "C" 0x005E_55E0; }
-game_fn! { fn free(memory: *mut u8) -> u64 = "C" 0x005E_5620; }
+game_fn! { #[allow(dead_code)] fn free(memory: *mut u8) -> u64 = "C" 0x005E_5620; }
 game_fn! { fn construct_bits(this: *mut u8, width: i32, height: i32, fill: *const u8) -> u32 = "thiscall" 0x0044_22A0; }
-game_fn! { fn destroy_bits(this: *mut u8) -> u64 = "thiscall" 0x0044_1A60; }
+game_fn! { #[allow(dead_code)] fn destroy_bits(this: *mut u8) -> u64 = "thiscall" 0x0044_1A60; }
 game_fn! { fn cell_occupied(this: *mut u8, x: i32, z: i32) -> u32 = "thiscall" 0x0072_C050; }
 game_fn! { fn allocate_queue_node(size: u32) -> *mut u8 = "C" 0x0090_CF54; }
 game_fn! { fn free_queue_node(node: *mut u8) = "C" 0x0090_CF63; }
@@ -139,74 +140,124 @@ unsafe fn new_region(source: Region, fill: u8) -> Region {
 port! {
     /// Crop to the set cells' bounding box, preserving holes and untouched tail bits. An empty region
     /// crops to its origin cell. Keep the existing allocation when no edge can be removed.
-    #[port(address = 0x0072_AF30, owner = "zonedeveloper", name = "cSC4ZoneDeveloper::CompressRegion")]
-    pub unsafe extern "stdcall" fn fc4p_0072af30(slot: *mut *mut u8) -> u64 {
-        unsafe {
-            let source = Region::from_ptr(read_unaligned(slot));
-            let (mut min_x, mut min_z, mut max_x, mut max_z) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
-            let mut empty = true;
-            let mut x = 0i32;
-            while x < source.width() {
-                let mut z = 0i32;
-                while z < source.height() {
-                    if source.get(x as u32, z as u32) {
-                        min_x = min_x.min(x);
-                        min_z = min_z.min(z);
-                        max_x = max_x.max(x);
-                        max_z = max_z.max(z);
-                        empty = false;
-                    }
-                    z = z.wrapping_add(1);
+    /// Retain ECX from the final free, or the height minus one when the allocation is kept.
+    #[port(address = 0x0072_AF30, owner = "zonedeveloper", name = "cSC4ZoneDeveloper::CompressRegion", naked)]
+    pub unsafe extern "C" fn fc4p_0072af30() {
+        core::arch::naked_asm!("sub esp, 4", "mov ecx, esp", "push dword ptr [esp + 8]", "call {body}",
+            "mov ecx, [esp]", "add esp, 4", "ret 4", body = sym compress_region);
+    }
+}
+
+unsafe extern "thiscall" fn compress_region(out_ecx: *mut u32, slot: *mut *mut u8) -> u64 {
+    unsafe {
+        let source = Region::from_ptr(read_unaligned(slot));
+        let (mut min_x, mut min_z, mut max_x, mut max_z) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
+        let mut empty = true;
+        let mut x = 0i32;
+        while x < source.width() {
+            let mut z = 0i32;
+            while z < source.height() {
+                if source.get(x as u32, z as u32) {
+                    min_x = min_x.min(x);
+                    min_z = min_z.min(z);
+                    max_x = max_x.max(x);
+                    max_z = max_z.max(z);
+                    empty = false;
                 }
-                x = x.wrapping_add(1);
+                z = z.wrapping_add(1);
             }
-            if empty {
-                (min_x, min_z, max_x, max_z) = (0, 0, 0, 0);
-            }
-            if min_x <= 0 && min_z <= 0 && max_x >= source.width().wrapping_sub(1)
-                && max_z >= source.height().wrapping_sub(1) {
-                return (u64::from(max_x as u32) << 32) | u64::from(max_z as u32);
-            }
-            let bounds = [source.x1().wrapping_add(min_x), source.z1().wrapping_add(min_z),
-                source.x1().wrapping_add(max_x), source.z1().wrapping_add(max_z)];
-            let p = allocate(0x24);
-            if !p.is_null() {
-                write_unaligned(p.cast::<[i32; 4]>(), bounds);
-                construct_bits(p.add(16), bounds[2].wrapping_sub(bounds[0]).wrapping_add(1),
-                    bounds[3].wrapping_sub(bounds[1]).wrapping_add(1), &1);
-            }
-            let result = Region::from_ptr(p);
-            let old = Region::from_ptr(read_unaligned(slot));
-            let dx = result.x1().wrapping_sub(old.x1());
-            let dz = result.z1().wrapping_sub(old.z1());
-            let (width, height) = (result.width(), result.height());
-            let mut x = 0i32;
-            while x < width {
-                let mut z = 0i32;
-                while z < height {
-                    let old = Region::from_ptr(read_unaligned(slot));
-                    result.set(x as u32, z as u32, old.get(x.wrapping_add(dx) as u32, z.wrapping_add(dz) as u32));
-                    z = z.wrapping_add(1);
-                }
-                x = x.wrapping_add(1);
-            }
-            let old = Region::from_ptr(read_unaligned(slot));
-            let mut result_edx = slot as u32;
-            if !old.as_ptr().is_null() {
-                old.set_vtable(0x00A8_6364);
-                if !old.columns().is_null() {
-                    let mut x = 0u32;
-                    while x < old.width() as u32 {
-                        free(read_unaligned(old.columns().wrapping_add(x as usize)).cast());
-                        x = x.wrapping_add(1);
-                    }
-                    free(old.columns().cast());
-                }
-                result_edx = (free(old.as_ptr()) >> 32) as u32;
-            }
-            write_unaligned(slot, result.as_ptr());
-            (u64::from(result_edx) << 32) | u64::from(slot as u32)
+            x = x.wrapping_add(1);
         }
+        if empty {
+            (min_x, min_z, max_x, max_z) = (0, 0, 0, 0);
+        }
+        if min_x <= 0
+            && min_z <= 0
+            && max_x >= source.width().wrapping_sub(1)
+            && max_z >= source.height().wrapping_sub(1)
+        {
+            write_unaligned(out_ecx, source.height().wrapping_sub(1) as u32);
+            return (u64::from(max_x as u32) << 32) | u64::from(max_z as u32);
+        }
+        let bounds = [
+            source.x1().wrapping_add(min_x),
+            source.z1().wrapping_add(min_z),
+            source.x1().wrapping_add(max_x),
+            source.z1().wrapping_add(max_z),
+        ];
+        let p = allocate(0x24);
+        if !p.is_null() {
+            write_unaligned(p.cast::<[i32; 4]>(), bounds);
+            construct_bits(
+                p.add(16),
+                bounds[2].wrapping_sub(bounds[0]).wrapping_add(1),
+                bounds[3].wrapping_sub(bounds[1]).wrapping_add(1),
+                &1,
+            );
+        }
+        let result = Region::from_ptr(p);
+        let old = Region::from_ptr(read_unaligned(slot));
+        let dx = result.x1().wrapping_sub(old.x1());
+        let dz = result.z1().wrapping_sub(old.z1());
+        let (width, height) = (result.width(), result.height());
+        let mut x = 0i32;
+        while x < width {
+            let mut z = 0i32;
+            while z < height {
+                let old = Region::from_ptr(read_unaligned(slot));
+                result.set(
+                    x as u32,
+                    z as u32,
+                    old.get(x.wrapping_add(dx) as u32, z.wrapping_add(dz) as u32),
+                );
+                z = z.wrapping_add(1);
+            }
+            x = x.wrapping_add(1);
+        }
+        let old = Region::from_ptr(read_unaligned(slot));
+        let mut ecx = if width > 0 {
+            dx.wrapping_add(width).wrapping_mul(4) as u32
+        } else {
+            old.as_ptr() as u32
+        };
+        let mut edx = slot as u32;
+        if !old.as_ptr().is_null() {
+            old.set_vtable(0x00A8_6364);
+            let mut eax = old.columns() as u32;
+            if !old.columns().is_null() {
+                let mut x = 0u32;
+                while x < old.width() as u32 {
+                    let column = read_unaligned(old.columns().wrapping_add(x as usize));
+                    let args = [column as u32];
+                    let mut call = RawCall::new(Conv::Cdecl, crate::abi::target(0x005E_5620), column as u32, &args);
+                    call.eax = old.columns() as u32;
+                    call.edx = edx;
+                    super::registers::call(&mut call);
+                    ecx = call.ecx;
+                    edx = call.edx;
+                    x = x.wrapping_add(1);
+                }
+                let columns = old.columns();
+                let args = [columns as u32];
+                let mut call = RawCall::new(Conv::Cdecl, crate::abi::target(0x005E_5620), ecx, &args);
+                call.eax = old.width() as u32;
+                call.edx = columns as u32;
+                super::registers::call(&mut call);
+                eax = call.eax;
+                ecx = call.ecx;
+                edx = call.edx;
+            }
+            let args = [old.as_ptr() as u32];
+            let mut call = RawCall::new(Conv::Cdecl, crate::abi::target(0x005E_5620), ecx, &args);
+            call.eax = eax;
+            call.edx = edx;
+            super::registers::call(&mut call);
+            ecx = call.ecx;
+            edx = call.edx;
+        }
+        write_unaligned(slot, result.as_ptr());
+        write_unaligned(out_ecx, ecx);
+        (u64::from(edx) << 32) | u64::from(slot as u32)
     }
 }
 
@@ -263,53 +314,66 @@ port! {
 port! {
     /// Update lots at their origins in z-major order. Refresh changed lots' base textures when allowed,
     /// and dezone all set cells left uncovered by any lot in one call. Destroy the temporary packed map.
-    #[port(address = 0x0072_B180, owner = "zonedeveloper", name = "cSC4ZoneDeveloper::UpdateZoneType")]
-    pub unsafe extern "thiscall" fn fc4p_0072b180(this: *mut u8, input: *mut u8) -> u64 {
-        unsafe {
-            let dev = ZoneDeveloper::from_ptr(this);
-            let source = Region::from_ptr(input);
-            let (x0, z0, x1, z1) = (source.x1(), source.z1(), source.x2(), source.z2());
-            let (xend, zend) = (x0.max(x1), z0.max(z1));
-            let mut storage = MaybeUninit::<[u32; 9]>::uninit();
-            let p = storage.as_mut_ptr().cast::<u8>();
-            write_unaligned(p.cast::<[i32; 4]>(), [x0, z0, x1, z1]);
-            construct_bits(p.add(16), x1.wrapping_sub(x0).wrapping_add(1),
-                z1.wrapping_sub(z0).wrapping_add(1), &0);
-            let out = Region::from_ptr(p);
-            let force = vcall!(dev.lot_configuration(), 0xB8 => fn() -> u32) as u8;
-            let mut any = false;
-            let mut z = z0;
-            while z <= zend {
-                let mut x = x0;
-                while x <= xend {
-                    if source.includes(x, z) {
-                        let manager = this.add(4);
-                        let lot = vcall!(manager, 0x18 => fn(i32, i32, u32) -> *mut u8, x, z, 1);
-                        if lot.is_null() {
-                            if vcall!(manager, 0x18 => fn(i32, i32, u32) -> *mut u8, x, z, 0).is_null() {
-                                out.set(x.wrapping_sub(x0) as u32, z.wrapping_sub(z0) as u32, true);
-                                any = true;
-                            }
-                        } else {
-                            let old = vcall!(lot, 0x7C => fn() -> i32);
-                            vcall!(lot, 0x80 => fn());
-                            let new = vcall!(lot, 0x7C => fn() -> i32);
-                            if old != new && (force != 0 || vcall!(lot, 0x84 => fn() -> i32) < 2) {
-                                vcall!(dev.lot_configuration(), 0xAC => fn(*mut u8), lot);
-                            }
+    /// Forward the destructor's ECX as well as EDX:EAX.
+    #[port(address = 0x0072_B180, owner = "zonedeveloper", name = "cSC4ZoneDeveloper::UpdateZoneType", naked)]
+    pub unsafe extern "C" fn fc4p_0072b180() {
+        core::arch::naked_asm!("sub esp, 4", "mov edx, esp", "push dword ptr [esp + 8]", "call {body}",
+            "mov ecx, [esp]", "add esp, 4", "ret 4", body = sym update_zone_type);
+    }
+}
+
+unsafe extern "fastcall" fn update_zone_type(this: *mut u8, out_ecx: *mut u32, input: *mut u8) -> u64 {
+    unsafe {
+        let dev = ZoneDeveloper::from_ptr(this);
+        let source = Region::from_ptr(input);
+        let (x0, z0, x1, z1) = (source.x1(), source.z1(), source.x2(), source.z2());
+        let (xend, zend) = (x0.max(x1), z0.max(z1));
+        let mut storage = MaybeUninit::<[u32; 9]>::uninit();
+        let p = storage.as_mut_ptr().cast::<u8>();
+        write_unaligned(p.cast::<[i32; 4]>(), [x0, z0, x1, z1]);
+        construct_bits(
+            p.add(16),
+            x1.wrapping_sub(x0).wrapping_add(1),
+            z1.wrapping_sub(z0).wrapping_add(1),
+            &0,
+        );
+        let out = Region::from_ptr(p);
+        let force = vcall!(dev.lot_configuration(), 0xB8 => fn() -> u32) as u8;
+        let mut any = false;
+        let mut z = z0;
+        while z <= zend {
+            let mut x = x0;
+            while x <= xend {
+                if source.includes(x, z) {
+                    let manager = this.add(4);
+                    let lot = vcall!(manager, 0x18 => fn(i32, i32, u32) -> *mut u8, x, z, 1);
+                    if lot.is_null() {
+                        if vcall!(manager, 0x18 => fn(i32, i32, u32) -> *mut u8, x, z, 0).is_null() {
+                            out.set(x.wrapping_sub(x0) as u32, z.wrapping_sub(z0) as u32, true);
+                            any = true;
+                        }
+                    } else {
+                        let old = vcall!(lot, 0x7C => fn() -> i32);
+                        vcall!(lot, 0x80 => fn());
+                        let new = vcall!(lot, 0x7C => fn() -> i32);
+                        if old != new && (force != 0 || vcall!(lot, 0x84 => fn() -> i32) < 2) {
+                            vcall!(dev.lot_configuration(), 0xAC => fn(*mut u8), lot);
                         }
                     }
-                    x = x.wrapping_add(1);
                 }
-                z = z.wrapping_add(1);
+                x = x.wrapping_add(1);
             }
-            if any {
-                vcall!(dev.zone_manager(), 0x2C => fn(*mut u8, u32, u32, u32, u32, u32, u32, u32, u32, u32),
-                    p, 0, 1, 1, 0, 1, 0, 0, 0, 0);
-            }
-            out.set_vtable(0x00A8_6364);
-            destroy_bits(p.add(16))
+            z = z.wrapping_add(1);
         }
+        if any {
+            vcall!(dev.zone_manager(), 0x2C => fn(*mut u8, u32, u32, u32, u32, u32, u32, u32, u32, u32),
+                    p, 0, 1, 1, 0, 1, 0, 0, 0, 0);
+        }
+        out.set_vtable(0x00A8_6364);
+        let mut call = RawCall::new(Conv::Thiscall, crate::abi::target(0x0044_1A60), p.add(16) as u32, &[]);
+        super::registers::call(&mut call);
+        write_unaligned(out_ecx, call.ecx);
+        (u64::from(call.edx) << 32) | u64::from(call.eax)
     }
 }
 

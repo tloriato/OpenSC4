@@ -255,3 +255,29 @@ fn per_cell_mode_skips_single_run_segments_and_reloads_real_mode_after_callbacks
         .collect();
     assert_eq!(modes, [0x80, 0, 0]);
 }
+
+#[test]
+fn vertical_runs_visit_cells_in_descending_z_order() {
+    let mut w = World::new(&[]);
+    let r = unsafe { Region::from_ptr(w.region.as_mut_ptr().cast()) };
+    r.set_x1(5);
+    r.set_z1(10);
+    r.set_x2(5);
+    r.set_z2(15);
+    r.set_width(1);
+    r.set_height(6);
+    w._rows[0][0] = 0b11_1011;
+    let c = w.run((5, 15), (5, 10), 1);
+    assert_eq!(
+        segments(&c),
+        [
+            [5, 15, 5, 13],
+            [5, 15, 5, 15],
+            [5, 14, 5, 14],
+            [5, 13, 5, 13],
+            [5, 11, 5, 10],
+            [5, 11, 5, 11],
+            [5, 10, 5, 10]
+        ]
+    );
+}
