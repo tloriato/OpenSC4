@@ -127,8 +127,34 @@ port! {
     }
 }
 
+// The rest of the class, one file per group of functions (each file has its own `PORTS`).
+pub mod com;
+pub mod grid;
+pub mod idle;
+pub mod io;
+pub mod life;
+pub mod terrain;
+
+const TRACT: &[Port] = &[fc4p_006bd540::PORT, fc4p_006bd810::PORT];
+const COUNT: usize = TRACT.len()
+    + com::PORTS.len()
+    + grid::PORTS.len()
+    + idle::PORTS.len()
+    + io::PORTS.len()
+    + life::PORTS.len()
+    + terrain::PORTS.len();
+const ALL: [Port; COUNT] = crate::port::concat(&[
+    TRACT,
+    com::PORTS,
+    grid::PORTS,
+    idle::PORTS,
+    io::PORTS,
+    life::PORTS,
+    terrain::PORTS,
+]);
+
 /// This module's replacements.
-pub const PORTS: &[Port] = &[fc4p_006bd540::PORT, fc4p_006bd810::PORT];
+pub const PORTS: &[Port] = &ALL;
 
 #[cfg(test)]
 mod tests {
