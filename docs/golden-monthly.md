@@ -51,6 +51,10 @@ failure anchor for the next recheck and cannot be published as full-scenario
 credit. A window proves behavior after that reload; follow with a full check
 when the fix needs validation of its earlier history.
 
+Window checks and direct-backend save checks do not append supplemental draw
+sweeps. Full queue checks still add required draws, and full owner qualification
+still requires their evidence. Explicitly selected draw rows remain selected.
+
 Snapshots are thinned evenly by their actual sizes, at most 96 MiB per reference
 and 18 GiB across the store. All monthly hashes remain. If the requested snapshot
 was thinned out, the check reports the earlier retained date actually loaded

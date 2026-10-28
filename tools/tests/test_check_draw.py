@@ -184,6 +184,25 @@ class DrawSelectionTests(unittest.TestCase):
         self.assertEqual(check.draw_names(['mysims'], {'draw-advisors': {'keys': ['advisors']}}),
                          {'draw-advisors'})
 
+    def test_direct_and_window_save_rechecks_do_not_add_draw_sweeps(self):
+        for options in (['--backend', 'direct'], ['--from', 'auto']):
+            with self.subTest(options=options):
+                calls = []
+
+                def compare(row, dll, keys, options=()):
+                    calls.append(row['name'])
+                    return {'verdict': 'exact'}
+
+                with patch.object(check, 'compare', side_effect=compare), \
+                        patch.object(check, 'draw_references') as references, \
+                        contextlib.redirect_stdout(io.StringIO()):
+                    code = check.main(['run', '--store', str(self.root), '--dll', str(self.dll),
+                                       '--replace', 'span565', '--scenarios', 'save-city',
+                                       '--jobs', '1', *options])
+                self.assertEqual(code, 0)
+                self.assertEqual(calls, ['save-city'])
+                references.assert_not_called()
+
     def test_each_draw_failure_changes_owner_verdict_and_preserves_save_table(self):
         (self.root / 'owner-check.tsv').write_text('save-only evidence', encoding='utf-8')
         def compare(row, dll, keys, options=()):

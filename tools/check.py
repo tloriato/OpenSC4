@@ -426,7 +426,12 @@ def run(args):
     if args.replace == 'each':
         return run_each(args, rows, dll)
     names, lua = select(args.scenarios, keys, rows)
-    names = sorted(set(names) | draw_names(keys, draw_references(rows)))
+    # A snapshot window has no draw timeline, and the direct backend cannot
+    # capture draws. Keep explicitly selected rows, but do not add unrelated
+    # draw sweeps to these focused save rechecks. Full queue checks still add
+    # every required draw, and owner qualification verifies that coverage.
+    if not getattr(args, 'from_date', None) and args.backend != 'direct':
+        names = sorted(set(names) | draw_names(keys, draw_references(rows)))
     print(f'{len(names)} scenarios, owners {", ".join(keys) or "none"}' +
           (f'; not run (Lua or clockless): {", ".join(lua)}' if lua else ''), flush=True)
     owners = record_owners()
