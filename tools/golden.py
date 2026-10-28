@@ -398,6 +398,9 @@ def prepare(args):
     settings['queue_parallel'] = args.backend == 'queue'
     generated = '' if args.draw_capture else input_script(
         args.script, args.until, truncate=bool(getattr(args, 'prepared_city', None)))
+    if getattr(args, 'monthly', False) and not any(k[0] == 0x2990C1E5 for k in read_records(save)):
+        # An unfounded start city (the script founds it) has no simulator date: end save only.
+        args.monthly = False
     if getattr(args, 'monthly', False):
         args.checkpoint_start = golden_monthly.save_date(read_records(save))
         original = args.script.read_text(encoding='utf-8-sig') if args.script else ''
