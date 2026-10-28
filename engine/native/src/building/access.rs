@@ -7,8 +7,8 @@
 use crate::abi::{call_raw, Conv, RawCall};
 use crate::port::Port;
 
-game_fn! { #[cfg(test)] fn query(this: *mut u8, iid: u32, out: *mut *mut u8) -> u64 = "thiscall" 0x0069_5290; }
-game_fn! { #[cfg(test)] fn release(this: *mut u8) -> u64 = "thiscall" 0x0069_59B0; }
+game_fn! { #[allow(dead_code)] fn query(this: *mut u8, iid: u32, out: *mut *mut u8) -> u64 = "thiscall" 0x0069_5290; }
+game_fn! { #[allow(dead_code)] fn release(this: *mut u8) -> u64 = "thiscall" 0x0069_59B0; }
 game_fn! { #[allow(dead_code)] fn developer_type(purpose: u32, wealth: u32) -> u64 = "C" 0x0069_5790; }
 game_fn! { #[allow(dead_code)] fn developer_wealth(kind: u32) -> u64 = "C" 0x0069_5840; }
 

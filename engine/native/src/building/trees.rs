@@ -19,6 +19,9 @@ game_fn! { #[allow(dead_code)] fn insert_signed(this: *mut u8, out: *mut u8, chi
 game_fn! { #[allow(dead_code)] fn insert_nested(this: *mut u8, out: *mut u8, child: *mut u8, parent: *mut u8, value: *mut u8, force: u32) -> u64 = "thiscall" 0x0069_A610; }
 game_fn! { #[allow(dead_code)] fn copy_subtree(this: *mut u8, source: *mut u8, parent: *mut u8) -> u64 = "thiscall" 0x0069_6F10; }
 game_fn! { #[allow(dead_code)] fn copy_pairs(this: *mut u8, source: *mut u8) -> u64 = "thiscall" 0x0069_8A80; }
+game_fn! { fn construct_element(this: *mut u8, source: *mut u8) = "thiscall" 0x004C_9470; }
+game_fn! { fn construct_range(begin: *mut u8, end: *mut u8, dest: *mut u8, cookie: *mut u8) -> *mut u8 = "C" 0x0069_9150; }
+game_fn! { fn destroy_range(begin: *mut u8, end: *mut u8, cookie: *mut u8) = "C" 0x0045_9170; }
 
 layout! {
     /// A tree's header pointer and wrapping element count.
@@ -533,6 +536,59 @@ unsafe extern "thiscall" fn copy_pairs_body(p: *mut u32) -> u64 {
     unsafe { copy_tree(Frame(p)) }
 }
 
+tree_port!(
+    0x0069_A7C0,
+    fc4p_0069a7c0,
+    "GrowAndInsertObjectVector",
+    "ret 20",
+    grow_vector_body
+);
+unsafe extern "thiscall" fn grow_vector_body(p: *mut u32) -> u64 {
+    unsafe {
+        let f = Frame(p);
+        let vector = super::shared::ObjectVector::from_ptr(f.this());
+        let old_count = (vector.end() as u32).wrapping_sub(vector.begin() as u32) as i32 / 12;
+        let requested = f.arg(3);
+        let count = (old_count as u32).wrapping_add(core::cmp::max(old_count as u32, requested));
+        let allocation = if count == 0 {
+            core::ptr::null_mut()
+        } else {
+            call(0x0090_CF54, Conv::Cdecl, f.registers(), &[count.wrapping_mul(12)])[0] as *mut u8
+        };
+        let position = f.arg(0) as *mut u8;
+        let value = f.arg(1) as *mut u8;
+        let mut source = vector.begin();
+        let mut dest = allocation;
+        while source != position {
+            if !dest.is_null() {
+                construct_element(dest, source);
+            }
+            source = source.wrapping_add(12);
+            dest = dest.wrapping_add(12);
+        }
+        for _ in 0..requested {
+            if !dest.is_null() {
+                construct_element(dest, value);
+            }
+            dest = dest.wrapping_add(12);
+        }
+        let cookie = f.slot(4).cast::<u8>();
+        if *cookie == 0 {
+            dest = construct_range(position, vector.end(), dest, cookie);
+        }
+        destroy_range(vector.begin(), vector.end(), cookie);
+        let old = vector.begin();
+        if !old.is_null() {
+            call(0x0090_CF63, Conv::Cdecl, f.registers(), &[old as u32]);
+        }
+        let limit = allocation.wrapping_add(count.wrapping_mul(12) as usize);
+        vector.set_end(dest);
+        vector.set_begin(allocation);
+        vector.set_limit(limit);
+        f.finish([allocation as u32, count.wrapping_mul(3), limit as u32])
+    }
+}
+
 pub const PORTS: &[Port] = &[
     fc4p_00696060::PORT,
     fc4p_00696240::PORT,
@@ -544,6 +600,7 @@ pub const PORTS: &[Port] = &[
     fc4p_00696f10::PORT,
     fc4p_006989d0::PORT,
     fc4p_00698a80::PORT,
+    fc4p_0069a7c0::PORT,
 ];
 
 #[cfg(test)]

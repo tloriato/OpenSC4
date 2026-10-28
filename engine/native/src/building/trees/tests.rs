@@ -16,6 +16,9 @@ enum Event {
     Unlink(u32, u32, u32, u32),
     Free(u32),
     Delete(u32, u32),
+    Element(u32, u32),
+    Range(u32, u32, u32, u8),
+    Destroy(u32, u32, u8),
 }
 #[derive(Default)]
 struct State {
@@ -500,4 +503,110 @@ fn erasure_uses_one_subtree_call_for_full_ranges_and_unlinks_partial_ranges_in_o
     let h = w.header.ptr();
     entry(fc4p_00696240 as *const () as usize, w.map.ptr(), &[h as u32, h as u32]);
     assert!(STATE.with(|s| s.borrow().events.is_empty()));
+}
+
+extern "thiscall" fn element_fake(dest: *mut u8, source: *mut u8) {
+    STATE.with(|s| s.borrow_mut().events.push(Event::Element(dest as u32, source as u32)));
+    unsafe { core::ptr::copy_nonoverlapping(source, dest, 12) };
+}
+extern "C" fn range_fake(mut source: *mut u8, end: *mut u8, mut dest: *mut u8, cookie: *mut u8) -> *mut u8 {
+    STATE.with(|s| {
+        s.borrow_mut()
+            .events
+            .push(Event::Range(source as u32, end as u32, dest as u32, unsafe { *cookie }))
+    });
+    unsafe {
+        while source != end {
+            core::ptr::copy_nonoverlapping(source, dest, 12);
+            source = source.add(12);
+            dest = dest.add(12);
+        }
+        *cookie = 0x91;
+    }
+    dest
+}
+extern "C" fn destroy_fake(source: *mut u8, end: *mut u8, cookie: *mut u8) {
+    STATE.with(|s| {
+        s.borrow_mut()
+            .events
+            .push(Event::Destroy(source as u32, end as u32, unsafe { *cookie }))
+    });
+}
+
+#[test]
+fn object_vector_growth_copies_prefix_repeats_value_optionally_copies_tail_then_destroys_and_frees() {
+    let _a = fake(0x0090_CF54, alloc_fake as *const () as usize);
+    let _c = fake(0x004C_9470, element_fake as *const () as usize);
+    let _r = fake(0x0069_9150, range_fake as *const () as usize);
+    let _d = fake(0x0045_9170, destroy_fake as *const () as usize);
+    let _f = fake(0x0090_CF63, free_fake as *const () as usize);
+    for (requested, skip) in [(0, 0), (1, 0), (2, 0), (4, 0), (2, 0x80)] {
+        STATE.with(|s| *s.borrow_mut() = State::default());
+        let mut object = Object::new(12);
+        let mut old = Object::new(36);
+        let (v, base) = (object.ptr(), old.ptr());
+        let vector = unsafe { super::super::shared::ObjectVector::from_ptr(v) };
+        vector.set_begin(base);
+        vector.set_end(base.wrapping_add(36));
+        vector.set_limit(base.wrapping_add(36));
+        unsafe {
+            for i in 0..9 {
+                write(base.add(i * 4).cast::<u32>(), i as u32);
+            }
+        }
+        let mut value = [0x1111u32, 0x2222, 0x3333];
+        let source = value.as_mut_ptr().cast::<u8>();
+        let args = [
+            base as u32 + 12,
+            source as u32,
+            0xCAFE_BABE,
+            requested,
+            0xDEAD_BE00 | skip,
+        ];
+        let result = entry(fc4p_0069a7c0 as *const () as usize, v, &args);
+        let allocation = vector.begin();
+        let count = 3 + requested.max(3);
+        assert_eq!(result, (allocation as u32, allocation as u32 + count * 12));
+        assert_eq!(vector.limit(), allocation.wrapping_add(count as usize * 12));
+        assert_eq!(
+            vector.end(),
+            allocation.wrapping_add((1 + requested + if skip == 0 { 2 } else { 0 }) as usize * 12)
+        );
+        let mut want = vec![
+            Event::Allocate(count * 12),
+            Event::Element(allocation as u32, base as u32),
+        ];
+        for i in 0..requested {
+            want.push(Event::Element(allocation as u32 + 12 * (i + 1), source as u32));
+        }
+        if skip == 0 {
+            want.push(Event::Range(
+                base as u32 + 12,
+                base as u32 + 36,
+                allocation as u32 + 12 * (requested + 1),
+                0,
+            ));
+        }
+        want.push(Event::Destroy(
+            base as u32,
+            base as u32 + 36,
+            if skip == 0 { 0x91 } else { skip as u8 },
+        ));
+        want.push(Event::Free(base as u32));
+        assert_eq!(STATE.with(|s| std::mem::take(&mut s.borrow_mut().events)), want);
+        unsafe {
+            assert_eq!(read(allocation.cast::<[u32; 3]>()), [0, 1, 2]);
+            for i in 0..requested {
+                assert_eq!(read(allocation.add((i as usize + 1) * 12).cast::<[u32; 3]>()), value);
+            }
+        }
+    }
+    STATE.with(|s| *s.borrow_mut() = State::default());
+    let mut object = Object::new(12);
+    let v = object.ptr();
+    assert_eq!(entry(fc4p_0069a7c0 as *const () as usize, v, &[0, 0, 0, 0, 0]), (0, 0));
+    assert_eq!(
+        STATE.with(|s| std::mem::take(&mut s.borrow_mut().events)),
+        [Event::Range(0, 0, 0, 0), Event::Destroy(0, 0, 0x91)]
+    );
 }

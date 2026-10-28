@@ -47,6 +47,7 @@ layout! {
 pub mod access;
 pub mod checks;
 pub mod containers;
+pub mod queries;
 pub mod resources;
 pub mod shared;
 pub mod trees;
@@ -56,7 +57,8 @@ const COUNT: usize = checks::PORTS.len()
     + resources::PORTS.len()
     + shared::PORTS.len()
     + access::PORTS.len()
-    + trees::PORTS.len();
+    + trees::PORTS.len()
+    + queries::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
     checks::PORTS,
     containers::PORTS,
@@ -64,6 +66,7 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     shared::PORTS,
     access::PORTS,
     trees::PORTS,
+    queries::PORTS,
 ]);
 
 /// This module's complete replacements.
