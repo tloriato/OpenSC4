@@ -1,0 +1,89 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 FreeCity4 contributors
+
+//! Deal totals and the version-two connection record.
+
+use super::{pair, pointer, virtual_call, word, NeighborsSim};
+use crate::port::Port;
+
+game_fn! {
+    fn write_reference(stream: *mut u8, object: *mut u8) -> u64 = "C" 0x005D_99A0;
+}
+
+unsafe fn total(this: *mut u8, entry_edx: u32, first_type: u32) -> u64 {
+    unsafe {
+        let sim = NeighborsSim::from_ptr(this);
+        let header = sim.deals();
+        let mut node = pointer(header, 0);
+        let mut sum = 0u64;
+        let mut edx = entry_edx;
+        while node != sim.deals() {
+            let deal = pointer(node, 8);
+            let flags = virtual_call(deal, 0x9C, &[0x3D], word(deal, 0), edx);
+            edx = (flags >> 32) as u32;
+            if flags as u8 == 0 {
+                let kind = virtual_call(deal, 0x20, &[], flags as u32, word(deal, 0));
+                edx = (kind >> 32) as u32;
+                let kind = (kind as u32).wrapping_sub(first_type);
+                if kind == 0 || kind == 2 || kind == 4 {
+                    let cost = virtual_call(deal, 0x58, &[], word(deal, 0), edx);
+                    edx = (cost >> 32) as u32;
+                    sum = sum.wrapping_add(cost);
+                }
+            }
+            node = pointer(node, 0);
+        }
+        sum
+    }
+}
+
+port! {
+    /// Sums sell-power, sell-water and sell-garbage prices with wrapping 64-bit addition, omitting
+    /// deals with any flag in 0x3D. Active need not be set and expiration does not exclude a deal.
+    #[port(address = 0x006C_F860, owner = "neighbors", name = "cSC4NeighborsSimulator::GetTotalMonthlyNeighborDealIncome")]
+    pub unsafe extern "fastcall" fn fc4p_006cf860(this: *mut u8, entry_edx: u32) -> u64 {
+        unsafe { total(this, entry_edx, 0x4773_FFE1) }
+    }
+}
+
+port! {
+    /// Sums buy-power, buy-water and buy-garbage prices with the same flag test and wrapping addition.
+    #[port(address = 0x006C_F8D0, owner = "neighbors", name = "cSC4NeighborsSimulator::GetTotalMonthlyNeighborDealExpense")]
+    pub unsafe extern "fastcall" fn fc4p_006cf8d0(this: *mut u8, entry_edx: u32) -> u64 {
+        unsafe { total(this, entry_edx, 0x4773_FFE0) }
+    }
+}
+
+port! {
+    /// Writes version two, the connection count, and each serializable connection reference. Only
+    /// the low byte of the final stream error decides success; intermediate failures do not stop it.
+    /// `this` is the serializable interface, eight bytes beyond the primary interface.
+    #[port(address = 0x006C_FB60, owner = "neighbors", name = "cSC4NeighborsSimulator::Write")]
+    pub unsafe extern "fastcall" fn fc4p_006cfb60(this: *mut u8, entry_edx: u32, stream: *mut u8) -> u64 {
+        unsafe {
+            virtual_call(stream, 0x1C, &[2], word(stream, 0), entry_edx);
+            let sim = NeighborsSim::from_ptr(this.sub(8));
+            let header = sim.connections();
+            let mut node = pointer(header, 0);
+            let mut count = 0u32;
+            while node != header {
+                node = pointer(node, 0);
+                count = count.wrapping_add(1);
+            }
+            virtual_call(stream, 0x24, &[count], word(stream, 0), count);
+            let header = sim.connections();
+            node = pointer(header, 0);
+            let mut eax = header as u32;
+            while node != sim.connections() {
+                write_reference(stream, pointer(node, 8));
+                // The next node and current header are read only after the reference writer returns.
+                node = pointer(node, 0);
+                eax = sim.connections() as u32;
+            }
+            let result = virtual_call(stream, 0x48, &[], eax, word(stream, 0));
+            pair(u32::from(result as u8 == 0), (result >> 32) as u32)
+        }
+    }
+}
+
+pub const PORTS: &[Port] = &[fc4p_006cf860::PORT, fc4p_006cf8d0::PORT, fc4p_006cfb60::PORT];
