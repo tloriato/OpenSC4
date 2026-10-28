@@ -109,6 +109,7 @@ pub mod io;
 pub mod lists;
 pub mod maintenance;
 pub mod messages;
+pub mod monthly;
 pub mod occupants;
 pub mod recycling;
 pub mod release;
@@ -131,7 +132,8 @@ const COUNT: usize = access::PORTS.len()
     + lists::PORTS.len()
     + capacity::PORTS.len()
     + messages::PORTS.len()
-    + cycle::PORTS.len();
+    + cycle::PORTS.len()
+    + monthly::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
     access::PORTS,
     aging::PORTS,
@@ -150,6 +152,7 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     capacity::PORTS,
     messages::PORTS,
     cycle::PORTS,
+    monthly::PORTS,
 ]);
 
 /// This module's replacements.

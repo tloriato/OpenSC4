@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Completed-pass statistics, histories, map notifications and sanitation efficiency.
 
+// One shared zero-count branch skips all four accumulator reads and divisions.
+#![allow(clippy::manual_checked_ops)]
+
 use super::*;
 
 game_fn! { fn recycling(this: *mut u8) = "thiscall" 0x006E_6DA0; }
