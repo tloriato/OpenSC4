@@ -29,8 +29,15 @@ layout! {
         0x30 => prop_manager / set_prop_manager: *mut u8,
         0x3C => terrain / set_terrain: *mut u8,
         0x40 => vertices_x / set_vertices_x: i32,
+        0x44 => extent_x_bits / set_extent_x_bits: u32,
+        0x48 => extent_z_bits / set_extent_z_bits: u32,
         0x5C => force_empty / set_force_empty: u8,
         0x5E => business_units_dirty / set_business_units_dirty: u8,
+        0x64 => night_begin / set_night_begin: queue::QueueIterator,
+        0x74 => night_end / set_night_end: queue::QueueIterator,
+        0x8C => night_cursor / set_night_cursor: queue::QueueIterator,
+        0x9C => night_mode / set_night_mode: u8,
+        0xA8 => lit / set_lit: u8,
         0xC0 => stay_new_days / set_stay_new_days: u16,
         0xC4 => renewal_threshold / set_renewal_threshold: f32,
         0xC8 => distress_threshold / set_distress_threshold: f32,
@@ -66,26 +73,35 @@ fn result(call: RawCall) -> u64 {
 
 pub mod checks;
 pub mod foundation;
+pub mod io;
 pub mod lots;
 pub mod maintenance;
+pub mod operations;
 pub mod props;
+pub mod queue;
 pub mod small;
 pub mod terrain;
 
 const ALL: [Port;
     foundation::PORTS.len()
+        + io::PORTS.len()
         + lots::PORTS.len()
         + small::PORTS.len()
         + terrain::PORTS.len()
         + maintenance::PORTS.len()
+        + operations::PORTS.len()
         + props::PORTS.len()
+        + queue::PORTS.len()
         + checks::PORTS.len()] = crate::port::concat(&[
     small::PORTS,
     lots::PORTS,
     foundation::PORTS,
+    io::PORTS,
     terrain::PORTS,
     maintenance::PORTS,
+    operations::PORTS,
     props::PORTS,
+    queue::PORTS,
     checks::PORTS,
 ]);
 
