@@ -41,6 +41,8 @@ layout! {
         0x6C => kick_out / set_kick_out: u8,
         0x7C => years_between_changes / set_years_between_changes: i32,
         0x80 => developer / set_developer: u32,
+        0x84 => tract_x / set_tract_x: i32,
+        0x88 => tract_z / set_tract_z: i32,
         0x8C => maximum_stage / set_maximum_stage: i32,
         0x98 => wealth / set_wealth: i32,
         0x9C => purpose / set_purpose: i32,
@@ -49,6 +51,8 @@ layout! {
         0xBC => desired_maximum / set_desired_maximum: i32,
         0xC0 => built / set_built: i32,
         0xC8 => relaxed / set_relaxed: u8,
+        0xCC => lots_header / set_lots_header: u32,
+        0xD8 => configurations_header / set_configurations_header: u32,
         0xE4 => candidates_begin / set_candidates_begin: u32,
         0xE8 => candidates_end / set_candidates_end: u32,
         0xF0 => chosen_configuration / set_chosen_configuration: u32,
@@ -179,13 +183,16 @@ pub mod cache;
 pub mod compatibility;
 pub mod configuration;
 pub mod copying;
+pub mod discovery;
 pub mod evaluation;
 pub mod geometry;
 pub mod growth;
+pub mod lot_scan;
 pub mod networks;
 pub mod pool;
 pub mod population;
 pub mod removal;
+pub mod sites;
 pub mod sorting;
 pub mod suitability;
 pub mod surface;
@@ -195,14 +202,17 @@ const COUNT: usize = compatibility::PORTS.len()
     + cache::PORTS.len()
     + configuration::PORTS.len()
     + copying::PORTS.len()
+    + discovery::PORTS.len()
     + evaluation::PORTS.len()
     + geometry::PORTS.len()
     + growth::PORTS.len()
+    + lot_scan::PORTS.len()
     + networks::PORTS.len()
     + pool::PORTS.len()
     + population::PORTS.len()
     + removal::PORTS.len()
     + sorting::PORTS.len()
+    + sites::PORTS.len()
     + suitability::PORTS.len()
     + surface::PORTS.len()
     + trees::PORTS.len();
@@ -211,14 +221,17 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     cache::PORTS,
     configuration::PORTS,
     copying::PORTS,
+    discovery::PORTS,
     evaluation::PORTS,
     geometry::PORTS,
     growth::PORTS,
+    lot_scan::PORTS,
     networks::PORTS,
     pool::PORTS,
     population::PORTS,
     removal::PORTS,
     sorting::PORTS,
+    sites::PORTS,
     suitability::PORTS,
     surface::PORTS,
     trees::PORTS,

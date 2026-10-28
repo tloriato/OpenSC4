@@ -20,6 +20,7 @@ layout! {
     /// Primary `cISC4NetworkTool` interface.
     pub struct NetworkTool {
         0x00 => vtable / set_vtable: u32,
+        0x18 => initialized / set_initialized: u8,
         0x44 => terrain / set_terrain: *mut u8,
         0x48 => occupant_manager / set_occupant_manager: *mut u8,
         0x50 => real / set_real: u8,
@@ -46,6 +47,7 @@ layout! {
         0x328 => terrain_unit_cost / set_terrain_unit_cost: f32,
         0x32C => support_id / set_support_id: u32,
         0x358 => type_info / set_type_info: *mut u8,
+        0x35C => network_type / set_network_type: u32,
     }
 }
 
@@ -79,14 +81,21 @@ macro_rules! register_port {
     };
 }
 
+mod clear;
+mod control;
 mod cost;
 mod geometry;
 mod helpers;
+mod init;
+mod lifetime;
 mod occupants;
 mod placement;
 mod preview;
+mod records;
+mod reload;
 mod rules;
 mod storage;
+mod tunnels;
 
 const COUNT: usize = helpers::PORTS.len()
     + preview::PORTS.len()
@@ -95,7 +104,14 @@ const COUNT: usize = helpers::PORTS.len()
     + occupants::PORTS.len()
     + storage::PORTS.len()
     + cost::PORTS.len()
-    + placement::PORTS.len();
+    + placement::PORTS.len()
+    + records::PORTS.len()
+    + control::PORTS.len()
+    + lifetime::PORTS.len()
+    + reload::PORTS.len()
+    + init::PORTS.len()
+    + clear::PORTS.len()
+    + tunnels::PORTS.len();
 /// Completed replacements, ordered by original address within each group.
 pub const PORTS: &[Port] = &crate::port::concat::<COUNT>(&[
     helpers::PORTS,
@@ -106,4 +122,11 @@ pub const PORTS: &[Port] = &crate::port::concat::<COUNT>(&[
     storage::PORTS,
     cost::PORTS,
     placement::PORTS,
+    records::PORTS,
+    control::PORTS,
+    lifetime::PORTS,
+    reload::PORTS,
+    init::PORTS,
+    clear::PORTS,
+    tunnels::PORTS,
 ]);

@@ -22,6 +22,9 @@ layout! {
     pub struct DemandSim {
         0x00 => vtable / set_vtable: u32,
         0x0D => initialized / set_initialized: u8,
+        0x14 => census_state / set_census_state: u32,
+        0x18 => census_iterator / set_census_iterator: *mut u8,
+        0x1C => current_census / set_current_census: *mut u8,
         0x20 => current_census_count / set_current_census_count: u32,
         0x28 => previous_census / set_previous_census: *mut u8,
         0x2C => previous_census_count / set_previous_census_count: u32,
@@ -31,6 +34,7 @@ layout! {
         0x48 => ordinances / set_ordinances: *mut u8,
         0x50 => nodes / set_nodes: *mut u8,
         0x54 => node_count / set_node_count: u32,
+        0x68 => salary_weights / set_salary_weights: [u32; 12],
         0x98 => previous_cities / set_previous_cities: *mut u8,
         0x9C => export_cities / set_export_cities: *mut u8,
         0xA0 => commercial_bonus / set_commercial_bonus: u32,
@@ -128,17 +132,22 @@ mod capacity;
 mod census;
 mod connections;
 mod effects;
+mod export;
 mod extrapolate;
+mod idle;
 mod interface;
 mod io;
 mod jobs;
 mod links;
+mod messages;
 mod modifiers;
 mod occupant;
+mod ordering;
 mod population;
 mod queries;
 mod regional;
 mod scan;
+mod simulation;
 mod sort;
 mod tree;
 
@@ -149,17 +158,22 @@ const COUNT: usize = capacity::PORTS.len()
     + census::PORTS.len()
     + connections::PORTS.len()
     + effects::PORTS.len()
+    + export::PORTS.len()
     + extrapolate::PORTS.len()
     + interface::PORTS.len()
+    + idle::PORTS.len()
     + io::PORTS.len()
     + jobs::PORTS.len()
     + links::PORTS.len()
+    + messages::PORTS.len()
     + modifiers::PORTS.len()
     + occupant::PORTS.len()
+    + ordering::PORTS.len()
     + population::PORTS.len()
     + queries::PORTS.len()
     + regional::PORTS.len()
     + scan::PORTS.len()
+    + simulation::PORTS.len()
     + sort::PORTS.len()
     + tree::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
@@ -167,17 +181,22 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     census::PORTS,
     connections::PORTS,
     effects::PORTS,
+    export::PORTS,
     extrapolate::PORTS,
     interface::PORTS,
+    idle::PORTS,
     io::PORTS,
     jobs::PORTS,
     links::PORTS,
+    messages::PORTS,
     modifiers::PORTS,
     occupant::PORTS,
+    ordering::PORTS,
     population::PORTS,
     queries::PORTS,
     regional::PORTS,
     scan::PORTS,
+    simulation::PORTS,
     sort::PORTS,
     tree::PORTS,
 ]);

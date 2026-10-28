@@ -94,6 +94,8 @@ mod table {
         + crate::tract_developer::PORTS.len()
         + crate::traffic::PORTS.len()
         + crate::zone_developer::PORTS.len();
+    // Only evaluated at compile time, for the uniqueness check and the static table below.
+    #[allow(clippy::large_const_arrays)]
     const ALL: [Port; COUNT] = port::concat(&[
         crate::x87::PORTS,
         crate::building::PORTS,
