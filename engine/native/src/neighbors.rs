@@ -21,6 +21,7 @@ layout! {
         0x00 => primary_vtable / set_primary_vtable: u32,
         0x04 => message_vtable / set_message_vtable: u32,
         0x08 => serializable_vtable / set_serializable_vtable: u32,
+        0x0C => initialized / set_initialized: u8,
         0x10 => references / set_references: i32,
         0x14 => city / set_city: *mut u8,
         0x18 => message_server / set_message_server: *mut u8,
@@ -40,6 +41,7 @@ mod graph;
 mod lists;
 mod pricing;
 mod proposal;
+mod proposals;
 mod proposition;
 mod queries;
 mod regional;
@@ -58,6 +60,7 @@ const COUNT: usize = surface::PORTS.len()
     + lists::PORTS.len()
     + pricing::PORTS.len()
     + proposal::PORTS.len()
+    + proposals::PORTS.len()
     + removal::PORTS.len()
     + regional::PORTS.len()
     + selection::PORTS.len()
@@ -74,6 +77,7 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     lists::PORTS,
     pricing::PORTS,
     proposal::PORTS,
+    proposals::PORTS,
     removal::PORTS,
     regional::PORTS,
     selection::PORTS,
