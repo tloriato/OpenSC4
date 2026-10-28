@@ -22,19 +22,29 @@ layout! {
         0x00 => primary_vtable / set_primary_vtable: *const usize,
         0x10 => references / set_references: i32,
         0x18 => city / set_city: *mut u8,
+        0x1C => budget / set_budget: *mut u8,
         0x20 => department / set_department: *mut u8,
         0x2C => zones / set_zones: *mut u8,
         0x38 => ring_index / set_ring_index: i32,
         0x3C => production / set_production: i32,
+        0x40 => consumption / set_consumption: i32,
         0x60 => monthly_demand / set_monthly_demand: u32,
+        0x64 => deficit / set_deficit: u32,
         0x78 => infrastructure_cost / set_infrastructure_cost: u64,
         0x90 => usage_ring / set_usage_ring: [i32; 120],
+        0x270 => annual_usage / set_annual_usage: [i32; 10],
         0x298 => plant_header / set_plant_header: *mut u8,
         0x29C => poles_begin / set_poles_begin: *mut *mut u8,
         0x2A0 => poles_end / set_poles_end: *mut *mut u8,
+        0x2AC => ordinance_factor / set_ordinance_factor: f32,
         0x2B0 => radius / set_radius: u32,
+        0x2B8 => pole_count / set_pole_count: u32,
+        0x2BC => broken_count / set_broken_count: u32,
+        0x2C0 => broken_fraction / set_broken_fraction: f32,
         0x2C8 => wire / set_wire: *mut u32,
         0x2D4 => powered / set_powered: *mut u32,
+        0x338 => recompute / set_recompute: u8,
+        0x339 => age_plants / set_age_plants: u8,
         0x378 => funding_curve / set_funding_curve: [u32; 4],
     }
 }
@@ -72,10 +82,30 @@ stored_op!(add_float, "fadd dword ptr [{operand}]");
 
 pub mod bitmap;
 pub mod com;
+pub mod find;
 pub mod grid;
+pub mod io;
+pub mod monthly;
 pub mod plants;
+pub mod powered_lots;
 
-const COUNT: usize = bitmap::PORTS.len() + com::PORTS.len() + grid::PORTS.len() + plants::PORTS.len();
-const ALL: [Port; COUNT] = crate::port::concat(&[bitmap::PORTS, com::PORTS, grid::PORTS, plants::PORTS]);
+const COUNT: usize = bitmap::PORTS.len()
+    + com::PORTS.len()
+    + grid::PORTS.len()
+    + plants::PORTS.len()
+    + monthly::PORTS.len()
+    + io::PORTS.len()
+    + find::PORTS.len()
+    + powered_lots::PORTS.len();
+const ALL: [Port; COUNT] = crate::port::concat(&[
+    bitmap::PORTS,
+    com::PORTS,
+    grid::PORTS,
+    plants::PORTS,
+    monthly::PORTS,
+    io::PORTS,
+    find::PORTS,
+    powered_lots::PORTS,
+]);
 /// This module's complete replacements.
 pub const PORTS: &[Port] = &ALL;
