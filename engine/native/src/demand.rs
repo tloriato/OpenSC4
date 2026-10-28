@@ -110,16 +110,33 @@ unsafe fn successor(node: *mut u8) -> *mut u8 {
     }
 }
 
+mod capacity;
+mod census;
 mod interface;
 mod io;
 mod jobs;
+mod sort;
 mod tree;
 
 #[cfg(test)]
 mod test_support;
 
-const COUNT: usize = interface::PORTS.len() + io::PORTS.len() + jobs::PORTS.len() + tree::PORTS.len();
-const ALL: [Port; COUNT] = crate::port::concat(&[interface::PORTS, io::PORTS, jobs::PORTS, tree::PORTS]);
+const COUNT: usize = capacity::PORTS.len()
+    + census::PORTS.len()
+    + interface::PORTS.len()
+    + io::PORTS.len()
+    + jobs::PORTS.len()
+    + sort::PORTS.len()
+    + tree::PORTS.len();
+const ALL: [Port; COUNT] = crate::port::concat(&[
+    capacity::PORTS,
+    census::PORTS,
+    interface::PORTS,
+    io::PORTS,
+    jobs::PORTS,
+    sort::PORTS,
+    tree::PORTS,
+]);
 
 /// This module's replacements.
 pub const PORTS: &[Port] = &ALL;

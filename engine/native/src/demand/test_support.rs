@@ -11,6 +11,8 @@ pub(super) struct Probe {
     pub after: [u32; 3],
     pub eax: u32,
     pub edx: u32,
+    pub ecx: u32,
+    pub extra_word: u32,
 }
 
 impl Probe {
@@ -22,6 +24,8 @@ impl Probe {
             after: [0; 3],
             eax: 0x1122_3344,
             edx: 0x5566_7788,
+            ecx: 0,
+            extra_word: 0,
         }
     }
     pub unsafe fn run(&mut self) {
@@ -42,6 +46,7 @@ unsafe extern "thiscall" fn probe(_context: *mut Probe) {
         "push edi",
         "mov ebp, esp",
         "mov edi, ecx",
+        "push dword ptr [edi + 44]",
         "push dword ptr [edi + 16]",
         "push dword ptr [edi + 12]",
         "push dword ptr [edi + 8]",
@@ -52,6 +57,7 @@ unsafe extern "thiscall" fn probe(_context: *mut Probe) {
         "call dword ptr [edi]",
         "mov dword ptr [edi + 32], eax",
         "mov dword ptr [edi + 36], edx",
+        "mov dword ptr [edi + 40], ecx",
         "mov eax, dword ptr [ebx]",
         "mov dword ptr [edi + 20], eax",
         "mov eax, dword ptr [ebx + 4]",
