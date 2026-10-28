@@ -21,4 +21,3 @@
   No native same-owner forwarding or guessed private-layout storage was introduced.
 
 **ANSWERED 2026-10-28 (re-blockers37a):** DIFFERS — concrete thiscall `(occupantView, s32 radius, u32 durationMs)`, ret 12, borrowed effect token in EAX; direct native call bypasses the manager vtable and requires a supported concrete boundary. Ordered creation, retention, controller call and shared expiry timer are in automata-managers §3.4.1 and traffic-simulator §4.13.2.
-
