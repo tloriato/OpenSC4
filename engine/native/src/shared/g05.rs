@@ -896,6 +896,264 @@ unsigned_release!(
 );
 unsigned_release!(0x0062_3270, fc4p_00623270, release_window, "release window", 0x14, 0xcc);
 
+macro_rules! cdecl_port {
+    ($address:literal, $export:ident, $name:ident, $label:literal, $count:literal,
+     ($r:ident $(, $arg:ident: $ty:ty)*) $body:block) => {
+        port! {
+            #[port(address = $address, owner = "shared", name = $label, naked)]
+            pub unsafe extern "C" fn $export() {
+                core::arch::naked_asm!(
+                    "sub esp, 12", "mov [esp], eax", "mov [esp + 4], ecx", "mov [esp + 8], edx",
+                    "mov edx, esp", ".rept {count}", "push dword ptr [esp + {offset}]", ".endr",
+                    "call {body}", "mov eax, [esp]", "mov ecx, [esp + 4]", "mov edx, [esp + 8]",
+                    "add esp, 12", "ret",
+                    count = const $count, offset = const 12 + 4 * $count, body = sym $name,
+                );
+            }
+        }
+        unsafe extern "fastcall" fn $name(_this: *mut u8, $r: &mut Registers $(, $arg: $ty)*) $body
+    };
+}
+
+cdecl_port!(0x0060_3DA0, fc4p_00603da0, set_grid_bit, "set packed grid bit", 4,
+    (r, base: *mut u8, row: u32, column: u32, pitch: u32) {
+        let index = row.wrapping_mul(pitch).wrapping_add(column) as i32 >> 5;
+        r.eax = (base as u32).wrapping_add((index as u32).wrapping_mul(4));
+        r.ecx = column & 31;
+        r.edx = 1u32 << r.ecx;
+        unsafe { store(r.eax as *mut u8, 0, word(r.eax as *mut u8, 0) | r.edx); }
+    }
+);
+
+rust_port!(0x0060_C860, fc4p_0060c860, reset_cell_scan, "reset cell scan at coordinates", 8,
+    (this, r, x: i32, z: i32) {
+        unsafe {
+            r.eax = x as u32;
+            r.edx = z as u32;
+            store(this, 4, r.eax);
+            store(this, 8, r.edx);
+            *this = 0;
+            if x < word(this, 0x10) as i32 || z < word(this, 0x14) as i32
+                || x > word(this, 0x18) as i32 || z > word(this, 0x1c) as i32 { *this = 2; }
+        }
+    }
+);
+rust_port!(0x0060_C890, fc4p_0060c890, set_cell_scan_bounds, "set cell scan bounds", 4,
+    (this, r, source: *mut u8) {
+        unsafe {
+            for offset in [0,4,8,12] {
+                let value = word(source, offset);
+                store(this, 0x10 + offset, value);
+                r.edx = value;
+            }
+            let low_x = word(this, 0x10) as i32;
+            if (word(this, 0x18) as i32) < low_x { store(this, 0x18, low_x as u32); }
+            r.eax = word(this, 0x14);
+            if (word(this, 0x1c) as i32) < r.eax as i32 { store(this, 0x1c, r.eax); }
+        }
+    }
+);
+rust_port!(0x0060_C8D0, fc4p_0060c8d0, next_cell_scan, "next cell scan coordinates", 8,
+    (this, r, out_x: *mut u8, out_z: *mut u8) {
+        unsafe {
+            let state = *this;
+            r.eax = (r.eax & !255) | u32::from(state);
+            if state == 2 { r.eax &= !255; return; }
+            if state == 0 { *this = 1; }
+            else {
+                r.edx = word(this, 4);
+                r.eax = word(this, 12);
+                r.edx = r.edx.wrapping_add(r.eax);
+                let max_x = word(this, 0x18) as i32;
+                store(this, 4, r.edx);
+                if r.edx as i32 > max_x {
+                    let z = word(this, 8).wrapping_add(r.eax);
+                    r.edx = word(this, 0x10);
+                    store(this, 4, r.edx);
+                    r.edx = word(this, 0x1c);
+                    r.eax = z;
+                    store(this, 8, z);
+                    if z as i32 > r.edx as i32 { *this = 2; r.eax &= !255; return; }
+                }
+            }
+            r.eax = word(this, 4);
+            r.edx = out_x as u32;
+            store(out_x, 0, r.eax);
+            r.eax = word(this, 8);
+            r.ecx = out_z as u32;
+            store(out_z, 0, r.eax);
+            r.eax = (r.eax & !255) | 1;
+        }
+    }
+);
+
+cdecl_port!(0x0061_4430, fc4p_00614430, copy_backward_twelve_bytes, "copy backward twelve byte records", 3,
+    (r, begin: u32, end: u32, destination: u32) {
+        r.ecx = end;
+        let difference = end.wrapping_sub(begin) as i32;
+        let high = ((i64::from(difference) * 0x2aaa_aaab) >> 32) as i32 >> 1;
+        r.edx = high as u32;
+        let count = high.wrapping_add((high as u32 >> 31) as i32);
+        r.eax = destination;
+        if count <= 0 { return; }
+        r.edx = count as u32;
+        while r.edx != 0 {
+            r.ecx = r.ecx.wrapping_sub(12);
+            r.eax = r.eax.wrapping_sub(12);
+            r.edx -= 1;
+            unsafe { for offset in [0,4,8] { store(r.eax as *mut u8, offset, word(r.ecx as *mut u8, offset)); } }
+        }
+    }
+);
+
+cdecl_port!(0x0062_3FA0, fc4p_00623fa0, copy_twelve_byte_records, "copy twelve byte records", 4,
+    (r, begin: u32, end: u32, destination: u32, _context: u32) {
+        r.ecx = begin;
+        r.edx = end;
+        r.eax = destination;
+        while r.ecx != r.edx {
+            if r.eax != 0 {
+                unsafe { for offset in [0,4,8] { store(r.eax as *mut u8, offset, word(r.ecx as *mut u8, offset)); } }
+            }
+            r.ecx = r.ecx.wrapping_add(12);
+            r.eax = r.eax.wrapping_add(12);
+        }
+    }
+);
+macro_rules! fill_records {
+    ($address:literal, $export:ident, $body:ident, $label:literal, $size:literal) => {
+        cdecl_port!($address, $export, $body, $label, 4,
+            (r, destination: u32, count: u32, source: u32, _context: u32) {
+                r.ecx = count;
+                r.eax = destination;
+                if count == 0 { return; }
+                r.edx = source;
+                while r.ecx != 0 {
+                    if r.eax != 0 {
+                        for offset in (0..$size).step_by(4) {
+                            unsafe { store(r.eax as *mut u8, offset, word(source as *mut u8, offset)); }
+                        }
+                    }
+                    r.eax = r.eax.wrapping_add($size as u32);
+                    r.ecx -= 1;
+                }
+            }
+        );
+    };
+}
+fill_records!(
+    0x0062_3FE0,
+    fc4p_00623fe0,
+    fill_twelve_byte_records,
+    "fill twelve byte records",
+    12
+);
+fill_records!(
+    0x0062_4020,
+    fc4p_00624020,
+    fill_24_byte_records,
+    "fill 24 byte records",
+    24
+);
+
+cdecl_port!(0x0062_4E60, fc4p_00624e60, copy_padded_sixteen_byte_records, "copy padded sixteen byte records", 4,
+    (r, begin: u32, end: u32, destination: u32, _context: u32) {
+        r.ecx = begin;
+        r.eax = destination;
+        while r.ecx != end {
+            unsafe {
+                if r.eax != 0 {
+                    r.edx = word(r.ecx as *mut u8, 0);
+                    store(r.eax as *mut u8, 0, r.edx);
+                    for offset in [4,5] {
+                        r.edx = (r.edx & !255) | u32::from(*((r.ecx as *mut u8).add(offset)));
+                        *((r.eax as *mut u8).add(offset)) = r.edx as u8;
+                    }
+                    for offset in [8,12] {
+                        r.edx = word(r.ecx as *mut u8, offset);
+                        store(r.eax as *mut u8, offset, r.edx);
+                    }
+                }
+            }
+            r.ecx = r.ecx.wrapping_add(16);
+            r.eax = r.eax.wrapping_add(16);
+        }
+    }
+);
+
+rust_port!(0x0062_C8F0, fc4p_0062c8f0, has_pending_pointer, "pending pointer is nonnull", 0,
+    (this, r) {
+        r.edx = unsafe { word(this, 0x20c) };
+        r.eax = u32::from(r.edx != 0);
+    }
+);
+leaf!(
+    0x0062_C910,
+    fc4p_0062c910,
+    "nested word at eight",
+    "mov eax, [ecx + 0x358]",
+    "mov eax, [eax + 8]",
+    "ret"
+);
+leaf!(
+    0x0062_C920,
+    fc4p_0062c920,
+    "nested word at sixteen",
+    "mov eax, [ecx + 0x358]",
+    "mov eax, [eax + 16]",
+    "ret"
+);
+leaf!(
+    0x0062_C930,
+    fc4p_0062c930,
+    "nested word at twenty",
+    "mov eax, [ecx + 0x358]",
+    "mov eax, [eax + 20]",
+    "ret"
+);
+
+game_fn! {
+    #[allow(dead_code)]
+    fn assign_pair_vector(this: *mut u8, source: *mut u8) -> u32 = "thiscall" 0x0061_1B00;
+}
+rust_port!(0x0062_CA30, fc4p_0062ca30, copy_embedded_pair_vector, "copy embedded pair vector", 4,
+    (this, r, destination: u32) {
+        r.ecx = destination;
+        unsafe { invoke(r, crate::abi::target(0x0061_1B00), &[(this as u32).wrapping_add(0x60)], false); }
+    }
+);
+
+rust_port!(0x005F_B0E0, fc4p_005fb0e0, final_release_input_dispatch, "final release input dispatch", 0,
+    (this, r) {
+        unsafe {
+            r.eax = word(this, 0);
+            virtual_call(r, 0x10, &[]);
+            r.edx = word(this, 0);
+            r.ecx = this as u32;
+            virtual_call(r, 0x68, &[1]);
+        }
+    }
+);
+game_fn! {
+    #[allow(dead_code)]
+    fn embedded_lookup(this: *mut u8, key: u32) -> u32 = "thiscall" 0x005B_9FC0;
+}
+rust_port!(0x005E_55B0, fc4p_005e55b0, lookup_with_retained_owner, "lookup with retained owner", 4,
+    (this, r, key: u32) {
+        unsafe {
+            r.eax = word(this, 0);
+            virtual_call(r, 4, &[]);
+            r.ecx = this.wrapping_add(8) as u32;
+            invoke(r, crate::abi::target(0x005B_9FC0), &[key], false);
+            let result = r.eax;
+            r.edx = word(this, 0);
+            r.ecx = this as u32;
+            virtual_call(r, 8, &[]);
+            r.eax = result;
+        }
+    }
+);
+
 /// This module's complete replacements.
 pub const PORTS: &[Port] = &[
     fc4p_005b9d30::PORT,
@@ -929,6 +1187,7 @@ pub const PORTS: &[Port] = &[
     fc4p_005e29f0::PORT,
     fc4p_005e2a10::PORT,
     fc4p_005e2a20::PORT,
+    fc4p_005e55b0::PORT,
     fc4p_005e5670::PORT,
     fc4p_005e56b0::PORT,
     fc4p_005e56d0::PORT,
@@ -962,17 +1221,32 @@ pub const PORTS: &[Port] = &[
     fc4p_005f47f0::PORT,
     fc4p_005f8400::PORT,
     fc4p_005f8f80::PORT,
+    fc4p_005fb0e0::PORT,
     fc4p_005fd000::PORT,
     fc4p_005fd370::PORT,
     fc4p_005fd720::PORT,
+    fc4p_00603da0::PORT,
+    fc4p_0060c860::PORT,
+    fc4p_0060c890::PORT,
+    fc4p_0060c8d0::PORT,
     fc4p_0060ce80::PORT,
     fc4p_0060fb50::PORT,
     fc4p_0060fb80::PORT,
+    fc4p_00614430::PORT,
     fc4p_00623270::PORT,
+    fc4p_00623fa0::PORT,
+    fc4p_00623fe0::PORT,
+    fc4p_00624020::PORT,
+    fc4p_00624e60::PORT,
     fc4p_0062c8e0::PORT,
+    fc4p_0062c8f0::PORT,
+    fc4p_0062c910::PORT,
+    fc4p_0062c920::PORT,
+    fc4p_0062c930::PORT,
     fc4p_0062c980::PORT,
     fc4p_0062c990::PORT,
     fc4p_0062c9b0::PORT,
+    fc4p_0062ca30::PORT,
 ];
 
 #[cfg(test)]
@@ -1003,6 +1277,7 @@ mod tests {
     thread_local! { static CALLS: RefCell<Vec<Call>> = const { RefCell::new(Vec::new()) }; }
     thread_local! {
         static ALLOCATED: Cell<u32> = const { Cell::new(0) };
+        static NEXT_TABLE: Cell<u32> = const { Cell::new(0) };
         static POOL_AT_CALL: RefCell<Vec<Vec<u8>>> = const { RefCell::new(Vec::new()) };
     }
     extern "C" fn record(address: u32, r: *const Registers, args: *const u32, count: u32) -> u32 {
@@ -1014,6 +1289,12 @@ mod tests {
                     args: core::slice::from_raw_parts(args, count as usize).to_vec(),
                 })
             });
+            if address == 0x10 {
+                let next = NEXT_TABLE.with(Cell::get);
+                if next != 0 {
+                    store((*r).ecx as *mut u8, 0, next);
+                }
+            }
             if address == 0x0090_d031 || address == 0x0090_cff9 {
                 POOL_AT_CALL.with(|v| {
                     v.borrow_mut()
@@ -1493,22 +1774,25 @@ mod tests {
     fn pool_free_handles_null_wrapping_counts_and_both_block_transitions() {
         let _empty = fake(0x0090_d031, pool_discarded as *const () as usize);
         let _full = fake(0x0090_cff9, pool_reopened as *const () as usize);
-        let cases: &[(unsafe extern "C" fn(), u32)] = &[
-            (fc4p_005e5a40, 0x4000_00be),
-            (fc4p_005e5a90, 0x4000_005f),
-            (fc4p_005e5ae0, 0x4000_005f),
-            (fc4p_005e5b30, 0x4000_005f),
-            (fc4p_005e5b80, 0x4000_005f),
-            (fc4p_005e5bd0, 0x4000_005f),
-            (fc4p_005e5c20, 0x4000_002f),
-            (fc4p_005e5c70, 0x4000_0017),
+        let cases: &[(unsafe extern "C" fn(), u32, usize)] = &[
+            (fc4p_005e5a40, 0x4000_00be, 2048),
+            (fc4p_005e5a90, 0x4000_005f, 4096),
+            (fc4p_005e5ae0, 0x4000_005f, 8192),
+            (fc4p_005e5b30, 0x4000_005f, 16384),
+            (fc4p_005e5b80, 0x4000_005f, 32768),
+            (fc4p_005e5bd0, 0x4000_005f, 65536),
+            (fc4p_005e5c20, 0x4000_002f, 65536),
+            (fc4p_005e5c70, 0x4000_0017, 65536),
         ];
         let mut storage = vec![0xa5u8; 131072];
         let offset = (65536 - (storage.as_ptr() as usize & 65535)) & 65535;
-        let pool = &mut storage[offset..offset + 65536];
-        let p = pool.as_mut_ptr();
-        let slot = p as u32 + 0x20;
-        for &(entry, threshold) in cases {
+        let root = &mut storage[offset..offset + 65536];
+        for &(entry, threshold, span) in cases {
+            root.fill(0xa5);
+            let base_offset = if span < 65536 { span } else { 0 };
+            let pool = &mut root[base_offset..base_offset + span];
+            let p = pool.as_mut_ptr();
+            let slot = p as u32 + 0x20;
             assert_eq!(run(entry, 0x1122_3344 as *mut u8, &[0]), [EAX, 0x1122_3344, 0]);
             assert!(calls().is_empty());
             for count in [0u32, 1, 2, threshold, threshold + 1, u32::MAX] {
@@ -1557,6 +1841,8 @@ mod tests {
                     assert!(log.is_empty());
                 }
             }
+            assert!(root[..base_offset].iter().all(|&v| v == 0xa5));
+            assert!(root[base_offset + span..].iter().all(|&v| v == 0xa5));
         }
     }
 
@@ -1613,5 +1899,436 @@ mod tests {
                 assert_eq!(object, expected);
             }
         }
+    }
+    fn run_cdecl(entry: unsafe extern "C" fn(), args: &[u32]) -> [u32; 3] {
+        let mut r = Registers {
+            eax: EAX,
+            ecx: 0x1122_3344,
+            edx: EDX,
+        };
+        unsafe {
+            invoke(&mut r, entry as *const () as usize, args, true);
+        }
+        [r.eax, r.ecx, r.edx]
+    }
+
+    #[test]
+    fn packed_grid_bit_uses_signed_word_offset_and_column_bit_number() {
+        for (row, column, pitch, offset, bit) in [
+            (0, 0, 32, 0, 0),
+            (1, 0, 33, 1, 0),
+            (1, 31, 33, 2, 31),
+            (-1, 0, 32, -1, 0),
+            (0, -1, 32, -1, 31),
+            (i32::MIN, 0, 2, 0, 0),
+            (0, 32, 1, 1, 0),
+            (i32::MAX, 2, 2, 0, 2),
+        ] {
+            let mut words = [0xa5a5_a5a5u32; 64];
+            let p = words[16..].as_mut_ptr().cast::<u8>();
+            let mut expected = words;
+            expected[(16 + offset) as usize] |= 1 << bit;
+            assert_eq!(
+                run_cdecl(fc4p_00603da0, &[p as u32, row as u32, column as u32, pitch as u32]),
+                [(p as u32).wrapping_add((offset * 4) as u32), bit, 1 << bit]
+            );
+            assert_eq!(words, expected);
+        }
+    }
+
+    #[test]
+    fn copy_backward_twelve_handles_overlap_empty_and_nonpositive_signed_ranges() {
+        for bytes in [-13i32, -12, -11, -1, 0, 1, 11, 12, 13, 24, 36] {
+            for overlap in [false, true] {
+                let mut words = [0u32; 64];
+                for (i, v) in words.iter_mut().enumerate() {
+                    *v = i as u32;
+                }
+                let p = words.as_mut_ptr().cast::<u8>();
+                let end_offset = 80 + bytes;
+                let dest_offset = if overlap { end_offset + 4 } else { 160 };
+                let mut expected = unsafe { core::slice::from_raw_parts(p, 256) }.to_vec();
+                let count = bytes / 12;
+                for n in 1..=count {
+                    let source = (end_offset - n * 12) as usize;
+                    let dest = (dest_offset - n * 12) as usize;
+                    for j in 0..3 {
+                        let word = expected[source + j * 4..source + j * 4 + 4].to_vec();
+                        expected[dest + j * 4..dest + j * 4 + 4].copy_from_slice(&word);
+                    }
+                }
+                let result = run_cdecl(
+                    fc4p_00614430,
+                    &[
+                        p as u32 + 80,
+                        (p as u32).wrapping_add(end_offset as u32),
+                        p as u32 + dest_offset as u32,
+                    ],
+                );
+                assert_eq!(unsafe { core::slice::from_raw_parts(p, 256) }, expected);
+                assert_eq!(
+                    result,
+                    [
+                        p as u32 + (dest_offset - count.max(0) * 12) as u32,
+                        p as u32 + (end_offset - count.max(0) * 12) as u32,
+                        if count > 0 {
+                            0
+                        } else if bytes < 0 {
+                            (count - 1) as u32
+                        } else {
+                            0
+                        }
+                    ]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn forward_record_copy_and_fill_observe_each_overlapping_word() {
+        for dest in [0usize, 4, 8, 12, 16, 64] {
+            let mut words = [0u32; 64];
+            for (i, v) in words.iter_mut().enumerate() {
+                *v = 0x7f80_0000 + i as u32;
+            }
+            let p = words.as_mut_ptr().cast::<u8>();
+            let mut expected = words;
+            for n in 0..3 {
+                for j in 0..3 {
+                    expected[dest / 4 + n * 3 + j] = expected[n * 3 + j];
+                }
+            }
+            assert_eq!(
+                run_cdecl(
+                    fc4p_00623fa0,
+                    &[p as u32, p as u32 + 36, p as u32 + dest as u32, 0xabcdef01]
+                ),
+                [p as u32 + dest as u32 + 36, p as u32 + 36, p as u32 + 36]
+            );
+            assert_eq!(words, expected);
+            for (entry, size) in [(fc4p_00623fe0 as unsafe extern "C" fn(), 12usize), (fc4p_00624020, 24)] {
+                for count in [0u32, 1, 3] {
+                    for (i, v) in words.iter_mut().enumerate() {
+                        *v = 0x8000_0000 + i as u32;
+                    }
+                    let mut expected = words;
+                    for n in 0..count as usize {
+                        for j in 0..size / 4 {
+                            expected[dest / 4 + n * size / 4 + j] = expected[j];
+                        }
+                    }
+                    assert_eq!(
+                        run_cdecl(entry, &[p as u32 + dest as u32, count, p as u32, 0]),
+                        [
+                            p as u32 + dest as u32 + count * size as u32,
+                            0,
+                            if count == 0 { EDX } else { p as u32 }
+                        ]
+                    );
+                    assert_eq!(words, expected);
+                }
+            }
+        }
+        assert_eq!(run_cdecl(fc4p_00623fa0, &[0, 0, 0, 0]), [0, 0, 0]);
+        assert_eq!(
+            run_cdecl(fc4p_00623fa0, &[0x1111_1111, 0x1111_111d, 0, 0]),
+            [12, 0x1111_111d, 0x1111_111d]
+        );
+        for (entry, size) in [(fc4p_00623fe0 as unsafe extern "C" fn(), 12), (fc4p_00624020, 24)] {
+            assert_eq!(run_cdecl(entry, &[0, 0, 1, 0]), [0, 0, EDX]);
+            assert_eq!(run_cdecl(entry, &[0, 1, 1, 0]), [size, 0, 1]);
+        }
+    }
+
+    #[test]
+    fn padded_record_copy_preserves_two_padding_bytes_and_empty_edx() {
+        for dest in [0usize, 4, 6, 16, 64] {
+            let mut bytes = [0u8; 128];
+            for (i, v) in bytes.iter_mut().enumerate() {
+                *v = i as u8;
+            }
+            let p = bytes.as_mut_ptr();
+            let mut expected = bytes;
+            let mut last = EDX;
+            for n in 0..3 {
+                for (offset, size) in [(0, 4), (4, 1), (5, 1), (8, 4), (12, 4)] {
+                    for j in 0..size {
+                        expected[dest + n * 16 + offset + j] = expected[n * 16 + offset + j];
+                    }
+                    if offset == 12 {
+                        last = u32::from_le_bytes(expected[dest + n * 16 + 12..dest + n * 16 + 16].try_into().unwrap());
+                    }
+                }
+            }
+            assert_eq!(
+                run_cdecl(fc4p_00624e60, &[p as u32, p as u32 + 48, p as u32 + dest as u32, 0]),
+                [p as u32 + dest as u32 + 48, p as u32 + 48, last]
+            );
+            assert_eq!(bytes, expected);
+        }
+        assert_eq!(run_cdecl(fc4p_00624e60, &[0, 0, 0, 0]), [0, 0, EDX]);
+        assert_eq!(run_cdecl(fc4p_00624e60, &[1, 17, 0, 0]), [16, 17, EDX]);
+    }
+
+    fn scan(bounds: [i32; 4], step: i32, x: i32, z: i32, state: u8) -> [u32; 12] {
+        let mut object = [0xa5a5_a5a5u32; 12];
+        object[0] = (object[0] & !255) | u32::from(state);
+        object[1] = x as u32;
+        object[2] = z as u32;
+        object[3] = step as u32;
+        object[4..8].copy_from_slice(&bounds.map(|v| v as u32));
+        object
+    }
+    #[test]
+    fn scan_reset_includes_edges_and_bounds_clamp_each_inverted_axis() {
+        for (x, z, inside) in [
+            (-1, 0, false),
+            (0, -1, false),
+            (0, 0, true),
+            (2, 1, true),
+            (3, 1, false),
+            (2, 2, false),
+        ] {
+            let mut object = scan([0, 0, 2, 1], 1, 8, 9, 0x80);
+            let p = object.as_mut_ptr().cast::<u8>();
+            let mut expected = object;
+            expected[1] = x as u32;
+            expected[2] = z as u32;
+            expected[0] = (expected[0] & !255) | if inside { 0 } else { 2 };
+            assert_eq!(
+                run(fc4p_0060c860, p, &[x as u32, z as u32]),
+                [x as u32, p as u32, z as u32]
+            );
+            assert_eq!(object, expected);
+        }
+        for bounds in [[-5, -3, 8, 9], [4, 6, -2, 1], [i32::MAX, i32::MIN, i32::MIN, i32::MAX]] {
+            let mut object = scan([0; 4], 1, 3, 4, 0);
+            let p = object.as_mut_ptr().cast::<u8>();
+            let mut input = bounds;
+            let q = input.as_mut_ptr() as u32;
+            let mut expected = object;
+            expected[4..8].copy_from_slice(
+                &[bounds[0], bounds[1], bounds[0].max(bounds[2]), bounds[1].max(bounds[3])].map(|v| v as u32),
+            );
+            assert_eq!(
+                run(fc4p_0060c890, p, &[q]),
+                [bounds[1] as u32, p as u32, bounds[3] as u32]
+            );
+            assert_eq!(object, expected);
+        }
+        // The source overlaps the newly written bounds, so subsequent source words change.
+        let mut object = scan([1, 2, 3, 4], 7, 8, 9, 0);
+        let p = object.as_mut_ptr().cast::<u8>();
+        assert_eq!(run(fc4p_0060c890, p, &[p as u32 + 12]), [7, p as u32, 7]);
+        assert_eq!(&object[4..8], &[7, 7, 7, 7]);
+    }
+
+    #[test]
+    fn scan_core_order_and_outside_reset_leave_the_original_exhausted_coordinates() {
+        let mut object = scan([0, 0, 2, 1], 1, 0, 0, 0);
+        let p = object.as_mut_ptr().cast::<u8>();
+        let mut out = [0xdead_beefu32; 2];
+        let q = out.as_mut_ptr() as u32;
+        for (x, z) in [(0, 0), (1, 0), (2, 0), (0, 1), (1, 1), (2, 1)] {
+            assert_eq!(run(fc4p_0060c8d0, p, &[q, q + 4]), [(z & !255) | 1, q + 4, q]);
+            assert_eq!(out, [x, z]);
+        }
+        assert_eq!(run(fc4p_0060c8d0, p, &[q, q + 4]), [0, p as u32, 1]);
+        assert_eq!((object[0] as u8, object[1], object[2]), (2, 0, 2));
+        assert_eq!(out, [2, 1]);
+        assert_eq!(run(fc4p_0060c8d0, p, &[q, q + 4]), [EAX & !255, p as u32, EDX]);
+        run(fc4p_0060c860, p, &[5, 0]);
+        assert_eq!(run(fc4p_0060c8d0, p, &[q, q + 4]), [EAX & !255, p as u32, EDX]);
+    }
+
+    #[test]
+    fn scan_keeps_zero_negative_wrapping_and_unknown_state_behavior() {
+        for (state, x, z, step, max_x, max_z, want_x, want_z, done) in [
+            (1, 5, 0, 0, 10, 10, 5, 0, false),
+            (1, 5, 0, -2, 10, 10, 3, 0, false),
+            (1, i32::MAX, 0, 1, i32::MAX, 10, i32::MIN, 0, false),
+            (1, 10, i32::MAX, 1, 10, i32::MAX, 0, i32::MIN, false),
+            (0x80, 5, 0, 1, 10, 10, 6, 0, false),
+            (1, 10, 0x1234, 1, 10, 0x1234, 0, 0x1235, true),
+        ] {
+            let mut object = scan([0, 0, max_x, max_z], step, x, z, state);
+            let p = object.as_mut_ptr().cast::<u8>();
+            let mut out = [0xdead_beefu32; 2];
+            let q = out.as_mut_ptr() as u32;
+            let got = run(fc4p_0060c8d0, p, &[q, q + 4]);
+            assert_eq!((object[1], object[2]), (want_x as u32, want_z as u32));
+            if done {
+                assert_eq!(got, [want_z as u32 & !255, p as u32, max_z as u32]);
+                assert_eq!(object[0] as u8, 2);
+                assert_eq!(out, [0xdead_beef; 2]);
+            } else {
+                assert_eq!(got, [(want_z as u32 & !255) | 1, q + 4, q]);
+                assert_eq!(object[0] as u8, state);
+                assert_eq!(out, [want_x as u32, want_z as u32]);
+            }
+        }
+        let mut object = scan([0, 0, 10, 10], 1, 5, 9, 0);
+        let p = object.as_mut_ptr().cast::<u8>();
+        let mut z = 0u32;
+        let q = &mut z as *mut u32 as u32;
+        assert_eq!(run(fc4p_0060c8d0, p, &[p as u32 + 8, q]), [1, q, p as u32 + 8]);
+        assert_eq!(z, 5);
+        assert_eq!(object[2], 5);
+    }
+
+    #[test]
+    fn nested_accessors_follow_the_nested_pointer_and_pending_query_retains_edx() {
+        let mut object = [0xa5a5_a5a5u32; 256];
+        let p = object.as_mut_ptr().cast::<u8>();
+        for value in [0, 1, 0x8000_0000, u32::MAX] {
+            object[0x20c / 4] = value;
+            assert_eq!(run(fc4p_0062c8f0, p, &[]), [u32::from(value != 0), p as u32, value]);
+        }
+        let mut nested = [0u32; 8];
+        for (i, v) in nested.iter_mut().enumerate() {
+            *v = 0xdead_0000 + i as u32;
+        }
+        unsafe {
+            store(p, 0x358, nested.as_ptr() as u32);
+        }
+        for (entry, offset) in [
+            (fc4p_0062c910 as unsafe extern "C" fn(), 2),
+            (fc4p_0062c920, 4),
+            (fc4p_0062c930, 5),
+        ] {
+            assert_eq!(run(entry, p, &[]), [nested[offset], p as u32, EDX]);
+        }
+    }
+
+    stub!(pair_assignment, 0x0061_1b00, 1, 4);
+    stub!(lookup, 0x005b_9fc0, 1, 4);
+    stub!(shutdown, 0x10, 0, 0);
+    stub!(final_destructor, 0x68, 1, 4);
+    stub!(release_reference_inner, 8, 0, 0);
+    #[unsafe(naked)]
+    unsafe extern "C" fn release_reference() {
+        core::arch::naked_asm!("call {body}", "mov eax, 0xdeadbeef", "ret", body = sym release_reference_inner);
+    }
+    #[test]
+    fn embedded_assignment_and_retained_lookup_make_the_original_calls_in_order() {
+        let _assign = fake(0x0061_1b00, pair_assignment as *const () as usize);
+        let _lookup = fake(0x005b_9fc0, lookup as *const () as usize);
+        let table = [
+            0,
+            add_reference as *const () as usize,
+            release_reference as *const () as usize,
+        ];
+        let mut object = [table.as_ptr() as u32; 32];
+        let p = object.as_mut_ptr().cast::<u8>();
+        assert_eq!(run(fc4p_0062ca30, p, &[0x1234_5678]), RESULT);
+        assert_eq!(
+            calls(),
+            [Call {
+                address: 0x0061_1b00,
+                registers: [EAX, 0x1234_5678, EDX],
+                args: vec![p as u32 + 0x60]
+            }]
+        );
+        assert_eq!(run(fc4p_005e55b0, p, &[0xfedc_ba98]), RESULT);
+        assert_eq!(
+            calls(),
+            [
+                Call {
+                    address: 4,
+                    registers: [table.as_ptr() as u32, p as u32, EDX],
+                    args: vec![]
+                },
+                Call {
+                    address: 0x005b_9fc0,
+                    registers: [RESULT[0], p as u32 + 8, RESULT[2]],
+                    args: vec![0xfedc_ba98]
+                },
+                Call {
+                    address: 8,
+                    registers: [RESULT[0], p as u32, table.as_ptr() as u32],
+                    args: vec![]
+                },
+            ]
+        );
+    }
+    #[test]
+    fn final_release_calls_shutdown_then_deleting_destructor() {
+        let mut table = [0usize; 32];
+        table[4] = shutdown as *const () as usize;
+        table[0x68 / 4] = final_destructor as *const () as usize;
+        let mut next_table = [0usize; 32];
+        next_table[0x68 / 4] = final_destructor as *const () as usize;
+        table[0x68 / 4] = 0;
+        NEXT_TABLE.with(|n| n.set(next_table.as_ptr() as u32));
+        let mut object = [table.as_ptr() as u32; 8];
+        let p = object.as_mut_ptr().cast::<u8>();
+        assert_eq!(run(fc4p_005fb0e0, p, &[]), RESULT);
+        assert_eq!(
+            calls(),
+            [
+                Call {
+                    address: 0x10,
+                    registers: [table.as_ptr() as u32, p as u32, EDX],
+                    args: vec![]
+                },
+                Call {
+                    address: 0x68,
+                    registers: [RESULT[0], p as u32, next_table.as_ptr() as u32],
+                    args: vec![1]
+                },
+            ]
+        );
+    }
+    fn environment() -> (u16, u16, u32, u32) {
+        let (mut cw, mut mxcsr) = (0u16, 0u32);
+        let (sw, flags): (u16, u32);
+        unsafe {
+            core::arch::asm!(
+                "fnstcw word ptr [{cw}]", "fnstsw ax", "stmxcsr dword ptr [{mxcsr}]", "pushfd", "pop {flags:e}",
+                cw=in(reg) &mut cw, mxcsr=in(reg) &mut mxcsr, flags=lateout(reg) flags, out("ax") sw,
+            );
+        }
+        (cw, sw & 0x3800, mxcsr, flags & 0x400)
+    }
+    #[test]
+    fn integer_ports_preserve_callee_saved_registers_and_float_environment() {
+        let _fpu = GameFpu::new();
+        let mut object = scan([0, 0, 2, 1], 1, 0, 0, 0);
+        let mut out = [0u32; 2];
+        let p = object.as_mut_ptr().cast::<u8>();
+        let q = out.as_mut_ptr() as u32;
+        let sentinel = 123.25f64;
+        let mut restored = 0.0f64;
+        unsafe {
+            core::arch::asm!("fld qword ptr [{p}]",p=in(reg) &sentinel,out("st(0)") _);
+        }
+        let before = environment();
+        let args = [q, q + 4];
+        let mut c = crate::abi::RawCall::new(
+            crate::abi::Conv::Thiscall,
+            fc4p_0060c8d0 as *const () as usize,
+            p as u32,
+            &args,
+        );
+        let (ebx, esi, ebp): (u32, u32, u32);
+        // EDI carries the descriptor across the call; its integrity also checks that register.
+        unsafe {
+            core::arch::asm!(
+                "push ebx", "push esi", "push ebp", "push dword ptr [edi+16]",
+                "mov eax,[edi+16]", "push dword ptr [eax+4]", "push dword ptr [eax]",
+                "mov ecx,[edi+8]", "mov ebx,0x12345678", "mov esi,0x87654321", "mov ebp,0x11223344",
+                "call dword ptr [edi]", "mov eax,ebx", "mov ecx,esi", "mov edx,ebp",
+                "add esp,4", "pop ebp", "pop esi", "pop ebx",
+                in("edi") &mut c, lateout("eax") ebx,lateout("ecx") esi,lateout("edx") ebp,clobber_abi("C"),
+            );
+        }
+        let after = environment();
+        unsafe {
+            core::arch::asm!("fstp qword ptr [{p}]",p=in(reg) &mut restored,out("st(0)") _);
+        }
+        assert_eq!((ebx, esi, ebp), (0x12345678, 0x87654321, 0x11223344));
+        assert_eq!(after, before);
+        assert_eq!(restored.to_bits(), sentinel.to_bits());
+        assert_eq!(out, [0, 0]);
     }
 }
