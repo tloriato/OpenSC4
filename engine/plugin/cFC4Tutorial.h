@@ -41,6 +41,8 @@
 #include "cIGZSerializable.h"
 #include "fc4.h"
 
+#include <map>
+
 #include <atomic>
 #include <cstdint>
 
@@ -114,6 +116,12 @@ public:
     bool HasCheatManager();
     uint64_t FetchLuaContext();
 
+    // Host callbacks run under lock_; distinguish our constructed windows
+    // from references acquired from existing game objects.
+    void RememberCreatedWindow(uint64_t token);
+    void RetainHostObject(uint64_t token);
+    void ReleaseHostObject(uint64_t token);
+
     // fc4_tutorial_is_tutorial under the lock (the fire and flammability readers).
     uint32_t CoreIsTutorial();
     fc4_tutorial_state State();
@@ -127,6 +135,7 @@ private:
     fc4_tutorial* core_ = nullptr;
     cFC4TutorialCheatHandler cheat_;
     std::atomic<uint32_t> isTutorialCalls_{0};
+    std::map<uint64_t, uint32_t> createdWindowRefs_;
 };
 
 // Factory for the subsystem table (reference count 0).

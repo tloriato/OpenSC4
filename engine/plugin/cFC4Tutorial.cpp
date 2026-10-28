@@ -94,11 +94,11 @@ void UnregisterCheatCb(void* u) {
     cFC4TutorialSystem* s = Self(u);
     s->Lock().Defer([s] { s->CheatRegistration(false); });
 }
-void AddRefCb(void*, uint64_t token) {
-    if (cIGZUnknown* p = fc4::FromToken(token)) FC4_ADDREF(p);
+void AddRefCb(void* u, uint64_t token) {
+    Self(u)->RetainHostObject(token);
 }
-void ReleaseCb(void*, uint64_t token) {
-    if (cIGZUnknown* p = fc4::FromToken(token)) FC4_RELEASE(p);
+void ReleaseCb(void* u, uint64_t token) {
+    Self(u)->ReleaseHostObject(token);
 }
 // tutorial.md 4.2.1: the app getter returns the borrowed registry itself,
 // not an interface and not an app-relative offset.
@@ -119,7 +119,7 @@ template<class R, class... Args> R WindowSlot(uint64_t token, unsigned slot, Arg
 
 // 4.2.2: allocate on the game's heap; the base constructor starts at zero
 // references. The assignment owns the first and the core takes the second.
-uint64_t CreateWindowCb(void*) {
+uint64_t CreateWindowCb(void* u) {
     using Allocate = void*(__cdecl*)(uint32_t);
     using Construct = void*(__thiscall*)(void*);
     auto allocate = reinterpret_cast<Allocate>(fc4::compat::DirectCall(fc4::compat::Direct::GlobalHeapAllocate));
@@ -129,7 +129,9 @@ uint64_t CreateWindowCb(void*) {
     if (!memory) return 0;
     auto* window = static_cast<cIGZUnknown*>(construct(memory));
     FC4_ADDREF(window);
-    return fc4::TokenOf(window);
+    const uint64_t token = fc4::TokenOf(window);
+    Self(u)->RememberCreatedWindow(token);
+    return token;
 }
 
 void InitWindowCb(void*, uint64_t window) {
@@ -258,6 +260,30 @@ bool cFC4TutorialCheatHandler::DoMessage(cGZMessage&) {
 }
 
 // ---- object -----------------------------------------------------------------------------------------------
+
+void cFC4TutorialSystem::RememberCreatedWindow(uint64_t token) {
+    if (token != 0) createdWindowRefs_[token] = 1;
+}
+
+void cFC4TutorialSystem::RetainHostObject(uint64_t token) {
+    if (cIGZUnknown* p = fc4::FromToken(token)) {
+        const auto found = createdWindowRefs_.find(token);
+        if (found != createdWindowRefs_.end()) ++found->second;
+        FC4_ADDREF(p);
+    }
+}
+
+void cFC4TutorialSystem::ReleaseHostObject(uint64_t token) {
+    if (cIGZUnknown* p = fc4::FromToken(token)) {
+        const auto found = createdWindowRefs_.find(token);
+        const bool created = found != createdWindowRefs_.end();
+        if (created && --found->second == 0) createdWindowRefs_.erase(found);
+        // tutorial 4.2.2: the two owner references may free this allocation.
+        // Erase our bookkeeping before Release can reenter the owner.
+        if (created) FC4_RELEASE_CREATED(p);
+        else FC4_RELEASE(p);
+    }
+}
 
 cFC4TutorialSystem::cFC4TutorialSystem() : cheat_(this) {
     host_ = MakeHost(this);
