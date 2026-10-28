@@ -91,7 +91,7 @@ def record(args):
     failed = 0
 
     def one(name):
-        code, out = golden('record', rows[name])
+        code, out = golden('record', rows[name], *run_options(args))
         state = ('error: ' + (re.findall(r'golden: (.*)', out) or [out.strip()[-200:]])[-1] if code else
                  'cached' if re.search(r'^cached:', out, re.M) else 'recorded')
         return name, code, state
@@ -146,8 +146,20 @@ def first_delivery(reference_log, candidate_log, replaced):
     return None
 
 
-def compare(row, dll, keys):
-    code, out = golden('compare', row, '--dll', str(dll), '--replace', ','.join(keys) or 'simulator')
+def run_options(args):
+    flags = [] if getattr(args, 'legacy', False) else ['--monthly']
+    if getattr(args, 'no_early_stop', False) or getattr(args, 'command', '') == 'credit':
+        flags += ['--no-early-stop']
+    if getattr(args, 'from_date', None):
+        flags += ['--from', args.from_date, '--months', str(args.months)]
+    if getattr(args, 'harness_root', None):
+        flags += ['--harness-root', str(args.harness_root)]
+    flags += ['--backend', getattr(args, 'backend', 'queue'), '--slot', str(getattr(args, 'slot', 6))]
+    return flags
+
+
+def compare(row, dll, keys, options=()):
+    code, out = golden('compare', row, '--dll', str(dll), '--replace', ','.join(keys) or 'simulator', *options)
     path = re.search(r'^comparison: (.+)$', out, re.M)
     if code not in (0, 1) or not path:
         error = {'verdict': 'error', 'error': (re.findall(r'golden: (.*)', out) or [out.strip()[-300:]])[-1]}
@@ -156,7 +168,36 @@ def compare(row, dll, keys):
         if key and (REPO / 'build-runs/golden' / key[1]).is_dir():
             error['key'] = key[1]
         return error
-    return json.loads(Path(path[1]).read_text(encoding='utf-8'))
+    report = json.loads(Path(path[1]).read_text(encoding='utf-8'))
+    if 'monthly' in report:
+        attribute_owners(report, keys, record_owners())
+    return report
+
+
+def attribute_owners(report, keys, owners):
+    """Observed record ownership, not a claim that a differing owner caused a cascade."""
+    monthly = report['monthly']
+    first = {}
+    for month in monthly['differences']:
+        for record in month['records']:
+            owner, cls = owners.get(int(record['tgi'].split('/')[0], 16), ('unowned', '-'))
+            record.update(owner=owner, cls=cls)
+            first.setdefault(owner, {'date': month['date'], 'records': []})
+            if first[owner]['date'] == month['date']:
+                first[owner]['records'].append(record['tgi'])
+    # Read the candidate hash inventory to distinguish "no record" from exact.
+    inventory = Path(report['run']) / 'monthly.json'
+    observed = set()
+    if inventory.is_file():
+        data = json.loads(inventory.read_text(encoding='utf-8'))
+        observed = {owners.get(int(tgi.split('/')[0], 16), ('unowned', '-'))[0]
+                    for month in data['months'].values() for tgi in month['records']}
+    report['owners'] = {key: {
+        'verdict': 'different' if key in first else 'incomplete' if not monthly['complete'] else
+                   'exact' if key in observed else 'unobserved',
+        'first_difference': first.get(key), 'basis': 'owned normalized save records; combined replacements'}
+        for key in keys}
+    report['record_owner_first_differences'] = first
 
 
 def describe(name, report, owners, reference, replaced):
@@ -165,6 +206,20 @@ def describe(name, report, owners, reference, replaced):
     if report['verdict'] == 'exact':
         return f'{name}: exact'
     parts = [f'{name}: {report["verdict"]}']
+    if 'monthly' in report:
+        monthly = report['monthly']
+        first = monthly['first_difference']
+        if first:
+            details = []
+            for record in first['records']:
+                owner, cls = owners.get(int(record['tgi'].split('/')[0], 16), ('unowned', '-'))
+                details.append(f'{record["tgi"]} ({owner}, {cls})')
+            parts.append(f'first month {first["date"]}, records: ' + ', '.join(details))
+            parts.append(f'last matched {monthly["last_matching_month"]}')
+        if not monthly['complete']:
+            parts.append('stopped at first differing month; later owners incomplete')
+        parts.append(f'run {report["run"]}')
+        return '; '.join(parts)
     delivery = first_delivery(reference / 'game.log', Path(report['run']) / 'game.log', replaced)
     if delivery:
         target = delivery['expected'][2] if delivery['expected'] else '-'
@@ -222,7 +277,7 @@ def run_each(args, rows, dll):
     print(f'{len(jobs)} runs: {len(covers) - 1} owners, each alone on its cover', flush=True)
     owners = record_owners()
     with ThreadPoolExecutor(args.jobs) as pool:
-        reports = list(pool.map(lambda job: compare(rows[job[1]], dll, alone(job[0])), jobs))
+        reports = list(pool.map(lambda job: compare(rows[job[1]], dll, alone(job[0]), run_options(args)), jobs))
     table, exact = [], {}
     for (key, name), report in zip(jobs, reports):
         line = describe(f'{key} on {name}', report, owners, REPO / 'build-runs/golden' / report.get('key', '-'), True)
@@ -251,19 +306,19 @@ def run(args):
           (f'; not run (Lua or clockless): {", ".join(lua)}' if lua else ''), flush=True)
     owners = record_owners()
     with ThreadPoolExecutor(args.jobs) as pool:
-        reports = dict(zip(names, pool.map(lambda n: compare(rows[n], dll, keys), names)))
+        reports = dict(zip(names, pool.map(lambda n: compare(rows[n], dll, keys, run_options(args)), names)))
     for name in names:
         entry = REPO / 'build-runs/golden' / reports[name].get('key', '-')
         print(describe(name, reports[name], owners, entry, bool(keys)), flush=True)
     failing = [n for n in names if reports[n]['verdict'] != 'exact']
     errors = [n for n in failing if reports[n]['verdict'] == 'error']
     print(f'exact: {len(names) - len(failing)} of {len(names)}')
-    if failing and len(keys) > 1 and not args.no_bisect:
+    if failing and len(keys) > 1 and not args.no_bisect and not all('monthly' in reports[n] for n in failing):
         culprits = [n for n in failing if n not in errors][:2] or failing[:1]
         print(f'each owner alone on {", ".join(culprits)}:', flush=True)
         jobs = [(n, k) for n in culprits for k in keys]
         with ThreadPoolExecutor(args.jobs) as pool:
-            results = list(pool.map(lambda job: compare(rows[job[0]], dll, alone(job[1])), jobs))
+            results = list(pool.map(lambda job: compare(rows[job[0]], dll, alone(job[1]), run_options(args)), jobs))
         for (name, key), report in zip(jobs, results):
             print(f'  {key} on {name}: {report["verdict"]}' + (f' ({report["error"]})' if 'error' in report else ''))
     return 2 if errors else 1 if failing else 0
@@ -274,21 +329,34 @@ def credit(args):
     dll = args.dll / 'engine/build-x86/FreeCity4.dll' if args.dll.is_dir() else args.dll
     keys = (exact_owners(dll) if args.replace == 'exact' else
             sorted(set(filter(None, re.split(r'[,\s]+', args.replace)))))
-    names, _ = select('all', None, rows)
+    names, _ = select(args.scenarios, None, rows)
     print(f'{len(names)} scenarios, owners {", ".join(keys)}', flush=True)
     owners = record_owners()
     with ThreadPoolExecutor(args.jobs) as pool:
-        reports = dict(zip(names, pool.map(lambda n: compare(rows[n], dll, keys), names)))
+        reports = dict(zip(names, pool.map(lambda n: compare(rows[n], dll, keys, run_options(args)), names)))
     table = {}
     for name in names:
         report = reports[name]
         line = describe(name, report, owners, REPO / 'build-runs/golden' / report.get('key', '-'), True)
         print(line, flush=True)
         table[name] = {'verdict': report['verdict'], 'reference': report.get('key'), 'run': report.get('run'),
-                       'detail': line.split(': ', 1)[1]}
+                       'detail': line.split(': ', 1)[1], 'owners': report.get('owners', {}),
+                       'monthly': report.get('monthly')}
     path = REPO / 'build-runs/golden/credit.json'
+    owner_verdicts = {}
+    for key in keys:
+        observed = {name: entry['owners'].get(key, {'verdict': 'unobserved'}) for name, entry in table.items()}
+        different = {name: value['first_difference'] for name, value in observed.items()
+                     if value['verdict'] == 'different'}
+        verdict = ('different' if different else 'incomplete' if any(v['verdict'] == 'incomplete' for v in observed.values())
+                   else 'exact' if observed and all(v['verdict'] == 'exact' for v in observed.values()) else 'unobserved')
+        owner_verdicts[key] = {'verdict': verdict, 'first_differences': different,
+                               'exact_scenarios': [n for n, v in observed.items() if v['verdict'] == 'exact'],
+                               'scope': 'selected scenarios; owned normalized records; combined replacements'}
+        print(f'owner {key}: {verdict}' + (f'; first differences {different}' if different else ''), flush=True)
     path.write_text(json.dumps({'dll': str(dll), 'dll_sha256': sha256(dll), 'keys': keys,
-                                'written': dt.datetime.now().isoformat(timespec='seconds'), 'scenarios': table},
+                                'written': dt.datetime.now().isoformat(timespec='seconds'), 'scenarios': table,
+                                'owner_verdicts': owner_verdicts},
                                indent=1), encoding='utf-8')
     exact = sum(entry['verdict'] == 'exact' for entry in table.values())
     print(f'exact: {exact} of {len(names)}; written to {path} (tools/coverage.py reads it)')
@@ -305,10 +373,18 @@ def main(argv=None):
         sub.add_argument('--dll', type=Path, required=True)
         sub.add_argument('--replace', required=True)
     chk.add_argument('--no-bisect', action='store_true')
+    cre.add_argument('--scenarios', default='all')
     for sub in (rec, chk):
         sub.add_argument('--scenarios', default='cover')
     for sub in (rec, chk, cre):
         sub.add_argument('--jobs', type=int, default=12)
+        sub.add_argument('--legacy', action='store_true', help='end-save-only references (before monthly re-record)')
+        sub.add_argument('--no-early-stop', action='store_true')
+        sub.add_argument('--from', dest='from_date', nargs='?', const='auto')
+        sub.add_argument('--months', type=int, default=1)
+        sub.add_argument('--backend', choices=('queue', 'direct'), default='queue')
+        sub.add_argument('--slot', type=int, default=6)
+        sub.add_argument('--harness-root', type=Path)
     args = p.parse_args(argv)
     try:
         return {'record': record, 'run': run, 'credit': credit}[args.command](args)

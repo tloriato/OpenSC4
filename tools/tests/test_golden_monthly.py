@@ -1,0 +1,69 @@
+"""Checkpoint completeness, class-aware ID normalization, and bounded snapshots."""
+import struct
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import golden_monthly as monthly
+
+
+def objects(ids, payloads=None):
+    cls = 0x12345678
+    index = struct.pack('<IIII', 0, 1, 0, cls)
+    payloads = payloads or [b'first', b'second']
+    frames = b''.join(struct.pack('<III', 12 + len(p), 123, oid) + p for oid, p in zip(ids, payloads))
+    return {(monthly.golden_relabel.INDEX, monthly.golden_relabel.STORE_GROUP, 0): index,
+            (cls, monthly.golden_relabel.STORE_GROUP, 0): frames,
+            (99, 0, 0): b'root' + struct.pack('<II', ids[1], cls)}
+
+
+def test_normalization_keeps_content_sharing_and_class_but_not_object_ids():
+    a, b = objects([1, 2]), objects([700, 900])
+    assert monthly.normalized_records(a) == monthly.normalized_records(b)
+    assert monthly.normalized_records(a) != monthly.normalized_records(objects([700, 900], [b'first', b'changed']))
+    b[99, 0, 0] += struct.pack('<II', 700, 0x12345678)
+    assert monthly.normalized_records(a) != monthly.normalized_records(b)
+
+
+def test_calendar_and_actions_at_boundary():
+    assert monthly.dates('2000-01-31', '2000-03-02') == ['2000-02-29', '2000-03-02']
+    text = monthly.instrument('2000-01-31 mark OLD\n2000-02-29 funds 100\n', '2000-01-31', '2000-03-02')
+    assert 'mark OLD' not in text
+    assert text.index('funds 100') < text.index('2000-02-29 pause') < text.index('2000-02-29 save')
+    assert text.count('GOLDEN_MONTH') == 2
+
+
+def timeline(values):
+    return {'normalizer': monthly.NORMALIZER, 'start': '2000-01-01',
+            'months': {f'2000-0{i + 2}-28': {'records': value} for i, value in enumerate(values)}}
+
+
+def test_complete_comparison_keeps_later_owners_first_differences():
+    a = timeline([{'A': '1', 'B': '2'}] * 3)
+    b = timeline([{'A': '1', 'B': '2'}, {'A': 'x', 'B': '2'}, {'A': 'x', 'B': 'y'}])
+    report = monthly.compare(a, b)
+    assert report['first_difference']['date'] == '2000-03-28'
+    assert report['last_matching_month'] == '2000-02-28'
+    assert report['differences'][-1]['records'] == [
+        {'tgi': 'A', 'status': 'different'}, {'tgi': 'B', 'status': 'different'}]
+
+
+def test_missing_month_fails_closed_except_after_controlled_difference():
+    a, b = timeline([{'A': '1'}] * 3), timeline([{'A': 'x'}])
+    with pytest.raises(ValueError, match='missing monthly'):
+        monthly.compare(a, b)
+    b['stopped_early'] = True
+    assert not monthly.compare(a, b)['complete']
+    b['months']['2000-02-28']['records']['A'] = '1'
+    with pytest.raises(ValueError, match='missing monthly'):
+        monthly.compare(a, b)
+
+
+def test_snapshots_thin_by_bytes_and_never_exceed_budget():
+    sizes = {str(n): 40 for n in range(8)}
+    chosen = monthly.snapshot_dates(sizes, budget=100)
+    assert len(chosen) == 2
+    assert sum(sizes[d] for d in chosen) <= 100
+    assert monthly.snapshot_dates({'large': 101}, budget=100) == []

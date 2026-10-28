@@ -8,11 +8,13 @@ param(
     [Parameter(Mandatory=$true)][string]$City,
     [Parameter(Mandatory=$true)][string]$Until,
     [string]$Region = 'FC4 Test',
+    [string]$SlotRoot = '',
     [ValidateRange(1,16)][int]$Slot = 6,
     [ValidateRange(30,3600)][int]$Seconds = 180
 )
 $ErrorActionPreference = 'Stop'
 $runner = Join-Path $HarnessRoot 'tools/ingame_run.ps1'
+Write-Output "golden runner: $runner"
 $parameters = (Get-Command -Name $runner).Parameters
 if ($Region -ne 'FC4 Test' -and -not $parameters.ContainsKey('Region')) {
     throw "The harness does not support -Region yet; cannot run '$Region' (no fallback to FC4 Test)."
@@ -22,7 +24,8 @@ if ($City -notmatch '^[A-Za-z0-9 ._()''-]+$' -or $Region -notmatch '^[A-Za-z0-9 
 }
 $Output = [IO.Path]::GetFullPath($Output)
 if (Test-Path -LiteralPath $Output) { throw "Run output already exists: $Output" }
-$slotRoot = Join-Path $HarnessRoot 'build-runs/sc4slots'
+if (-not $SlotRoot) { $SlotRoot = Join-Path $HarnessRoot 'build-runs/sc4slots' }
+$slotRoot = $SlotRoot
 $userDir = [IO.Path]::GetFullPath((Join-Path $slotRoot ("slot{0:D2}" -f $Slot)))
 $docs = [IO.Path]::GetFullPath((Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'SimCity 4'))
 if ($userDir -match '\\\.' -or $userDir.StartsWith($docs, [StringComparison]::OrdinalIgnoreCase)) {

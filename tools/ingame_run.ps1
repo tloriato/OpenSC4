@@ -323,6 +323,20 @@ $Ini = $cityFixture.Ini
 if ($cityFixture.Source) { $null = Resolve-HarnessFixtureDestination $UserDir $DocsUser $City }
 $suiteState = Resolve-HarnessSuiteState $Ini $Slot (MainCheckout)
 $Ini = $suiteState.Ini
+$monthlyConfig = ''
+$monthlyPattern = '(?im)^[ \t]*golden_monthly[ \t]*=[ \t]*([^\r\n]*)\r?$'
+$monthlyMatches = [regex]::Matches($Ini, $monthlyPattern)
+if ($monthlyMatches.Count) {
+    if ($Slot -le 0 -or $monthlyMatches.Count -ne 1) { throw 'golden_monthly requires one declaration and an isolated slot' }
+    $monthlyConfig = [IO.Path]::GetFullPath($monthlyMatches[0].Groups[1].Value.Trim())
+    $mainPrefix = [IO.Path]::GetFullPath((MainCheckout)).TrimEnd('\') + '\'
+    if (-not $monthlyConfig.StartsWith($mainPrefix, [StringComparison]::OrdinalIgnoreCase) -or
+        $monthlyConfig.Substring($mainPrefix.Length) -notmatch '^(?:\.claude\\worktrees\\[^\\]+\\)?build-runs\\golden-runs\\[^\\]+\\monthly-config\.json$') {
+        throw 'golden_monthly must name a run configuration under build-runs/golden-runs'
+    }
+    $Ini = [regex]::Replace($Ini, $monthlyPattern, '')
+    Write-Output "golden monthly: configuration $monthlyConfig"
+}
 if ($suiteState.Export -and $KeepSaves) { throw 'export_city requires normal slot backup restoration' }
 if ($suiteState.Source -and $cityFixture.Source) { throw 'prepared_city and fixture_city cannot be combined' }
 if ($suiteState.Source -or $suiteState.Export) { $null = Resolve-HarnessFixtureDestination $UserDir $DocsUser $City }
@@ -496,6 +510,16 @@ try {
         $docLen = if (Test-Path $docLog) { (Get-Item $docLog).Length } else { 0 }
         if ($Slot -gt 0) { $p = [FC4Run]::Start($Exe, ($gameArgs -join " "), $GameDir, 4) }   # SW_SHOWNOACTIVATE
         else { $p = Start-Process -FilePath $Exe -ArgumentList $gameArgs -WorkingDirectory $GameDir -PassThru }
+        if ($monthlyConfig) {
+            # Run alongside the game at the SAME integrity level as this harness.
+            # The caller's process may not have permission to open a queue game.
+            $monthlyTool = Join-Path $PSScriptRoot 'golden_monthly.py'
+            $monthlyArgs = @($monthlyTool, '--config', $monthlyConfig, '--slot', $UserDir, '--pid', [string]$p.Id)
+            $monthlyQuoted = ($monthlyArgs | ForEach-Object { '"' + $_.Replace('"', '\"') + '"' }) -join ' '
+            $monthlyProcess = Start-Process -FilePath 'python' -ArgumentList $monthlyQuoted -WindowStyle Hidden -PassThru `
+                -RedirectStandardOutput ($monthlyConfig + '.out') -RedirectStandardError ($monthlyConfig + '.err')
+            Write-Output "golden monthly: watcher $($monthlyProcess.Id) for game $($p.Id)"
+        }
         # Keep the game resident: lane cargo builds (18 rustc, ~35 GB, commit 83%) paged the main thread out long enough
         # for the 10 s stall watchdog to fail a regress twice (train202, 2026-10-24). A 1.5 GB minimum working set makes
         # the memory manager trim the builds first.
@@ -665,6 +689,7 @@ if ($p -and -not $p.HasExited) {
     try { Stop-Process -Id $p.Id -Force -ErrorAction Stop } catch { $verdict += " | WARNING: could not stop the game: $($_.Exception.Message)" }
 }
 Start-Sleep -Seconds 2
+if ($monthlyProcess -and -not $monthlyProcess.HasExited) { Stop-Process -Id $monthlyProcess.Id -Force }
 Copy-Item $Log (Join-Path $OutDir "$Label.log") -Force
 # Preserve the optional driver stream with the log, before a slot is reused.
 $drawStream = "$Log.draw.jsonl"

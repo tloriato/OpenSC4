@@ -27,10 +27,11 @@ import uuid
 
 try:
     from .golden_dbpf import compare_saves, read_records
-    from . import golden_envelope
+    from . import golden_envelope, golden_monthly
 except ImportError:
     from golden_dbpf import compare_saves, read_records
     import golden_envelope
+    import golden_monthly
 
 REPO = Path(__file__).resolve().parents[1]
 SEED = 0x5EED1234
@@ -174,13 +175,31 @@ def compare_digests(left, right):
 
 
 def compare_artifacts(expected, actual):
-    return {'first_digest_difference': compare_digests(load_json(expected / 'digests.json'),
+    report = {'first_digest_difference': compare_digests(load_json(expected / 'digests.json'),
                                                        load_json(actual / 'digests.json')),
-            'save': compare_saves(expected / 'end.sc4', actual / 'end.sc4')}
+              'save': compare_saves(expected / 'end.sc4', actual / 'end.sc4')}
+    if (expected / 'monthly.json').is_file():
+        monthly = golden_monthly.compare(load_json(expected / 'monthly.json'), load_json(actual / 'monthly.json'))
+        report['monthly'] = monthly
+        # A controlled stop has no terminal counterpart: compare the captured
+        # month, never the reference's later end save/digests against that month.
+        if not monthly['complete']:
+            first = monthly['first_difference']
+            report['first_digest_difference'] = None
+            report['save'] = {'different_records': len(first['records']), 'records': first['records']}
+        else:
+            a = golden_monthly.normalized_records(read_records(expected / 'end.sc4'))
+            b = golden_monthly.normalized_records(read_records(actual / 'end.sc4'))
+            changed = [{'tgi': golden_monthly.tgi_text(k), 'status': 'different'}
+                       for k in sorted(a.keys() | b.keys()) if a.get(k) != b.get(k)]
+            report['save']['records'] = changed
+            report['save']['different_records'] = len(changed)
+    return report
 
 
 def artifacts_exact(report):
-    return report['first_digest_difference'] is None and report['save']['different_records'] == 0
+    return (report['first_digest_difference'] is None and report['save']['different_records'] == 0
+            and not report.get('monthly', {}).get('first_difference'))
 
 
 def shadow_command(region, city, until, dll, script=None):
@@ -225,6 +244,11 @@ def cache_record(cache, key, manifest, run):
         artifacts = ['end.sc4', 'digests.json', 'verdict.json', 'summary.json', 'game.log', 'harness.txt']
         if (run / 'reach.tsv').is_file():
             artifacts.append('reach.tsv')
+        if (run / 'monthly.json').is_file():
+            artifacts.append('monthly.json')
+            used = sum(p.stat().st_size for p in cache.glob('*/months/*.sc4'))
+            kept = golden_monthly.publish_snapshots(run, stage, max(0, golden_monthly.STORE_BUDGET - used))
+            artifacts.extend('months/' + day + '.sc4' for day in kept)
         for filename in artifacts:
             shutil.copyfile(run / filename, stage / filename)
         write_json(stage / 'baseline.json', {'key': key, 'inputs': manifest, 'source_run': str(run.resolve()),
@@ -293,7 +317,7 @@ def subsystem_keys(root):
     return sorted(set(keys))
 
 
-def input_script(path, until):
+def input_script(path, until, *, truncate=False):
     text = Path(path).read_text(encoding='utf-8-sig') if path else ''
     if path and Path(path).suffix.lower() == '.lua':
         raise ValueError('Lua actions need the luacmd harness interface; use a .script file for now')
@@ -302,7 +326,7 @@ def input_script(path, until):
         if not line:
             continue
         words = line.split()
-        if len(words) < 2 or date(words[0]) > date(until):
+        if len(words) < 2 or (date(words[0]) > date(until) and not truncate):
             raise ValueError(f'script line {number} is invalid or after --until')
         # An early pause or speed 0 can be intentional, but cannot silently pass:
         # the completed terminal save and exact end date are validated in the log.
@@ -320,7 +344,7 @@ def prepare(args):
     region, city = safe_name(args.region), safe_name(args.city)
     date(args.until)
     root = args.harness_root.resolve()
-    save = args.regions_root / region / f'City - {city}.sc4'
+    save = getattr(args, 'prepared_city', None) or args.regions_root / region / f'City - {city}.sc4'
     if not save.is_file():
         raise ValueError(f'no start save: {save}')
     settings = {'region': region, 'city': city, 'until': args.until, 'speed': 2,
@@ -335,7 +359,14 @@ def prepare(args):
                 'backend': args.backend, 'autotest_end': autotest_end(args), 'window': 'minimized after load',
                 'reach': reach_supported(root) if args.backend == 'queue' else False}
     settings['queue_parallel'] = args.backend == 'queue'
-    generated = input_script(args.script, args.until)
+    generated = input_script(args.script, args.until, truncate=bool(getattr(args, 'prepared_city', None)))
+    if getattr(args, 'monthly', False):
+        args.checkpoint_start = golden_monthly.save_date(read_records(save))
+        original = args.script.read_text(encoding='utf-8-sig') if args.script else ''
+        generated = golden_monthly.instrument(original, args.checkpoint_start, args.until)
+        settings['monthly_records'] = golden_monthly.NORMALIZER
+    if getattr(args, 'prepared_city', None):
+        settings['window_parent'] = args.window_parent
     settings['effective_script_sha256'] = hashlib.sha256(generated.encode('utf-8')).hexdigest()
     files = {'exe': args.game_root / 'Apps/SimCity 4.exe', 'start.sc4': save,
              'user.cfg': args.regions_root.parent / 'SimCity 4.cfg'}
@@ -363,7 +394,7 @@ def prepare(args):
     return key, manifest, generated, files
 
 
-def _validate_log(text, until, selected, run):
+def _validate_log(text, until, selected, run, *, stopped=False):
     verdicts = re.findall(r'AUTOTEST VERDICT: ([a-z-]+)[^\r\n]*', text)
     enabled = set(re.findall(r"subsystem '([^']+)': enabled", text))
     # netrules is hosted by the replacement network manager/tool, with no class
@@ -377,6 +408,10 @@ def _validate_log(text, until, selected, run):
                   if re.search(r'\b(?:shadow|compare)[^\r\n]*:\s*(?:ON|enabled)', line, re.I)]
     if unexpected:
         raise ValueError(f'shadow/compare unexpectedly enabled: {unexpected[0]}')
+    if stopped:
+        if 'first-chance exception' in text or 'AUTOTEST VERDICT:' in text:
+            raise ValueError(f'plugin failed before controlled monthly stop; see {run}')
+        return 'monthly-difference'
     if not verdicts or verdicts[-1] != 'clean':
         raise ValueError(f'not a clean plugin verdict: {verdicts}; see {run}')
     reached = re.search(rf'autotest: end date {re.escape(until)} reached at the new day {re.escape(until)}', text)
@@ -419,6 +454,20 @@ def run_game(args, generated, selected, dll, tag, *, allow_window_drift=False):
     if args.backend == 'queue' and reach_supported(args.harness_root):
         with ini.open('a', encoding='utf-8') as stream:
             stream.write('reach = 1\n')
+    if getattr(args, 'prepared_city', None):
+        with ini.open('a', encoding='utf-8') as stream:
+            stream.write(f'prepared_city = {args.prepared_city.resolve()}\n')
+    if getattr(args, 'monthly', False):
+        runner = (args.harness_root / 'tools/ingame_run.ps1').read_text(encoding='utf-8')
+        if 'golden_monthly' not in runner:
+            raise ValueError('monthly capture needs the new ingame_run.ps1 in the harness checkout')
+        config_path = work / 'monthly-config.json'
+        write_json(config_path, {'script': str(script.resolve()), 'result': str((work / 'result').resolve()),
+                                 'start': args.checkpoint_start, 'until': args.until, 'city': args.city,
+                                 'reference': getattr(args, 'monthly_reference', None),
+                                 'early_stop': not args.no_early_stop, 'seconds': args.seconds})
+        with ini.open('a', encoding='utf-8') as stream:
+            stream.write(f'golden_monthly = {config_path.resolve()}\n')
     # Explicitly turn every known shadow/compare off, also for a queue worker
     # whose environment may contain developer overrides.
     config = (args.harness_root / 'engine/plugin/FC4Config.cpp').read_text(encoding='utf-8')
@@ -431,18 +480,36 @@ def run_game(args, generated, selected, dll, tag, *, allow_window_drift=False):
                '-Dll', str(dll.resolve()), '-IniFile', str(ini.resolve()), '-Output', str(result.resolve()),
                '-Region', args.region, '-City', args.city, '-Until', args.until,
                '-Slot', str(args.slot), '-Seconds', str(args.seconds)]
+    command += ['-SlotRoot', str(main_checkout(REPO) / 'build-runs/sc4slots')]
     env = {k: v for k, v in os.environ.items() if not k.upper().startswith('FC4_')}
     start = time.perf_counter()
     if args.backend == 'queue':
         run_queued(args, dll, ini, result, work)
     else:
-        process = subprocess.run(command, env=env, capture_output=True, text=True,
-                                 timeout=args.seconds + 300)
-        (work / 'transport.txt').write_text(process.stdout + process.stderr, encoding='utf-8')
-        if process.returncode:
+        with (work / 'transport.txt').open('w', encoding='utf-8') as transport:
+            process = subprocess.Popen(command, env=env, stdout=transport, stderr=subprocess.STDOUT)
+            try:
+                deadline = time.monotonic() + args.seconds + 300
+                while process.poll() is None:
+                    if time.monotonic() > deadline:
+                        raise ValueError(f'game harness timed out; see {work}')
+                    time.sleep(0.05)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+        stopped = (result / 'monthly.json').is_file() and load_json(result / 'monthly.json').get('stopped_early')
+        if process.returncode and not stopped:
             raise ValueError(f'game harness failed ({process.returncode}); see {work / "transport.txt"}')
     text = (result / 'game.log').read_text(encoding='utf-8-sig', errors='replace')
-    verdict = _validate_log(text, args.until, selected, result)
+    stopped = (load_json(result / 'monthly.json').get('stopped_early', False)
+               if (result / 'monthly.json').is_file() else False)
+    stop_date = load_json(result / 'monthly.json')['stop_date'] if stopped else args.until
+    verdict = _validate_log(text, args.until, selected, result, stopped=stopped)
+    if getattr(args, 'monthly', False):
+        monthly = load_json(result / 'monthly.json')
+        required = golden_monthly.dates(args.checkpoint_start, stop_date)
+        if sorted(monthly['months']) != required:
+            raise ValueError(f'incomplete monthly captures; not cached: {result}')
     if f'script: full-save watchdog grace {SAVE_GRACE_MS} ms (script_save_grace_ms)' not in text:
         raise ValueError(f'DLL did not acknowledge script_save_grace_ms; not cached: {result}')
     if args.clock == 'fixed' and 'sim_fixed_step ON: 64 agent deliveries/frame' not in text:
@@ -455,11 +522,12 @@ def run_game(args, generated, selected, dll, tag, *, allow_window_drift=False):
         raise ValueError(f'no DIGEST observations; see {result}')
     saved_records = read_records(result / 'end.sc4')
     saved_date = save_date(saved_records)
-    if saved_date != args.until and not allow_window_drift:
+    if saved_date != stop_date and not allow_window_drift:
         raise ValueError(f'end save is dated {saved_date}, expected {args.until}; not cached: {result}')
     write_json(result / 'digests.json', digests)
-    write_json(result / 'verdict.json', {'verdict': verdict, 'end_reached': True, 'full_save': True,
-                                       'window_exact': saved_date == args.until, 'save_date': saved_date})
+    write_json(result / 'verdict.json', {'verdict': verdict, 'end_reached': not stopped, 'full_save': True,
+                                       'stopped_early': stopped,
+                                       'window_exact': saved_date == stop_date, 'save_date': saved_date})
     figures = re.findall(r'days_per_second=([\d.]+)', text)
     warnings = [line for line in text.splitlines() if 'WARNING' in line or 'session seed:' in line]
     summary = {'wall_seconds': time.perf_counter() - start, 'game': load_json(result / 'run.json'),
@@ -498,6 +566,50 @@ def save_date(saved_records):
     return str(dt.date(2000, 1, 1) + dt.timedelta(days=julian - 2451545))
 
 
+def comparison_history(entry, selected):
+    identity = hashlib.sha256(','.join(selected).encode('ascii')).hexdigest()[:16]
+    return entry / ('latest-' + identity + '.json')
+
+
+def window_inputs(args, entry, parent, selected):
+    """Choose a retained reference snapshot; original and candidate reload it alike."""
+    requested = args.from_date
+    if requested == 'auto':
+        history = comparison_history(entry, selected)
+        if not history.is_file():
+            return False
+        previous = load_json(history)
+        if not previous.get('first_difference'):
+            return False
+        requested = previous['last_matching_month']
+    monthly = load_json(entry / 'monthly.json')
+    if requested < monthly['start'] or requested >= args.until:
+        raise ValueError(f'--from must be {monthly["start"]} <= date < {args.until}')
+    date(requested)
+    available = {p.stem: p for p in (entry / 'months').glob('*.sc4') if p.stem <= requested}
+    start = max(available, default=monthly['start'])
+    source = available.get(start, args.regions_root / args.region / f'City - {args.city}.sc4')
+    if start != requested:
+        print(f'snapshot {requested} not retained; using {start} and retaining the requested end', flush=True)
+    requested_day = date(requested)
+    # Month ends stay month ends (June 30 -> July 31); otherwise preserve day.
+    import calendar
+    month = requested_day.month - 1 + args.months
+    year, month = requested_day.year + month // 12, month % 12 + 1
+    end_day = calendar.monthrange(year, month)[1]
+    day = end_day if requested_day.day == calendar.monthrange(requested_day.year, requested_day.month)[1] else min(requested_day.day, end_day)
+    until = min(args.until, str(dt.date(year, month, day)))
+    staged = args.output / 'suite/states' / (sha256(source) + '.sc4')
+    staged.parent.mkdir(parents=True, exist_ok=True)
+    if not staged.exists():
+        shutil.copyfile(source, staged)
+    if sha256(staged) != sha256(source):
+        raise ValueError('staged window snapshot is corrupt')
+    args.prepared_city, args.window_parent, args.until = staged, parent, until
+    print(f'window: {start}..{until} (original reload cached separately)', flush=True)
+    return True
+
+
 def run_queued(args, dll, ini, result, work):
     """Use the already-running coordinator queue (no CIM privileges needed here).
 
@@ -533,7 +645,8 @@ def run_queued(args, dll, ini, result, work):
             if source.is_file():
                 shutil.copyfile(source, result / name)
     (result / 'harness.txt').write_text(verdict, encoding='utf-8')
-    if not verdict.startswith('verdict: clean'):
+    stopped = (result / 'monthly.json').is_file() and load_json(result / 'monthly.json').get('stopped_early')
+    if not verdict.startswith('verdict: clean') and not stopped:
         raise ValueError(f'queue did not finish cleanly; see {result / "harness.txt"}')
     slot_match = re.search(r'in slot (\d+) after', verdict)
     if not slot_match:
@@ -566,7 +679,8 @@ def wait_snapshot(args, verdict_file, result, work):
                 raise ValueError(f'queue wait timed out; request may still run: {verdict_file.stem}')
             time.sleep(1)
         verdict = verdict_file.read_text(encoding='utf-8-sig')
-        if not verdict.startswith('verdict: clean'):
+        stopped = (result / 'monthly.json').is_file() and load_json(result / 'monthly.json').get('stopped_early')
+        if not verdict.startswith('verdict: clean') and not stopped:
             (result / 'harness.txt').write_text(verdict, encoding='utf-8')
             raise ValueError(f'queue did not finish cleanly; see {result / "harness.txt"}')
         if process is None:
@@ -664,6 +778,11 @@ def parser():
         sub.add_argument('--dll', type=Path, help='candidate worktree or DLL (compare only)')
         sub.add_argument('--replace', default='simulator,budget')
         sub.add_argument('--rerun', action='store_true', help='record: independently repeat an existing key')
+        sub.add_argument('--monthly', action='store_true', help='capture and compare normalized records every month')
+        sub.add_argument('--no-early-stop', action='store_true', help='retain the complete owner timeline')
+        sub.add_argument('--from', dest='from_date', nargs='?', const='auto',
+                         help='reload a reference snapshot; auto uses the last matched month of the previous failure')
+        sub.add_argument('--months', type=int, default=1, help='window length (default one month)')
         sub.add_argument('--repeats', type=int, default=3, help='determinism: independent original runs')
         sub.add_argument('--max-repeats', type=int, default=9,
                          help='upper bound for --repeats (default 9); no implicit extra games')
@@ -716,11 +835,34 @@ def main(argv=None):
             if args.schedule == 'fixed' and schedule_code(dll) != manifest['settings']['schedule_code']:
                 raise ValueError(f"candidate schedule code {schedule_code(dll)} differs from the references' "
                                  f"{manifest['settings']['schedule_code']}: take the schedule from main or re-pin")
+            full_entry = entry
+            if args.from_date:
+                if not args.monthly or not 1 <= args.months <= 120:
+                    raise ValueError('--from requires --monthly and --months 1..120')
+                if window_inputs(args, entry, key, selected):
+                    key, manifest, generated, files = prepare(args)
+                    entry = args.output / 'golden' / key
+                    print('window key: ' + key, flush=True)
+                    if not entry.exists():
+                        original = run_game(args, generated, [], args.original_dll, 'window-original')
+                        if fingerprint(files, manifest['settings'])[0] != key:
+                            raise ValueError('window input changed while recording original')
+                        cache_record(args.output / 'golden', key, manifest, original)
+                        print('window original: recorded', flush=True)
+                    else:
+                        _baseline_intact(entry)
+                        print('window original: cached', flush=True)
+            if args.monthly:
+                args.monthly_reference = load_json(entry / 'monthly.json')
             run = run_game(args, generated, selected, dll, 'compare', allow_window_drift=True)
             if fingerprint(files, manifest['settings'])[0] != key:
                 raise ValueError(f'input changed during comparison; no verdict: {run}')
             report = compare_cached(entry, run, rule=args.comparison)
             report.update(key=key, baseline_repeatability=qualification(entry), run=str(run))
+            if 'monthly' in report:
+                report['full_reference'] = full_entry.name
+                report['window_from'] = getattr(args, 'checkpoint_start', None) if args.from_date else None
+                write_json(comparison_history(full_entry, selected), report['monthly'])
             window = load_json(run / 'verdict.json')
             report['window_exact'] = window['window_exact']
             report['save_date'] = window['save_date']
