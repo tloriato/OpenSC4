@@ -96,7 +96,7 @@ mod tests {
     struct State {
         calls: Vec<Call>,
         node: u32,
-        value: f32,
+        value: f64,
         key: u32,
         state_after_export: u32,
     }
@@ -114,7 +114,7 @@ mod tests {
             &mut s.node as *mut u32
         })
     }
-    extern "thiscall" fn active(_p: *mut u8) -> f32 {
+    extern "thiscall" fn active(_p: *mut u8) -> f64 {
         STATE.with(|s| {
             let mut s = s.borrow_mut();
             let k = s.key;
@@ -160,9 +160,10 @@ mod tests {
             (3.0e9, -1294967296),
             (-3.0e9, 1294967296),
             (1.0e19, 0),
-            (f32::INFINITY, 0),
-            (f32::NEG_INFINITY, 0),
-            (f32::NAN, 0),
+            (f64::INFINITY, 0),
+            (f64::NEG_INFINITY, 0),
+            (f64::NAN, 0),
+            (16_777_217.0, 16_777_217),
         ] {
             STATE.with(|s| {
                 *s.borrow_mut() = State {

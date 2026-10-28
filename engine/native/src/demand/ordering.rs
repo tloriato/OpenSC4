@@ -64,24 +64,35 @@ unsafe fn with_copy(address: u32, map: *mut u32, args: &[u32]) -> u64 {
             write_unaligned(p.add(i), arg);
         }
         let copied = p.add(args.len());
-        copy_map(copied.cast(), map);
+        let copied_registers = copy_map(copied.cast(), map);
         // Only the two initialized map words are arguments; the third reserved word is unused.
         let arguments = core::slice::from_raw_parts(p, args.len() + 2);
         let mut call = RawCall::new(Conv::Cdecl, crate::abi::target(address), copied as u32, arguments);
+        call.edx = (copied_registers >> 32) as u32;
         call_raw(&mut call);
         registers(call.eax, call.edx)
     }
 }
 
 /// Destroy the by-value map and reset its caller-owned count. Some callers retain the header in EDX.
-unsafe fn finish(map: *mut u32, mut edx: u32, header_in_edx: bool) -> u64 {
+enum DestroyEdx {
+    Root,
+    Header,
+    Keep,
+}
+
+unsafe fn finish(map: *mut u32, mut edx: u32, header_in_edx: bool, input: DestroyEdx) -> u64 {
     unsafe {
         let header = read_unaligned(map) as *mut u8;
         if read_unaligned(map.add(1)) != 0 {
             let root = TreeNode::from_ptr(header).parent();
             let args = [root as u32];
             let mut call = RawCall::new(Conv::Thiscall, crate::abi::target(0x006A_25C0), map as u32, &args);
-            call.edx = root as u32;
+            call.edx = match input {
+                DestroyEdx::Root => root as u32,
+                DestroyEdx::Header => header as u32,
+                DestroyEdx::Keep => edx,
+            };
             call_raw(&mut call);
             edx = call.edx;
             TreeNode::from_ptr(read_unaligned(map) as *mut u8).set_left(read_unaligned(map) as *mut u8);
@@ -142,7 +153,7 @@ unsafe extern "fastcall" fn insert_with_first(this: *mut u8, entry: *mut Entry) 
             edx = (with_copy(0x006A_3470, map, &[e.arg(1), key]) >> 32) as u32;
         }
         e.eax = this as u32;
-        finish(map, edx, false)
+        finish(map, edx, false, DestroyEdx::Root)
     }
 }
 
@@ -166,7 +177,16 @@ unsafe extern "fastcall" fn insertion_sort(_this: *mut u8, entry: *mut Entry) ->
                 pos = pos.wrapping_add(4);
             }
         }
-        finish(map, edx, first == last)
+        finish(
+            map,
+            edx,
+            first == last,
+            if first == last {
+                DestroyEdx::Keep
+            } else {
+                DestroyEdx::Header
+            },
+        )
     }
 }
 
@@ -188,7 +208,7 @@ unsafe extern "fastcall" fn finish_sort(_this: *mut u8, entry: *mut Entry) -> u6
         } else {
             with_copy(0x006A_7A40, map, &[first, last])
         };
-        finish(map, (result >> 32) as u32, true)
+        finish(map, (result >> 32) as u32, true, DestroyEdx::Keep)
     }
 }
 
@@ -226,7 +246,7 @@ unsafe extern "fastcall" fn partition_sort(_this: *mut u8, entry: *mut Entry) ->
             edx = (with_copy(0x006A_8AE0, map, &[split, last, 0, depth]) >> 32) as u32;
             last = split;
         }
-        finish(map, edx, false)
+        finish(map, edx, false, DestroyEdx::Root)
     }
 }
 
@@ -253,7 +273,7 @@ unsafe extern "fastcall" fn sort(_this: *mut u8, entry: *mut Entry) -> u64 {
             with_copy(0x006A_8AE0, map, &[first, last, 0, depth.wrapping_mul(2)]);
             edx = (with_copy(0x006A_7F90, map, &[first, last]) >> 32) as u32;
         }
-        finish(map, edx, true)
+        finish(map, edx, true, DestroyEdx::Keep)
     }
 }
 
@@ -288,6 +308,7 @@ mod tests {
         scores: [f32; 8],
         copies: Vec<Box<[u32; 6]>>,
         split: u32,
+        splits: Vec<u32>,
     }
     thread_local! { static STATE: RefCell<State> = RefCell::new(State::default()); }
     extern "thiscall" fn value(_map: *mut u8, key: *const u32) -> u64 {
@@ -360,7 +381,15 @@ mod tests {
         registers(b, 0xDEAD_BEEF)
     }
     extern "C" fn partition_fake(a: u32, b: u32, key: u32, _h: u32, _n: u32) -> u64 {
-        algorithm(0x006A_3370, &[a, b, key])
+        let result = algorithm(0x006A_3370, &[a, b, key]);
+        STATE.with(|s| {
+            let mut s = s.borrow_mut();
+            if s.splits.is_empty() {
+                result
+            } else {
+                registers(s.splits.remove(0), (result >> 32) as u32)
+            }
+        })
     }
     extern "C" fn heap_fake(a: u32, b: u32, c: u32, _h: u32, _n: u32) -> u64 {
         algorithm(0x006A_8710, &[a, b, c])
@@ -652,6 +681,64 @@ mod tests {
                 Call::Free(h)
             ]
         );
+
+        reset();
+        let mut keys = [7u32; 65];
+        let first = keys.as_mut_ptr() as u32;
+        let last = first + 260;
+        STATE.with(|s| s.borrow_mut().splits = vec![first + 128, first + 64]);
+        run(fc4p_006a8ae0 as *const (), [first, last, 0xABCD, 5, h, 0]);
+        assert_eq!(
+            calls(),
+            vec![
+                Call::Copy(h, 0),
+                Call::Copy(h, 0),
+                Call::Algorithm(0x006A_31F0, vec![first, first + 128, last - 4]),
+                Call::Algorithm(0x006A_3370, vec![first, last, 7]),
+                Call::Copy(h, 0),
+                Call::Algorithm(0x006A_8AE0, vec![first + 128, last, 0, 4]),
+                Call::Copy(h, 0),
+                Call::Copy(h, 0),
+                Call::Algorithm(0x006A_31F0, vec![first, first + 64, first + 124]),
+                Call::Algorithm(0x006A_3370, vec![first, first + 128, 7]),
+                Call::Copy(h, 0),
+                Call::Algorithm(0x006A_8AE0, vec![first + 64, first + 128, 0, 3]),
+                Call::Free(h)
+            ]
+        );
+    }
+
+    #[test]
+    fn empty_and_single_key_insertions_clear_owned_maps_without_copying() {
+        let _a = fake(0x006A_25C0, destroying as *const () as usize);
+        let _b = fake(0x0090_CF63, freeing as *const () as usize);
+        for length in [0, 4] {
+            reset();
+            let mut map = Map::new(&[(1, 1)]);
+            let header = map.header() as u32;
+            let root = unsafe { TreeNode::from_ptr(header as *mut u8).parent() } as u32;
+            let f = run(fc4p_006a7a40 as *const (), [0x1000, 0x1000 + length, header, 1, 99, 88]);
+            assert_eq!(calls(), vec![Call::Destroy(root), Call::Free(header)]);
+            assert_eq!(f.after, [0x1000, 0x1000 + length, header, 0, 99, 88]);
+            assert_eq!(f.edx, if length == 0 { header } else { 0xBBAA_9988 });
+        }
+    }
+
+    #[test]
+    fn a_null_subtree_retains_the_header_register_in_a_nonempty_insertion_range() {
+        #[unsafe(naked)]
+        unsafe extern "thiscall" fn empty_subtree() {
+            core::arch::naked_asm!("ret 4");
+        }
+        let _a = fake(0x006A_25C0, empty_subtree as *const () as usize);
+        let _b = fake(0x0090_CF63, freeing as *const () as usize);
+        reset();
+        let mut map = Map::new(&[]);
+        let header = map.header() as u32;
+        let f = run(fc4p_006a7a40 as *const (), [0x1000, 0x1004, header, 1, 99, 88]);
+        assert_eq!(f.edx, header);
+        assert_eq!(f.after, [0x1000, 0x1004, header, 0, 99, 88]);
+        assert_eq!(calls(), vec![Call::Free(header)]);
     }
 
     #[test]

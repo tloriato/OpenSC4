@@ -212,7 +212,7 @@ unsafe extern "fastcall" fn idle(this: *mut u8, entry: *mut Entry) -> u64 {
         let mut timer = MaybeUninit::<[u32; 6]>::uninit();
         let timer = timer.as_mut_ptr().cast::<u8>();
         timer_new(timer, 4);
-        timer_start(timer);
+        let started = timer_start(timer);
         let state = sim.census_state();
         let result = if state == 2 {
             let result = record_history(sim, e);
@@ -274,7 +274,7 @@ unsafe extern "fastcall" fn idle(this: *mut u8, entry: *mut Entry) -> u64 {
             }
             budget_finish(budget)
         } else {
-            registers(state.wrapping_sub(2), e.edx)
+            registers(state.wrapping_sub(2), (started >> 32) as u32)
         };
         let mut finish = RawCall::new(Conv::Thiscall, crate::abi::target(0x00A6_D837), timer as u32, &[]);
         finish.eax = result as u32;
@@ -624,7 +624,8 @@ mod tests {
         assert_eq!(unsafe { Scan::from_ptr(w.scan.ptr()).state() }, 2);
         for state in [3, 4, 256, u32::MAX] {
             unsafe { DemandSim::from_ptr(w.sim.ptr()).set_census_state(state) };
-            w.run(99);
+            let p = w.run(99);
+            assert_eq!((p.eax, p.edx), (state.wrapping_sub(2), u32::MAX));
             assert_eq!(calls(), vec![Call::Timer(4), Call::Start, Call::Finish]);
         }
     }
@@ -744,6 +745,7 @@ mod tests {
             (vec![0i32; 12], None),
             (vec![2i32; 12], Some((240u64, 24u64))),
             (vec![-1i32; 12], Some((12u64 * 0xFFFF_FFF6, (-12i64) as u64))),
+            (vec![i32::MAX; 12], Some((12u64 * 0xFFFF_FFF6, 12u64 * 2_147_483_647))),
         ] {
             reset(usize::MAX);
             let mut w = World::new(&[], &[], &[]);
@@ -814,7 +816,8 @@ mod tests {
                     (0x6A931184, 100),
                     (0x8A931172, 55),
                     (0x8A63F30C, salary)
-                ]
+                ],
+                "calls: {c:?}"
             );
             assert_eq!(
                 c.iter()

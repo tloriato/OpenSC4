@@ -797,4 +797,26 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn the_initial_surplus_guard_keeps_the_register_value_after_the_float_store() {
+        let _f = fakes();
+        let _fpu = GameFpu::new();
+        crate::x87::set_control_word(0x037F);
+        let mut cv = [10.0, 1000.0, 3.0];
+        let _c = constants(&mut cv);
+        let mut w = World::new(1, 1);
+        let _g = w.globals();
+        STATE.with(|s| {
+            let mut s = s.borrow_mut();
+            s.devs[0].demand = 10.0;
+            s.devs[0].supply = 0.0000001;
+        });
+        w.run();
+        let c = calls();
+        assert!(c.iter().any(|c| matches!(c, Call::Supply(0))));
+        assert!(!c
+            .iter()
+            .any(|c| matches!(c, Call::Copy(..) | Call::Sort(..) | Call::Export(..))));
+    }
 }
