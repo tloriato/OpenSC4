@@ -105,7 +105,11 @@ tests timed out. The two Lua cases plus the save/draw-focused tests subsequently
 passed (`63 passed`). The required qbuild's Rust stage printed 8453 passed and
 one failed (`golden_supported_owners_roundtrip_when_corpus_is_present`, missing
 map key at `formats/tests/city_save.rs:449`); clippy passed without diagnostics.
-The native worker and main's r6 recording are separate outstanding gates.
+The native build passed; CTest passed 147/148, failing through that same Cargo
+test. Main's r6 `RECORDING` marker remained present after two nine-minute waits.
+All lane operations finished; the post-repin game proof has not started.
+The preceding-pin store measured 163,256,395 bytes, including 58 snapshots
+totalling 79,323,381 bytes; the long reference retained 25 hash checkpoints.
 Failed and superseded runs remain in `build-runs/evidence-fastloop36-v1` through
 `-v4`; r6 proof uses a separate directory and a byte-identical coordinator pin.
 Complete active-pin timing, full zones and combined credit before the one-time
