@@ -21,8 +21,11 @@ python tools/check.py credit --dll C:/path/to/lane --replace zones,advisors --sc
 
 `run` reports the first differing month, every changed record and its owner,
 and the last matching month. Its watcher stops only that run's game process
-after retaining the differing save and hashes. Missing or wrong-date captures
-are errors. A stopped run marks later owners incomplete.
+after retaining the differing save and hashes. A missing capture is an error. A
+scripted real-time wait (`uiwait`, virtual ms under the fixed schedule) can carry
+the game past a month end; that month's save is then taken at the later date,
+which `monthly.json` keeps in the month's `date`. A stopped run marks later owners
+incomplete.
 
 `credit` completes the timeline with all selected owners enabled together. Each
 owner receives its first differing month and records, or `exact`, `unobserved`,
@@ -39,7 +42,8 @@ python .claude/lane-bin/qcheck.py --wt C:/path/to/lane --replace advisors --scen
 ```
 
 The default uses the last matching month from that candidate path and owner
-selection's previous full-run failure. Without such a failure it runs the full
+selection's previous full-run failure (anchors are scoped to the candidate DLL
+path, so lanes never overwrite each other's). Without such a failure it runs the full
 scenario. `--full` explicitly starts at the original save. `--no-early-stop`
 retains every checkpoint of a candidate run.
 
@@ -60,23 +64,8 @@ and 18 GiB across the store. All monthly hashes remain. If the requested snapsho
 was thinned out, the check reports the earlier retained date actually loaded
 and keeps the requested window end. `--store` selects an alternate pinned store.
 
-## Landing and reference migration
-
-Land the tooling and harness together, then have the coordinator run the
-following **once** against the chosen pin:
-
-```powershell
-python tools/check.py record --scenarios all --jobs 12
-```
-
-The previous end-save references do not contain monthly hashes or snapshots.
-Until this recording completes, use `--legacy` for those references. The lane's
-proof records only its five test scenarios in an isolated store; it does not
-replace the coordinator's full recording.
+## Repins
 
 When main repins, take main's schedule and harness before rebuilding. Wait for
 `build-runs/golden/RECORDING` to disappear before running candidate comparisons.
 Keep evidence from different pins separate.
-
-The [2026-10-28 proof](golden-monthly-proof.md) records five real timing pairs,
-the advisors/zones checks, storage measurements and validation limits.

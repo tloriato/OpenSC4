@@ -5,16 +5,16 @@ replaces the whole file: no history, no logs, no "previously". Work that is done
 Evidence lives in git, in `docs/lanes/` and in `build-runs/`, never here. Where another document disagrees with this
 one, this one wins.
 
-State as of 2026-10-28 11:00: **run 8 is running** (12 Codex lanes, `build-runs/run8-state.json`). Steps 1-3 are done.
-Landed today, each exact on its covers: zones, budget, parks, regionalcity, neighbors, citysit, commercial, propmgr,
-clock24. Also landed: the save round trip (save-roundtrip33), draw streams in exact checks (draw-check35), corpus35's
-scenarios and the save layouts of the traffic network map, city and auxiliary records (re-sr36).
+State as of 2026-10-28 14:30: **run 8 is running** (12 Codex lanes, `build-runs/run8-state.json`). Landed today,
+each exact on its covers: zones, budget, parks, regionalcity, neighbors, citysit, commercial, propmgr, clock24. Also
+landed: the save round trip (save-roundtrip33), draw streams in exact checks (draw-check35), corpus35, the save layouts
+of every remaining record type (re-sr36, re-sr37) and the fast loop (fastloop36). All 189 references carry monthly
+record hashes and snapshots (re-recorded 14:15 on pin r6).
 
-**Priority now (the user, 08:30): the fast loop, not measurement.** Do not spend game slots on headline numbers. One
-game run must answer every owner's question (monthly record hashes: which owner differs first, and when) and a lane's
-re-check must take minutes (early stop, one-month windows from the reference's monthly snapshots): lane fastloop36.
-When fastloop36 lands, every reference is recorded once more with its monthly snapshots (same pin). Measure
-Exact-replaced only from that run's per-owner verdicts.
+**Priority (the user, 08:30): the fast loop, not measurement.** Do not spend game slots on headline numbers. A check
+stops at the first month that differs and names its owner; a re-check replays one month from the last matching
+snapshot (`docs/golden-monthly.md`). Measure Exact-replaced only from the per-owner verdicts of a credit run that lanes
+need anyway.
 
 ## 1. The goal, worked backwards
 
@@ -76,9 +76,9 @@ Worked backwards, three things stand between those 21 keys and credit, each with
 
 | Loop | What runs | Duration |
 |---|---|---|
-| Reference recording | `python tools/check.py record --scenarios all --jobs 12` | about 45 min (5 scenarios: 1 min 48 s) |
-| Per change | the lane's build, then `.claude/lane-bin/qcheck.py --wt <WT> --replace <keys>` on its covers | 3-8 min |
-| Landing | merge-train run with `--add-replace`, then land | under 15 min |
+| Reference recording | `python tools/check.py record --scenarios all --jobs 12` | 50 min for all 189 with monthly snapshots |
+| Per change | the lane's build, then `.claude/lane-bin/qcheck.py --wt <WT> --replace <keys>`: the first run stops at the first differing month, later runs replay one month from the last matching snapshot | about 30 s per scenario window; a full replay 20-90 s per scenario |
+| Landing | merge-train run with `--add-replace`, then land | under 15 min gate + 20 min check |
 
 The game queue runs two instances on the same 12 slots: the default (started 10-27 16:19, older code) and `fair`
 (`-Instance fair`, commit 1b4bbe6b3), where a lane request waiting 15 minutes ranks with the coordinator's requests.
@@ -93,17 +93,18 @@ ones for a relaunch with an answer. Codex "Selected model is at capacity" fails 
 
 | Lane | Owners | Aim |
 |---|---|---|
-| traffic-exact33 | traffic | first differences moved later; not exact |
-| automata-exact33 (parked, round cap) | automata | resume on the fast loop |
-| network-exact33 | netmgr, netrules, nettool, netlot | save differences 103 → 6 |
-| disasters-exact33 (parked, round cap) | disasters, effects | resume on the fast loop |
+| traffic-exact33 (round limit 18) | traffic | the accident timer's reset draw (traffic-simulator §4.13), then the map and statistics answers |
+| automata-exact33 (round limit 18) | automata | the native accident call boundary (automata-managers §3.4.1): the fault in seven covers |
+| network-exact33 (parked, round cap) | netmgr, netrules, nettool, netlot | restart when re-blockers37b answers NM21/NM22/NT37/NT38/NG16 |
+| disasters-exact33 (parked, round cap) | disasters, effects | restart when re-blockers37b answers DSEX33-EF01/EF02/DS01 |
+| re-blockers37a (spec) | traffic, automata specs | the partial AD6 and TE33-PATH-1 |
+| re-blockers37b (spec) | effects, disasters, network specs | the questions above |
 | advisors-exact36 | advisors, mysims | citysit landed exact |
-| fastloop36 | golden.py, check.py, qcheck | one run answers every owner; re-check in under 5 minutes |
 | growth-exact36 | residential, development, demand, zonedev, lotdev, lotcfg, exemplars | zones, commercial, propmgr landed exact |
-| services-exact36 | power, pollution, landvalue, ordinance, demolition, dispatch, … | power: which call in state 1 draws rand() differently |
+| services-exact36 | power, pollution, landvalue, ordinance, demolition, dispatch, … | budget 8/8, dispatch 9/10 |
 | together34 | the 21 exact-alone keys | exact with all keys on |
 | wiring34 | span565, gzfw, simgrids, tract, … | the original's code of switched-on owners stops running |
-| save-roundtrip36 | formats, save, persistence | decode the traffic network map (87% of the undecoded bytes), then the rest |
+| save-roundtrip36 | formats, save, persistence | the last three types (SR36-1..3, specified by re-sr37): 169 of 169 |
 
 **Known issues.**
 - Run-8 worktrees are 9-13 GB each: remove a merged lane's worktree at once (`cmd /c "rd /s /q \\?\<path>"`, then
@@ -111,9 +112,8 @@ ones for a relaunch with an answer. Codex "Selected model is at capacity" fails 
 
 ## 6. The standalone track
 
-1. **Save round trip:** all 547 reference and shipped saves come back with no decompressed difference; 140 of 169
-   record types (89.22% of bytes) are decoded by their owners, the rest kept as bytes. The remaining layouts are
-   specified (traffic-network.md §6.2, foundations.md §3.6, save-records.md §2.1); save-roundtrip36 decodes them.
+1. **Save round trip:** every reference and shipped save comes back with no decompressed difference; save-roundtrip36
+   decodes 164 of 169 record types (98.6% of bytes) in their owners' modules and is finishing the last three.
 2. **Headless host:** our exe loads the data files and a save, runs N days under the fixed schedule, writes a save
    compared with the same references. It implements the host side of `fc4.h` over our own world model; no host crate
    yet.
