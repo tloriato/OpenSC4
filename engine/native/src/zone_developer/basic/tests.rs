@@ -332,8 +332,8 @@ extern "thiscall" fn position(this: *mut u8, out: *mut f32) -> u32 {
     unsafe { core::ptr::copy_nonoverlapping(this.add(4).cast::<f32>(), out, 3) };
     record(this, 0x20, &[])
 }
-extern "thiscall" fn parcellize(this: *mut u8, x: i32, z: i32, out: u32) -> u32 {
-    record(this, 0x18, &[x as u32, z as u32, out])
+extern "fastcall" fn occupant_lot(this: *mut u8, entry_edx: u32, x: i32, z: i32, out: u32) -> u64 {
+    (u64::from(entry_edx) << 32) | u64::from(record(this, 0x18, &[x as u32, z as u32, out]))
 }
 
 #[test]
@@ -346,7 +346,7 @@ fn occupant_position_cells_correct_ties_and_forward_result() {
     let mut occupant_table = [0usize; 9];
     occupant_table[8] = position as *const () as usize;
     let mut developer_table = [0usize; 7];
-    developer_table[6] = parcellize as *const () as usize;
+    developer_table[6] = occupant_lot as *const () as usize;
     let mut occupant = [occupant_table.as_ptr() as u32, 0, f32::NAN.to_bits(), 0];
     let occupant_ptr = occupant.as_mut_ptr().cast::<u8>();
     let mut developer = [developer_table.as_ptr() as usize];
@@ -359,10 +359,22 @@ fn occupant_position_cells_correct_ties_and_forward_result() {
         (32.0, 48.0, 2, 3),
         (-32.001, -15.999, -3, -1),
         (1_000_000.0, -1_000_000.0, 62_500, -62_500),
+        (f32::INFINITY, f32::NEG_INFINITY, 0x3440_0000, 0xB440_0000u32 as i32),
+        (
+            f32::from_bits(0x7FC1_2345),
+            f32::from_bits(0xFFC1_2345),
+            0x3481_2345,
+            0xB481_2345u32 as i32,
+        ),
+        (f32::from_bits(0x7F81_2345), -0.0, 0x3481_2345, 0),
+        (134_217_728.0, 16.0, 6_291_456, 1),
     ] {
         occupant[1] = f32::to_bits(x);
         occupant[3] = f32::to_bits(z);
-        assert_eq!(unsafe { fc4p_0072a110(developer_ptr, occupant_ptr) }, 0xABCD_EF00);
+        assert_eq!(
+            unsafe { fc4p_0072a110(developer_ptr, occupant_ptr) },
+            (u64::from(cz as u32) << 32) | 0xABCD_EF00
+        );
         assert_eq!(
             calls(),
             [

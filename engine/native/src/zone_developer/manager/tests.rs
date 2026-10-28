@@ -29,9 +29,9 @@ extern "thiscall" fn integer(this: *mut u8, value: u32) -> u32 {
     record(0x24, this, &[value]);
     0
 }
-extern "thiscall" fn error(this: *mut u8) -> u32 {
+extern "fastcall" fn error(this: *mut u8, entry_edx: u32) -> u64 {
     record(0x48, this, &[]);
-    unsafe { read_unaligned(this.add(4).cast::<u32>()) }
+    (u64::from(entry_edx) << 32) | u64::from(unsafe { read_unaligned(this.add(4).cast::<u32>()) })
 }
 extern "C" fn reference(this: *mut u8, value: u32) -> u32 {
     record(0x005D_99A0, this, &[value]);
@@ -89,7 +89,7 @@ fn lot_map_version_dimensions_references_and_low_error_byte() {
         let before = unsafe { core::slice::from_raw_parts(ptr, 0x60) }.to_vec();
         assert_eq!(
             unsafe { fc4p_0072ab40(ptr, stream_ptr) },
-            (error & !255) | u32::from(error as u8 == 0)
+            (u64::from(table.as_ptr() as u32) << 32) | u64::from((error & !255) | u32::from(error as u8 == 0))
         );
         assert_eq!(unsafe { core::slice::from_raw_parts(ptr, 0x60) }, before);
         let mut expected = vec![
@@ -143,7 +143,10 @@ fn random_lot_order_retries_limit_and_live_dimensions() {
     manager.set_cells_z(3);
     manager.set_rows(rows.as_mut_ptr().cast());
     DRAWS.with(|d| *d.borrow_mut() = vec![0, 2, 1, 1]);
-    assert_eq!(unsafe { fc4p_0072b3c0(ptr) } as u32, 0xABCD_1234);
+    assert_eq!(
+        unsafe { fc4p_0072b3c0(ptr) },
+        (u64::from(b.as_ptr() as u32) << 32) | 0xABCD_1234
+    );
     assert_eq!(
         calls(),
         [
@@ -153,7 +156,7 @@ fn random_lot_order_retries_limit_and_live_dimensions() {
             (0x0091_36B1, rng.as_mut_ptr() as usize, vec![3])
         ]
     );
-    assert!(unsafe { fc4p_0072b3c0(ptr) }.is_null());
+    assert_eq!(unsafe { fc4p_0072b3c0(ptr) }, u64::from(a.as_ptr() as u32) << 32);
     let actual = calls();
     assert_eq!(actual.len(), 1998);
     assert!(actual.as_chunks::<2>().0.iter().all(|c| c[0].2 == [2] && c[1].2 == [3]));

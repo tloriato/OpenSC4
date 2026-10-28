@@ -15,7 +15,7 @@ extern "thiscall" fn bounds(this: *mut u8, rect: *mut i32) -> u32 {
     0x1122_3344
 }
 
-extern "thiscall" fn surrounding(this: *mut u8, rect: *const i32, list: *mut u8, flags: u32) -> u32 {
+extern "fastcall" fn surrounding(this: *mut u8, entry_edx: u32, rect: *const i32, list: *mut u8, flags: u32) -> u64 {
     let rect = unsafe { read_unaligned(rect.cast::<[u32; 4]>()) };
     CALLS.with(|calls| {
         calls.borrow_mut().push((
@@ -23,7 +23,7 @@ extern "thiscall" fn surrounding(this: *mut u8, rect: *const i32, list: *mut u8,
             vec![rect[0], rect[1], rect[2], rect[3], list as u32, flags],
         ))
     });
-    0xFEDC_BA98
+    (u64::from(entry_edx) << 32) | 0xFEDC_BA98
 }
 
 #[test]
@@ -39,7 +39,10 @@ fn lot_bounds_then_surrounding_rect_preserves_arguments_and_result() {
         manager.as_mut_ptr().cast(),
         0x1234usize as *mut u8,
     );
-    assert_eq!(unsafe { fc4p_0072a750(manager, lot, list, 0xF0F1_F2F3) }, 0xFEDC_BA98);
+    assert_eq!(
+        unsafe { fc4p_0072a750(manager, lot, list, 0xF0F1_F2F3) },
+        0x0000_1234_FEDC_BA98
+    );
     assert_eq!(
         CALLS.with(|c| core::mem::take(&mut *c.borrow_mut())),
         [
@@ -84,9 +87,19 @@ fn vertex_edges_all_flag_bytes_wrap_and_keep_no_edge_eax() {
                     &[rect.as_ptr() as u32, flags | 0x8765_0000, out.as_mut_ptr() as u32],
                     entry,
                 )
-            }
-            .0;
-            assert_eq!((out, got), (want, eax));
+            };
+            let edx = if flags & 1 != 0 {
+                z1 as u32
+            } else if flags & 2 != 0 {
+                x2.wrapping_add(1) as u32
+            } else if flags & 4 != 0 {
+                z2.wrapping_add(1) as u32
+            } else if flags & 8 != 0 {
+                x1 as u32
+            } else {
+                0
+            };
+            assert_eq!((out, got), (want, (eax, edx)));
             let mut alias = rect;
             unsafe {
                 call_thiscall_with_eax(
@@ -99,6 +112,21 @@ fn vertex_edges_all_flag_bytes_wrap_and_keep_no_edge_eax() {
             assert_eq!(alias, if flags & 15 == 0 { rect } else { want });
         }
     }
+}
+
+#[test]
+fn no_edge_keeps_entry_edx_and_does_not_read_the_rectangle() {
+    let args = [0, 0x1234_0080, 0];
+    let mut call = crate::abi::RawCall::new(
+        crate::abi::Conv::Thiscall,
+        fc4p_0072a790 as *const () as usize,
+        0,
+        &args,
+    );
+    call.eax = 0xAABB_CC11;
+    call.edx = 0x1234_5678;
+    unsafe { crate::abi::call_raw(&mut call) };
+    assert_eq!((call.eax, call.edx), (0xAABB_CC80, 0x1234_5678));
 }
 
 #[test]
@@ -148,7 +176,11 @@ fn neighbor_edges_city_limits_invalid_rectangles_and_output_aliasing() {
             let mut out = [0x1234_5678i32; 4];
             let got = unsafe { fc4p_0072a820(this, rect.as_ptr(), flags, out.as_mut_ptr()) };
             assert_eq!(out, want);
-            assert_eq!(got, (out.as_ptr() as u32 & !255) | u32::from(want[2] >= want[0]));
+            assert_eq!(
+                got,
+                (u64::from(want[2] >= want[0]) << 32)
+                    | u64::from((out.as_ptr() as u32 & !255) | u32::from(want[2] >= want[0]))
+            );
             // The empty output is written before the input is read, including when they are the same rectangle.
             let mut alias = rect;
             let got = unsafe { fc4p_0072a820(this, alias.as_ptr(), flags, alias.as_mut_ptr()) };

@@ -178,13 +178,14 @@ unsafe fn position_cell(position: f32) -> i32 {
 port! {
     /// Read an occupant position, convert X and Z to cells and ask the lot manager for that cell's lot.
     #[port(address = 0x0072_A110, owner = "zonedeveloper", name = "GetOccupantLot")]
-    pub unsafe extern "thiscall" fn fc4p_0072a110(this: *mut u8, occupant: *mut u8) -> u32 {
+    pub unsafe extern "thiscall" fn fc4p_0072a110(this: *mut u8, occupant: *mut u8) -> u64 {
         unsafe {
             let mut position = [0.0f32; 3];
             vcall!(occupant, 0x20 => fn(*mut f32) -> u32, position.as_mut_ptr());
             let x = position_cell(position[0]);
             let z = position_cell(position[2]);
-            vcall!(this, 0x18 => fn(i32, i32, u32) -> u32, x, z, 0)
+            super::virtual_registers(this, 0x18, read_unaligned(this.cast::<u32>()), z as u32,
+                &[x as u32, z as u32, 0])
         }
     }
 }

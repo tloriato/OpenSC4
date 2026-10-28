@@ -58,11 +58,13 @@ extern "thiscall" fn is_occupied(this: *mut u8, x: i32, z: i32) -> u32 {
 extern "thiscall" fn water(this: *mut u8, x: i32, z: i32) -> u32 {
     answer(0x24, this, &[x as u32, z as u32])
 }
-extern "thiscall" fn config(this: *mut u8) -> u32 {
-    answer(0x38, this, &[])
+extern "fastcall" fn config(this: *mut u8, entry_edx: u32) -> u64 {
+    assert_eq!(entry_edx, 0xDEAD_BEEF);
+    (0x2468_ACE0u64 << 32) | u64::from(answer(0x38, this, &[]))
 }
-extern "thiscall" fn code(this: *mut u8, x: i32, z: i32, zone: u32, water: u32) -> i32 {
-    answer(0x0072_C200, this, &[x as u32, z as u32, zone, water]) as i32
+extern "fastcall" fn code(this: *mut u8, entry_edx: u32, x: i32, z: i32, zone: u32, water: u32) -> u64 {
+    assert_eq!(entry_edx, water);
+    (0x1357_9BDFu64 << 32) | u64::from(answer(0x0072_C200, this, &[x as u32, z as u32, zone, water]))
 }
 
 #[test]
@@ -310,8 +312,8 @@ fn rectangle_codes_visit_all_cells_keep_argument_words_and_query_config_before_e
         }
         answers(&script);
         assert_eq!(
-            unsafe { fc4p_0072c2d0(ptr, 2, 3, 2, 3, 0xAABB_CC02, water_word, cfg) },
-            -1
+            unsafe { fc4p_0072c2d0(ptr, 0xDEAD_BEEF, 2, 3, 2, 3, 0xAABB_CC02, water_word, cfg) },
+            0x1357_9BDF_FFFF_FFFF
         );
         assert_eq!(calls(), expected);
     }
@@ -323,13 +325,41 @@ fn rectangle_codes_visit_all_cells_keep_argument_words_and_query_config_before_e
         (2, i32::MAX, 2, 1),
     ] {
         answers(&[1]);
-        assert_eq!(unsafe { fc4p_0072c2d0(ptr, x, z, width, height, 0, 0, cfg) }, 8);
+        let edx = if x < x.wrapping_add(width) {
+            height as u32
+        } else {
+            0x2468_ACE0
+        };
+        assert_eq!(
+            unsafe { fc4p_0072c2d0(ptr, 0xDEAD_BEEF, x, z, width, height, 0, 0, cfg) },
+            (u64::from(edx) << 32) | 8
+        );
         assert_eq!(calls(), [(0x38, cfg as usize, vec![])]);
     }
     answers(&[8]);
     assert_eq!(
-        unsafe { fc4p_0072c2d0(ptr, 1, 2, 1, 1, 0, 0, core::ptr::null_mut()) },
-        8
+        unsafe { fc4p_0072c2d0(ptr, 0xDEAD_BEEF, 1, 2, 1, 1, 0, 0, core::ptr::null_mut()) },
+        0x1357_9BDF_0000_0008
     );
     assert_eq!(calls(), [(0x0072_C200, ptr.wrapping_sub(4) as usize, vec![1, 2, 0, 0])]);
+}
+
+#[test]
+fn empty_rectangle_preserves_edx_with_the_original_stack_convention() {
+    let mut object = Object::new(0x100);
+    let ptr = object.ptr().wrapping_add(4);
+    for water in [0, 0xABCD_0002] {
+        let args = [2, 3, 0, 4, 0xAABB_CC01, water, 0];
+        let mut call = crate::abi::RawCall::new(
+            crate::abi::Conv::Thiscall,
+            fc4p_0072c2d0 as *const () as usize,
+            ptr as u32,
+            &args,
+        );
+        call.eax = 0xABCD_1234;
+        call.edx = 0xFEDC_BA98;
+        unsafe { crate::abi::call_raw(&mut call) };
+        assert_eq!((call.eax, call.edx), (8, 0xFEDC_BA98));
+        assert!(calls().is_empty());
+    }
 }

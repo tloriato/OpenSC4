@@ -40,13 +40,44 @@ layout! {
     }
 }
 
+mod altitude;
 mod basic;
 mod edges;
 mod lot;
 mod manager;
 mod occupancy;
 
+/// Call a virtual method with its incoming scratch-register values and retain EDX:EAX.
+unsafe fn virtual_registers(this: *mut u8, slot: usize, eax: u32, edx: u32, args: &[u32]) -> u64 {
+    unsafe {
+        let mut call = crate::abi::RawCall::new(
+            crate::abi::Conv::Thiscall,
+            crate::abi::vslot(this, slot),
+            this as u32,
+            args,
+        );
+        call.eax = eax;
+        call.edx = edx;
+        crate::abi::call_raw(&mut call);
+        (u64::from(call.edx) << 32) | u64::from(call.eax)
+    }
+}
+
 /// This module's replacements.
 pub const PORTS: &[Port] = &crate::port::concat::<
-    { basic::PORTS.len() + lot::PORTS.len() + edges::PORTS.len() + manager::PORTS.len() + occupancy::PORTS.len() },
->(&[basic::PORTS, lot::PORTS, edges::PORTS, manager::PORTS, occupancy::PORTS]);
+    {
+        basic::PORTS.len()
+            + lot::PORTS.len()
+            + edges::PORTS.len()
+            + manager::PORTS.len()
+            + occupancy::PORTS.len()
+            + altitude::PORTS.len()
+    },
+>(&[
+    basic::PORTS,
+    lot::PORTS,
+    edges::PORTS,
+    manager::PORTS,
+    occupancy::PORTS,
+    altitude::PORTS,
+]);

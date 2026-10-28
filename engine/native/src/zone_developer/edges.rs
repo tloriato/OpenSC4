@@ -9,11 +9,12 @@ use core::ptr::{read_unaligned, write_unaligned};
 port! {
     /// Read the lot bounds and forward them, the output list and flags to GetLotsSurroundingRect.
     #[port(address = 0x0072_A750, owner = "zonedeveloper", name = "GetLotsSurroundingLot")]
-    pub unsafe extern "thiscall" fn fc4p_0072a750(this: *mut u8, lot: *mut u8, list: *mut u8, flags: u32) -> u32 {
+    pub unsafe extern "thiscall" fn fc4p_0072a750(this: *mut u8, lot: *mut u8, list: *mut u8, flags: u32) -> u64 {
         unsafe {
             let mut rect = [0i32; 4];
             vcall!(lot, 0x38 => fn(*mut i32) -> u32, rect.as_mut_ptr());
-            vcall!(this, 0x28 => fn(*const i32, *mut u8, u32) -> u32, rect.as_ptr(), list, flags)
+            super::virtual_registers(this, 0x28, read_unaligned(this.cast::<u32>()), list as u32,
+                &[rect.as_ptr() as u32, list as u32, flags])
         }
     }
 }
@@ -21,40 +22,48 @@ port! {
 port! {
     /// Write vertices of the first selected edge (north, east, south, west). With no edge, leave output alone.
     /// EAX retains the incremented far coordinate, or its entry upper bytes and the flag byte for no edge.
-    #[port(address = 0x0072_A790, owner = "zonedeveloper", name = "GetVerticesAtEdgeOfLot", entry_eax)]
-    pub unsafe extern "thiscall" fn fc4p_0072a790(
-        _this: *mut u8, [entry_eax: u32], rect: *const i32, flags: u32, out: *mut i32
-    ) -> u32 {
-        unsafe {
-            let flags = flags as u8;
-            let (result, eax) = if flags & 1 != 0 {
-                let x2 = read_unaligned(rect.add(2)).wrapping_add(1);
-                let x1 = read_unaligned(rect);
-                let z1 = read_unaligned(rect.add(1));
-                ([x1, z1, x2, z1], x2 as u32)
-            } else if flags & 2 != 0 {
-                let z2 = read_unaligned(rect.add(3)).wrapping_add(1);
-                let x2 = read_unaligned(rect.add(2)).wrapping_add(1);
-                let z1 = read_unaligned(rect.add(1));
-                ([x2, z1, x2, z2], z2 as u32)
-            } else if flags & 4 != 0 {
-                let z2 = read_unaligned(rect.add(3)).wrapping_add(1);
-                let x1 = read_unaligned(rect);
-                let x2 = read_unaligned(rect.add(2)).wrapping_add(1);
-                ([x1, z2, x2, z2], x2 as u32)
-            } else if flags & 8 != 0 {
-                let z2 = read_unaligned(rect.add(3)).wrapping_add(1);
-                let x1 = read_unaligned(rect);
-                let z1 = read_unaligned(rect.add(1));
-                ([x1, z1, x1, z2], z2 as u32)
-            } else {
-                return (entry_eax & !0xFF) | u32::from(flags);
-            };
-            for (i, value) in result.into_iter().enumerate() {
-                write_unaligned(out.add(i), value);
-            }
-            eax
+    #[port(address = 0x0072_A790, owner = "zonedeveloper", name = "GetVerticesAtEdgeOfLot", naked)]
+    pub unsafe extern "C" fn fc4p_0072a790() {
+        core::arch::naked_asm!("mov ecx, eax", "jmp {body}", body = sym edge_vertices);
+    }
+}
+
+unsafe extern "fastcall" fn edge_vertices(
+    entry_eax: u32,
+    entry_edx: u32,
+    rect: *const i32,
+    flags: u32,
+    out: *mut i32,
+) -> u64 {
+    unsafe {
+        let flags = flags as u8;
+        let (result, eax, edx) = if flags & 1 != 0 {
+            let x2 = read_unaligned(rect.add(2)).wrapping_add(1);
+            let x1 = read_unaligned(rect);
+            let z1 = read_unaligned(rect.add(1));
+            ([x1, z1, x2, z1], x2 as u32, z1 as u32)
+        } else if flags & 2 != 0 {
+            let z2 = read_unaligned(rect.add(3)).wrapping_add(1);
+            let x2 = read_unaligned(rect.add(2)).wrapping_add(1);
+            let z1 = read_unaligned(rect.add(1));
+            ([x2, z1, x2, z2], z2 as u32, x2 as u32)
+        } else if flags & 4 != 0 {
+            let z2 = read_unaligned(rect.add(3)).wrapping_add(1);
+            let x1 = read_unaligned(rect);
+            let x2 = read_unaligned(rect.add(2)).wrapping_add(1);
+            ([x1, z2, x2, z2], x2 as u32, z2 as u32)
+        } else if flags & 8 != 0 {
+            let z2 = read_unaligned(rect.add(3)).wrapping_add(1);
+            let x1 = read_unaligned(rect);
+            let z1 = read_unaligned(rect.add(1));
+            ([x1, z1, x1, z2], z2 as u32, x1 as u32)
+        } else {
+            return (u64::from(entry_edx) << 32) | u64::from((entry_eax & !0xFF) | u32::from(flags));
+        };
+        for (i, value) in result.into_iter().enumerate() {
+            write_unaligned(out.add(i), value);
         }
+        (u64::from(edx) << 32) | u64::from(eax)
     }
 }
 
@@ -62,7 +71,7 @@ port! {
     /// Start with an empty rectangle, then write the first selected neighbor edge within the city.
     /// The success test compares only the resulting X bounds. EAX's upper bytes come from the output pointer.
     #[port(address = 0x0072_A820, owner = "zonedeveloper", name = "GetNeighborCellsAtEdgeOfLot")]
-    pub unsafe extern "thiscall" fn fc4p_0072a820(this: *mut u8, rect: *const i32, flags: u32, out: *mut i32) -> u32 {
+    pub unsafe extern "thiscall" fn fc4p_0072a820(this: *mut u8, rect: *const i32, flags: u32, out: *mut i32) -> u64 {
         unsafe {
             write_unaligned(out.add(2), -1);
             write_unaligned(out.add(3), -1);
@@ -115,7 +124,7 @@ port! {
                 }
             }
             let valid = read_unaligned(out.add(2)) >= read_unaligned(out);
-            (out as u32 & !0xFF) | u32::from(valid)
+            (u64::from(u32::from(valid)) << 32) | u64::from((out as u32 & !0xFF) | u32::from(valid))
         }
     }
 }

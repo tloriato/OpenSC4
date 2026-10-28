@@ -24,7 +24,7 @@ port! {
     /// Save version one, the cell-map dimensions and each cell's lot reference, X outer and Z inner.
     /// Return whether the stream has no error in AL, retaining its upper EAX bytes.
     #[port(address = 0x0072_AB40, owner = "zonedeveloper", name = "WriteLotMap")]
-    pub unsafe extern "thiscall" fn fc4p_0072ab40(this: *mut u8, stream: *mut u8) -> u32 {
+    pub unsafe extern "thiscall" fn fc4p_0072ab40(this: *mut u8, stream: *mut u8) -> u64 {
         unsafe {
             vcall!(stream, 0x1C => fn(u32) -> u32, 1);
             let rows = read_unaligned(this.add(0x48).cast::<*mut u8>());
@@ -37,7 +37,7 @@ port! {
                 (end.wrapping_sub(start) as i32) >> 2
             } else { 0 };
             vcall!(stream, 0x24 => fn(i32) -> u32, width);
-            vcall!(stream, 0x24 => fn(i32) -> u32, height);
+            let mut eax = vcall!(stream, 0x24 => fn(i32) -> u32, height);
             let mut row = read_unaligned(this.add(0x48).cast::<*mut u8>());
             while row != read_unaligned(this.add(0x4C).cast::<*mut u8>()) {
                 let mut cell = read_unaligned(row.cast::<*mut u32>());
@@ -46,9 +46,10 @@ port! {
                     cell = cell.wrapping_add(1);
                 }
                 row = row.wrapping_add(12);
+                eax = read_unaligned(this.add(0x4C).cast::<u32>());
             }
-            let error = vcall!(stream, 0x48 => fn() -> u32);
-            (error & !0xFF) | u32::from(error as u8 == 0)
+            let error = super::virtual_registers(stream, 0x48, eax, read_unaligned(stream.cast::<u32>()), &[]);
+            (error & !0xFF) | u64::from(error as u8 == 0)
         }
     }
 }
@@ -56,17 +57,18 @@ port! {
 port! {
     /// Draw X then Z on each of at most 999 attempts, returning the first non-null lot pointer.
     #[port(address = 0x0072_B3C0, owner = "zonedeveloper", name = "GetRandomLot")]
-    pub unsafe extern "thiscall" fn fc4p_0072b3c0(this: *mut u8) -> *mut u8 {
+    pub unsafe extern "thiscall" fn fc4p_0072b3c0(this: *mut u8) -> u64 {
         unsafe {
             let manager = LotManager::from_ptr(this);
+            let mut row = core::ptr::null_mut::<u8>();
             for _ in 0..999 {
                 let x = uniform(random(), manager.cells_x());
                 let z = uniform(random(), manager.cells_z());
-                let row = read_unaligned(manager.rows().wrapping_add(x.wrapping_mul(12) as usize).cast::<*mut u8>());
+                row = read_unaligned(manager.rows().wrapping_add(x.wrapping_mul(12) as usize).cast::<*mut u8>());
                 let lot = read_unaligned(row.wrapping_add(z.wrapping_mul(4) as usize).cast::<*mut u8>());
-                if !lot.is_null() { return lot; }
+                if !lot.is_null() { return (u64::from(row as u32) << 32) | u64::from(lot as u32); }
             }
-            core::ptr::null_mut()
+            u64::from(row as u32) << 32
         }
     }
 }

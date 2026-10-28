@@ -12,8 +12,8 @@ game_fn! { fn includes_cell(this: *mut u8, x: i32, z: i32) -> u32 = "thiscall" 0
 game_fn! { fn matches_zone(this: *mut u8, x: i32, z: i32) -> u32 = "thiscall" 0x0072_A040; }
 game_fn! { fn has_network(this: *mut u8, x: i32, z: i32) -> u32 = "thiscall" 0x0072_A010; }
 game_fn! { fn occupied(this: *mut u8, x: i32, z: i32) -> u32 = "thiscall" 0x0072_C050; }
-game_fn! { fn cell_code(this: *mut u8, x: i32, z: i32, zone_not_needed: u32, water_allowed: u32) -> i32
-= "thiscall" 0x0072_C200; }
+game_fn! { fn cell_code(this: *mut u8, entry_edx: u32, x: i32, z: i32, zone_not_needed: u32, water_allowed: u32) -> u64
+= "fastcall" 0x0072_C200; }
 
 port! {
     /// Test real lots and, in highlight mode, virtually deleted and newly created lots.
@@ -94,29 +94,40 @@ port! {
 port! {
     /// Return the minimum cell placement code across a rectangle, X outer and Z inner, starting at eight.
     /// Water is allowed when requested or when the configuration's low result byte allows it.
+    /// The register signature captures incoming EDX; the seven stack arguments retain their thiscall positions.
+    /// EDX at return is the last cell call's EDX, the height for an empty Z range, or its preceding value.
     #[port(address = 0x0072_C2D0, owner = "zonedeveloper", name = "CanCreateLotRect")]
-    pub unsafe extern "thiscall" fn fc4p_0072c2d0(
-        this: *mut u8, x: i32, z: i32, width: i32, height: i32,
+    pub unsafe extern "fastcall" fn fc4p_0072c2d0(
+        this: *mut u8, entry_edx: u32, x: i32, z: i32, width: i32, height: i32,
         zone_not_needed: u32, water_allowed: u32, config: *mut u8
-    ) -> i32 {
+    ) -> u64 {
         unsafe {
+            let mut edx = entry_edx;
             let water = if water_allowed as u8 != 0 { 1 }
-                else if !config.is_null() { vcall!(config, 0x38 => fn() -> u32) as u8 }
+                else if !config.is_null() {
+                    let result = super::virtual_registers(config, 0x38,
+                        read_unaligned(config.cast::<u32>()), edx, &[]);
+                    edx = (result >> 32) as u32;
+                    result as u8
+                }
                 else { 0 };
             let water_word = (water_allowed & !0xFF) | u32::from(water);
             let end_x = x.wrapping_add(width);
             let end_z = z.wrapping_add(height);
             let mut result = 8;
             let mut cx = x;
+            if cx < end_x { edx = height as u32; }
             while cx < end_x {
                 let mut cz = z;
                 while cz < end_z {
-                    result = result.min(cell_code(this.wrapping_sub(4), cx, cz, zone_not_needed, water_word));
+                    let code = cell_code(this.wrapping_sub(4), water_word, cx, cz, zone_not_needed, water_word);
+                    edx = (code >> 32) as u32;
+                    result = result.min(code as i32);
                     cz = cz.wrapping_add(1);
                 }
                 cx = cx.wrapping_add(1);
             }
-            result
+            (u64::from(edx) << 32) | u64::from(result as u32)
         }
     }
 }
