@@ -119,6 +119,7 @@ mod io;
 mod jobs;
 mod links;
 mod queries;
+mod scan;
 mod sort;
 mod tree;
 
@@ -133,6 +134,7 @@ const COUNT: usize = capacity::PORTS.len()
     + jobs::PORTS.len()
     + links::PORTS.len()
     + queries::PORTS.len()
+    + scan::PORTS.len()
     + sort::PORTS.len()
     + tree::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
@@ -144,6 +146,7 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     jobs::PORTS,
     links::PORTS,
     queries::PORTS,
+    scan::PORTS,
     sort::PORTS,
     tree::PORTS,
 ]);
