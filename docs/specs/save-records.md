@@ -181,6 +181,20 @@ The separate traffic **network map**, city component 42 (IID `0xCA0F81B9`, class
 has its full versioned wire layout in [traffic-network.md §6.2](traffic-network.md#62-traffic-network-map-0x6a0f82b2-compat),
 including tiles, intersections, reference lists and the final occupant-to-four-lists table.
 
+The remaining SR36 occupant layouts are now specified by their owners:
+
+| Class record | Complete wire layout | Validation in 749 reference end saves (re-sr37, 2026-10-28) |
+|---|---|---|
+| `0x2977AA48` terrain-decal prop | [lot-records §10.5](lot-records.md#105-csc4propoccupantterraindecal-0x2977aa48-compat): outer v3, complete prop, 47-byte extension | 44 class records / 4,683 objects / 641,571 decompressed bytes |
+| `0x29D25F1D` fire occupant | [disasters §5.11.2](disasters.md#5112-saved-fire-occupant-and-inline-flames-sr36-2-compat): outer v3, occupant base, three u32, target reference, inline flames with independent versions | 498 class records / 860 objects / 1,264 inline flames / 107,840 decompressed bytes |
+| `0xC9EFB016` burnt-building prop | [lot-records §10.6](lot-records.md#106-csc4propoccupantburntbuilding-0xc9efb016-compat): outer v3, complete prop, 24-byte source bounds | 38 class records / 75 objects / 8,550 decompressed bytes |
+
+These class records use group `0x299B2D1B`, instance 0 and foundations §3.3 entry framing.
+All 5,618 object payloads were decoded field by field and re-encoded exactly, with no bytes
+left over; counts above include the 12-byte entry headers. Legacy inner-prop timer gates and
+flame-v2 transforms are instruction-derived rules, not additional observed corpus variants.
+The proof concerns these layouts; it does not rerun the standalone archive's full-type audit.
+
 ### 3.2 Classes FreeCity4 does not replace
 
 City `0x8990C372`; history warehouse `0x89EFA536`; demolition `0x0990C38A`; dispatch manager `0x4990BD93`;

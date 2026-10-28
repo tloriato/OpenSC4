@@ -109,6 +109,12 @@ specified in lot-records.md §10.3 and §10.4; the prop record (§7) is nested i
 | `cSC4PropOccupantBurntBuilding` | `0xC9EFB016` | `0xD8` | `QueryInterface` answers `cISC4PropOccupant` with the **base**; occupant sub-object at `+8`; `SetBoundsFromOccupant` `0x005EEB70` (lot-developer.md §7.2) |
 | `cSC4PropOccupantAutomataController` | `0x2A4017A0` | `0x88` | occurs in no save; the stride-`0x88` allocator group of §4.2 is its pool (`operator new` `0x005EDD80`, GZCOM creator `0x005F0490`, destructor `0x005F04D0` all use pool `0x00B0A914`). Its constructor `0x005EFDB0` embeds a full prop occupant at `+0x00` (all six sub-objects, prop-lotconfig.md §A2), then adds fields up to `+0x84` (a `cIGZMessageTarget2`-shaped 8-byte sub-object at `+0x74`, `vftable_1` `0x00AA4CC8` at `+0x08`, `vftable_2` `0x00AA4CB8` at `+0x0C`, `vftable_3` `0x00AA4C30` at `+0x10`, `vftable_4` `0x00AA4C14` at `+0x14`, `vftable_5` `0x00AA4BB0` at `+0x28`) and a byte flag at `+0x84` (lot-records.md §16 Q6 keeps the rest) |
 
+The terrain-decal and burnt-building wire layouts, including their embedded prop records and version
+gates, are specified in [lot-records §10.5](lot-records.md#105-csc4propoccupantterraindecal-0x2977aa48-compat)
+and [§10.6](lot-records.md#106-csc4propoccupantburntbuilding-0xc9efb016-compat) (SR36-1/SR36-3).
+The terrain-decal extension's complete-object offsets use its extra primary interface at O+0;
+its embedded prop starts at O+4, so they are not offsets from the plain prop pointer used in §2.
+
 The three non-plain sizes are what `CreateProp` allocates when GZCOM has no registered class for the profile's
 occupant class ID (prop-lotconfig.md §A6.1 step 3).
 

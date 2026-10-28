@@ -1027,6 +1027,86 @@ the list reference. The factory-only test passes while the claim of replaced nat
 owner-replacement test must reproduce that creation/extinguish/teardown sequence without entering the
 native constructor or the concrete extinguish method; a factory hit count by itself cannot establish it.
 
+#### 5.11.2 Saved fire occupant and inline flames (SR36-2) *[compat]*
+
+**Answered 2026-10-28 (re-sr37).** Class-store key `(0x29D25F1D, 0x299B2D1B, 0)`.
+The following describes the object payload, after the enclosing size, CRC and object ID
+(foundations §3.3). All primitives are little-endian, without alignment or padding.
+
+| Order | Field | Encoding | Rule / destination relative to the primary fire interface |
+|---|---|---|---|
+| 1 | fire-occupant version | u16 | Write emits 3; Read accepts exactly 3 |
+| 2 | complete occupant base | lot-records §2.3 | Begins with its own u16 version 4; includes the full exemplar holder, type `0x69D25C5F` |
+| 3 | counter | u32 | +0x40 |
+| 4 | stage | u32 | +0x44; the bit pattern of the signed runtime stage, e.g. `0xFFFFFFFF` means −1 |
+| 5 | maximum stage | u32 | +0x48 |
+| 6 | target occupant | `ref` | +0x54; u32 object ID, then u32 class ID only when object ID is nonzero; no inline target body |
+| 7 | flame count | u32 | Number of inline flame records immediately following |
+| 8 | flames | count × flame record | Vector order; each element has the independent version and layout below |
+
+Write `0x00470140`–`0x00470191` establishes this order: Uint16 version, occupant writer,
+three Uint32 fields, `SC4WriteGZSerializable` `0x005D99A0`, then Uint32 vector length.
+The actual Serializable receiver is primary +0x08 (constructor `0x004711F4`), so its
+`+0x38/+0x3C/+0x40` accesses address the counter/stage/maximum stage. They **do not** save
+the primary object's top-flame and side-flame counts at +0x38/+0x3C. Hosed amount,
+extinguish time, fire ID, the byte at +0x64, and live effect pointers are not fields in this body.
+Retain the signed stage's bits; the save/load calls use Uint32, not Float32 or a byte enum.
+
+Read compares the outer version with 3 at `0x00471A87`; no other outer version is accepted,
+and there are no conditional additions to the outer body. After a successful base read it
+loads the three words, releases and clears the old target, then resolves the new reference
+with requested occupant IID `0x26BB767E` and final helper argument false
+(`0x00471ACC`–`0x00471AEA`). It does not call `SetTarget`, recalculate the flame counts, or
+load the omitted runtime fields. It allocates each flame, calls its reader, and appends it
+to the existing vector (`0x00471B08`–`0x00471B67`); this function does not clear existing
+flames when called on a reused object. Ordinary store loads use a newly constructed object.
+
+Both outer methods skip the derived body when the occupant base returns false, then return
+`GetError() == 0`; a rejected base version without a stream error can therefore still yield
+true. An outer version mismatch always returns false before the base. Read returns false
+immediately if an individual flame reader returns false; Write checks stream error after
+each inline flame and exits false on error. There is no cursor rollback or enclosing length
+skip on these paths (`0x004701E3`–`0x00470208`, `0x00471B2F`–`0x00471B88`). The base's
+nested-holder return behavior remains as specified in lot-records §2.3.
+
+**Inline flame record (`cSC4Flame`).** Write is inlined in the outer writer at
+`0x004701A0`–`0x004701D7`; Read is `0x004700A0`.
+
+| Order | Field | Encoding | Rule |
+|---|---|---|---|
+| 1 | flame version | u16 | Write emits 3; Read rejects 0 and 1, accepts every value ≥2 without an upper bound |
+| 2 | side-flame flag | bool (one u8) | Flame +0x02; Write copies the stored byte (ordinary values 0/1), Read normalizes any nonzero byte to true |
+| 3 | facing index | u32 | Flame +0x04; used for the side's orientation; no range check in Read |
+| 4 | position | 3 × f32 | Flame +0x08…+0x10, x, y, z |
+| 5 | transform | version-dependent | Flame +0x14; table below |
+
+| Flame version | Transform bytes, in wire order | Transform size |
+|---|---|---|
+| 2 | Nine f32 matrix elements in memory order (three rows of three); three f32 translation x/y/z; one f32 scale; one u32 transform serial | 56 bytes, **no mask byte** |
+| ≥3 | u8 mask; nine f32 matrix elements if `mask & 4`; three f32 translation x/y/z if `mask & 1`; one f32 scale if `mask & 2` | `1 + 36·[bit 2] + 12·[bit 0] + 4·[bit 1]` bytes |
+
+The flame gates are unsigned u16 comparisons at `0x004700B4` and `0x004700EB`. Version 2
+calls `S3DTransformLegacyLoad` `0x005DA930`: the matrix read is `0x005DA96C`, translation
+reads `0x005DA9E4`–`0x005DA9FC`, scale `0x005DAA2B`, final Uint32 `0x005DAA63`.
+Only the low byte of that legacy serial is retained in the transform (`0x005DAA66`–`0x005DAA6B`).
+Versions ≥3 call `0x005DA710`, the compact transform reader. Upper mask bits add no
+payload; the matrix/translation/scale defaults and state effects are the existing transform
+contract in stream-helpers §2 and network-occupants NO15. The writer always uses the compact
+helper `0x005DA8C0`. Neither form carries an effect name, effect handle or extra class reference.
+The ordinary flame record is 20 bytes when the mask is zero; a v2 record is 75 bytes.
+The flag's byte-copy writer is `0x005D9FD0`; normalization occurs only in reader `0x005D9FA0`.
+
+**Corpus proof / worked size.** The 749 `golden/<key>/end.sc4` files available to re-sr37
+contained 498 fire class records, **860 fire occupants and 1,264 inline flames**, totaling
+107,840 decompressed class-record bytes (97,520 occupant payload bytes). A field-driven
+parser consumed every field and re-encoded every primitive exactly, with zero remainder.
+All outer versions were 3, bases 4, both holder versions 2, and flame versions 3 with mask 0.
+Every base was 58 bytes (including its one own property); every target reference was nonnull
+and occupied 8 bytes. Consequently a payload was `2 + 58 + 12 + 8 + 4 + 20·N = 84 + 20·N`
+bytes; entry size adds 12. Observed `N: object count` was `0:30, 1:574, 2:204, 3:20, 4:11,
+8:16, 10:5`. Stage was 0 for 830 objects and −1 for 30. Flame v2 and nonzero compact masks
+are established by executable instructions, not exercised by this corpus.
+
 ### 5.12 Timing in the harness
 
 With no fire station (coverage 0, `k = 0`) and the default `maxStage` 2, the counter rises by 1 per second. The
