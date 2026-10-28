@@ -15,6 +15,24 @@
 
 use super::*;
 
+/// The cell getter also leaves caller-visible ECX and EDX values. Capture them at the virtual call itself;
+/// its hidden EDX input is x, in addition to the two ordinary stack arguments.
+unsafe fn cell_registers(grid: *mut u8, x: i32, z: i32) -> (u32, u32, u32) {
+    // SAFETY: the caller supplies the total grid with its cell getter at +0x1C.
+    let target = unsafe { crate::abi::vslot(grid, 0x1C) };
+    let eax: u32;
+    let mut ecx = grid as u32;
+    let mut edx = x as u32;
+    // SAFETY: thiscall, two stack words removed by the callee, plus the original's EDX input. Every
+    // caller-saved register is declared, and the three integer results are captured before Rust resumes.
+    unsafe {
+        core::arch::asm!("push {z}", "push edx", "call {target}",
+            z = in(reg) z, target = in(reg) target,
+            lateout("eax") eax, inout("ecx") ecx, inout("edx") edx, clobber_abi("C"));
+    }
+    (eax, ecx, edx)
+}
+
 port! {
     /// The simulator's class identifier, independent of the interface pointer.
     #[port(address = 0x006B_D4B0, owner = "landvalue", name = "cSC4LandValueSimulator::GetGZCLSID")]
@@ -27,15 +45,17 @@ port! {
     /// Answers the primary, unknown, message-target and serializable IIDs. Writes the interface before
     /// calling the primary interface's AddRef. Only AL is replaced in that call's EAX result.
     /// Unsupported IIDs leave the output untouched and retain the comparison arithmetic's upper EAX bytes.
+    /// The hidden EDX input and EDX:EAX result preserve EDX on rejection and the AddRef's EDX on success;
+    /// the stack arguments and eight-byte callee pop are those of the original thiscall entry.
     #[port(address = 0x006B_D4C0, owner = "landvalue", name = "cSC4LandValueSimulator::QueryInterface")]
-    pub unsafe extern "thiscall" fn fc4p_006bd4c0(this: *mut u8, iid: u32, out: *mut *mut u8) -> u32 {
+    pub unsafe extern "fastcall" fn fc4p_006bd4c0(this: *mut u8, entry_edx: u32, iid: u32, out: *mut *mut u8) -> u64 {
         let offset = match iid {
             1 | 0xE778_1D8C => 0,
             0x4522_94AA => 4,
             0xE4FD_A3D4 => 8,
             _ => {
                 let eax = if iid > 0xE4FD_A3D4 { iid } else { iid.wrapping_sub(0x4522_94AA) };
-                return eax & !0xFF;
+                return (u64::from(entry_edx) << 32) | u64::from(eax & !0xFF);
             }
         };
         let interface = if this.is_null() { this } else { this.wrapping_add(offset) };
@@ -43,8 +63,13 @@ port! {
         // A null primary pointer still writes null before attempting the same virtual call.
         unsafe {
             out.write_unaligned(interface);
-            let count = vcall!(this, 0x04 => fn() -> u32);
-            (count & !0xFF) | 1
+            let vtable = this.cast::<u32>().read_unaligned();
+            let mut call = crate::abi::RawCall::new(crate::abi::Conv::Thiscall,
+                crate::abi::vslot(this, 0x04), this as u32, &[]);
+            call.eax = vtable;
+            call.edx = out as u32;
+            crate::abi::call_raw(&mut call);
+            (u64::from(call.edx) << 32) | u64::from((call.eax & !0xFF) | 1)
         }
     }
 }
@@ -71,18 +96,31 @@ port! {
 port! {
     /// Reads total land value in cell coordinates and compares its low byte with the two unsigned wealth
     /// thresholds. The thresholds are read after the grid call, and the low threshold takes precedence.
-    #[port(address = 0x006B_D700, owner = "landvalue", name = "cSC4LandValueSimulator::GetLandValueType")]
-    pub unsafe extern "thiscall" fn fc4p_006bd700(this: *mut u8, x: i32, z: i32) -> u32 {
-        // SAFETY: the game's simulator and its total grid.
-        let lv = unsafe { LandValueSim::from_ptr(this) };
-        let value = unsafe { vcall!(lv.total_grid(), 0x1C => fn(i32, i32) -> u32, x, z) } as u8;
-        if value < lv.low_wealth_boundary() {
+    #[port(address = 0x006B_D700, owner = "landvalue", name = "cSC4LandValueSimulator::GetLandValueType", naked)]
+    pub unsafe extern "C" fn fc4p_006bd700() {
+        // The Rust body supplies EAX, ECX and EDX in a private stack buffer. The entry only marshals
+        // arguments and result registers, since the ordinary Rust ABI has no ECX return channel.
+        core::arch::naked_asm!("sub esp, 12", "mov edx, esp",
+            "push [esp + 20]", "push [esp + 20]", "call {}",
+            "mov eax, [esp]", "mov ecx, [esp + 4]", "mov edx, [esp + 8]",
+            "add esp, 12", "ret 8", sym land_value_type);
+    }
+}
+
+unsafe extern "fastcall" fn land_value_type(this: *mut u8, registers: *mut [u32; 3], x: i32, z: i32) {
+    // SAFETY: the game's simulator and its total grid, with the entry's private result buffer.
+    unsafe {
+        let lv = LandValueSim::from_ptr(this);
+        let (eax, ecx, edx) = cell_registers(lv.total_grid(), x, z);
+        let value = eax as u8;
+        let result = if value < lv.low_wealth_boundary() {
             1
         } else if value < lv.high_wealth_boundary() {
             2
         } else {
             3
-        }
+        };
+        registers.write([result, ecx, edx]);
     }
 }
 
@@ -97,22 +135,29 @@ port! {
 port! {
     /// Decrements counts greater than one using a signed comparison. Otherwise calls Shutdown, then the
     /// deleting destructor with flag 1, rereading the vtable between calls, and returns zero.
+    /// The hidden EDX argument preserves its entry value when no call is made; otherwise the destructor's
+    /// EDX is returned alongside EAX. No stack arguments are added to the original thiscall entry.
     #[port(address = 0x006B_D8A0, owner = "landvalue", name = "cSC4LandValueSimulator::Release")]
-    pub unsafe extern "thiscall" fn fc4p_006bd8a0(this: *mut u8) -> u32 {
+    pub unsafe extern "fastcall" fn fc4p_006bd8a0(this: *mut u8, entry_edx: u32) -> u64 {
         // SAFETY: the game calls this on a live simulator.
         let lv = unsafe { LandValueSim::from_ptr(this) };
         let count = lv.reference_count();
         if count > 1 {
             let next = count.wrapping_sub(1);
             lv.set_reference_count(next);
-            next as u32
+            (u64::from(entry_edx) << 32) | u64::from(next as u32)
         } else {
             // SAFETY: the simulator's virtual Shutdown and deleting destructor.
             unsafe {
-                vcall!(this, 0x10 => fn() -> u32);
-                vcall!(this, 0x30 => fn(u32) -> *mut u8, 1);
+                let shutdown_eax = vcall!(this, 0x10 => fn() -> u32);
+                let vtable = this.cast::<u32>().read_unaligned();
+                let mut call = crate::abi::RawCall::new(crate::abi::Conv::Thiscall,
+                    crate::abi::vslot(this, 0x30), this as u32, &[1]);
+                call.eax = shutdown_eax;
+                call.edx = vtable;
+                crate::abi::call_raw(&mut call);
+                u64::from(call.edx) << 32
             }
-            0
         }
     }
 }
@@ -262,15 +307,21 @@ mod tests {
         unsafe { LandValueSim::from_ptr(object.ptr()) }
     }
 
+    unsafe fn type_value(this: *mut u8, x: i32, z: i32) -> u32 {
+        // SAFETY: the caller provides a simulator with a live total grid.
+        unsafe { call_thiscall_with_eax(fc4p_006bd700 as *const () as usize, this, &[x as u32, z as u32], 0) }.0
+    }
+
     fn bytes(object: &mut Object) -> Vec<u8> {
         // SAFETY: test simulator objects have 0x100 bytes.
         unsafe { std::slice::from_raw_parts(object.ptr(), 0x100) }.to_vec()
     }
 
-    extern "thiscall" fn add_ref(this: *mut u8) -> u32 {
+    extern "fastcall" fn add_ref(this: *mut u8, entry_edx: usize) -> u64 {
         log(Call::AddRef(this as usize));
         STATE.with(|s| {
             let s = s.borrow();
+            assert_eq!(entry_edx, s.output);
             // SAFETY: the test's output word remains live across the virtual call.
             assert_eq!(unsafe { *(s.output as *const usize) }, s.interface);
         });
@@ -278,7 +329,7 @@ mod tests {
         let lv = unsafe { LandValueSim::from_ptr(this) };
         let count = lv.reference_count().wrapping_add(1);
         lv.set_reference_count(count);
-        count as u32
+        0x7654_3210_0000_0000 | u64::from(count as u32)
     }
 
     extern "thiscall" fn shutdown(this: *mut u8) -> u32 {
@@ -291,9 +342,11 @@ mod tests {
         0xABCD_EF01
     }
 
-    extern "thiscall" fn delete(this: *mut u8, flags: u32) -> *mut u8 {
+    extern "fastcall" fn delete(this: *mut u8, entry_edx: usize, flags: u32) -> u64 {
         log(Call::Delete(this as usize, flags));
-        this
+        // SAFETY: the test's primary interface vtable word.
+        assert_eq!(entry_edx, unsafe { this.cast::<usize>().read() });
+        0x7654_3210_0000_0000 | this as u64
     }
 
     #[test]
@@ -320,7 +373,10 @@ mod tests {
             let mut expected = bytes(&mut object);
             expected[0x10..0x14].copy_from_slice(&0x0012_34FFu32.to_le_bytes());
             // SAFETY: live primary object, output and AddRef vtable slot.
-            assert_eq!(unsafe { fc4p_006bd4c0(object.ptr(), iid, &mut out) }, 0x0012_3401);
+            assert_eq!(
+                unsafe { fc4p_006bd4c0(object.ptr(), 0, iid, &mut out) },
+                0x7654_3210_0012_3401
+            );
             assert_eq!(out as usize, object.ptr() as usize + offset);
             assert_eq!(calls(), [Call::AddRef(object.ptr() as usize)]);
             assert_eq!(bytes(&mut object), expected);
@@ -349,11 +405,14 @@ mod tests {
                 iid.wrapping_sub(0x4522_94AA)
             } & !0xFF;
             // SAFETY: rejected IIDs access neither interface nor output.
-            assert_eq!(unsafe { fc4p_006bd4c0(object.ptr(), iid, &mut out) }, upper);
+            assert_eq!(
+                unsafe { fc4p_006bd4c0(object.ptr(), 0x7654_3210, iid, &mut out) },
+                0x7654_3210_0000_0000 | u64::from(upper)
+            );
             assert_eq!(out as usize, 0x1234);
             assert_eq!(
-                unsafe { fc4p_006bd4c0(core::ptr::null_mut(), iid, core::ptr::null_mut()) },
-                upper
+                unsafe { fc4p_006bd4c0(core::ptr::null_mut(), 0x7654_3210, iid, core::ptr::null_mut()) },
+                0x7654_3210_0000_0000 | u64::from(upper)
             );
         }
         assert!(calls().is_empty());
@@ -403,7 +462,10 @@ mod tests {
             let mut expected = bytes(&mut object);
             expected[0x10..0x14].copy_from_slice(&(count - 1).to_le_bytes());
             // SAFETY: these counts do not access a virtual slot.
-            assert_eq!(unsafe { fc4p_006bd8a0(object.ptr()) }, (count - 1) as u32);
+            assert_eq!(
+                unsafe { fc4p_006bd8a0(object.ptr(), 0x7654_3210) },
+                0x7654_3210_0000_0000 | u64::from((count - 1) as u32)
+            );
             assert_eq!(bytes(&mut object), expected);
         }
         assert!(calls().is_empty());
@@ -422,7 +484,10 @@ mod tests {
             simulator(&mut object).set_reference_count(count);
             let mut expected = bytes(&mut object);
             expected[..4].copy_from_slice(&(second.as_ptr() as u32).to_le_bytes());
-            assert_eq!(unsafe { fc4p_006bd8a0(object.ptr()) }, 0);
+            assert_eq!(
+                unsafe { fc4p_006bd8a0(object.ptr(), 0xABCD_EF12) },
+                0x7654_3210_0000_0000
+            );
             let p = object.ptr() as usize;
             assert_eq!(calls(), [Call::Shutdown(p), Call::Delete(p, 1)]);
             assert_eq!(bytes(&mut object), expected);
@@ -527,7 +592,7 @@ mod tests {
         let before = bytes(&mut object);
         for (x, z, want) in [(0, 0, 1), (3, 1, 1), (4, 0, 2), (7, 1, 2), (8, 0, 3), (11, 1, 3)] {
             // SAFETY: simulator's total grid has the expected slot.
-            assert_eq!(unsafe { fc4p_006bd700(object.ptr(), x, z) }, want);
+            assert_eq!(unsafe { type_value(object.ptr(), x, z) }, want);
             assert_eq!(calls(), [Call::Cell(&grid as *const Grid as usize, x, z)]);
         }
         for (x, z) in [(6, 0), (7, 0), (6, 1), (7, 1)] {
@@ -573,9 +638,39 @@ mod tests {
                     3
                 };
                 // SAFETY: constant grid accepts every signed coordinate unchanged.
-                assert_eq!(unsafe { fc4p_006bd700(object.ptr(), i32::MIN, i32::MAX) }, want);
+                assert_eq!(unsafe { type_value(object.ptr(), i32::MIN, i32::MAX) }, want);
                 assert_eq!(calls(), [Call::Cell(&grid as *const Grid as usize, i32::MIN, i32::MAX)]);
             }
+        }
+    }
+
+    #[unsafe(naked)]
+    unsafe extern "thiscall" fn register_cell(_this: *mut u8, _x: i32, _z: i32) -> u64 {
+        core::arch::naked_asm!("mov eax, edx", "mov ecx, 0x10203040", "mov edx, 0x76543210", "ret 8");
+    }
+
+    #[unsafe(naked)]
+    unsafe extern "thiscall" fn type_with_ecx(_this: *mut u8, _x: i32, _z: i32) -> u64 {
+        core::arch::naked_asm!("push [esp + 8]", "push [esp + 8]", "call {}",
+            "mov edx, ecx", "ret 8", sym fc4p_006bd700);
+    }
+
+    #[test]
+    fn type_keeps_the_grid_calls_ecx_and_edx() {
+        let vt = table(&[(0x1C, register_cell as *const () as usize)]);
+        let mut grid = [vt.as_ptr() as usize];
+        let mut object = Object::new(0x100);
+        let lv = simulator(&mut object);
+        lv.set_total_grid(grid.as_mut_ptr().cast());
+        for (low, high, result) in [(120, 200, 1), (70, 120, 2), (70, 119, 3)] {
+            lv.set_low_wealth_boundary(low);
+            lv.set_high_wealth_boundary(high);
+            // SAFETY: the test grid returns the incoming EDX in EAX and fixed ECX/EDX values.
+            let (_, edx) =
+                unsafe { call_thiscall_with_eax(fc4p_006bd700 as *const () as usize, object.ptr(), &[119, 456], 0) };
+            assert_eq!(edx, 0x7654_3210);
+            let pair = unsafe { type_with_ecx(object.ptr(), 119, 456) };
+            assert_eq!(pair, 0x1020_3040_0000_0000 | result);
         }
     }
 
