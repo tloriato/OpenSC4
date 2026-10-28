@@ -137,6 +137,7 @@ unsafe fn store(base: u32, offset: u32, value: u32) {
 
 pub mod copying;
 pub mod geometry;
+pub mod pool;
 pub mod sorting;
 pub mod suitability;
 pub mod surface;
@@ -144,6 +145,7 @@ pub mod trees;
 
 const COUNT: usize = copying::PORTS.len()
     + geometry::PORTS.len()
+    + pool::PORTS.len()
     + sorting::PORTS.len()
     + suitability::PORTS.len()
     + surface::PORTS.len()
@@ -151,6 +153,7 @@ const COUNT: usize = copying::PORTS.len()
 const ALL: [Port; COUNT] = crate::port::concat(&[
     copying::PORTS,
     geometry::PORTS,
+    pool::PORTS,
     sorting::PORTS,
     suitability::PORTS,
     surface::PORTS,
