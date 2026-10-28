@@ -1618,3 +1618,8 @@ if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 4)
     target_compile_options(fc4_dispatch_pylon_test PRIVATE /W3 /permissive- /utf-8 /EHsc)
     add_test(NAME dispatch_pylon COMMAND fc4_dispatch_pylon_test)
 endif()
+
+# Incoming automaton events use Data1, independently of outgoing post ownership.
+add_executable(fc4_dispatch_message_test tests/dispatch_message_test.cpp)
+target_include_directories(fc4_dispatch_message_test PRIVATE plugin)
+add_test(NAME dispatch_message COMMAND fc4_dispatch_message_test)

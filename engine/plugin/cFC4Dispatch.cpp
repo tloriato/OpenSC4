@@ -14,6 +14,7 @@
 #include "cFC4Dispatch.h"
 
 #include "FC4Diag.h"
+#include "FC4DispatchMessage.h"
 #include "FC4DispatchPylon.h"
 #include "FC4Fpu.h"
 #include "FC4Log.h"
@@ -529,8 +530,7 @@ bool cFC4DispatchManager::DoMessage(cIGZMessage2* pMessage) {
         FC4_ACQUIRED(m, "QueryInterface");
         data2 = static_cast<uint32_t>(m->GetData2());
         data3 = static_cast<uint32_t>(m->GetData3());
-        object = fc4::TokenOf(m->GetIGZUnknown());
-        if (type == kMsgRemoveOccupant) object = fc4::TokenOf(reinterpret_cast<void*>(m->GetData1()));
+        object = fc4::DispatchMessageObject(type, *m);
         FC4_RELEASE(m);
     }
     return fc4_dispatch_do_message(core_, type, data2, data3, object);
