@@ -16,8 +16,10 @@
 #include "FC4Diag.h"
 #include "FC4Fpu.h"
 #include "FC4Log.h"
+#include "FC4PropCityCommon.h"
 #include "FC4RefAudit.h"
 #include "FC4Streams.h"
+#include "compat/FC4Compat.h"
 #include "cFC4Message2Standard.h"
 
 #include "GZServPtrs.h"
@@ -27,6 +29,8 @@
 #include "cIGZMessageServer2.h"
 #include "cISC4App.h"
 #include "cISC4City.h"
+#include "cISC43DRender.h"
+#include "cISC4View3DWin.h"
 #include "cISC4DispatchManager.h"  // cISC4DispatchSource is declared here
 #include "cISC4Occupant.h"
 #include "cISC4Automaton.h"
@@ -62,11 +66,8 @@ cISC4App* App() {
 // Wired: the message server and the subscriptions, the city, the AddRef /
 // Release pair, the terrain altitude, the dispatch sources' protection-side
 // slots (protection.md §8.2) and `resolve_ref` for the record's references.
-// NOT wired (NULL; a missing callback reads as 0 / false / none): the vehicle
-// view and its tracking and the pylons (create / move / place / return) and
-// `begin_vehicle`, `automaton_despawn`, `automaton_go_home` — presentation and
-// automata work that only the dispatch tool reaches (dispatch.md §0: no
-// shipped code path calls Dispatch except the tool). Logged at Init.
+// The original vehicle-view companion is retained through dispatch.md 4.1.3's
+// native boundary. Pylon and new-vehicle creation remain unwired below.
 
 bool AcquireMessageServer(void* u) {
     cFC4DispatchManager* s = Self(u);
@@ -225,6 +226,73 @@ void AutomatonGoHome(void*, uint64_t token) {
     if (vehicle != nullptr) vehicle->ReturnToSourceOccupant();  // dispatch.md §3, slot 29
 }
 
+uint64_t CreateVehicleView(void* u) {
+    using Allocate = void*(__cdecl*)(uint32_t);
+    using Construct = cIGZUnknown*(__thiscall*)(void*);
+    using Init = bool(__thiscall*)(void*);
+    auto allocate = reinterpret_cast<Allocate>(fc4::compat::DirectCall(fc4::compat::Direct::GlobalHeapAllocate));
+    auto construct = reinterpret_cast<Construct>(fc4::compat::DirectCall(fc4::compat::Direct::DispatchViewConstruct));
+    auto init = reinterpret_cast<Init>(fc4::compat::DirectCall(fc4::compat::Direct::DispatchViewInit));
+    if (!allocate || !construct || !init) return 0;
+    // Reach the renderer through the game's view interface; GetRenderer is borrowed.
+    cISC4View3DWin* cityView = fc4::propcity::View3D();
+    cISC43DRender* renderer = cityView ? cityView->GetRenderer() : nullptr;
+    FC4_ADDREF(renderer);
+    FC4_RELEASE(cityView);
+    if (!renderer) {
+        fc4::Log("dispatch vehicle-view: no renderer from the city view");
+        return 0;
+    }
+    void* memory = allocate(0xA0);
+    if (!memory) {
+        FC4_RELEASE(renderer);
+        return 0;
+    }
+    cIGZUnknown* view = construct(memory);
+    FC4_ADDREF(view);  // the constructor starts with zero references
+    init(view);       // the original owner ignores AL
+    renderer->AddViewObject(reinterpret_cast<cISC4ViewObject3D*>(view), 5, 1000);
+    Self(u)->SetNativeVehicleView(view, renderer);
+    fc4::Log("dispatch vehicle-view: retained companion %p, renderer %p", static_cast<void*>(view),
+             static_cast<void*>(renderer));
+    return fc4::TokenOf(view);
+}
+
+void DestroyVehicleView(void* u, uint64_t token) {
+    auto* view = reinterpret_cast<cIGZUnknown*>(static_cast<uintptr_t>(token));
+    cISC43DRender* renderer = Self(u)->ViewRenderer();
+    // dispatch.md 4.1.3: unregister before Shutdown, then release the owner's hold.
+    if (renderer) renderer->RemoveViewObject(reinterpret_cast<cISC4ViewObject3D*>(view));
+    using Shutdown = void(__thiscall*)(void*);
+    auto shutdown = reinterpret_cast<Shutdown>(fc4::compat::DirectCall(fc4::compat::Direct::DispatchViewShutdown));
+    if (view && shutdown) shutdown(view);
+    Self(u)->SetNativeVehicleView(nullptr, nullptr);
+    FC4_RELEASE_CREATED(view);  // this companion was constructed for this owner
+    FC4_RELEASE(renderer);
+}
+
+void RefreshVehicleView(void*, uint64_t token) {
+    using Refresh = void(__thiscall*)(void*);
+    auto refresh = reinterpret_cast<Refresh>(fc4::compat::DirectCall(fc4::compat::Direct::DispatchViewRefresh));
+    if (token && refresh) refresh(reinterpret_cast<void*>(static_cast<uintptr_t>(token)));
+}
+
+uint32_t TrackVehicle(void* u, uint64_t token, uint32_t kind) {
+    cIGZUnknown* view = Self(u)->NativeVehicleView();
+    auto* vehicle = reinterpret_cast<cISC4Automaton*>(static_cast<uintptr_t>(token));
+    using Track = uint32_t(__thiscall*)(void*, cISC4Occupant*, uint32_t, uint32_t, const char*);
+    auto track = reinterpret_cast<Track>(fc4::compat::DirectCall(fc4::compat::Direct::DispatchTrackOccupant));
+    return view && vehicle && track ? track(view, vehicle->AsOccupant(), kind, vehicle->GetCallNumber(), nullptr) : 0;
+}
+
+void UntrackVehicle(void* u, uint32_t handle) {
+    cIGZUnknown* view = Self(u)->NativeVehicleView();
+    using Untrack = bool(__thiscall*)(void*, uint32_t, bool);
+    auto untrack = reinterpret_cast<Untrack>(fc4::compat::DirectCall(fc4::compat::Direct::DispatchUntrackOccupant));
+    // SPEC-GAP: dispatch's removal sites do not specify immediate; use the fading path.
+    if (view && untrack) untrack(view, handle, false);
+}
+
 fc4_dispatch_host MakeHost(cFC4DispatchManager* self) {
     fc4_dispatch_host h{};
     h.struct_size = sizeof(h);
@@ -249,10 +317,12 @@ fc4_dispatch_host MakeHost(cFC4DispatchManager* self) {
     h.vehicle_in_group = &VehicleInGroup;
     h.automaton_despawn = &AutomatonDespawn;
     h.automaton_go_home = &AutomatonGoHome;
-    // NOT wired (the tool's presentation): create_vehicle_view,
-    // destroy_vehicle_view, refresh_vehicle_view, track_vehicle,
-    // untrack_vehicle, begin_vehicle,
-    // create_pylon and the pylon_* callbacks.
+    h.create_vehicle_view = &CreateVehicleView;
+    h.destroy_vehicle_view = &DestroyVehicleView;
+    h.refresh_vehicle_view = &RefreshVehicleView;
+    h.track_vehicle = &TrackVehicle;
+    h.untrack_vehicle = &UntrackVehicle;
+    // NOT wired: begin_vehicle, create_pylon and the pylon_* callbacks.
     return h;
 }
 

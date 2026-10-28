@@ -146,6 +146,10 @@ const ExecutableVersion kVersions[] = {
             0x00443E60,  // window Init, ignored result
             0x00442C80,  // window Close
             0x00443970,  // window OnTutorialEvent
+            0x0046F120,  // dispatch.md 4.1.3: vehicle-view constructor
+            0x0046B550,  // vehicle-view Init
+            0x0046D810,  // vehicle-view Shutdown
+            0x0046D2B0,  // vehicle-view HandleViewChanged
         },
         {0x00AB1160, 0x00AB2490},  // fire / police primary vtables (protection.md §15.1, §15.2)
         0x00AB3118,  // cSC4TractDeveloper primary vtable (tract-developer.md §1.1, §7.1)
@@ -639,6 +643,8 @@ uintptr_t DirectCall(Direct which) {
                                          "tutorial registry GetItem", "tutorial registry SetActive",
                                          "tutorial window constructor", "tutorial window Init",
                                          "tutorial window Close", "tutorial window event",
+                                         "dispatch view constructor", "dispatch view Init",
+                                         "dispatch view Shutdown", "dispatch view refresh",
 };
     static_assert(sizeof(kNames) / sizeof(kNames[0]) == static_cast<unsigned>(Direct::Count), "one name per target");
     static int state[static_cast<unsigned>(Direct::Count)] = {};  // 0 unknown, 1 available, -1 refused

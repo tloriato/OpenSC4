@@ -160,6 +160,11 @@ enum class Direct : unsigned {
     TutorialWindowInit,              // thiscall (), result ignored
     TutorialWindowClose,             // thiscall (), result ignored
     TutorialWindowEvent,             // thiscall (event), AL ignored
+    // dispatch.md 4.1.3: retained vehicle-view lifecycle, all thiscall ().
+    DispatchViewConstruct,           // EAX = allocated base
+    DispatchViewInit,                // AL ignored
+    DispatchViewShutdown,            // void
+    DispatchViewRefresh,             // HandleViewChanged, void
     Count
 };
 
