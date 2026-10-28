@@ -19,6 +19,30 @@ use super::*;
 const TERRAIN_MAX_HEIGHT: usize = 0x60;
 const TERRAIN_IS_LAND: usize = 0x90;
 
+// Keep the stored operand as a memory operand: loading it separately would quiet a signaling NaN before
+// the arithmetic chooses its result payload. Reverse subtraction also keeps the register operand's role.
+macro_rules! stored_float_op {
+    ($name:ident, $instruction:literal) => {
+        fn $name(value: F80, operand: f32) -> F80 {
+            let input = value.to_bytes();
+            let mut output = [0u8; 10];
+            // SAFETY: the pointers cover their operands; one register is pushed and popped.
+            unsafe {
+                core::arch::asm!(
+                    "fld tbyte ptr [{input}]", $instruction, "fstp tbyte ptr [{output}]",
+                    input = in(reg) input.as_ptr(), operand = in(reg) &operand,
+                    output = in(reg) output.as_mut_ptr(), out("st(0)") _,
+                );
+            }
+            F80::from_bytes(output)
+        }
+    };
+}
+
+stored_float_op!(subtract_float, "fsub dword ptr [{operand}]");
+stored_float_op!(subtract_from_float, "fsubr dword ptr [{operand}]");
+stored_float_op!(multiply_float, "fmul dword ptr [{operand}]");
+
 layout! {
     /// The two words passed as context to the desirability callback.
     struct DesirabilityContext {
@@ -85,7 +109,7 @@ unsafe extern "thiscall" fn add_desirability(stack: *mut u32) -> u64 {
         // SAFETY: the context's live response curve. Its output remains unrounded.
         unsafe { game::response_curve_output(curve, input) }
     };
-    let weighted = effect * F80::from_f32(context.weight());
+    let weighted = multiply_float(effect, context.weight());
     let value = unsafe { stack.add(1).read() as *mut u8 };
     let previous = unsafe { value.read() };
     unsafe { stack.add(3).write(u32::from(previous)) };
@@ -109,12 +133,12 @@ port! {
         let mean = F80::from_f32(lv.mean_altitude());
         let pivot = if mode.compare(mean).less() { mode } else { mean };
         lv.set_pivot(pivot.to_f32());
-        let low = pivot - F80::from_f32(lv.min_altitude());
+        let low = subtract_float(pivot, lv.min_altitude());
         lv.set_low_range(low.to_f32());
         if low.compare(F80::from_f32(1.0)).less() {
             lv.set_low_range(1.0);
         }
-        let high = F80::from_f32(lv.max_altitude()) - pivot;
+        let high = subtract_from_float(pivot, lv.max_altitude());
         lv.set_high_range(high.to_f32());
         if high.compare(F80::from_f32(1.0)).less() {
             lv.set_high_range(1.0);
@@ -635,6 +659,19 @@ mod tests {
     }
 
     #[test]
+    fn altitude_keeps_the_quiet_nan_payload_with_signaling_range_inputs() {
+        let _fpu = GameFpu::new();
+        let mut w = World::new(0, 0, &[]);
+        let pivot = f32::from_bits(0x7FC0_0100);
+        let signaling = f32::from_bits(0x7F80_0200);
+        assert_eq!(
+            w.setup(0.0, pivot, signaling, signaling),
+            [0x7FC0_0100, 0x7FC0_0100, 0x7FC0_0100, 100]
+        );
+        assert!(calls().is_empty());
+    }
+
+    #[test]
     fn altitude_top_index_uses_the_helper_and_signed_low_half() {
         let _fpu = GameFpu::new();
         let mut w = World::new(0, 0, &[]);
@@ -672,5 +709,50 @@ mod tests {
         unsafe { fc4p_006bd750(w.lv.ptr()) };
         assert_eq!(unsafe { core::slice::from_raw_parts(w.lv.ptr(), 0x100) }, expected);
         assert!(calls().is_empty());
+    }
+
+    fn float_environment() -> (u16, u16, u32, u32) {
+        let (mut cw, mut mxcsr) = (0u16, 0u32);
+        let (sw, flags): (u16, u32);
+        // SAFETY: the output pointers cover their values and the temporary flags push is balanced.
+        unsafe {
+            core::arch::asm!(
+                "fnstcw word ptr [{cw}]", "fnstsw ax", "stmxcsr dword ptr [{mxcsr}]",
+                "pushfd", "pop {flags:e}",
+                cw = in(reg) &mut cw, mxcsr = in(reg) &mut mxcsr,
+                flags = lateout(reg) flags, out("ax") sw,
+            );
+        }
+        (cw, sw & 0x3800, mxcsr, flags & 0x400)
+    }
+
+    #[test]
+    fn ports_preserve_the_float_environment_and_an_existing_x87_value() {
+        let _fpu = GameFpu::new();
+        let mut w = World::new(0, 0, &[(0, 0, 1)]);
+        let sentinel = 123.25f64;
+        let mut restored = 0.0f64;
+        // SAFETY: the stack has room; the value is popped below before the test returns.
+        unsafe {
+            core::arch::asm!("fld qword ptr [{p}]", p = in(reg) &sentinel, out("st(0)") _);
+        }
+        let before = float_environment();
+        let land_result = w.has_land(0, 0);
+        let after_land = float_environment();
+        let desirability_result = apply(100, 40, 2.5, None);
+        let after_desirability = float_environment();
+        let altitude_result = w.setup(0.0, 0.0, 0.0, 340.0);
+        let after_altitude = float_environment();
+        // SAFETY: pop the sentinel left in place by the three entries.
+        unsafe {
+            core::arch::asm!("fstp qword ptr [{p}]", p = in(reg) &mut restored, out("st(0)") _);
+        }
+        assert_eq!(land_result, 1);
+        assert_eq!(desirability_result.1, (200, 0, 100));
+        assert_eq!(altitude_result, params(0.0, 1.0, 340.0, 110));
+        assert_eq!(after_land, before);
+        assert_eq!(after_desirability, before);
+        assert_eq!(after_altitude, before);
+        assert_eq!(restored.to_bits(), sentinel.to_bits());
     }
 }
