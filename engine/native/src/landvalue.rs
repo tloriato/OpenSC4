@@ -23,10 +23,16 @@ layout! {
     /// "Land-value native progress"). The altitude fields are the ones `SetupAltitudeEffect` (0x006BD750) reads
     /// and writes (§7.3).
     pub struct LandValueSim {
+        /// Shared signed reference count.
+        0x10 => reference_count / set_reference_count: i32,
+        /// Message server used to post cycle notifications.
+        0x14 => message_server / set_message_server: *mut u8,
         /// The zone manager (`cISC4ZoneManager*`), taken in `Init`.
         0x20 => zone_manager / set_zone_manager: *mut u8,
         /// The intrinsic land value grid (`cISC4SimGrid<uint8>*`), the first grid `Init` creates (§2).
         0x24 => intrinsic_grid / set_intrinsic_grid: *mut u8,
+        /// Total land value grid, queried in cell coordinates.
+        0x28 => total_grid / set_total_grid: *mut u8,
         /// pivot (§7.3).
         0x60 => pivot / set_pivot: f32,
         /// lowRange (§7.3).
@@ -35,8 +41,13 @@ layout! {
         0x68 => high_range / set_high_range: f32,
         /// topIndex (§7.3).
         0x6C => top_index / set_top_index: i32,
+        /// Average land value from the last completed pass.
+        0x74 => average_land_value / set_average_land_value: u8,
         /// meanAlt (§3).
         0x78 => mean_altitude / set_mean_altitude: f32,
+        /// Unsigned low/medium and medium/high wealth thresholds.
+        0x7F => low_wealth_boundary / set_low_wealth_boundary: u8,
+        0x80 => high_wealth_boundary / set_high_wealth_boundary: u8,
         /// The altitude curve (`cSC4ResponseCurve*`, tuning `0x47E2C320`).
         0x84 => altitude_curve / set_altitude_curve: *mut u8,
         /// minAlt (§3).

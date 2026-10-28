@@ -14,6 +14,26 @@
 //! Game functions that converted code calls directly (not through a vtable), by original address.
 
 game_fn! {
+    /// Releases an allocation through the game's heap.
+    pub fn heap_free(allocation: *mut u8) = "C" 0x005E_5620;
+}
+
+game_fn! {
     /// `cSC4ResponseCurve::GetOutputValue(x)`: the curve's output at `x` (foundations §4), returned in ST0.
     pub fn response_curve_output(curve: *mut u8, x: f32) -> St0 = "thiscall" 0x005F_4250;
+}
+
+game_fn! {
+    /// Destroys the land value simulator's owned containers.
+    pub fn land_value_destroy(this: *mut u8) = "thiscall" 0x006B_DD10;
+}
+
+game_fn! {
+    /// Allocates storage for a standard message through the game's allocator.
+    pub fn message_allocate(size: u32) -> *mut u8 = "C" 0x0091_33DA;
+}
+
+game_fn! {
+    /// Constructs a standard message and returns its primary interface.
+    pub fn message_construct(this: *mut u8) -> *mut u8 = "thiscall" 0x0091_34D6;
 }
