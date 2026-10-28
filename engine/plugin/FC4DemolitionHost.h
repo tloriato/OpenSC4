@@ -58,6 +58,7 @@
 #include <vector>
 
 class cIGZUnknown;
+class cIGZMessageServer2;
 class cISC4City;
 class cISC4Occupant;
 class cISC4OccupantFilter;
@@ -388,5 +389,8 @@ std::shared_ptr<void> DemolitionOccupantsInRect(cISC4City* city, const fc4_cell_
 // The city's managers this host uses (borrowed; nullptr without a city).
 cISC4OccupantManager* DemolitionOccupantManager(cISC4City* city);
 cFC4Terrain* DemolitionTerrain(cISC4City* city);
+
+// Section 3: notify neighbours synchronously, holding the pole through delivery.
+void DemolitionSendPreDemolish(cIGZMessageServer2* server, cISC4Occupant* occupant);
 
 }  // namespace fc4

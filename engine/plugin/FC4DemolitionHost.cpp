@@ -277,6 +277,16 @@ cFC4Terrain* DemolitionTerrain(cISC4City* city) {
     return city ? reinterpret_cast<cFC4Terrain*>(city->GetTerrain()) : nullptr;
 }
 
+void DemolitionSendPreDemolish(cIGZMessageServer2* server, cISC4Occupant* occupant) {
+    if (server == nullptr || occupant == nullptr) return;
+    cFC4Message2Standard* msg = FC4MakeMessage(kMsgPreDemolishNetworkOccupant, 0, 0, 0);
+    if (msg == nullptr) return;
+    msg->SetVoid1(occupant);
+    msg->SetIGZUnknown(occupant);
+    server->MessageSend(msg);
+    msg->Release();
+}
+
 void DemolitionHostReleaseHeld(DemolitionHostContext* ctx) {
     if (ctx == nullptr) return;
     for (auto& l : ctx->held) {
@@ -658,12 +668,7 @@ void SendPreDemolish(void* u, uint64_t t) {
     if (o == nullptr) return;
     cIGZMessageServer2Ptr ms;
     if (!ms) return;
-    cFC4Message2Standard* msg = FC4MakeMessage(kMsgPreDemolishNetworkOccupant, 0, 0, 0);
-    if (msg == nullptr) return;
-    msg->SetData1(reinterpret_cast<intptr_t>(o));
-    msg->SetVoid1(o);
-    ms->MessagePost(msg, false);
-    msg->Release();
+    DemolitionSendPreDemolish(ms, o);
     (void)u;
 }
 

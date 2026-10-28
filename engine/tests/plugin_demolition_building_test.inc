@@ -63,6 +63,24 @@ void* __fastcall GetLot(Interface* self, void*, int x, int z, bool create) {
     return self->result;
 }
 uint32_t __fastcall State(Interface* self, void*) { return static_cast<uint32_t>(reinterpret_cast<uintptr_t>(self->result)); }
+
+struct MessageServer {
+    void** vtbl;
+    Occupant* occupant;
+    unsigned sends = 0, posts = 0;
+};
+bool __fastcall Send(MessageServer* self, void*, cIGZMessage2Standard* msg) {
+    ++self->sends;
+    CHECK(msg->GetType() == 0xAA7A014D);
+    CHECK(msg->GetVoid1() == self->occupant);
+    CHECK(msg->GetIGZUnknown() == reinterpret_cast<cIGZUnknown*>(self->occupant));
+    CHECK(self->occupant->refs == 2); // the payload keeps the pole alive during delivery
+    return true;
+}
+bool __fastcall Post(MessageServer* self, void*, cIGZMessage2*, bool) {
+    ++self->posts;
+    return true;
+}
 } // namespace demolition_building_test
 
 void DemolitionBuildingInterfaceChecks(FC4TestSeamFn seam) {
@@ -104,6 +122,23 @@ void DemolitionBuildingInterfaceChecks(FC4TestSeamFn seam) {
         for (auto* value : list) CHECK(value == nullptr);
     }
     CHECK(queried.refs == 1 && queried.acquisitions == 1 && queried.releases == 1);
+}
+
+void DemolitionPreDemolishChecks(FC4TestSeamFn seam) {
+    using namespace demolition_building_test;
+    FakeVtable occupantVt, serverVt;
+    occupantVt.slots[1] = reinterpret_cast<void*>(&AddRef);
+    occupantVt.slots[2] = reinterpret_cast<void*>(&Release);
+    serverVt.slots[3] = reinterpret_cast<void*>(&Send);
+    serverVt.slots[4] = reinterpret_cast<void*>(&Post);
+    Occupant occupant{occupantVt.slots.data()};
+    MessageServer server{serverVt.slots.data(), &occupant};
+    seam(kFC4SeamDemolitionPreDemolish, &occupant, &server);
+    CHECK(server.sends == 1 && server.posts == 0);
+    CHECK(occupant.refs == 1 && occupant.acquisitions == 1 && occupant.releases == 1);
+    seam(kFC4SeamDemolitionPreDemolish, nullptr, &server);
+    seam(kFC4SeamDemolitionPreDemolish, &occupant, nullptr);
+    CHECK(server.sends == 1 && server.posts == 0 && occupant.refs == 1);
 }
 
 void DemolitionFilterChecks(FC4TestSeamFn seam) {

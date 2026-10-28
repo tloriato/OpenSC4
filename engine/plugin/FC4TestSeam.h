@@ -350,6 +350,9 @@ constexpr uint32_t kFC4SeamPowerLineConnections = 0x50570001;
 // a = borrowed occupant, b = borrowed city; bits 0/1 = default/realistic inclusion.
 constexpr uint32_t kFC4SeamDemolitionFilters = 0xD3000003;
 
+// a = borrowed occupant, b = borrowed message server; synchronous pre-demolish send.
+constexpr uint32_t kFC4SeamDemolitionPreDemolish = 0xD3000004;
+
 using FC4TestSeamFn = intptr_t(__cdecl*)(uint32_t op, void* a, void* b);
 
 namespace fc4 {

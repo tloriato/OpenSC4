@@ -352,6 +352,9 @@ extern "C" __declspec(dllexport) intptr_t __cdecl FC4TestSeam(uint32_t op, void*
             return (fc4::DemolitionDefaultFilterIncludes(static_cast<cISC4Occupant*>(a)) ? 1 : 0) |
                    (fc4::DemolitionRealisticFilterIncludes(static_cast<cISC4Occupant*>(a),
                                                            static_cast<cISC4City*>(b)) ? 2 : 0);
+        case kFC4SeamDemolitionPreDemolish:
+            fc4::DemolitionSendPreDemolish(static_cast<cIGZMessageServer2*>(b), static_cast<cISC4Occupant*>(a));
+            return 0;
         default:
             return 0;
     }
