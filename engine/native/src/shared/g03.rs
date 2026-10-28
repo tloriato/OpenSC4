@@ -783,8 +783,160 @@ port! {
     }
 }
 
+game_fn! { #[allow(dead_code)] fn allocate_object(size: u32) -> u64 = "C" 0x005E_55E0; }
+game_fn! { #[allow(dead_code)] fn construct_action_eleven(this: *mut u8) -> u64 = "thiscall" 0x0050_5BF0; }
+game_fn! { #[allow(dead_code)] fn construct_action_eight(this: *mut u8) -> u64 = "thiscall" 0x0050_5290; }
+game_fn! { #[allow(dead_code)] fn construct_action_fifteen(this: *mut u8) -> u64 = "thiscall" 0x0050_5C40; }
+game_fn! { #[allow(dead_code)] fn construct_action_fourteen(this: *mut u8) -> u64 = "thiscall" 0x0050_5C70; }
+game_fn! { #[allow(dead_code)] fn construct_action_sixteen(this: *mut u8) -> u64 = "thiscall" 0x0050_6370; }
+game_fn! { #[allow(dead_code)] fn construct_action_seventeen(this: *mut u8) -> u64 = "thiscall" 0x0050_5CA0; }
+game_fn! { #[allow(dead_code)] fn construct_action_twenty(this: *mut u8) -> u64 = "thiscall" 0x0050_52D0; }
+game_fn! { #[allow(dead_code)] fn construct_action_nineteen(this: *mut u8) -> u64 = "thiscall" 0x0050_9A20; }
+game_fn! { #[allow(dead_code)] fn construct_action_fifty_two(this: *mut u8) -> u64 = "thiscall" 0x0050_6420; }
+game_fn! { #[allow(dead_code)] fn construct_action_twenty_one(this: *mut u8) -> u64 = "thiscall" 0x0050_6330; }
+game_fn! { #[allow(dead_code)] fn destroy_automaton_tree(this: *mut u8) -> u64 = "thiscall" 0x0051_3E00; }
+game_fn! { #[allow(dead_code)] fn clear_lot_list(this: *mut u8) -> u64 = "thiscall" 0x0047_3EC0; }
+game_fn! { #[allow(dead_code)] fn destroy_model_processor(this: *mut u8) -> u64 = "thiscall" 0x0080_30A0; }
+game_fn! { #[allow(dead_code)] fn destroy_triple_vector(this: *mut u8) -> u64 = "thiscall" 0x005E_8C40; }
+game_fn! { #[allow(dead_code)] fn erase_eight_byte_range(this: *mut u8, first: u32, last: u32) -> u64 = "thiscall" 0x0071_0B40; }
+game_fn! { #[allow(dead_code)] fn insert_eight_byte_values(this: *mut u8, position: u32, count: u32, value: *mut u8) -> u64 = "thiscall" 0x0063_8E80; }
+
+port! {
+    /// Allocates an action of the selected kind, runs its constructor, and sets its kind field.
+    /// Other kinds use the base action, whose three padding bytes after +0x14 remain untouched.
+    #[port(address = 0x0050_B7F0, owner = "shared", name = "CreateAction")]
+    pub unsafe extern "fastcall" fn fc4p_0050b7f0(entry_ecx: *mut u8, entry_edx: u32, kind: u32) -> u64 {
+        let (size, constructor) = match kind {
+            8 => (0x34, 0x0050_5290),
+            11 => (0x40, 0x0050_5BF0),
+            14 => (0x40, 0x0050_5C70),
+            15 => (0x30, 0x0050_5C40),
+            16 => (0x274, 0x0050_6370),
+            17 => (0x58, 0x0050_5CA0),
+            19 => (0x34, 0x0050_9A20),
+            20 => (0x2C, 0x0050_52D0),
+            21 => (0x44, 0x0050_6330),
+            52 => (0x2C, 0x0050_6420),
+            _ => (0x28, 0),
+        };
+        // SAFETY: allocation and construction use the game's entries and layouts.
+        unsafe {
+            let mut result = invoke(Conv::Cdecl, crate::abi::target(0x005E_55E0), entry_ecx,
+                kind.wrapping_sub(8), entry_edx, &[size]);
+            let allocation = result as u32 as *mut u8;
+            if allocation.is_null() { return result; }
+            if constructor != 0 {
+                result = invoke(Conv::Thiscall, crate::abi::target(constructor), allocation,
+                    allocation as u32, (result >> 32) as u32, &[]);
+            } else {
+                store(allocation, 0, 0x00A9_5384);
+                for offset in [4, 8, 12, 16, 24, 28, 32, 36] { store(allocation, offset, 0); }
+                allocation.add(0x14).write(0);
+            }
+            if result as u32 != 0 { store(result as u32 as *mut u8, 4, kind); }
+            result
+        }
+    }
+}
+
+port! {
+    /// Restores the automaton's six interface tables, destroys embedded containers and processors,
+    /// and releases retained interfaces. Pointer fields retain their values throughout destruction.
+    #[port(address = 0x0051_3E60, owner = "shared", name = "DestroyAutomaton")]
+    pub unsafe extern "fastcall" fn fc4p_00513e60(this: *mut u8, entry_edx: u32) -> u64 {
+        // SAFETY: the game's complete automaton, embedded objects, and retained interfaces.
+        unsafe {
+            for (offset, table) in [(0, 0x00A9_5AC0), (4, 0x00A9_5A38), (8, 0x00A9_5A1C),
+                (12, 0x00A9_59B8), (0x20, 0x00A9_59A0), (0x38, 0x00A9_5990)] {
+                store(this, offset, table);
+            }
+            let buffer = word(this, 0x1C8);
+            let mut result = registers(buffer, entry_edx);
+            if buffer != 0 {
+                result = invoke(Conv::Cdecl, crate::abi::target(0x0090_CF63), this,
+                    buffer, entry_edx, &[buffer]);
+            }
+            result = invoke(Conv::Thiscall, crate::abi::target(0x0051_3E00), this.add(0x18C),
+                result as u32, (result >> 32) as u32, &[]);
+            result = invoke(Conv::Thiscall, crate::abi::target(0x0047_3EC0), this.add(0x188),
+                result as u32, (result >> 32) as u32, &[]);
+            let buffer = word(this, 0x188);
+            if buffer != 0 {
+                result = invoke(Conv::Cdecl, crate::abi::target(0x0090_CF63), this.add(0x188),
+                    result as u32, (result >> 32) as u32, &[buffer]);
+            }
+            for (processor, buffer) in [(0x12C, 0x110), (0xD0, 0xCC)] {
+                result = invoke(Conv::Thiscall, crate::abi::target(0x0080_30A0), this.add(processor),
+                    result as u32, (result >> 32) as u32, &[]);
+                let value = word(this, buffer);
+                result = registers(value, (result >> 32) as u32);
+                if value != 0 {
+                    if buffer == 0xCC {
+                        let adjustment = word(word(value as *mut u8, 4) as *mut u8, 4);
+                        let base = value.wrapping_add(adjustment).wrapping_add(4) as *mut u8;
+                        result = virtual_call(base, 8, word(base, 0), adjustment, &[]);
+                    } else {
+                        result = invoke(Conv::Cdecl, crate::abi::target(0x0090_CF63), this.add(processor),
+                            value, (result >> 32) as u32, &[value]);
+                    }
+                }
+            }
+            for offset in [0xC0, 0xB4] {
+                let buffer = word(this, offset);
+                result = registers(buffer, (result >> 32) as u32);
+                if buffer != 0 {
+                    result = invoke(Conv::Cdecl, crate::abi::target(0x0090_CF63), this,
+                        buffer, (result >> 32) as u32, &[buffer]);
+                }
+            }
+            for offset in [0xB0, 0x98] {
+                let retained = word(this, offset) as *mut u8;
+                if !retained.is_null() {
+                    let table = word(retained, 0);
+                    result = if offset == 0xB0 {
+                        virtual_call(retained, 8, result as u32, table, &[])
+                    } else { virtual_call(retained, 8, table, (result >> 32) as u32, &[]) };
+                }
+            }
+            invoke(Conv::Thiscall, crate::abi::target(0x005E_8C40), this.add(4),
+                result as u32, (result >> 32) as u32, &[])
+        }
+    }
+}
+
+port! {
+    /// Shrinks eight-byte entries by erasing a suffix, or inserts the requested number at the end.
+    /// The insertion value is an uninitialized eight-byte temporary supplied to the original helper.
+    #[port(address = 0x0051_FC30, owner = "shared", name = "ResizeEightByteVector", naked)]
+    pub unsafe extern "C" fn fc4p_0051fc30() {
+        // Keep the temporary at its original stack address, including the bytes left by the caller.
+        core::arch::naked_asm!("sub esp, 8", "mov edx, esp", "push [esp + 12]", "call {body}",
+            "add esp, 8", "ret 4", body = sym resize_eight_byte_vector);
+    }
+}
+
+unsafe extern "fastcall" fn resize_eight_byte_vector(this: *mut u8, value: *mut u8, count: u32) -> u64 {
+        // SAFETY: the original vector fields and range/insert signatures. The temporary is never read here.
+        unsafe {
+            let begin = word(this, 0);
+            let end = word(this, 4);
+            let size = (end.wrapping_sub(begin) as i32 >> 3) as u32;
+            if count < size {
+                let first = begin.wrapping_add(count.wrapping_mul(8));
+                invoke(Conv::Thiscall, crate::abi::target(0x0071_0B40), this, first, begin, &[first, end])
+            } else {
+                let additional = count.wrapping_sub(size);
+                invoke(Conv::Thiscall, crate::abi::target(0x0063_8E80), this, additional, begin,
+                    &[end, additional, value as u32])
+            }
+        }
+}
+
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
+    fc4p_0050b7f0::PORT,
+    fc4p_00513e60::PORT,
+    fc4p_0051fc30::PORT,
     fc4p_0050b290::PORT,
     fc4p_0050b540::PORT,
     fc4p_0050bcb0::PORT,
@@ -819,6 +971,240 @@ pub const PORTS: &[Port] = &[
 
 #[cfg(test)]
 mod tests {
+    thread_local! {
+        static ACTION_OUTPUT: RefCell<Option<u32>> = const { RefCell::new(None) };
+        static EIGHT_BYTE_TEMPORARY: RefCell<Option<[u32; 2]>> = const { RefCell::new(None) };
+    }
+
+    extern "C" fn action_allocate(size: u32) -> u64 {
+        log(0x005E_55E0, core::ptr::null_mut(), &[size]);
+        registers(FOUND.with(|p| *p.borrow()), 0x1234_ABCD)
+    }
+
+    macro_rules! action_constructor_fake {
+        ($name:ident, $address:literal) => {
+            extern "thiscall" fn $name(this: *mut u8) -> u64 {
+                log($address, this, &[]);
+                registers(ACTION_OUTPUT.with(|p| p.borrow().unwrap_or(this as u32)), 0x8765_4321)
+            }
+        };
+    }
+    action_constructor_fake!(action_eight, 0x0050_5290);
+    action_constructor_fake!(action_eleven, 0x0050_5BF0);
+    action_constructor_fake!(action_fourteen, 0x0050_5C70);
+    action_constructor_fake!(action_fifteen, 0x0050_5C40);
+    action_constructor_fake!(action_sixteen, 0x0050_6370);
+    action_constructor_fake!(action_seventeen, 0x0050_5CA0);
+    action_constructor_fake!(action_nineteen, 0x0050_9A20);
+    action_constructor_fake!(action_twenty, 0x0050_52D0);
+    action_constructor_fake!(action_twenty_one, 0x0050_6330);
+    action_constructor_fake!(action_fifty_two, 0x0050_6420);
+
+    #[test]
+    fn action_factory_selects_every_constructor_tags_its_result_and_handles_allocation_failure() {
+        let _allocator = fake(0x005E_55E0, action_allocate as *const () as usize);
+        let cases = [
+            (8, 0x34, 0x0050_5290, action_eight as *const ()),
+            (11, 0x40, 0x0050_5BF0, action_eleven as *const ()),
+            (14, 0x40, 0x0050_5C70, action_fourteen as *const ()),
+            (15, 0x30, 0x0050_5C40, action_fifteen as *const ()),
+            (16, 0x274, 0x0050_6370, action_sixteen as *const ()),
+            (17, 0x58, 0x0050_5CA0, action_seventeen as *const ()),
+            (19, 0x34, 0x0050_9A20, action_nineteen as *const ()),
+            (20, 0x2C, 0x0050_52D0, action_twenty as *const ()),
+            (21, 0x44, 0x0050_6330, action_twenty_one as *const ()),
+            (52, 0x2C, 0x0050_6420, action_fifty_two as *const ()),
+        ];
+        for (kind, size, constructor, function) in cases {
+            let _constructor = fake(constructor, function as usize);
+            let mut allocation = [0xA5u8; 0x280];
+            let mut output = [0xCDu8; 0x280];
+            let p = allocation.as_mut_ptr();
+            for destination in [p as u32, output.as_mut_ptr() as u32, 0] {
+                FOUND.with(|v| *v.borrow_mut() = p as u32);
+                ACTION_OUTPUT.with(|v| *v.borrow_mut() = Some(destination));
+                let before = allocation;
+                let output_before = output;
+                assert_eq!(run(fc4p_0050b7f0 as *const (), core::ptr::null_mut(), &[kind], 0, 9),
+                    registers(destination, 0x8765_4321));
+                assert_eq!(calls(), [Call(0x005E_55E0, 0, vec![size]), Call(constructor, p as usize, vec![])]);
+                let mut expected = before;
+                let mut expected_output = output_before;
+                if destination == p as u32 { expected[4..8].copy_from_slice(&kind.to_le_bytes()); }
+                if destination == output.as_mut_ptr() as u32 { expected_output[4..8].copy_from_slice(&kind.to_le_bytes()); }
+                assert_eq!(allocation, expected);
+                assert_eq!(output, expected_output);
+            }
+            FOUND.with(|v| *v.borrow_mut() = 0);
+            let before = allocation;
+            assert_eq!(run(fc4p_0050b7f0 as *const (), core::ptr::null_mut(), &[kind], 0, 9),
+                registers(0, 0x1234_ABCD));
+            assert_eq!(calls(), [Call(0x005E_55E0, 0, vec![size])]);
+            assert_eq!(allocation, before);
+        }
+    }
+
+    #[test]
+    fn base_action_factory_initializes_only_its_fields_and_keeps_padding_and_allocator_edx() {
+        let _allocator = fake(0x005E_55E0, action_allocate as *const () as usize);
+        for kind in [0u32, 7, 9, 10, 12, 13, 18, 22, 51, 53, u32::MAX] {
+            let mut allocation = [0xA5u8; 0x30];
+            let p = allocation.as_mut_ptr();
+            FOUND.with(|v| *v.borrow_mut() = p as u32);
+            assert_eq!(run(fc4p_0050b7f0 as *const (), core::ptr::null_mut(), &[kind], 0, 9),
+                registers(p as u32, 0x1234_ABCD));
+            let mut expected = [0xA5u8; 0x30];
+            expected[..0x28].fill(0);
+            expected[..4].copy_from_slice(&0x00A9_5384u32.to_le_bytes());
+            expected[4..8].copy_from_slice(&kind.to_le_bytes());
+            expected[0x15..0x18].fill(0xA5);
+            assert_eq!(allocation, expected);
+            assert_eq!(calls(), [Call(0x005E_55E0, 0, vec![0x28])]);
+        }
+    }
+
+    extern "thiscall" fn automaton_tree_destroy(this: *mut u8) -> u64 {
+        log(0x0051_3E00, this, &[]);
+        RESULT
+    }
+    extern "thiscall" fn lot_list_clear(this: *mut u8) -> u64 {
+        log(0x0047_3EC0, this, &[]);
+        RESULT
+    }
+    extern "thiscall" fn model_processor_destroy(this: *mut u8) -> u64 {
+        log(0x0080_30A0, this, &[]);
+        RESULT
+    }
+    extern "thiscall" fn triple_vector_destroy(this: *mut u8) -> u64 {
+        log(0x005E_8C40, this, &[]);
+        RESULT
+    }
+
+    #[test]
+    fn automaton_destruction_restores_tables_releases_adjusted_interfaces_and_preserves_fields() {
+        let _fakes = [
+            fake(0x0051_3E00, automaton_tree_destroy as *const () as usize),
+            fake(0x0047_3EC0, lot_list_clear as *const () as usize),
+            fake(0x0080_30A0, model_processor_destroy as *const () as usize),
+            fake(0x005E_8C40, triple_vector_destroy as *const () as usize),
+            fake(0x0090_CF63, free_array as *const () as usize),
+        ];
+        let tables = [(0, 0x00A9_5AC0u32), (4, 0x00A9_5A38), (8, 0x00A9_5A1C),
+            (12, 0x00A9_59B8), (0x20, 0x00A9_59A0), (0x38, 0x00A9_5990)];
+        let release_table = [0usize, 0, release as *const () as usize];
+        let adjustment_table = [0u32, 8];
+        let mut adjusted = [0u32, adjustment_table.as_ptr() as u32, 0, release_table.as_ptr() as u32];
+        let mut retained = [release_table.as_ptr() as u32];
+        for populated in [false, true] {
+            let mut owner = Object::new(0x1D0);
+            let p = owner.ptr();
+            let mut expected_calls = vec![];
+            if populated {
+                for offset in [0x1C8, 0x188, 0x110, 0xC0, 0xB4] {
+                    unsafe { store(p, offset, 0x8000_0000 + offset as u32) };
+                }
+                unsafe {
+                    store(p, 0xCC, adjusted.as_mut_ptr() as u32);
+                    store(p, 0xB0, retained.as_mut_ptr() as u32);
+                    store(p, 0x98, retained.as_mut_ptr() as u32);
+                }
+                expected_calls.push(Call(0x0090_CF63, 0x8000_01C8, vec![]));
+            }
+            let mut expected_bytes = bytes(p, 0x1D0);
+            for (offset, value) in tables { expected_bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes()); }
+            expected_calls.extend([Call(0x0051_3E00, p as usize + 0x18C, vec![]),
+                Call(0x0047_3EC0, p as usize + 0x188, vec![])]);
+            if populated { expected_calls.push(Call(0x0090_CF63, 0x8000_0188, vec![])); }
+            expected_calls.push(Call(0x0080_30A0, p as usize + 0x12C, vec![]));
+            if populated { expected_calls.push(Call(0x0090_CF63, 0x8000_0110, vec![])); }
+            expected_calls.push(Call(0x0080_30A0, p as usize + 0xD0, vec![]));
+            if populated {
+                expected_calls.extend([Call(8, adjusted.as_ptr() as usize + 12, vec![]),
+                    Call(0x0090_CF63, 0x8000_00C0, vec![]), Call(0x0090_CF63, 0x8000_00B4, vec![]),
+                    Call(8, retained.as_ptr() as usize, vec![]), Call(8, retained.as_ptr() as usize, vec![])]);
+            }
+            expected_calls.push(Call(0x005E_8C40, p as usize + 4, vec![]));
+            assert_eq!(run(fc4p_00513e60 as *const (), p, &[], 0, 77), RESULT);
+            assert_eq!(calls(), expected_calls);
+            assert_eq!(bytes(p, 0x1D0), expected_bytes);
+        }
+    }
+
+    #[test]
+    fn automaton_destruction_rereads_the_list_sentinel_after_clearing_it() {
+        let _fakes = [fake(0x0051_3E00, automaton_tree_destroy as *const () as usize),
+            fake(0x0047_3EC0, lot_list_clear as *const () as usize),
+            fake(0x0080_30A0, model_processor_destroy as *const () as usize),
+            fake(0x005E_8C40, triple_vector_destroy as *const () as usize),
+            fake(0x0090_CF63, free_array as *const () as usize)];
+        let mut owner = Object::new(0x1D0);
+        let p = owner.ptr();
+        unsafe { store(p, 0x188, 0x1234) };
+        mutation(0x0047_3EC0, p, 0x188, 0x5678);
+        run(fc4p_00513e60 as *const (), p, &[], 0, 0);
+        let observed = calls();
+        assert_eq!(observed[2], Call(0x0090_CF63, 0x5678, vec![]));
+        assert_eq!(unsafe { word(p, 0x188) }, 0x5678);
+    }
+
+    extern "thiscall" fn erase_eights(this: *mut u8, first: u32, last: u32) -> u64 {
+        log(0x0071_0B40, this, &[first, last]);
+        RESULT
+    }
+    extern "thiscall" fn insert_eights(this: *mut u8, position: u32, count: u32, value: *mut u8) -> u64 {
+        assert!(!value.is_null());
+        EIGHT_BYTE_TEMPORARY.with(|expected| {
+            if let Some(expected) = *expected.borrow() {
+                // SAFETY: this case supplies initialized words at the caller's temporary address.
+                assert_eq!(unsafe { [word(value, 0), word(value, 4)] }, expected);
+            }
+        });
+        log(0x0063_8E80, this, &[position, count]);
+        RESULT
+    }
+
+    #[unsafe(naked)]
+    unsafe extern "C" fn resize_with_stack_bytes() {
+        core::arch::naked_asm!("mov dword ptr [esp - 8], 0x12345678",
+            "mov dword ptr [esp - 4], 0x87654321", "jmp {entry}", entry = sym fc4p_0051fc30);
+    }
+
+    #[test]
+    fn eight_byte_resize_passes_the_bytes_at_the_original_stack_temporary() {
+        let _insert = fake(0x0063_8E80, insert_eights as *const () as usize);
+        let mut vector = [0x1000u32, 0x1008, 0x2000];
+        EIGHT_BYTE_TEMPORARY.with(|v| *v.borrow_mut() = Some([0x1234_5678, 0x8765_4321]));
+        assert_eq!(run(resize_with_stack_bytes as *const (), vector.as_mut_ptr().cast(), &[3], 0, 0), RESULT);
+        EIGHT_BYTE_TEMPORARY.with(|v| *v.borrow_mut() = None);
+        assert_eq!(calls(), [Call(0x0063_8E80, vector.as_ptr() as usize, vec![0x1008, 2])]);
+    }
+
+    #[test]
+    fn eight_byte_resize_dispatches_unsigned_counts_including_equal_empty_and_wrapping_ranges() {
+        let _fakes = [fake(0x0071_0B40, erase_eights as *const () as usize),
+            fake(0x0063_8E80, insert_eights as *const () as usize)];
+        for (begin, end, requested, erase, count) in [
+            (0x1000u32, 0x1018u32, 1, true, 1),
+            (0x1000, 0x1018, 0, true, 0),
+            (0x1000, 0x1018, 3, false, 0),
+            (0x1000, 0x1018, 5, false, 2),
+            (0, 0, 0, false, 0),
+            (0, 0, u32::MAX, false, u32::MAX),
+            (0xFFFF_FFF8, 0x10, 1, true, 1),
+            (0x1000, 0x0FF8, 0, true, 0),
+            (0x1000, 0x0FF8, u32::MAX, false, 0),
+        ] {
+            let mut vector = [begin, end, 0xDEAD_BEEF];
+            let p = vector.as_mut_ptr().cast();
+            let before = vector;
+            assert_eq!(run(fc4p_0051fc30 as *const (), p, &[requested], 1, 2), RESULT);
+            let expected = if erase { Call(0x0071_0B40, p as usize, vec![begin.wrapping_add(count * 8), end]) }
+                else { Call(0x0063_8E80, p as usize, vec![end, count]) };
+            assert_eq!(calls(), [expected]);
+            assert_eq!(vector, before);
+        }
+    }
+
     #[test]
     fn bucket_remainders_use_unsigned_operands_with_a_zero_high_half() {
         for (value, divisor, expected) in [
