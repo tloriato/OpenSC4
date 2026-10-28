@@ -47,7 +47,7 @@ layout! {
         0x30 => slope_grid / set_slope_grid: *mut u8,
         /// Pending changes since the last pass.
         0x34 => dirty / set_dirty: u8,
-        /// Current pipeline state.
+        /// Current pipeline state; 9 means the pass is finished.
         0x38 => state / set_state: i32,
         /// Tract scanning iterator.
         0x3C => tract_iterator / set_tract_iterator: *mut u8,
@@ -65,6 +65,8 @@ layout! {
         0x68 => high_range / set_high_range: f32,
         /// topIndex (§7.3).
         0x6C => top_index / set_top_index: i32,
+        /// The saved average land value byte.
+        0x74 => average / set_average: u8,
         /// meanAlt (§3).
         0x78 => mean_altitude / set_mean_altitude: f32,
         /// Tuned grid tract size.

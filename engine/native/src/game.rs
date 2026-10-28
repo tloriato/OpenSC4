@@ -25,6 +25,17 @@ game_fn! {
     /// Free game-owned storage.
     pub fn free(pointer: *mut u8) -> u32 = "C" 0x005E_5620;
 }
+
+game_fn! {
+    /// Reads a saved object reference into the supplied interface pointer, requesting `iid`.
+    pub fn read_serializable(stream: *mut u8, iid: u32, out: *mut *mut u8, immediate: u32) -> u32 = "C" 0x005D_9730;
+}
+
+game_fn! {
+    /// Writes an object's serializable reference to the stream.
+    pub fn write_serializable(stream: *mut u8, object: *mut u8) -> u32 = "C" 0x005D_99A0;
+}
+
 game_fn! {
     /// `cSC4ResponseCurve::GetOutputValue(x)`: the curve's output at `x` (foundations §4), returned in ST0.
     pub fn response_curve_output(curve: *mut u8, x: f32) -> St0 = "thiscall" 0x005F_4250;
