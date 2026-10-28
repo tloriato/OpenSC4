@@ -1,7 +1,7 @@
 """Monthly save checkpoints for golden.py (stdlib, no plugin changes).
 
-The script pauses before SaveCity and leaves a short tick-driven capture gap.
-The watcher verifies the unique script, suspends ONLY that game's PID while
+The watcher verifies each completed SaveCity marker and the unique script,
+suspends ONLY that game's PID while
 copying/hashing, and fails closed on missed dates. No live file is a baseline.
 """
 import calendar
@@ -70,10 +70,10 @@ def instrument(text, start, until, *, reloaded=False):
         out.extend(actions.get(day, []))
         if day in checkpoints:
             out.extend(f'{day} {op}' for op in (
-                'pause', 'digest', 'save', f'mark GOLDEN_MONTH {day}',
-                # The watcher suspends the process inside this gap. A slow
-                # copy/hash cannot let simulation run past a differing month.
-                'uiwait 2000', 'resume'))
+                # The fixed scheduler can advance the calendar during UIWait,
+                # even at speed zero. Do not add a simulated wait here: the
+                # watcher suspends the process itself while copying/hashing.
+                'digest', 'save', f'mark GOLDEN_MONTH {day}'))
     out.append(f'{until} mark GOLDEN_FULL_SAVE_COMPLETE')
     return '\n'.join(out) + '\n'
 
@@ -274,17 +274,22 @@ class Watcher:
             return
         if str(self.script.resolve()).replace('/', '\\').lower() not in text.replace('/', '\\').lower():
             return
-        if self.process is None:
-            pid = re.search(r'\[pid (\d+) tid \d+\] DLL_PROCESS_ATTACH', text)
-            if not pid:
-                return
-            if int(pid[1]) != getattr(self, 'expected_pid', int(pid[1])):
-                raise ValueError('monthly watcher PID does not match the unique script log')
-            self.process = GameProcess(int(pid[1]))
+        pid = re.search(r'\[pid (\d+) tid \d+\] DLL_PROCESS_ATTACH', text)
+        if not pid:
+            return
+        if int(pid[1]) != getattr(self, 'expected_pid', int(pid[1])):
+            raise ValueError('monthly watcher PID does not match the unique script log')
         for day in self.expected_dates:
             if day in self.data['months'] or f'GOLDEN_MONTH {day}' not in text:
                 continue
-            self.process.suspend()
+            terminal = day == self.until
+            # The final save is immutable after its marker; the harness holds
+            # the slot until this watcher exits. The observer can already have
+            # terminated, so do not open/suspend/resume a terminal process.
+            if not terminal:
+                if self.process is None:
+                    self.process = GameProcess(int(pid[1]))
+                self.process.suspend()
             stopped = False
             try:
                 renamed = re.findall(r'\(SetEstablished\(true\); city name=(.+)\)', text)
@@ -310,7 +315,7 @@ class Watcher:
                     self.process.stop()
                     stopped = True
             finally:
-                if not stopped:
+                if not stopped and not terminal:
                     self.process.resume()
             self.write()
 

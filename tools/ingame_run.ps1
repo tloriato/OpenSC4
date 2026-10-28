@@ -689,7 +689,11 @@ if ($p -and -not $p.HasExited) {
     try { Stop-Process -Id $p.Id -Force -ErrorAction Stop } catch { $verdict += " | WARNING: could not stop the game: $($_.Exception.Message)" }
 }
 Start-Sleep -Seconds 2
-if ($monthlyProcess -and -not $monthlyProcess.HasExited) { Stop-Process -Id $monthlyProcess.Id -Force }
+if ($monthlyProcess -and -not $monthlyProcess.HasExited) {
+    # The final save is stable, but hashing it may outlive the game. Keep the
+    # slot lease until capture finishes rather than killing a valid hash job.
+    if (-not $monthlyProcess.WaitForExit(30000)) { Stop-Process -Id $monthlyProcess.Id -Force }
+}
 Copy-Item $Log (Join-Path $OutDir "$Label.log") -Force
 # Preserve the optional driver stream with the log, before a slot is reused.
 $drawStream = "$Log.draw.jsonl"

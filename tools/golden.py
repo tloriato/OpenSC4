@@ -378,6 +378,7 @@ def prepare(args):
         generated = golden_monthly.instrument(original, args.checkpoint_start, args.until,
                                                reloaded=getattr(args, 'window_reloaded', False))
         settings['monthly_records'] = golden_monthly.NORMALIZER
+        settings['monthly_capture'] = 'pid-suspend-v1'
     if getattr(args, 'prepared_city', None):
         settings['window_parent'] = args.window_parent
     settings['effective_script_sha256'] = hashlib.sha256(generated.encode('utf-8')).hexdigest()
@@ -579,8 +580,11 @@ def save_date(saved_records):
     return str(dt.date(2000, 1, 1) + dt.timedelta(days=julian - 2451545))
 
 
-def comparison_history(entry, selected):
-    identity = hashlib.sha256(','.join(selected).encode('ascii')).hexdigest()[:16]
+def comparison_history(entry, selected, candidate=None):
+    scope = ','.join(selected)
+    if candidate is not None:
+        scope += '\n' + os.path.normcase(str(Path(candidate).resolve()))
+    identity = hashlib.sha256(scope.encode('utf-8')).hexdigest()[:16]
     return entry / ('latest-' + identity + '.json')
 
 
@@ -588,7 +592,7 @@ def window_inputs(args, entry, parent, selected):
     """Choose a retained reference snapshot; original and candidate reload it alike."""
     requested = args.from_date
     if requested == 'auto':
-        history = comparison_history(entry, selected)
+        history = comparison_history(entry, selected, args.dll)
         if not history.is_file():
             return False
         previous = load_json(history)
@@ -887,7 +891,7 @@ def main(argv=None):
                 # A successful short re-check must not erase the full-run anchor:
                 # the next invocation should re-check the same failing window.
                 if entry == full_entry:
-                    write_json(comparison_history(full_entry, selected), report['monthly'])
+                    write_json(comparison_history(full_entry, selected, args.dll), report['monthly'])
             window = load_json(run / 'verdict.json')
             report['window_exact'] = window['window_exact']
             report['save_date'] = window['save_date']

@@ -44,8 +44,11 @@ def test_calendar_and_actions_at_boundary():
     text = monthly.instrument('2000-01-31 mark OLD\n2000-02-29 funds 100\n', '2000-01-31', '2000-03-02',
                               reloaded=True)
     assert 'mark OLD' not in text
-    assert text.index('funds 100') < text.index('2000-02-29 pause') < text.index('2000-02-29 save')
+    assert text.index('funds 100') < text.index('2000-02-29 digest') < text.index('2000-02-29 save')
     assert text.count('GOLDEN_MONTH') == 2
+    assert '2000-02-29 resume' not in text
+    assert 'uiwait' not in text
+    assert 'pause' not in text
 
 
 def test_initial_save_setup_is_not_discarded_as_if_it_were_a_checkpoint():

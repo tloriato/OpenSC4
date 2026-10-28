@@ -74,6 +74,24 @@ def test_live_watcher_captures_evidence_then_stops_only_its_game(tmp_path):
     assert (result / 'game.log').read_text() == log
 
 
+def test_terminal_checkpoint_does_not_open_an_already_exited_game(tmp_path):
+    slot = tmp_path / 'slot'
+    (slot / 'Plugins').mkdir(parents=True)
+    city = slot / 'Regions/FC4 Test/City - Example.sc4'
+    city.parent.mkdir(parents=True)
+    city.write_bytes(b'final save')
+    script = tmp_path / 'actions.script'
+    (slot / 'Plugins/FreeCity4.log').write_text(
+        f'[pid 123 tid 456] DLL_PROCESS_ATTACH\n{script.resolve()}\nGOLDEN_MONTH 2010-05-31\n')
+    result = tmp_path / 'result'
+    watcher = monthly.Watcher(slot, script, result, '2010-04-30', '2010-05-31')
+    watcher.city = 'Example'
+    with patch.object(monthly, 'GameProcess', side_effect=AssertionError('game already exited')), \
+            patch.object(monthly, 'record_hashes', return_value={'date': '2010-05-31', 'records': {}}):
+        watcher.tick()
+    assert '2010-05-31' in json.loads((result / 'monthly.json').read_text())['months']
+
+
 def test_credit_always_captures_all_months_for_combined_owners():
     options = check.run_options(argparse.Namespace(command='credit'))
     assert '--monthly' in options
@@ -84,6 +102,27 @@ def test_window_results_cannot_be_published_as_full_scenario_credit():
     import pytest
     with pytest.raises(ValueError, match='credit requires full scenarios'):
         check.credit(argparse.Namespace(from_date='auto'))
+
+
+def test_auto_window_cannot_use_another_lanes_failure(tmp_path):
+    entry = tmp_path / 'reference'
+    entry.mkdir()
+    other = tmp_path / 'other-lane/candidate.dll'
+    mine = tmp_path / 'my-lane/candidate.dll'
+    golden.write_json(golden.comparison_history(entry, ['zones'], other), {
+        'first_difference': {'date': '2000-03-31'}, 'last_matching_month': '2000-02-29'})
+    args = argparse.Namespace(from_date='auto', dll=mine)
+    assert golden.window_inputs(args, entry, 'parent', ['zones']) is False
+    (entry / 'months').mkdir()
+    (entry / 'months/2000-02-29.sc4').write_bytes(b'reference checkpoint')
+    golden.write_json(entry / 'monthly.json', {'start': '2000-01-01'})
+    golden.write_json(golden.comparison_history(entry, ['zones'], mine), {
+        'first_difference': {'date': '2000-03-31'}, 'last_matching_month': '2000-02-29'})
+    args.until, args.months, args.output = '2000-03-31', 1, tmp_path / 'output'
+    args.regions_root, args.region, args.city = tmp_path, 'Example', 'City'
+    assert golden.window_inputs(args, entry, 'parent', ['zones']) is True
+    assert args.prepared_city.read_bytes() == b'reference checkpoint'
+    assert args.until == '2000-03-31'
 
 
 def test_envelope_verifies_monthly_snapshots_and_rejects_path_traversal(tmp_path):

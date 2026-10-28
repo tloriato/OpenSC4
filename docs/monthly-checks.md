@@ -15,6 +15,9 @@ month. Generated script actions use the observer's existing `save` operation.
 The default-off `golden_monthly` harness directive starts a watcher alongside the
 game. It verifies the unique script and PID, suspends that game while copying and
 hashing, and rejects a missed date. The engine and fixed schedule are unchanged.
+There is no generated pause/speed/UIWait gap: under the pinned fixed scheduler,
+UIWait can advance the calendar despite Pause or speed zero. Only the watcher's
+OS process suspension holds time during capture.
 
 `monthly.json` contains SHA-256 hashes keyed by date and full TGI, after DBPF/QFS
 decompression and class-aware object-ID normalization. Monthly and terminal
@@ -36,8 +39,10 @@ python .claude/lane-bin/qcheck.py --wt <WT> --replace advisors --scenarios timbu
 ```
 
 Qcheck defaults to the last matching month of the previous full-run failure for
-those selected keys. Without a prior failure it runs the full scenario. `--full`
-forces that path; `--from <date>` selects an anchor; `--months N` changes the
+those selected keys. Without a prior failure it runs the full scenario.
+Failure anchors are scoped to the candidate DLL path, so lanes do not overwrite
+each other's anchors and rebuilding the same path preserves its re-check point.
+`--full` forces that path; `--from <date>` selects an anchor; `--months N` changes the
 one-month window. An exact short re-check preserves the full-run failure anchor.
 Both the original and candidate reload the same reference snapshot and replay
 only actions after it. When falling back to the initial city, initial setup
