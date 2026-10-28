@@ -490,6 +490,34 @@ pub struct RetainingWallRecord {
 }
 
 impl RetainingWallRecord {
+    /// Decode the saved mask without the live load's hash-to-mask fixup (§7).
+    pub fn read_saved(&mut self, inp: &mut dyn InStream) -> bool {
+        self.read_fields(inp, false)
+    }
+
+    fn read_fields(&mut self, inp: &mut dyn InStream, fix_mask: bool) -> bool {
+        self.lot = RefValue::Null;
+        if read_header(inp, RETAINING_WALL_RECORD_VERSION, &mut self.base).is_none() {
+            return false;
+        }
+        let _ = (|| -> Option<()> {
+            self.wall_type = inp.get_u32()?;
+            self.edge_mask = inp.get_i32()?;
+            for i in 0..4 {
+                let h = inp.get_i32()?;
+                self.edge_hashes[i] = h;
+                if fix_mask && h != 0 {
+                    self.edge_mask |= 1 << i;
+                }
+            }
+            self.position = get_vec3(inp)?;
+            self.size = get_vec3(inp)?;
+            self.lot = inp.get_ref_as(IID_LOT)?;
+            Some(())
+        })();
+        inp.error() == 0
+    }
+
     /// Compares every field except the lot reference (`RefValue` has no
     /// equality).
     pub fn same_fields(&self, o: &Self) -> bool {
@@ -538,26 +566,7 @@ impl OccupantRecord for RetainingWallRecord {
     /// check), then reads; each non-zero hash i ORs bit i into the mask, so
     /// the mask grows on load *[quirk]* (T7).
     fn read(&mut self, inp: &mut dyn InStream) -> bool {
-        self.lot = RefValue::Null;
-        if read_header(inp, RETAINING_WALL_RECORD_VERSION, &mut self.base).is_none() {
-            return false;
-        }
-        let _ = (|| -> Option<()> {
-            self.wall_type = inp.get_u32()?;
-            self.edge_mask = inp.get_i32()?;
-            for i in 0..4 {
-                let h = inp.get_i32()?;
-                self.edge_hashes[i] = h;
-                if h != 0 {
-                    self.edge_mask |= 1 << i;
-                }
-            }
-            self.position = get_vec3(inp)?;
-            self.size = get_vec3(inp)?;
-            self.lot = inp.get_ref_as(IID_LOT)?;
-            Some(())
-        })();
-        inp.error() == 0
+        self.read_fields(inp, true)
     }
 }
 

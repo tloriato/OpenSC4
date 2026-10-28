@@ -217,3 +217,6 @@ cIGZUnknown* CreateFC4PowerSimulator();
 
 // Test seam op 6 (FC4TestSeam.h): 0 = the department / line-item path passed.
 intptr_t PowerTestBudgetPath(cISC4BudgetSimulator* budget);
+
+// Counted line-slot outputs, including partial and aliased pairs.
+intptr_t PowerTestLineConnections(cIGZUnknown* line, uint64_t* pair);

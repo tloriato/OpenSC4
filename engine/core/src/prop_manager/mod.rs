@@ -58,6 +58,7 @@
 //!   back into the manager.
 
 mod catalogue;
+pub mod archive;
 mod manager;
 
 #[cfg(test)]

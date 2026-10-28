@@ -38,6 +38,7 @@ def main():
     ap.add_argument('--backend', choices=('queue', 'direct'), default='queue')
     ap.add_argument('--slot', type=int, default=6)
     ap.add_argument('--harness-root')
+    ap.add_argument('--store', help='reference store (including the coordinator pin after a repin)')
     a = ap.parse_args()
     dll = a.dll or os.path.join(a.wt, 'engine', 'build-x86', 'FreeCity4.dll')
     if not os.path.isfile(dll):
@@ -57,6 +58,8 @@ def main():
         command += ['--legacy']
     if a.harness_root:
         command += ['--harness-root', a.harness_root]
+    if a.store:
+        command += ['--store', a.store]
     started = time.perf_counter()
     p = subprocess.run(command, cwd=MAIN, capture_output=True, text=True, encoding='utf-8', errors='replace')
     out = p.stdout + p.stderr + f'\nqcheck wall_seconds={time.perf_counter() - started:.3f}\n'

@@ -346,6 +346,8 @@ extern "C" __declspec(dllexport) intptr_t __cdecl FC4TestSeam(uint32_t op, void*
         case kFC4SeamNetworkToolOccupantViews:
             return fc4::NetToolOccupantViewsTest(static_cast<cIGZUnknown*>(a),
                                                static_cast<cIGZMessageServer2*>(b));
+        case kFC4SeamPowerLineConnections:
+            return PowerTestLineConnections(static_cast<cIGZUnknown*>(a), static_cast<uint64_t*>(b));
         default:
             return 0;
     }

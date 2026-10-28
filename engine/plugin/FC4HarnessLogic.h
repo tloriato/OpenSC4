@@ -309,6 +309,8 @@ struct ScriptAction {
     int32_t speed = 0;                       // speed
     int32_t funds = 0;                       // treasury target, whole simoleons
     uint32_t command = 0;                    // uicommand: unsigned data-file ID
+    int32_t commandBool = -1;                // optional parameter 0; -1 leaves the input set empty
+    bool nativeControl = false;              // uicontrol: opt-in window-manager mouse queue
     bool on = false;                         // turbo
     bool fast = false;                       // save
     float height = 0.0f;                     // terrain (metres)
@@ -468,10 +470,20 @@ inline bool ParseScriptLine(const std::string& raw, int32_t lineNo, ScriptAction
     };
     if (name == "uicommand" || name == "uicontrol") {
         a.op = name == "uicommand" ? ScriptOp::UiCommand : ScriptOp::UiControl;
-        if (!wantArgs(1, "0x12345678") || !detail::ParseCommandID(tok[2], &a.command)) {
+        const bool parameter = name == "uicommand" && nargs == 2;
+        const bool native = name == "uicontrol" && nargs == 2 && tok[3] == "native";
+        if (!wantArgs(parameter || native ? 2 : 1, "0x12345678 [0|1 / native]") || !detail::ParseCommandID(tok[2], &a.command)) {
             *error = "uicommand/uicontrol requires a nonzero eight-digit hexadecimal ID";
             return false;
         }
+        if (parameter) {
+            if (tok[3] != "0" && tok[3] != "1") {
+                *error = "uicommand parameter 0 must be boolean 0 or 1";
+                return false;
+            }
+            a.commandBool = tok[3] == "1" ? 1 : 0;
+        }
+        a.nativeControl = native;
     } else if (name == "uiwait" || name == "uikey") {
         a.op = name == "uiwait" ? ScriptOp::UiWait : ScriptOp::UiKey;
         if (!wantArgs(1, name == "uiwait" ? "milliseconds" : "virtual-key")) return false;

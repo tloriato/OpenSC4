@@ -55,6 +55,7 @@
 //!   lookup compares them ignoring ASCII case.
 
 mod object;
+pub mod record;
 mod simulator;
 
 pub use object::{OrdinanceData, OrdinanceKind, StandardOrdinance, ORDINANCE_RECORD_VERSION};

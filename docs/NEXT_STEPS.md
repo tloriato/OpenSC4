@@ -5,9 +5,16 @@ replaces the whole file: no history, no logs, no "previously". Work that is done
 Evidence lives in git, in `docs/lanes/` and in `build-runs/`, never here. Where another document disagrees with this
 one, this one wins.
 
-State as of 2026-10-28 06:55: **run 8 is running** (12 Codex lanes, `build-runs/run8-state.json`). Steps 1-3 are done.
-All 179 references are recorded on pin r5; region-exact33 landed (train303, main 053144cee); the chain below
-re-measures Exact-replaced with main's DLL.
+State as of 2026-10-28 11:00: **run 8 is running** (12 Codex lanes, `build-runs/run8-state.json`). Steps 1-3 are done.
+Landed today, each exact on its covers: zones, budget, parks, regionalcity, neighbors, citysit, commercial, propmgr,
+clock24. Also landed: the save round trip (save-roundtrip33), draw streams in exact checks (draw-check35), corpus35's
+scenarios and the save layouts of the traffic network map, city and auxiliary records (re-sr36).
+
+**Priority now (the user, 08:30): the fast loop, not measurement.** Do not spend game slots on headline numbers. One
+game run must answer every owner's question (monthly record hashes: which owner differs first, and when) and a lane's
+re-check must take minutes (early stop, one-month windows from the reference's monthly snapshots): lane fastloop36.
+When fastloop36 lands, every reference is recorded once more with its monthly snapshots (same pin). Measure
+Exact-replaced only from that run's per-owner verdicts.
 
 ## 1. The goal, worked backwards
 
@@ -22,9 +29,9 @@ the **draw calls** into `cIGZGDriver`, **sound events**, **UI window state** and
 The reference store (`tools/golden.py`, `build-runs/golden`) keys each reference on the schedule code, the pinned DLL
 and the run settings, and refuses a candidate whose schedule code differs.
 
-**Pinned now:** sha d79069d9, schedule code bde008a451b1c7fb (main 0a970d24c: `fc4::ScheduleQpc` for our cores'
-stopwatch reads, the neighbours simulator's adjacent cities in region position order, and corpus34's UI input to the
-minimized window). While references are re-recorded, `build-runs/golden/RECORDING` tells lanes to merge main and
+**Pinned now (r6):** sha ee75f849, schedule code c7ac4ea4290c77db (main 3165c0612: a new train junction's four
+indices start at 0, simulator §5.8 Uninitialised values; before it, the stack contents they carried into the traffic
+network map's save made 6 of 55 scenarios differ with no owner on whenever the DLL changed; and corpus35's UI driver). While references are re-recorded, `build-runs/golden/RECORDING` tells lanes to merge main and
 wait. A plugin change that alters what the original does (the UI driver, the schedule) needs a repin even when the
 schedule code is unchanged: the store only refuses a different schedule code.
 
@@ -63,8 +70,7 @@ Worked backwards, three things stand between those 21 keys and credit, each with
 
 **The landing rule.** An engine lane lands only through `python tools/merge-train.py run --lanes <lane> --add-replace
 <keys>`, then `land`: its check runs the credit keys plus the lane's keys on their covers and must be exact
-(`regress --add-replace` reruns only the check). After each landing, re-run the chain so the new keys count. While a
-train runs, commit nothing under tools/ or engine/ on main: `land` then refuses after a passing check.
+(`regress --add-replace` reruns only the check). Batch every ready lane into one train. While a train runs, commit nothing under tools/ or engine/ on main: `land` then refuses after a passing check.
 
 ## 4. The loops
 
@@ -73,7 +79,6 @@ train runs, commit nothing under tools/ or engine/ on main: `land` then refuses 
 | Reference recording | `python tools/check.py record --scenarios all --jobs 12` | about 45 min (5 scenarios: 1 min 48 s) |
 | Per change | the lane's build, then `.claude/lane-bin/qcheck.py --wt <WT> --replace <keys>` on its covers | 3-8 min |
 | Landing | merge-train run with `--add-replace`, then land | under 15 min |
-| The chain | record, each owner alone and credit with main's DLL, coverage; then plain repeat, holes, reverse with the pinned DLL (`scratchpad/step3/chain4.sh REF CAND TAG`; never edit it while it runs) | metric in about 1.5 h, all about 4 h |
 
 The game queue runs two instances on the same 12 slots: the default (started 10-27 16:19, older code) and `fair`
 (`-Instance fair`, commit 1b4bbe6b3), where a lane request waiting 15 minutes ranks with the coordinator's requests.
@@ -89,28 +94,26 @@ ones for a relaunch with an answer. Codex "Selected model is at capacity" fails 
 | Lane | Owners | Aim |
 |---|---|---|
 | traffic-exact33 | traffic | first differences moved later; not exact |
-| automata-exact33 | automata | East Weburg clean; the rest outside |
+| automata-exact33 (parked, round cap) | automata | resume on the fast loop |
 | network-exact33 | netmgr, netrules, nettool, netlot | save differences 103 → 6 |
-| disasters-exact33 | disasters, effects | crashes fixed; 91 → 17 and 93 → 68 differing records |
-| advisors-exact33 | advisors, citysit, mysims | not exact |
-| growth-exact34 | residential, commercial, development, demand, zones, … | zones landed exact |
-| services-exact34 | power, pollution, landvalue, budget, ordinance, … | parks landed exact; budget next |
+| disasters-exact33 (parked, round cap) | disasters, effects | resume on the fast loop |
+| advisors-exact36 | advisors, mysims | citysit landed exact |
+| fastloop36 | golden.py, check.py, qcheck | one run answers every owner; re-check in under 5 minutes |
+| growth-exact36 | residential, development, demand, zonedev, lotdev, lotcfg, exemplars | zones, commercial, propmgr landed exact |
+| services-exact36 | power, pollution, landvalue, ordinance, demolition, dispatch, … | power: which call in state 1 draws rand() differently |
 | together34 | the 21 exact-alone keys | exact with all keys on |
 | wiring34 | span565, gzfw, simgrids, tract, … | the original's code of switched-on owners stops running |
-| corpus35 | scenarios | found unfounded cities (magnolia), budget panel, region view, next reach gains |
-| save-roundtrip33 | formats, save, persistence | 48 of 169 record types, 43.23% of bytes round-trip exactly |
-| draw-check35 | draw references and the draw comparison in check.py | renderer and UI keys are exact only if their draw calls match too |
+| save-roundtrip36 | formats, save, persistence | decode the traffic network map (87% of the undecoded bytes), then the rest |
 
 **Known issues.**
-- `paradis-magnolia` is clockless until a script can found it: an unfounded city's level-0 agents (flags 2) stay
-  disabled and hold the calendar (simulator §5.2 step 2).
 - Run-8 worktrees are 9-13 GB each: remove a merged lane's worktree at once (`cmd /c "rd /s /q \\?\<path>"`, then
   `git worktree prune`; plain removal fails on long paths). Disk at most 85%.
 
 ## 6. The standalone track
 
-1. **Save round trip** (save-roundtrip33): load a 1.1.641 save into our data model and write identical records after
-   decompression and ID renumbering; corpus = the references' end saves.
+1. **Save round trip:** all 547 reference and shipped saves come back with no decompressed difference; 140 of 169
+   record types (89.22% of bytes) are decoded by their owners, the rest kept as bytes. The remaining layouts are
+   specified (traffic-network.md §6.2, foundations.md §3.6, save-records.md §2.1); save-roundtrip36 decodes them.
 2. **Headless host:** our exe loads the data files and a save, runs N days under the fixed schedule, writes a save
    compared with the same references. It implements the host side of `fc4.h` over our own world model; no host crate
    yet.

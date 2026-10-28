@@ -71,6 +71,7 @@ use crate::stream::{InStream, OutStream, RefValue, SaveObject};
 use crate::variant::Elem;
 
 pub mod effects;
+pub mod archive;
 
 /// Class and interface IDs (§1).
 pub const CLSID_PROP_DEVELOPER: u32 = 0x89C4_8F47;

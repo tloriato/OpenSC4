@@ -429,16 +429,34 @@ bool PowerLine(void*, uint64_t occ, fc4_power_line* out) {
     });
 }
 
-bool g_connectedPolesNoted = false;
+// network-occupants §5.1: both outputs are counted pole interfaces (the SDK
+// misdeclares the first as a line). functions.tsv gives slot 3 a void return.
+class PowerLineConnections : public cIGZUnknown {
+public:
+    virtual void GetConnectedPoles(cIGZUnknown*& first, cIGZUnknown*& second, bool& flag) = 0;
+};
 
-// [choice] Refused: the outputs of line slot 3 (GetConnectedPoles, pop 12)
-// are not in docs/abi (their types and whether they carry references), so
-// §5.4 passes 2 and 3 find no line to detach (spec question).
-bool LineConnectedPoles(void*, uint64_t, uint64_t*, uint64_t*) {
-    NoteOnce(g_connectedPolesNoted,
-             "power: WARNING GetConnectedPoles (line slot 3) is refused until docs/abi gives its outputs; terrain "
-             "changes do not detach power lines (§5.4 passes 2-3)");
-    return false;
+bool LineConnectedPoles(void* u, uint64_t line, uint64_t* first, uint64_t* second) {
+    if (first != nullptr) *first = 0;
+    if (second != nullptr) *second = 0;
+    cIGZUnknown* poles[2] = {};
+    const bool found = WithQi<PowerLineConnections>(line, kIID_cISC4PowerLineOccupant,
+        [&](PowerLineConnections* p) {
+            bool flag = false;
+            p->GetConnectedPoles(poles[0], poles[1], flag);
+        });
+    // The core retains the tokens across the three terrain-change passes.
+    // Hold each returned reference until the outermost core call ends, even
+    // when both outputs name the same pole or only one output is non-null.
+    for (cIGZUnknown* pole : poles) {
+        if (pole == nullptr) continue;
+        FC4_ACQUIRED(pole, "power GetConnectedPoles");
+        G(u)->Hold(std::shared_ptr<void>(pole, [](void* p) { FC4_RELEASE(static_cast<cIGZUnknown*>(p)); }));
+    }
+    if (!found || poles[0] == nullptr || poles[1] == nullptr) return false;
+    if (first != nullptr) *first = TokenOf(poles[0]);
+    if (second != nullptr) *second = TokenOf(poles[1]);
+    return true;
 }
 
 // first.RemoveConnection(second, 0): docs/abi/direct-calls.md. `this` and the
@@ -1605,3 +1623,9 @@ bool cFC4PowerSimulator::Read(cIGZIStream& s) {
 }
 
 uint32_t cFC4PowerSimulator::GetGZCLSID() { return kFC4_CLSID_cSC4PowerSimulator; }
+
+intptr_t PowerTestLineConnections(cIGZUnknown* line, uint64_t* pair) {
+    if (pair == nullptr) return -1;
+    FC4PowerGame game;
+    return LineConnectedPoles(&game, TokenOf(line), &pair[0], &pair[1]) ? 1 : 0;
+}

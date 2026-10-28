@@ -119,6 +119,7 @@
 mod daily;
 mod effects;
 mod record;
+pub mod archive;
 mod simulator;
 #[cfg(test)]
 mod tests;

@@ -26,6 +26,7 @@
 //! type-info tables (§8), and routines other than the
 //! ordinary placement-demolition helper in [`placement_demolition`].
 
+pub mod base;
 pub mod identity;
 pub mod model;
 pub mod piece;
@@ -35,7 +36,6 @@ pub mod record;
 pub mod surface;
 pub mod underground;
 pub mod xform;
-pub mod base;
 
 #[cfg(test)]
 mod tests;
@@ -70,6 +70,8 @@ pub mod pylon;
 mod tests_pylon;
 
 pub mod connection;
+
+pub mod archive;
 
 #[cfg(test)]
 mod tests_connection;

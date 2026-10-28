@@ -12,6 +12,8 @@
 #include "cIGZFrameWorkW32.h"
 #include "cIGZCommandServer.h"
 #include "cIGZCommandParameterSet.h"
+#include "cIGZVariant.h"
+#include "cGZMessage.h"
 #include "cISC4App.h"
 #include "cISC4View3DWin.h"
 #include "cISC43DRender.h"
@@ -63,7 +65,7 @@ inline bool InputClientRect(HWND window, RECT& client) {
     return client.right > 0 && client.bottom > 0;
 }
 
-inline std::string Command(uint32_t id) {
+inline std::string Command(uint32_t id, int32_t parameter = -1) {
     auto* fw = RZGetFrameWork();
     cIGZCommandServer* server = nullptr;
     if (!fw || !fw->GetSystemService(0xEB903A32, 0xCB90253A,
@@ -95,11 +97,19 @@ inline std::string Command(uint32_t id) {
     if (out) FC4_ACQUIRED(out, "UI driver output set");
     std::string result = "SKIPPED: unknown command or unavailable parameter sets";
     if (in && out) {
+        // command-system.md section 1.3: a fresh set numbers its first value 0.
+        // QuitCity reads this boolean as "do not ask" (view3d-window section 6).
+        if (parameter >= 0) {
+            in->SetParameterCount(1);
+            auto* value = in->GetParameter(0); // borrowed from the set
+            if (value) value->SetValBool(parameter != 0);
+        }
         // command-system.md section 5: SDK overload order differs; ID is slot 20.
         using Execute = int32_t (__thiscall*)(void*, uint32_t, cIGZCommandParameterSet*, cIGZCommandParameterSet*);
         auto execute = reinterpret_cast<Execute>((*reinterpret_cast<void***>(server))[20]);
         const int32_t status = execute(server, id, in, out);
         result = "status=" + std::to_string(status) + " name=" + name.ToChar();
+        if (parameter >= 0) result += " bool0=" + std::to_string(parameter);
         // Status zero is only delivery, never a reach/semantic qualification.
     }
     if (out) FC4_RELEASE_CREATED(out);
@@ -180,7 +190,33 @@ inline bool ControlPixel(uint32_t id, int& x, int& y) {
 inline std::string Run(const harness::ScriptAction& a) {
     using harness::ScriptOp;
     if (a.op == ScriptOp::UiWait) return "wait-ms=" + std::to_string(a.type);
-    if (a.op == ScriptOp::UiCommand) return Command(a.command);
+    if (a.op == ScriptOp::UiCommand) return Command(a.command, a.commandBool);
+    if (a.op == ScriptOp::UiControl && a.nativeControl) {
+        int x = 0, y = 0;
+        if (!ControlPixel(a.command, x, y)) return "SKIPPED: control unavailable";
+        auto* fw = RZGetFrameWork();
+        cFC4IGZWinMgr* manager = nullptr;
+        if (!fw || !fw->GetSystemService(kFC4_SRVID_cIGZWinMgr, kFC4_IID_cIGZWinMgr,
+                reinterpret_cast<void**>(&manager)) || !manager) return "SKIPPED: no window manager";
+        FC4_ACQUIRED(manager, "UI driver native mouse queue");
+        // widget-winmgr.md section 6.1: normal hit testing, capture and focus.
+        // Dispatch the canvas's mouse record, not the Win32 conversion in
+        // GZWinMsgPostMouse (section 5); modifiers occupy its high 16 bits.
+        const auto dispatch = [&](uint32_t type, uint32_t buttons) {
+            // ProcessCursorMessage converts the record's coordinates in place
+            // (widget-toolkit.md section 15.1). Each event needs screen coords.
+            cGZMessage mouse(type);
+            mouse.dwData1 = static_cast<uint32_t>(x);
+            mouse.dwData2 = static_cast<uint32_t>(y);
+            mouse.dwData3 = buttons << 16;
+            manager->ProcessMouseMessage(mouse);
+        };
+        dispatch(13, 0);
+        dispatch(7, 0x10);
+        dispatch(10, 0);
+        FC4_RELEASE(manager);
+        return "delivered native mouse (qualify with reach) client=" + std::to_string(x) + "," + std::to_string(y);
+    }
     HWND window = GameWindow();
     if (!window) return "SKIPPED: no process-local framework window";
     bool ok = true;

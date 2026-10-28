@@ -8,10 +8,10 @@ but nested commands and simulator/save actions wait until the command returns.
 
 | Verb | Arguments | Delivery |
 |---|---|---|
-| `uicommand` | `0x12345678` | Registered ID through command-server slot 20, with separate input/output sets. |
+| `uicommand` | `0x12345678 [0\|1]` | Registered ID through command-server slot 20, with separate input/output sets; optional boolean parameter 0. |
 | `uimouse` | `x y move\|down\|up\|click` | Client pixel coordinates; posted mouse messages. |
 | `uicell` | `x z height move\|down\|up\|click` | Cell centre `(16*x+8,height,16*z+8)` projected by view utilities, then converted to main-window pixels. Height is metres above datum. |
-| `uicontrol` | `0x12345678` | Find a child by its resource ID and click its centre through ordinary mouse input. |
+| `uicontrol` | `0x12345678 [native]` | Find a visible enabled child and click its centre; `native` dispatches canvas mouse records through the window manager's hit testing and capture. |
 | `uikey` | `1..255` | Win32 virtual-key down/up, including scan and transition bits. |
 | `uitext` | `printable ASCII text` | Up to 256 WM_CHAR characters, preserving internal spaces. No implicit Enter. |
 | `uiwait` | `0..60000` | Delay subsequent actions by milliseconds; never sleeps the main thread. |
@@ -24,6 +24,26 @@ Unknown command IDs are refused. `status=0` and `posted` prove delivery only:
 qualification requires target-method reach and a clean verdict with no reference
 warnings. `ui_command_catalog=1` logs registered IDs/names/parameters on the first
 command for diagnosis; it does not execute the catalogue.
+
+An unfounded god-mode city has no new-day messages. Put `establish <city name>`
+first, dated at the city's saved date, before funded construction or UI input.
+This opt-in action calls the native city's `SetEstablished(true)`, which posts
+the establishment message and enables the simulator's established-city agents.
+The leading action and its same-date setup can run on a framework tick; later
+dates still require actual new days. `funds <amount>` then supplies construction
+money through the budget interface. Neither a queued script nor a load-only
+verdict proves that the city was founded or that placements succeeded.
+
+For a dated-save region driver, save before `uicommand 0x6a935e39 1`
+(`QuitCity`, boolean parameter 0 = do not ask). An empty parameter set asks for
+confirmation; automatic dialog closing can cancel it while delivery still
+returns status 0. Qualify the transition with region-screen method entries.
+
+`budgetwindow` delivers the city-view advice link. Its expanded-tab button is
+posted to the window manager, so the action logs delivery, not immediate panel
+visibility. Wait before selecting a visible row, and qualify sub-budget entry
+from reach. `uicontrol ... native` dispatches the canvas mouse records directly
+and preserves the native window manager's hit testing and button notifications.
 
 `uicontrol` refuses a control if it or any parent is hidden or disabled. A
 resource can contain overlapping hidden and visible buttons with different IDs.

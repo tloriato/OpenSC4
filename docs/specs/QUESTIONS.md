@@ -177,7 +177,7 @@ generated index: the questions live one file per spec, so read only the file for
 | SM | rz-sparse-matrix |
 | SN | snapshots |
 | SP | span-render-4444 |
-| SR | span-render-1555, span-render-565, span-render-8, span-render-8888 |
+| SR | save-records, span-render-1555, span-render-565, span-render-8, span-render-8888 |
 | SRN | sound-renderer |
 | SS | sound-system |
 | SSP | system-service-pointer |
@@ -344,7 +344,7 @@ generated index: the questions live one file per spec, so read only the file for
 | occupant-groups | 4 | 0 | OG5 | questions/occupant-groups.md |
 | occupant-manager | 1 | 6 | OM11 | questions/occupant-manager.md |
 | occupants-props | 6 | 14 | OP20 | questions/occupants-props.md |
-| ordinance | 0 | 1 | SV3 | - |
+| ordinance | 0 | 1 | SV3 | questions/ordinance.md |
 | output-streams | 3 | 4 | OS8 | questions/output-streams.md |
 | overlay-manager | 5 | 14 | OV20 | questions/overlay-manager.md |
 | overlay-views | 1 | 6 | OVV8 | questions/overlay-views.md |
@@ -385,8 +385,10 @@ generated index: the questions live one file per spec, so read only the file for
 | rz-draw | 1 | 0 | RZD2 | questions/rz-draw.md |
 | rz-sparse-matrix | 5 | 0 | SM6 | questions/rz-sparse-matrix.md |
 | rz-strings | 4 | 8 | RZS12 | questions/rz-strings.md |
+| save-records | 0 | 2 | SR34 | questions/save-records.md |
 | sc-resources | 1 | 11 | SCR12 | questions/sc-resources.md |
 | simgrid | 2 | 1 | SG4 | questions/simgrid.md |
+| simulator | 0 | 0 | - | questions/simulator.md |
 | snapshots | 9 | 0 | SN10 | questions/snapshots.md |
 | sound-framework | 4 | 0 | SY5 | questions/sound-framework.md |
 | sound-renderer | 3 | 0 | SRN4 | questions/sound-renderer.md |
@@ -436,4 +438,4 @@ generated index: the questions live one file per spec, so read only the file for
 | win-grid | 2 | 7 | WG10 | questions/win-grid.md |
 | zone-tool | 1 | 0 | ZT2 | questions/zone-tool.md |
 | zones | 2 | 56 | ZG43, ZQ17 | questions/zones.md |
-| **total** | **629** | **1703** | | |
+| **total** | **629** | **1705** | | |

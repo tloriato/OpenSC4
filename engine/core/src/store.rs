@@ -17,6 +17,8 @@ use std::rc::Rc;
 
 use crate::stream::{ByteReader, ByteWriter, InStream, OutStream, RefResolver, RefValue, SaveObject, SaveRegistry};
 
+pub mod archive;
+
 /// Group of every class record and of the index (§3.2).
 pub const STORE_GROUP: u32 = 0x299B_2D1B;
 /// Type of the index record (§3.2).
@@ -31,17 +33,30 @@ pub const MAX_OBJECTS_PER_CLASS: u32 = 9_999_999;
 pub fn crc32_mpeg2(data: &[u8]) -> u32 {
     let mut crc: u32 = 0xFFFF_FFFF;
     for &b in data {
-        crc ^= u32::from(b) << 24;
-        for _ in 0..8 {
+        crc = (crc << 8) ^ CRC_TABLE[((crc >> 24) ^ u32::from(b)) as usize];
+    }
+    crc
+}
+
+const CRC_TABLE: [u32; 256] = {
+    let mut table = [0; 256];
+    let mut i = 0;
+    while i < 256 {
+        let mut crc = (i as u32) << 24;
+        let mut bit = 0;
+        while bit < 8 {
             crc = if crc & 0x8000_0000 != 0 {
                 (crc << 1) ^ 0x04C1_1DB7
             } else {
                 crc << 1
             };
+            bit += 1;
         }
+        table[i] = crc;
+        i += 1;
     }
-    crc
-}
+    table
+};
 
 /// A package: records keyed by (type, group, instance).
 pub type Package = BTreeMap<(u32, u32, u32), Vec<u8>>;

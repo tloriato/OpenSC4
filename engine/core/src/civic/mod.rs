@@ -65,6 +65,7 @@
 //!   main-thread only. No borrow is held across a host call; host callbacks
 //!   must not call back into the simulator.
 
+pub mod archive;
 mod record;
 mod simulator;
 

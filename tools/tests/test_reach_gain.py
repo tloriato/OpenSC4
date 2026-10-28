@@ -10,6 +10,24 @@ import reach_gain
 
 
 class ReachGainTests(unittest.TestCase):
+    def test_baseline_only_and_remaining_gaps_after_overlapping_candidates(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ref, candidate = root / 'ref.tsv', root / 'candidate.tsv'
+            ref.write_text('address\tentries\n00400000\t1\n', encoding='utf-8')
+            candidate.write_text('address\tentries\n00400010\t2\n', encoding='utf-8')
+            functions = {0x400000: dict(bytes=10, owner='City', subsystem='save'),
+                         0x400010: dict(bytes=20, owner='Panel', subsystem='UI'),
+                         0x400020: dict(bytes=30, owner='Panel', subsystem='UI')}
+            baseline = reach_gain.measure([], [ref], functions)
+            self.assertEqual(baseline['gain'], dict(functions=0, bytes=0))
+            self.assertEqual(baseline['gaps'], {'UI': dict(functions=2, bytes=50)})
+            measured = reach_gain.measure([candidate, candidate], [ref], functions)
+            self.assertEqual(measured['baseline'], baseline['baseline'])
+            self.assertEqual(measured['gaps'], {'UI': dict(functions=1, bytes=30)})
+            self.assertEqual(measured['combined']['bytes'] + sum(g['bytes'] for g in measured['gaps'].values()),
+                             measured['denominator']['bytes'])
+
     def test_reference_union_positive_entries_libraries_and_overlap(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

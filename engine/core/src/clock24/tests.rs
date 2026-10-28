@@ -16,6 +16,7 @@ use crate::stream::{ByteReader, ByteWriter, OutStream};
 #[derive(Default)]
 struct Fake {
     now: Cell<u64>,
+    clock_reads: Cell<u32>,
     posts: RefCell<Vec<(u32, u32, u32)>>,
     calls: RefCell<Vec<String>>,
     cheats: Cell<bool>,
@@ -26,6 +27,7 @@ struct H(Rc<Fake>);
 
 impl ClockHost for H {
     fn now_micros(&self) -> u64 {
+        self.0.clock_reads.set(self.0.clock_reads.get() + 1);
         self.0.now.get()
     }
     fn post(&self, msg_type: u32, data2: u32, data3: u32) {
@@ -457,6 +459,42 @@ fn ck12_07_modes() {
 }
 
 // ---- §12.8 pause counters -----------------------------------------------------------------------
+
+#[test]
+fn ck12_08_pause_reads_clock_only_for_timer_transitions() {
+    let (f, mut c) = shipped();
+    f.clock_reads.set(0);
+    c.pause(false);
+    c.hidden_pause(false);
+    assert_eq!(f.clock_reads.get(), 0);
+
+    c.pause(true);
+    assert_eq!(f.clock_reads.get(), 1);
+    c.pause(true);
+    c.hidden_pause(true);
+    c.pause(false);
+    c.pause(false);
+    assert_eq!(f.clock_reads.get(), 1);
+
+    c.hidden_pause(false);
+    assert_eq!(f.clock_reads.get(), 2);
+    c.hidden_pause(false);
+    assert_eq!(f.clock_reads.get(), 2);
+}
+
+#[test]
+fn ck12_08_stopped_timer_does_not_read_clock() {
+    let (f, mut c) = new();
+    c.on_idle();
+    assert_eq!(c.timer_elapsed_us(), 0);
+    c.pause(true);
+    c.pause(true);
+    c.pause(false);
+    assert_eq!(f.clock_reads.get(), 0);
+    c.pause(false);
+    assert!(c.timer().running);
+    assert_eq!(f.clock_reads.get(), 1);
+}
 
 #[test]
 fn ck12_08_pause_counters() {

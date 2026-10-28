@@ -137,6 +137,7 @@ pub use registry::{
 };
 pub use simulator::{predict_visit, FloraData, FloraSim, VisitOutcome, FLORA_RECORD_VERSION};
 pub mod occupant;
+pub mod archive;
 
 use std::rc::Rc;
 

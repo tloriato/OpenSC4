@@ -902,3 +902,6 @@ fn risky_money_generator_is_process_wide() {
         fc4_budget_destroy(b);
     }
 }
+
+#[path = "budget_funding_tests.rs"]
+mod funding_percent_tests;

@@ -312,6 +312,16 @@ pub fn write_network_record(rec: &NetworkBaseRecord, out: &mut dyn OutStream) ->
 /// read **continues** (the caller ignores that result; the stream is then
 /// misaligned), leaving the cell info as it was.
 pub fn read_network_record(inp: &mut dyn InStream) -> Option<NetworkBaseRecord> {
+    read_network_fields(inp, true)
+}
+
+/// Persisted values before the live reader masks flags and forces triangle
+/// alpha (§2.3). Legacy versions still convert to the current writer's layout.
+pub fn read_saved_network_record(inp: &mut dyn InStream) -> Option<NetworkBaseRecord> {
+    read_network_fields(inp, false)
+}
+
+fn read_network_fields(inp: &mut dyn InStream, load_fixups: bool) -> Option<NetworkBaseRecord> {
     let mut rec = NetworkBaseRecord {
         version: inp.get_u16()?,
         ..NetworkBaseRecord::default()
@@ -352,7 +362,9 @@ pub fn read_network_record(inp: &mut dyn InStream) -> Option<NetworkBaseRecord> 
         };
         for v in t.verts.iter_mut() {
             *v = Vertex::read(inp)?;
-            v.force_alpha();
+            if load_fixups {
+                v.force_alpha();
+            }
         }
         rec.triangles.push(t);
     }
@@ -364,7 +376,7 @@ pub fn read_network_record(inp: &mut dyn InStream) -> Option<NetworkBaseRecord> 
     if rec.version < 6 {
         flags = convert_v5_flags(flags);
     }
-    rec.network_flags = flags & SAVED_FLAGS_MASK;
+    rec.network_flags = if load_fixups { flags & SAVED_FLAGS_MASK } else { flags };
     rec.path_id = inp.get_u32()?;
     if rec.path_id != 0 && rec.version < 7 {
         rec.legacy_offsets = Some([inp.get_f32()?, inp.get_f32()?]);
@@ -411,15 +423,20 @@ impl PrebuiltRecord {
 
     /// An omitted optional block leaves the existing live fields intact.
     pub fn read_into(&mut self, inp: &mut dyn InStream) -> bool {
-        self.read_fields(inp).is_some() && inp.error() == 0
+        self.read_fields(inp, true).is_some() && inp.error() == 0
     }
 
-    fn read_fields(&mut self, inp: &mut dyn InStream) -> Option<()> {
+    /// Archive load without the inherited live flag/alpha fixups.
+    pub fn read_saved_into(&mut self, inp: &mut dyn InStream) -> bool {
+        self.read_fields(inp, false).is_some() && inp.error() == 0
+    }
+
+    fn read_fields(&mut self, inp: &mut dyn InStream, load_fixups: bool) -> Option<()> {
         let version = inp.get_u16()?;
         if !(3..=4).contains(&version) {
             return None;
         }
-        let Some(base) = read_network_record(inp) else {
+        let Some(base) = read_network_fields(inp, load_fixups) else {
             // The inherited result gates the suffix; the envelope's final
             // result still tests the stream error (§2.8.1).
             return (inp.error() == 0).then_some(());
@@ -471,11 +488,24 @@ impl TunnelRecord {
     }
 
     pub fn read_into(&mut self, inp: &mut dyn InStream) -> bool {
-        self.read_fields(inp).is_some() && inp.error() == 0
+        self.read_fields(inp, true).is_some() && inp.error() == 0
     }
 
-    fn read_fields(&mut self, inp: &mut dyn InStream) -> Option<()> {
-        if inp.get_u16()? != 2 || !self.prebuilt.read_into(inp) {
+    /// Archive load preserving the pair identity and inherited saved values.
+    pub fn read_saved_into(&mut self, inp: &mut dyn InStream) -> bool {
+        self.read_fields(inp, false).is_some() && inp.error() == 0
+    }
+
+    fn read_fields(&mut self, inp: &mut dyn InStream, load_fixups: bool) -> Option<()> {
+        if inp.get_u16()? != 2 {
+            return None;
+        }
+        let ok = if load_fixups {
+            self.prebuilt.read_into(inp)
+        } else {
+            self.prebuilt.read_saved_into(inp)
+        };
+        if !ok {
             return None;
         }
         let present = inp.get_u8()? != 0;

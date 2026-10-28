@@ -45,6 +45,7 @@ use super::slots::{
 use super::win::{WinStore, WinToken};
 
 mod actions;
+pub mod archive;
 mod city;
 mod commands;
 mod coverage;

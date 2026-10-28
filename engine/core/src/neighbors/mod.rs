@@ -51,6 +51,7 @@
 //! - The two-curve switch (§8.3), off by default.
 
 mod connection;
+pub mod archive;
 mod deal;
 mod pricing;
 mod simulator;

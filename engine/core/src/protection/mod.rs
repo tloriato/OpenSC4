@@ -152,6 +152,7 @@ mod simulator;
 #[cfg(test)]
 mod tests;
 mod tuning;
+pub mod archive;
 
 pub use algo::{
     adjusted_value, choose_base_call_number, combine_strike_chance, dispatch_from_station_mask, escapees,

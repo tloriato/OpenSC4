@@ -147,6 +147,7 @@ mod developer;
 mod manager;
 mod parcel;
 mod region;
+pub mod archive;
 #[cfg(test)]
 mod tests;
 

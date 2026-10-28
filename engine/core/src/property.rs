@@ -14,6 +14,8 @@ use std::rc::Rc;
 use crate::stream::{InStream, OutStream, ResKey};
 use crate::variant::Variant;
 
+pub mod archive;
+
 pub const HOLDER_VERSION: u16 = 2;
 
 /// A plain property holder: at most one property per ID, kept in ascending

@@ -84,6 +84,8 @@ pub use lua::{combine_guids, trend_slope_of, LuaValue};
 pub use subject::{AdviceSubject, SubjectState};
 pub use system::{AdvisorSystem, SystemState};
 
+pub mod archive;
+
 use std::any::Any;
 use std::rc::Rc;
 

@@ -639,6 +639,7 @@ struct HcPost {
 };
 struct HcClockWorld {
     uint64_t now = 1000000;
+    uint32_t clockReads = 0;
     std::vector<HcPost> posts;
     std::vector<std::pair<void*, uint32_t>> framework;  // service, op
     std::vector<std::array<uint32_t, 2>> cheats;        // op, id
@@ -647,7 +648,11 @@ struct HcClockWorld {
     bool tuning = true;
 };
 
-uint64_t HcNow(void* c) { return static_cast<HcClockWorld*>(c)->now; }
+uint64_t HcNow(void* c) {
+    auto* w = static_cast<HcClockWorld*>(c);
+    ++w->clockReads;
+    return w->now;
+}
 void HcPostHook(void* c, cIGZMessage2* m) {
     cIGZMessage2Standard* s = nullptr;
     if (m != nullptr && m->QueryInterface(GZIID_cIGZMessage2Standard, reinterpret_cast<void**>(&s)) && s != nullptr) {
@@ -787,7 +792,9 @@ int Clock24EnableTest(const std::string& dll, const std::string& ini, const std:
                 CHECK(c->GetHour() == 21 && c->GetVisualHour() == 12);
             }
             const uint64_t t0 = w.now;
+            CHECK(w.clockReads == 0);  // Read and diagnostics leave a stopped timer alone.
             CHECK(c->Init());
+            CHECK(w.clockReads == 1);  // Start only; logging must not sample it again.
             CHECK(c->GetTimeMagnification(f) == HcBits(135.0f));
             CHECK(c->GetTimeMagnificationMinMax(mn, mx) == HcBits(1500.0f));
             CHECK(c->GetEventHour(0) == 20 && c->GetEventHour(1) == 1);
@@ -804,6 +811,7 @@ int Clock24EnableTest(const std::string& dll, const std::string& ini, const std:
             CHECK(w.cheats == wantInit);
             CHECK(w.cheatNames.size() == 2 && w.cheatNames[0] == "WhatTimeIzIt" && w.cheatNames[1] == "Stopwatch");
             CHECK(c->Init());  // initialised: nothing again
+            CHECK(w.clockReads == 1);
             CHECK(w.framework.size() == 2 && w.cheats.size() == 4);
             // §4.3 / §4.9: the step threshold at 135, then the first step
             // after the load moves the visual time from noon to 21:01:01.
@@ -980,7 +988,7 @@ int Clock24EnableTest(const std::string& dll, const std::string& ini, const std:
     CHECK(text.find("subsystem 'clock24': enabled (1 class replaced) by FreeCity4.ini (enable=)") != npos);
     CHECK(text.find("clock24 Init: ok=1 cheats=yes tuning=yes") != npos);
     CHECK(text.find("clock24 Shutdown:") != npos);
-    CHECK(text.find("26 bytes, read back and rewritten identical;") != npos);
+    CHECK(text.find("26 bytes, read back and rewritten identical)") != npos);
     CHECK(text.find("WARNING: released last reference") == npos && text.find("WARNING: over-release") == npos);
     if (g_failures == 0) std::printf("plugin 24-hour clock replacement test: all checks passed\n");
     return g_failures == 0 ? 0 : 1;

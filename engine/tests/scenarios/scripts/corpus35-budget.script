@@ -1,0 +1,21 @@
+# Native budget panel: enter it before clicking its visible expanded rows.
+2026-01-28 funds 25000000
+2026-01-28 pause
+2026-01-28 uiwait 500
+2026-01-28 budgetwindow
+2026-01-28 uiwait 500
+2026-01-28 uicontrol 0xaa3ac500 native
+2026-01-28 uiwait 500
+2026-01-28 uicontrol 0xaa4c353b native
+2026-01-28 uicontrol 0xaa3ac507 native
+2026-01-28 uiwait 500
+2026-01-28 uikey 27
+2026-01-28 uicontrol 0xaa3ac508 native
+2026-01-28 uiwait 500
+2026-01-28 uikey 27
+2026-01-28 uicontrol 0xaa3ac501 native
+2026-01-28 uiwait 500
+2026-01-28 uikey 27
+2026-01-28 resume
+2026-02-01 save
+2026-02-01 digest

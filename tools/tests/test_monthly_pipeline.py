@@ -98,6 +98,17 @@ def test_credit_always_captures_all_months_for_combined_owners():
     assert '--no-early-stop' in options
 
 
+def test_draw_runs_do_not_receive_monthly_save_or_window_flags():
+    row = dict(name='draw-city', kind='draw', region='Test', city='Example', end='2000-01-01', script='-',
+               draw_capture='1', minimize='0', draw_capture_scenarios='1', seconds='45',
+               draw_capture_frames='2', draw_capture_warmup='1')
+    with patch.object(check.subprocess, 'run', return_value=Mock(returncode=0, stdout='', stderr='')) as run:
+        check.golden('compare', row, '--monthly', '--from', 'auto', '--months', '1', '--no-early-stop')
+    command = run.call_args.args[0]
+    assert '--draw-capture' in command
+    assert not {'--monthly', '--from', '--months', '--no-early-stop'} & set(command)
+
+
 def test_combined_credit_distinguishes_unobserved_scenarios_from_failed_runs():
     table = {'present': {'verdict': 'outside', 'owners': {'zones': {'verdict': 'exact'}}},
              'absent': {'verdict': 'exact', 'owners': {}}}
@@ -113,6 +124,7 @@ def test_combined_credit_distinguishes_unobserved_scenarios_from_failed_runs():
 
 def test_exact_keys_can_come_from_combined_credit_without_each(tmp_path, monkeypatch):
     monkeypatch.setattr(check, 'REPO', tmp_path)
+    monkeypatch.setattr(check, 'STORE', tmp_path / 'build-runs/golden')
     monkeypatch.setattr(check, 'owner_covers', lambda: {'zones': ['a', 'b']})
     monkeypatch.setattr(check, 'scenarios', lambda: {})
     monkeypatch.setattr(check, 'select', lambda *args: ([], []))
@@ -139,6 +151,8 @@ def test_exact_keys_can_come_from_combined_credit_without_each(tmp_path, monkeyp
 
 def test_legacy_credit_keeps_the_each_table_working(tmp_path, monkeypatch):
     monkeypatch.setattr(check, 'REPO', tmp_path)
+    monkeypatch.setattr(check, 'STORE', tmp_path / 'build-runs/golden')
+    monkeypatch.setattr(check, 'scenarios', lambda: {})
     dll = tmp_path / 'candidate.dll'
     dll.write_bytes(b'candidate')
     cache = tmp_path / 'build-runs/golden'

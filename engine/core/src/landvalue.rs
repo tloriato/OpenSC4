@@ -36,6 +36,8 @@
 //! Precision: f32 throughout, in the spec's operation order; see `[precision]`
 //! tags.
 
+pub mod archive;
+
 use std::rc::Rc;
 
 use crate::curve::ResponseCurve;

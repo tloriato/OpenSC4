@@ -53,8 +53,8 @@ mod brush;
 mod field;
 mod lava;
 mod records;
-mod water;
 mod view;
+mod water;
 
 #[cfg(test)]
 mod tests;
@@ -66,7 +66,7 @@ pub use brush::{
 pub use field::{Post, Terrain, TerrainTuning, VertRect, WaterVertex, MAX_CELLS};
 pub use lava::{FireMode, Lava, LavaHost, LavaTuning, BURN_DRAWS_PER_TICK, BURN_HALF_WIDTH, NEIGHBOURS};
 pub use records::{RecordError, ALTITUDES_VERSION, EDGE_VERSION, MISC_VERSION, PROPERTIES_VERSION};
-pub use water::{compute_bodies, BodiesOfWater, Bridge, NavigationHost, OpenWater};
+pub use records::{SurfaceWaterRecord, TerrainRecord, TerrainViewRecord};
 pub use view::{
     cell_triangle_indices, PlainViewRow, TerrainViewHeights, TerrainViewIndices, ViewHeightError, ViewRowCall,
     ViewVertexBuffer,
@@ -76,6 +76,7 @@ pub use view::{
     ExtensionFlushCall, PlumbingCall, TerrainViewLifecycle, TerrainViewShared, TextureCoordinateCache,
     ViewColumnInterval, ViewVertex,
 };
+pub use water::{compute_bodies, BodiesOfWater, Bridge, NavigationHost, OpenWater};
 
 /// Class and interface IDs (§1).
 pub const CLSID_TERRAIN: u32 = 0xE98F_9525;

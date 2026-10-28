@@ -250,7 +250,7 @@ impl Clock24 {
         if self.pause_count > 0 || self.hidden_pause_count > 0 {
             return true;
         }
-        let now = self.now();
+        let now = if self.timer.running { self.now() } else { 0 };
         let e = self.timer.elapsed(now);
         let product = mul_u32_f32(e, self.magnification);
         let mut step = ftol32(f64::from(product * f32::from_bits(STEP_FACTOR_BITS))) as u32;
@@ -485,7 +485,6 @@ impl Clock24 {
     }
 
     fn pause_counter(&mut self, on: bool, hidden: bool, other: i32) {
-        let now = self.now();
         let (count, message) = if hidden {
             (&mut self.hidden_pause_count, msg::HIDDEN_PAUSE_CHANGED)
         } else {
@@ -494,7 +493,8 @@ impl Clock24 {
         if on {
             *count = count.wrapping_add(1);
             if *count == 1 {
-                if other == 0 {
+                if other == 0 && self.timer.running {
+                    let now = self.now();
                     self.timer.stop(now);
                 }
                 self.host.post(message, 1, 0);
@@ -503,6 +503,7 @@ impl Clock24 {
             *count -= 1;
             if *count == 0 {
                 if other == 0 {
+                    let now = self.now();
                     self.timer.start(now);
                 }
                 self.host.post(message, 0, 0);
@@ -624,7 +625,8 @@ impl Clock24 {
 
     /// The timer's elapsed microseconds now.
     pub fn timer_elapsed_us(&self) -> u64 {
-        self.timer.elapsed_us(self.now())
+        let now = if self.timer.running { self.now() } else { 0 };
+        self.timer.elapsed_us(now)
     }
 
     pub fn state(&self) -> ClockState {

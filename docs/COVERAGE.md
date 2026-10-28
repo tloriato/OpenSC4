@@ -77,6 +77,8 @@ Nothing else is a coverage number. House-city "verified", "strict" suite verific
 shadow-based credit and "replaced" from the house regress run were deleted on 2026-10-27; a shadow
 (`<x>_shadow = 1`) is a debugging aid that earns nothing.
 
+Draw rows from `engine/tests/scenarios/draw.tsv` count as scenarios, with recorded entry reach and exact driver-call/UI-stream comparisons required alongside save checkpoints.
+
 ## The census and scenario selection
 
 `python tools/suite.py run --set all --profile shadows --reach --slots 12 --tag <tag> --dll <current-dll>` collects

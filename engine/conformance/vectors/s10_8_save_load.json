@@ -2,7 +2,7 @@
   "format": 1,
   "name": "save_load",
   "spec": ["8", "9", "10.8"],
-  "description": "Save record layout (79 bytes, little-endian), write -> read -> write gives identical bytes, version >= 5 is rejected and leaves the state untouched, [choice] versions < 4 are rejected, truncated records are rejected. inTick is ignored on read. Init re-applies the loaded speed (DoSetSimSpeed).",
+  "description": "Save record layout (79 bytes, little-endian), write -> read -> write gives identical bytes, version >= 5 is rejected and leaves the state untouched, legacy versions require the timer before julianDay and write as version 4, truncated records are rejected. inTick is ignored on read. Init re-applies the loaded speed (DoSetSimSpeed).",
   "steps": [
     {"op": "expect_save", "hex": "0400 00 00 00000000 03000000 00000000 0f000000 0000000000 0000000000 0000000000 0000000000 0000000000 0000000000 0000000000 0000000000 0000000000 0000000000 0000000000 59682500"},
     {"op": "expect_save", "record": {}},
@@ -23,8 +23,8 @@
 
     {"op": "load", "record": {"version": 5, "julian": 1}, "expect": "unsupported_version"},
     {"op": "load", "record": {"version": 65535}, "expect": "unsupported_version"},
-    {"op": "load", "record": {"version": 3}, "expect": "unsupported_version"},
-    {"op": "load", "record": {"version": 0}, "expect": "unsupported_version"},
+    {"op": "load", "record": {"version": 3}, "expect": "truncated", "note": "the 79-byte fixture omits the required legacy timer"},
+    {"op": "load", "record": {"version": 0}, "expect": "truncated"},
     {"op": "load", "slot": "a", "truncate": 78, "expect": "truncated"},
     {"op": "load", "slot": "a", "truncate": 1, "expect": "truncated"},
     {"op": "load", "hex": "", "expect": "truncated"},
@@ -46,6 +46,8 @@
     {"op": "expect_save", "slot": "b"},
     {"op": "expect_save", "record": {"city_established": true, "pause_count": 2, "sim_speed": 2, "sim_time": -5,
       "frame_budget_ms": 44, "level_counters": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], "level_fired": [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
-      "date": {"year": 2013, "month": 7, "day": 4}}}
+      "date": {"year": 2013, "month": 7, "day": 4}}},
+    {"op":"load","hex":"030000000000000003000000000000000f000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000059682500","expect":"ok","note":"version 3: discard the ten-byte timer; normalize the writer to version 4"},
+    {"op":"expect_save","hex":"040000000000000003000000000000000f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000059682500"}
   ]
 }

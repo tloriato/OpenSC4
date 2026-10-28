@@ -10,6 +10,68 @@
 use crate::stream::{ByteReader, ByteWriter, InStream, OutStream};
 
 use super::field::{Terrain, TerrainTuning, MAX_CELLS};
+use crate::store::archive::ObjectReference;
+
+/// The terrain's class-store payload (§13.2), separate from its height field.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TerrainRecord {
+    pub view: ObjectReference,
+}
+
+impl TerrainRecord {
+    pub fn read(r: &mut dyn InStream) -> Option<Self> {
+        if r.get_u16()? > 2 {
+            return None;
+        }
+        Some(Self {
+            view: ObjectReference::read(r)?,
+        })
+    }
+
+    pub fn write(&self, w: &mut dyn OutStream) -> bool {
+        w.put_u16(2) && self.view.write(w)
+    }
+}
+
+/// The saved terrain-view byte (§13.2); its raw value is preserved.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TerrainViewRecord {
+    pub value: u8,
+}
+
+impl TerrainViewRecord {
+    pub fn read(r: &mut dyn InStream) -> Option<Self> {
+        if r.get_u16()? != 1 {
+            return None;
+        }
+        Some(Self { value: r.get_u8()? })
+    }
+
+    pub fn write(&self, w: &mut dyn OutStream) -> bool {
+        w.put_u16(1) && w.put_u8(self.value)
+    }
+}
+
+/// Surface-water class payload (§13.3); water arrays are rebuilt, not saved.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SurfaceWaterRecord {
+    pub terrain: ObjectReference,
+}
+
+impl SurfaceWaterRecord {
+    pub fn read(r: &mut dyn InStream) -> Option<Self> {
+        if r.get_u16()? != 1 {
+            return None;
+        }
+        Some(Self {
+            terrain: ObjectReference::read(r)?,
+        })
+    }
+
+    pub fn write(&self, w: &mut dyn OutStream) -> bool {
+        w.put_u16(1) && self.terrain.write(w)
+    }
+}
 
 /// The misc record's version (`0x8A91E7E3 / 0xE98F9525 / 3`).
 pub const MISC_VERSION: u16 = 2;
@@ -96,13 +158,19 @@ impl Terrain {
     /// An edge record: u16 1, u32 `n`, `n` f32.
     pub fn write_edge(&self, side: u32) -> Option<Vec<u8>> {
         let e = self.edge_altitudes(side)?;
+        Some(Self::write_edge_altitudes(&e))
+    }
+
+    /// An independently loaded edge can differ from the current field. Preserve
+    /// that saved edge rather than deriving it from the interior on round trip.
+    pub fn write_edge_altitudes(e: &[f32]) -> Vec<u8> {
         let mut w = ByteWriter::new();
         w.put_u16(EDGE_VERSION);
         w.put_u32(e.len() as u32);
-        for a in e {
+        for &a in e {
             w.put_f32(a);
         }
-        Some(w.into_bytes())
+        w.into_bytes()
     }
 
     /// Reads an edge record's altitudes.

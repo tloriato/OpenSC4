@@ -52,6 +52,7 @@
 
 #[cfg(test)]
 mod tests;
+pub mod archive;
 pub mod tuning;
 pub mod water;
 

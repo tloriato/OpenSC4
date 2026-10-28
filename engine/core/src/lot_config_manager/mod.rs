@@ -48,6 +48,7 @@
 //! - **Threading**: the state is a `RefCell`; main thread only.
 
 mod catalogue;
+pub mod archive;
 mod configuration;
 mod manager;
 mod objects;

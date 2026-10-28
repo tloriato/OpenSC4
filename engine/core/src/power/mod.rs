@@ -150,6 +150,7 @@ mod simulator;
 #[cfg(test)]
 mod tests;
 mod tuning;
+pub mod archive;
 
 pub use report::{BlockDraw, FloodReport, PlantReport, Report};
 pub use simulator::{FoundPlants, PlantNode, PowerSim, PowerState};

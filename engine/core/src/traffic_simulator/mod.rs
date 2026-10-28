@@ -70,6 +70,7 @@
 //! *[choice]* or *[question]* and listed in the lane report.
 
 mod adapters;
+pub mod archive;
 mod cycle;
 mod maps;
 mod monthly;

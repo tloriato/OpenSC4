@@ -469,6 +469,22 @@ void UiScriptTests() {
     }
     const auto control = ParseScript("2026-01-28 uicontrol 0x00000041\n");
     CHECK(control.errors.empty() && control.actions.size() == 1 && control.actions[0].command == 0x41);
+    const auto native = ParseScript("2000-01-15 uicontrol 0xaa3ac507 native\n");
+    CHECK(native.errors.empty() && native.actions.size() == 1);
+    if (native.actions.size() == 1) CHECK(native.actions[0].nativeControl);
+    if (control.actions.size() == 1) CHECK(!control.actions[0].nativeControl);
+    const auto parameters = ParseScript("2000-01-15 uicommand 0x6a935e39 1\n"
+                                       "2000-01-15 uicommand 0x6a935e39 0\n");
+    CHECK(parameters.errors.empty() && parameters.actions.size() == 2);
+    if (parameters.actions.size() == 2) {
+        CHECK(parameters.actions[0].commandBool == 1);
+        CHECK(parameters.actions[1].commandBool == 0);
+    }
+    CHECK(p.actions[0].commandBool == -1);
+    for (const auto* bad : {"uicommand 0x6a935e39 2", "uicommand 0x6a935e39 true",
+                           "uicommand 0x6a935e39 1 0", "uicontrol 0x00000041 1",
+                           "uicontrol 0x00000041 native extra"})
+        CHECK(!ParseScript(std::string("2000-01-15 ") + bad + "\n").errors.empty());
     const auto volcano = ParseScript("2026-01-28 disaster volcano 63 64\n");
     CHECK(volcano.errors.empty() && volcano.actions.size() == 1);
     if (volcano.actions.size() == 1) {

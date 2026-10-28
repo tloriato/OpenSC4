@@ -752,7 +752,7 @@ def main(argv=None, root=ROOT):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
     run = commands.add_parser('run')
-    run.add_argument('--set', choices=['tier1', 'smoke', 'full', 'gen', 'findings', 'reach29', 'corpus34', 'all'], default='tier1')
+    run.add_argument('--set', choices=['tier1', 'smoke', 'full', 'gen', 'findings', 'reach29', 'corpus34', 'corpus35', 'all'], default='tier1')
     run.add_argument('--profile', choices=['shadows', 'replace', 'plain'], default='shadows')
     run.add_argument('--dll', help='worktree or DLL; default main checkout DLL')
     run.add_argument('--tag', default=None)

@@ -36,6 +36,7 @@
 //!   ([`MySimHost::read_dispatch_inline`]) [choice].
 
 mod agent;
+pub mod archive;
 pub mod dispatch;
 pub mod pool;
 pub mod scripted;

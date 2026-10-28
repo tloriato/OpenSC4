@@ -139,6 +139,7 @@ private:
     bool hasCheatManager_ = false;  // read by the core under the lock (set before the section)
     uint32_t serviceId_ = kFC4_Clock24ServiceID;
     bool serviceRunning_ = false;
+    std::atomic<bool> initialized_{false};
     std::atomic<uint32_t> idles_{0};
     std::atomic<uint32_t> posts_[7] = {};  // by type 0x44778230 + i
 };

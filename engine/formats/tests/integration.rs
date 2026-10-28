@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #[path = "automata_records.rs"]
 mod automata_records;
+#[path = "city_save.rs"]
+mod city_save;
 #[path = "effects_directory.rs"]
 mod effects_directory;
 #[path = "game_data.rs"]

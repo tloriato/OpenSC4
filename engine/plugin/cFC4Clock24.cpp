@@ -18,6 +18,7 @@
 #include "FC4Log.h"
 #include "FC4Properties.h"
 #include "FC4RefAudit.h"
+#include "FC4Schedule.h"
 #include "FC4Streams.h"
 #include "cFC4Message2Standard.h"
 
@@ -73,9 +74,7 @@ uint64_t NowMicros(void*) {
     if (const FC4HistClockHooks* h = fc4::HistClockHooks()) return h->now_micros ? h->now_micros(h->ctx) : 0;
     static LARGE_INTEGER freq = {};
     if (freq.QuadPart == 0) QueryPerformanceFrequency(&freq);
-    LARGE_INTEGER now;
-    QueryPerformanceCounter(&now);
-    const unsigned long long t = static_cast<unsigned long long>(now.QuadPart);
+    const unsigned long long t = static_cast<unsigned long long>(fc4::ScheduleQpc());
     const unsigned long long f = static_cast<unsigned long long>(freq.QuadPart);
     return (t / f) * 1000000ull + ((t % f) * 1000000ull) / f;
 }
@@ -294,7 +293,8 @@ bool cFC4Clock24::AcquireCheatManager() {
 
 bool cFC4Clock24::Init() {
     FC4_TRACE("Clock24::Init");
-    if (State().initialized != 0) return true;  // also the framework's own Init through the +0xC thunk
+    // State() samples the timer; an idempotence check must not advance the shared counter.
+    if (initialized_.load()) return true;  // also the framework's own Init through the +0xC thunk
     hasCheatManager_ = AcquireCheatManager();
     fc4_clock24_tuning tuning{};
     const bool haveTuning = FC4Clock24ReadTuning(tuning);
@@ -302,24 +302,22 @@ bool cFC4Clock24::Init() {
     {
         fc4::CoreLock::Section s(lock_, "clock24 Init");
         ok = fc4_clock24_init(core_, haveTuning ? &tuning : nullptr);  // framework and cheats: queued
+        initialized_ = ok;  // before the queued framework registration can call Init again
     }
-    const fc4_clock24_state st = State();
-    fc4::Log("clock24 Init: ok=%d cheats=%s tuning=%s (magnification %.3f, night %u -> %u); time %u visual %u "
-             "pause %d hidden %d timer %s",
-             ok ? 1 : 0, hasCheatManager_ ? "yes" : "no", haveTuning ? "yes" : "no",
-             static_cast<double>(st.magnification), st.night_start, st.night_end, st.seconds, st.visual_seconds,
-             st.pause_count, st.hidden_pause_count, st.timer_running ? "running" : "stopped");
+    fc4::Log("clock24 Init: ok=%d cheats=%s tuning=%s", ok ? 1 : 0, hasCheatManager_ ? "yes" : "no",
+             haveTuning ? "yes" : "no");
     return true;
 }
 
 bool cFC4Clock24::Shutdown() {
     FC4_TRACE("Clock24::Shutdown");
-    if (core_ == nullptr || State().initialized == 0) return true;
+    if (core_ == nullptr || !initialized_.load()) return true;
     if (!destroying_) AddRef();  // keep alive while the framework lets go
     hasCheatManager_ = AcquireCheatManager();
     {
         fc4::CoreLock::Section s(lock_, "clock24 Shutdown");
         fc4_clock24_shutdown(core_);  // cheats, then the framework: queued
+        initialized_ = false;
     }
     fc4::Log("clock24 Shutdown: %u idle passes; posted hour %u, tick %u, visual hour %u, visual tick %u, "
              "day/night %u, pause %u, hidden pause %u; %u off-main calls",
@@ -522,12 +520,8 @@ bool cFC4Clock24::Write(cIGZOStream& s) {
         }
         fc4_clock24_destroy(scratch);
     }
-    const fc4_clock24_state st = State();
-    fc4::Log("clock24 Write -> %d (%u bytes, read back and rewritten %s; time %u, pause %d, magnification %.3f / "
-             "max %.3f, night %u -> %u)",
-             ok ? 1 : 0, static_cast<unsigned>(mem.bytes.size()), same ? "identical" : "DIFFERENT", st.seconds,
-             st.pause_count, static_cast<double>(st.magnification), static_cast<double>(st.max_magnification),
-             st.night_start, st.night_end);
+    fc4::Log("clock24 Write -> %d (%u bytes, read back and rewritten %s)", ok ? 1 : 0,
+             static_cast<unsigned>(mem.bytes.size()), same ? "identical" : "DIFFERENT");
     return ok;
 }
 
@@ -540,10 +534,7 @@ bool cFC4Clock24::Read(cIGZIStream& s) {
         fc4::CoreLock::Section sec(lock_, "clock24 Read");
         ok = fc4_clock24_read(core_, a.Get());
     }
-    const fc4_clock24_state st = State();
-    fc4::Log("clock24 Read -> %d (time %u, pause %d, magnification %.3f / max %.3f, night %u -> %u)", ok ? 1 : 0,
-             st.seconds, st.pause_count, static_cast<double>(st.magnification),
-             static_cast<double>(st.max_magnification), st.night_start, st.night_end);
+    fc4::Log("clock24 Read -> %d", ok ? 1 : 0);
     return ok;
 }
 

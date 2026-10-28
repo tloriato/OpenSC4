@@ -378,8 +378,9 @@ impl Department {
             q2 = if f == 0 {
                 q
             } else {
-                // [choice] computed in double precision.
-                (((new_c - old_c) as f64 + (f64::from(p) * 100.0 * f as f64 + 0.5).floor()) / f as f64 * 0.01) as f32
+                // Foundations 18.3: percentage scaling uses the float32 constant.
+                (((new_c - old_c) as f64 + (f64::from(p) * 100.0 * f as f64 + 0.5).floor()) / f as f64
+                    * f64::from(0.01f32)) as f32
             };
             if let Some(occupant) = self.host.occupant_of(holder) {
                 self.host.post(&BudgetMessage {
@@ -413,7 +414,8 @@ impl Department {
         let q2 = if f.wrapping_add(delta) == 0 {
             1.0
         } else {
-            (((f as f64 * f64::from(p) * 100.0 + 0.5).floor() + delta_c as f64) / (f + delta) as f64 * 0.01) as f32
+            (((f as f64 * f64::from(p) * 100.0 + 0.5).floor() + delta_c as f64) / (f + delta) as f64
+                * f64::from(0.01f32)) as f32
         };
         if let Some(line) = self.line_item(item.line_item) {
             line.add_to_full_expenses(delta);
