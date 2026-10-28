@@ -56,14 +56,21 @@ macro_rules! register_port {
     };
 }
 
+mod cost;
 mod geometry;
 mod helpers;
 mod occupants;
 mod preview;
 mod rules;
+mod storage;
 
-const COUNT: usize =
-    helpers::PORTS.len() + preview::PORTS.len() + rules::PORTS.len() + geometry::PORTS.len() + occupants::PORTS.len();
+const COUNT: usize = helpers::PORTS.len()
+    + preview::PORTS.len()
+    + rules::PORTS.len()
+    + geometry::PORTS.len()
+    + occupants::PORTS.len()
+    + storage::PORTS.len()
+    + cost::PORTS.len();
 /// Completed replacements, ordered by original address within each group.
 pub const PORTS: &[Port] = &crate::port::concat::<COUNT>(&[
     helpers::PORTS,
@@ -71,4 +78,6 @@ pub const PORTS: &[Port] = &crate::port::concat::<COUNT>(&[
     rules::PORTS,
     geometry::PORTS,
     occupants::PORTS,
+    storage::PORTS,
+    cost::PORTS,
 ]);
