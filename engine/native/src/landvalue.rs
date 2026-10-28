@@ -23,10 +23,16 @@ layout! {
     /// "Land-value native progress"). The altitude fields are the ones `SetupAltitudeEffect` (0x006BD750) reads
     /// and writes (§7.3).
     pub struct LandValueSim {
+        /// Primary, message-target and serializable interface tables restored during destruction.
+        0x00 => primary_vtable / set_primary_vtable: u32,
+        0x04 => message_vtable / set_message_vtable: u32,
+        0x08 => serializable_vtable / set_serializable_vtable: u32,
         /// The zone manager (`cISC4ZoneManager*`), taken in `Init`.
         0x20 => zone_manager / set_zone_manager: *mut u8,
         /// The intrinsic land value grid (`cISC4SimGrid<uint8>*`), the first grid `Init` creates (§2).
         0x24 => intrinsic_grid / set_intrinsic_grid: *mut u8,
+        /// Owned altitude histogram storage.
+        0x50 => histogram / set_histogram: *mut u8,
         /// pivot (§7.3).
         0x60 => pivot / set_pivot: f32,
         /// lowRange (§7.3).
@@ -39,6 +45,9 @@ layout! {
         0x78 => mean_altitude / set_mean_altitude: f32,
         /// The altitude curve (`cSC4ResponseCurve*`, tuning `0x47E2C320`).
         0x84 => altitude_curve / set_altitude_curve: *mut u8,
+        /// Developer-map sentinel and number of ordinary nodes.
+        0x8C => developer_header / set_developer_header: *mut u8,
+        0x90 => developer_count / set_developer_count: u32,
         /// minAlt (§3).
         0x98 => min_altitude / set_min_altitude: f32,
         /// maxAlt (§3).
