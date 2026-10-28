@@ -3,12 +3,13 @@
 
 //! Native conformance cases, including the habitation and terrain cases from the core lot developer.
 
-use super::{foundation::*, lots::*, small::*, terrain::*, *};
+use super::{foundation::*, lots::*, operations::*, small::*, terrain::*, *};
 use crate::testing::{call_thiscall_with_eax, fake, fake_data, GameFpu, Object};
 use std::cell::RefCell;
 use std::collections::VecDeque;
 
 const RETURN: u64 = 0x9876_5432_A1B2_C3D4;
+
 
 enum Arg {
     Word(u32),
@@ -134,6 +135,41 @@ slot!(remove_foundation_position, kind, x, z);
 slot!(get_texture, lot, output, create);
 slot!(update_texture, refresh, foundation, unused);
 slot!(set_uint, value);
+slot!(resource_exists, key);
+slot!(lot_wealth);
+slot!(surrounding_lots, lot, list, flags);
+slot!(refresh_foundation, lot);
+slot!(set_business_unit, unit);
+slot!(set_growth_type, kind);
+slot!(set_configuration, config);
+slot!(set_empty_texture, lot);
+slot!(area_lots, list, x0, z0, x1, z1, flags);
+slot!(neighbor_lots, rect, list, flags);
+slot!(business_unit);
+slot!(unit_flags);
+slot!(test_unit_flags, mask);
+slot!(habitation_state);
+slot!(building_occupant);
+
+unsafe extern "C" fn operation_allocate(bytes: u32) -> u32 {
+    run(core::ptr::null_mut(), "operation_allocate", &[bytes]) as u32
+}
+unsafe extern "C" fn operation_free(pointer: u32) -> u64 {
+    run(core::ptr::null_mut(), "operation_free", &[pointer])
+}
+unsafe extern "C" fn clear_contents(lot: u32, flags: u32) -> u64 {
+    run(core::ptr::null_mut(), "clear_contents", &[lot, flags])
+}
+unsafe extern "C" fn clear_traffic(lot: u32) -> u64 {
+    run(core::ptr::null_mut(), "clear_traffic", &[lot])
+}
+unsafe extern "thiscall" fn surrounding_direct(this: *mut u8, lot: u32) -> u64 {
+    run(this, "surrounding_direct", &[lot])
+}
+
+unsafe extern "thiscall" fn clear_list(list: *mut *mut u8) -> u64 {
+    run(core::ptr::null_mut(), "clear_list", &[unsafe { list.read_unaligned() } as u32])
+}
 
 struct Mock {
     memory: Object,
@@ -162,6 +198,9 @@ macro_rules! mock {
         Mock::new(&[$(($offset, $function as *const () as usize)),*])
     };
 }
+
+mod operations;
+mod anchor;
 
 #[test]
 fn record_initializers_retain_every_padding_byte() {
@@ -840,6 +879,10 @@ float_slot!(water_float, water_body, 1, index);
 float_slot!(vertex_float, vertex_body, 3, x, z, water);
 float_slot!(area_slope_float, area_slope_body, 2, rect, water);
 float_slot!(curve_float, curve_body, 1, input);
+float_slot!(lowest_area_float, lowest_area_body, 3, rect, lowest, water);
+float_slot!(lot_altitude_float, lot_altitude_body, 0);
+
+mod foundation_bottom;
 slot!(bounding_rect, rect);
 slot!(coverage, occupant, rect);
 
