@@ -16,6 +16,32 @@
 use crate::port::Port;
 use core::ptr::{read_unaligned, write_unaligned};
 
+layout! {
+    /// The two services used to check the first network cell.
+    struct NetworkCheck {
+        0x44 => terrain / set_terrain: *mut u8,
+        0x60 => coordinates / set_coordinates: *mut u8,
+    }
+}
+
+layout! {
+    /// A byte range, immediately after its owner's vtable word.
+    struct ByteRange {
+        0x00 => first / set_first: *mut u8,
+        0x04 => last / set_last: *mut u8,
+    }
+}
+
+layout! {
+    /// A tree node ordered by two signed coordinates.
+    struct CoordinateNode {
+        0x08 => left / set_left: *mut u8,
+        0x0C => right / set_right: *mut u8,
+        0x10 => x / set_x: i32,
+        0x14 => z / set_z: i32,
+    }
+}
+
 // These accesses use the enclosing entry's live game objects, including unaligned fields.
 unsafe fn word(p: *const u8, offset: usize) -> u32 {
     unsafe { read_unaligned(p.wrapping_add(offset).cast()) }
@@ -146,10 +172,11 @@ port! {
         unsafe {
             let mut result = vcall!(this, 0xFC => fn() -> u64);
             if result as u8 != 0 {
-                let coordinates = pointer(this, 0x60);
+                let check = NetworkCheck::from_ptr(this);
+                let coordinates = check.coordinates();
                 let x = word(coordinates, 0);
                 let z = word(coordinates, 4);
-                result = vcall!(pointer(this, 0x44), 0x88 => fn(u32, u32) -> u64, x, z);
+                result = vcall!(check.terrain(), 0x88 => fn(u32, u32) -> u64, x, z);
                 if result as u8 != 0 {
                     result = lookup_network_cell(this, z.wrapping_shl(16).wrapping_add(x));
                     let cell = result as u32 as *mut u8;
@@ -171,10 +198,12 @@ port! {
         unsafe {
             let a = if a.is_null() { a } else { a.wrapping_add(4) };
             let b = if b.is_null() { b } else { b.wrapping_add(4) };
-            let x = pointer(a, 0);
-            let y = pointer(b, 0);
-            let len = word(a, 4).wrapping_sub(x as u32);
-            if len != word(b, 4).wrapping_sub(y as u32) { return registers(0, b as u32); }
+            let ar = ByteRange::from_ptr(a);
+            let br = ByteRange::from_ptr(b);
+            let x = ar.first();
+            let y = br.first();
+            let len = (ar.last() as u32).wrapping_sub(x as u32);
+            if len != (br.last() as u32).wrapping_sub(y as u32) { return registers(0, b as u32); }
             for i in 0..len {
                 if *x.wrapping_add(i as usize) != *y.wrapping_add(i as usize) { return 0; }
             }
@@ -193,12 +222,13 @@ port! {
             if !node.is_null() {
                 let x = key.read_unaligned();
                 loop {
-                    let nx = word(node, 0x10) as i32;
-                    if x < nx || (x == nx && word(node, 0x14) as i32 >= key.add(1).read_unaligned()) {
+                    let view = CoordinateNode::from_ptr(node);
+                    let nx = view.x();
+                    if x < nx || (x == nx && view.z() >= key.add(1).read_unaligned()) {
                         result = node;
-                        node = pointer(node, 8);
+                        node = view.left();
                     } else {
-                        node = pointer(node, 0x0C);
+                        node = view.right();
                     }
                     if node.is_null() { break; }
                 }
@@ -251,15 +281,15 @@ macro_rules! forward_interface {
             pub unsafe extern "C" fn $export() {
                 #[cfg(not(test))]
                 core::arch::naked_asm!(
-                    $virtual_adjust, "sub ecx, {adjust}", "jmp dword ptr [2f]", "2: .long {target}",
-                    adjust = const $adjust, target = const $target,
+                    $virtual_adjust, $adjust, "jmp dword ptr [2f]", "2: .long {target}",
+                    target = const $target,
                 );
                 #[cfg(test)]
                 core::arch::naked_asm!(
-                    $virtual_adjust, "sub ecx, {adjust}", "push eax", "push ecx", "push edx",
+                    $virtual_adjust, $adjust, "push eax", "push ecx", "push edx",
                     "push {target}", "call {resolve}", "add esp, 4",
                     "xchg eax, [esp + 8]", "pop edx", "pop ecx", "ret",
-                    adjust = const $adjust, target = const $target, resolve = sym forwarding_target,
+                    target = const $target, resolve = sym forwarding_target,
                 );
             }
         }
@@ -274,7 +304,7 @@ mod forwarding {
     game_fn! { pub fn set_model(this: *mut u8, model: *mut u8) -> u32 = "thiscall" 0x0080_1860; }
     game_fn! { pub fn get_model_state(this: *mut u8) -> u32 = "thiscall" 0x0080_1890; }
     game_fn! { pub fn set_model_state(this: *mut u8, state: u32) -> u32 = "thiscall" 0x0080_18A0; }
-    game_fn! { pub fn initialize_connection(this: *mut u8) -> u32 = "thiscall" 0x0065_4140; }
+    game_fn! { pub fn initialize_connection(this: *mut u8, context: *mut u8) -> u32 = "thiscall" 0x0065_4140; }
     game_fn! { pub fn read_connection(this: *mut u8, stream: *mut u8) -> u32 = "thiscall" 0x0065_4500; }
     game_fn! { pub fn write_connection(this: *mut u8, stream: *mut u8) -> u32 = "thiscall" 0x0065_4590; }
     game_fn! { pub fn get_model_flags(this: *mut u8) -> u32 = "thiscall" 0x0080_18E0; }
@@ -285,7 +315,7 @@ mod forwarding {
     game_fn! { pub fn prop_add_ref(this: *mut u8) -> u32 = "thiscall" 0x0064_91C0; }
     game_fn! { pub fn construction_release(this: *mut u8) -> u32 = "thiscall" 0x0064_91D0; }
     game_fn! { pub fn pipe_shutdown(this: *mut u8) -> u32 = "thiscall" 0x0065_2CF0; }
-    game_fn! { pub fn count_ports(this: *mut u8, kind: u32) -> u32 = "thiscall" 0x006E_94C0; }
+    game_fn! { pub fn count_ports(this: *mut u8, kind: u32, filter: u32) -> u32 = "thiscall" 0x006E_94C0; }
     game_fn! { pub fn get_port_lots(this: *mut u8, output: *mut u8) -> u32 = "thiscall" 0x006E_A2F0; }
     game_fn! { pub fn add_ref_at_eight(this: *mut u8) -> u32 = "thiscall" 0x004F_7BA0; }
     game_fn! { pub fn port_release(this: *mut u8) -> u32 = "thiscall" 0x006E_8F90; }
@@ -295,7 +325,7 @@ mod forwarding {
 forward_interface!(
     fc4p_006480d0,
     0x0064_80D0,
-    4,
+    "sub ecx, 4",
     "",
     0x0065_4120,
     "AddRefConnectionFromSecondInterface"
@@ -303,7 +333,7 @@ forward_interface!(
 forward_interface!(
     fc4p_006480e0,
     0x0064_80E0,
-    4,
+    "sub ecx, 4",
     "",
     0x0065_4130,
     "ReleaseConnectionFromSecondInterface"
@@ -311,7 +341,7 @@ forward_interface!(
 forward_interface!(
     fc4p_006481d0,
     0x0064_81D0,
-    0x24C,
+    "sub ecx, 588",
     "sub ecx, [ecx - 4]",
     0x0065_4120,
     "AddRefConnectionFromVirtualBase"
@@ -319,7 +349,7 @@ forward_interface!(
 forward_interface!(
     fc4p_006481e0,
     0x0064_81E0,
-    0x24C,
+    "sub ecx, 588",
     "sub ecx, [ecx - 4]",
     0x0065_4130,
     "ReleaseConnectionFromVirtualBase"
@@ -327,7 +357,7 @@ forward_interface!(
 forward_interface!(
     fc4p_00648200,
     0x0064_8200,
-    0x1E4,
+    "sub ecx, 484",
     "sub ecx, [ecx - 4]",
     0x0080_1860,
     "SetModelFromVirtualBase"
@@ -335,7 +365,7 @@ forward_interface!(
 forward_interface!(
     fc4p_00648210,
     0x0064_8210,
-    0x1E4,
+    "sub ecx, 484",
     "sub ecx, [ecx - 4]",
     0x0080_1890,
     "GetModelStateFromVirtualBase"
@@ -343,7 +373,7 @@ forward_interface!(
 forward_interface!(
     fc4p_00648220,
     0x0064_8220,
-    0x1E4,
+    "sub ecx, 484",
     "sub ecx, [ecx - 4]",
     0x0080_18A0,
     "SetModelStateFromVirtualBase"
@@ -351,7 +381,7 @@ forward_interface!(
 forward_interface!(
     fc4p_00648240,
     0x0064_8240,
-    0,
+    "",
     "sub ecx, [ecx - 4]",
     0x0065_4140,
     "InitializeConnectionFromVirtualBase"
@@ -359,7 +389,7 @@ forward_interface!(
 forward_interface!(
     fc4p_00648250,
     0x0064_8250,
-    0,
+    "",
     "sub ecx, [ecx - 4]",
     0x0065_4500,
     "ReadConnectionFromVirtualBase"
@@ -367,7 +397,7 @@ forward_interface!(
 forward_interface!(
     fc4p_00648260,
     0x0064_8260,
-    0,
+    "",
     "sub ecx, [ecx - 4]",
     0x0065_4590,
     "WriteConnectionFromVirtualBase"
@@ -375,7 +405,7 @@ forward_interface!(
 forward_interface!(
     fc4p_00648290,
     0x0064_8290,
-    0x1E4,
+    "sub ecx, 484",
     "sub ecx, [ecx - 4]",
     0x0080_18E0,
     "GetModelFlagsFromVirtualBase"
@@ -383,7 +413,7 @@ forward_interface!(
 forward_interface!(
     fc4p_006482b0,
     0x0064_82B0,
-    0x1E4,
+    "sub ecx, 484",
     "sub ecx, [ecx - 4]",
     0x0080_1E10,
     "CopyModelDataFromVirtualBase"
@@ -391,7 +421,7 @@ forward_interface!(
 forward_interface!(
     fc4p_006485d0,
     0x0064_85D0,
-    4,
+    "sub ecx, 4",
     "",
     0x0065_A860,
     "AddRefBridgeFromSecondInterface"
@@ -399,7 +429,7 @@ forward_interface!(
 forward_interface!(
     fc4p_006485e0,
     0x0064_85E0,
-    4,
+    "sub ecx, 4",
     "",
     0x0065_A870,
     "ReleaseBridgeFromSecondInterface"
@@ -407,7 +437,7 @@ forward_interface!(
 forward_interface!(
     fc4p_00648600,
     0x0064_8600,
-    8,
+    "sub ecx, 8",
     "",
     0x0065_A860,
     "AddRefBridgeFromThirdInterface"
@@ -415,7 +445,7 @@ forward_interface!(
 forward_interface!(
     fc4p_00648610,
     0x0064_8610,
-    8,
+    "sub ecx, 8",
     "",
     0x0065_A870,
     "ReleaseBridgeFromThirdInterface"
@@ -423,7 +453,7 @@ forward_interface!(
 forward_interface!(
     fc4p_006491d0,
     0x0064_91D0,
-    -8,
+    "add ecx, 8",
     "",
     0x005E_8DF0,
     "ReleaseOccupantAtEight"
@@ -431,7 +461,7 @@ forward_interface!(
 forward_interface!(
     fc4p_0064dd70,
     0x0064_DD70,
-    4,
+    "sub ecx, 4",
     "",
     0x0064_91C0,
     "AddRefPropFromSecondInterface"
@@ -439,7 +469,7 @@ forward_interface!(
 forward_interface!(
     fc4p_0064dd80,
     0x0064_DD80,
-    4,
+    "sub ecx, 4",
     "",
     0x0064_91D0,
     "ReleaseConstructionFromSecondInterface"
@@ -447,7 +477,7 @@ forward_interface!(
 forward_interface!(
     fc4p_0064dd90,
     0x0064_DD90,
-    8,
+    "sub ecx, 8",
     "",
     0x0064_91C0,
     "AddRefPropFromThirdInterface"
@@ -455,7 +485,7 @@ forward_interface!(
 forward_interface!(
     fc4p_0064dda0,
     0x0064_DDA0,
-    8,
+    "sub ecx, 8",
     "",
     0x0064_91D0,
     "ReleaseConstructionFromThirdInterface"
@@ -463,7 +493,7 @@ forward_interface!(
 forward_interface!(
     fc4p_0064ddb0,
     0x0064_DDB0,
-    12,
+    "sub ecx, 12",
     "",
     0x0064_91C0,
     "AddRefPropFromFourthInterface"
@@ -471,7 +501,7 @@ forward_interface!(
 forward_interface!(
     fc4p_0064ddc0,
     0x0064_DDC0,
-    12,
+    "sub ecx, 12",
     "",
     0x0064_91D0,
     "ReleaseConstructionFromFourthInterface"
@@ -479,7 +509,7 @@ forward_interface!(
 forward_interface!(
     fc4p_0064ddd0,
     0x0064_DDD0,
-    16,
+    "sub ecx, 16",
     "",
     0x0064_91C0,
     "AddRefPropFromFifthInterface"
@@ -487,7 +517,7 @@ forward_interface!(
 forward_interface!(
     fc4p_0064dde0,
     0x0064_DDE0,
-    16,
+    "sub ecx, 16",
     "",
     0x0064_91D0,
     "ReleaseConstructionFromFifthInterface"
@@ -495,7 +525,7 @@ forward_interface!(
 forward_interface!(
     fc4p_00652e50,
     0x0065_2E50,
-    4,
+    "sub ecx, 4",
     "",
     0x0065_2CF0,
     "ShutdownPipeFromSecondInterface"
@@ -503,7 +533,7 @@ forward_interface!(
 forward_interface!(
     fc4p_0068aff0,
     0x0068_AFF0,
-    -4,
+    "add ecx, 4",
     "",
     0x006E_94C0,
     "CountPortsFromPreviousInterface"
@@ -511,16 +541,23 @@ forward_interface!(
 forward_interface!(
     fc4p_0068b000,
     0x0068_B000,
-    -4,
+    "add ecx, 4",
     "",
     0x006E_A2F0,
     "GetPortLotsFromPreviousInterface"
 );
-forward_interface!(fc4p_0068b1d0, 0x0068_B1D0, -4, "", 0x004F_7BA0, "AddRefAtNextInterface");
+forward_interface!(
+    fc4p_0068b1d0,
+    0x0068_B1D0,
+    "add ecx, 4",
+    "",
+    0x004F_7BA0,
+    "AddRefAtNextInterface"
+);
 forward_interface!(
     fc4p_0068b1e0,
     0x0068_B1E0,
-    -4,
+    "add ecx, 4",
     "",
     0x006E_8F90,
     "ReleasePortAtNextInterface"
@@ -528,7 +565,7 @@ forward_interface!(
 forward_interface!(
     fc4p_0068d230,
     0x0068_D230,
-    4,
+    "sub ecx, 4",
     "",
     0x004F_7BA0,
     "AddRefFromSecondInterface"
@@ -536,7 +573,7 @@ forward_interface!(
 forward_interface!(
     fc4p_0068d250,
     0x0068_D250,
-    8,
+    "sub ecx, 8",
     "",
     0x004F_7BA0,
     "AddRefFromThirdInterface"
@@ -544,7 +581,7 @@ forward_interface!(
 forward_interface!(
     fc4p_006b8ab0,
     0x006B_8AB0,
-    4,
+    "sub ecx, 4",
     "",
     0x006D_5140,
     "ReleaseLandfillFromSecondInterface"
@@ -552,7 +589,7 @@ forward_interface!(
 forward_interface!(
     fc4p_006b8ac0,
     0x006B_8AC0,
-    8,
+    "sub ecx, 8",
     "",
     0x006D_5140,
     "ReleaseLandfillFromThirdInterface"
@@ -649,6 +686,335 @@ port! {
     }
 }
 
+game_fn! { fn free_storage(storage: *mut u8) -> u64 = "C" 0x0090_CF63; }
+game_fn! { fn destroy_storage_subtree(this: *mut u8, root: *mut u8) = "thiscall" 0x0063_D700; }
+game_fn! { fn allocate_storage(size: u32) -> *mut u8 = "C" 0x0090_CF54; }
+game_fn! { fn initialize_delegate(this: *mut u8) = "thiscall" 0x0090_D957; }
+game_fn! { fn set_resource_key(this: *mut u8, key: *mut u8) -> u64 = "thiscall" 0x0097_5402; }
+game_fn! { fn get_resource_key(this: *mut u8, output: *mut u32) -> *mut u8 = "thiscall" 0x0097_53EA; }
+game_fn! { fn lower_bound_pair(first: *mut u8, last: *mut u8, key: *const u32, value: u32, cookie: u32) -> u64 = "C" 0x005F_E940; }
+game_fn! { fn allocate_object(size: u32) -> *mut u8 = "C" 0x005E_55E0; }
+game_fn! { fn construct_collection(this: *mut u8) -> *mut u8 = "thiscall" 0x0090_DC0F; }
+game_fn! { fn serialize_range(stream: *mut u8, range: *mut u8) = "C" 0x005D_AFF0; }
+game_fn! { fn find_first_occupant(x: u32, z: u32, output: *mut *mut u8, service: *mut u8) -> u64 = "C" 0x0065_84D0; }
+game_fn! { fn find_second_occupant(x: u32, z: u32, service: *mut u8, output: *mut *mut u8) -> u64 = "C" 0x0065_85E0; }
+game_fn! { #[allow(dead_code)] fn initialize_scaled_object(this: *mut u8) -> u64 = "thiscall" 0x006F_6A70; }
+
+layout! {
+    /// Storage fields released during network-tool destruction.
+    struct ToolStorage {
+        0x14 => first_buffer / set_first_buffer: *mut u8,
+        0x20 => second_buffer / set_second_buffer: *mut u8,
+        0x44 => third_buffer / set_third_buffer: *mut u8,
+        0x50 => fourth_buffer / set_fourth_buffer: *mut u8,
+        0x60 => fifth_buffer / set_fifth_buffer: *mut u8,
+        0x6C => sixth_buffer / set_sixth_buffer: *mut u8,
+        0x80 => seventh_buffer / set_seventh_buffer: *mut u8,
+        0x8C => eighth_buffer / set_eighth_buffer: *mut u8,
+        0x158 => string_table / set_string_table: u32,
+        0x15C => string_buffer / set_string_buffer: *mut u8,
+        0x16C => tree_header / set_tree_header: *mut u8,
+        0x170 => tree_count / set_tree_count: u32,
+    }
+}
+
+layout! {
+    /// The three links in a tree sentinel.
+    struct TreeHeader {
+        0x04 => root / set_root: *mut u8,
+        0x08 => first / set_first: *mut u8,
+        0x0C => last / set_last: *mut u8,
+    }
+}
+
+port! {
+    /// Clears a nonempty tree, frees its sentinel, restores the string table, then frees owned buffers.
+    /// Freed pointer fields retain their original values.
+    #[port(address = 0x0064_0230, owner = "shared", name = "DestroyToolStorage")]
+    pub unsafe extern "fastcall" fn fc4p_00640230(this: *mut u8, entry_edx: u32) -> u64 {
+        unsafe {
+            let storage = ToolStorage::from_ptr(this);
+            let mut result = registers(storage.tree_count(), entry_edx);
+            if storage.tree_count() != 0 {
+                destroy_storage_subtree(this.add(0x16C), TreeHeader::from_ptr(storage.tree_header()).root());
+                let header = storage.tree_header();
+                TreeHeader::from_ptr(header).set_first(header);
+                let header = storage.tree_header();
+                TreeHeader::from_ptr(header).set_root(core::ptr::null_mut());
+                let last = storage.tree_header();
+                TreeHeader::from_ptr(last).set_last(last);
+                storage.set_tree_count(0);
+                result = registers(last as u32, header as u32);
+            }
+            let header = storage.tree_header();
+            if !header.is_null() { result = free_storage(header); }
+            storage.set_string_table(0x00A8_0810);
+            for offset in [0x15C, 0x8C, 0x80, 0x6C, 0x60, 0x50, 0x44, 0x20] {
+                let p = pointer(this, offset);
+                result = registers(p as u32, (result >> 32) as u32);
+                if !p.is_null() { result = free_storage(p); }
+            }
+            let p = storage.first_buffer();
+            if !p.is_null() { result = free_storage(p); }
+            result
+        }
+    }
+}
+
+layout! {
+    /// The owned fields initialized by the shared tool helper constructor; gaps remain untouched.
+    struct ToolHelper {
+        0x00 => primary_table / set_primary_table: u32,
+        0x04 => secondary_table / set_secondary_table: u32,
+        0x08 => third_table / set_third_table: u32,
+        0x0C => delegate_table / set_delegate_table: u32,
+        0x14 => field14 / set_field14: u32,
+        0x18 => field18 / set_field18: u32,
+        0x24 => flag24 / set_flag24: u8,
+        0x25 => flag25 / set_flag25: u8,
+        0x26 => flag26 / set_flag26: u8,
+        0x27 => flag27 / set_flag27: u8,
+        0x29 => flag29 / set_flag29: u8,
+        0x2A => flag2a / set_flag2a: u8,
+        0x2B => flag2b / set_flag2b: u8,
+        0x2C => field2c / set_field2c: u32,
+        0x30 => field30 / set_field30: u32,
+        0x44 => field44 / set_field44: u32,
+        0x48 => field48 / set_field48: u32,
+        0x4C => field4c / set_field4c: u32,
+        0x50 => string_table / set_string_table: u32,
+        0x54 => string_first / set_string_first: *mut u8,
+        0x58 => string_last / set_string_last: *mut u8,
+        0x5C => string_limit / set_string_limit: *mut u8,
+        0x60 => field60 / set_field60: u32,
+        0x74 => field74 / set_field74: u32,
+        0x78 => field78 / set_field78: u32,
+        0x7C => field7c / set_field7c: u32,
+        0xAC => fieldac / set_fieldac: u32,
+        0xB0 => fieldb0 / set_fieldb0: u32,
+        0xB4 => fieldb4 / set_fieldb4: u32,
+        0xD8 => fieldd8 / set_fieldd8: u32,
+        0xDC => fielddc / set_fielddc: u32,
+        0xE0 => fielde0 / set_fielde0: u32,
+        0xE4 => fielde4 / set_fielde4: u32,
+        0xE8 => fielde8 / set_fielde8: u32,
+        0xEC => fieldec / set_fieldec: u32,
+        0xF0 => fieldf0 / set_fieldf0: u32,
+        0xF4 => fieldf4 / set_fieldf4: u32,
+        0xF8 => fieldf8 / set_fieldf8: u32,
+        0x124 => field124 / set_field124: u32,
+        0x128 => field128 / set_field128: u32,
+        0x12C => field12c / set_field12c: u32,
+        0x130 => field130 / set_field130: u32,
+    }
+}
+
+port! {
+    /// Initializes the delegate before installing the final interface tables and allocating an empty string.
+    #[port(address = 0x0064_5D50, owner = "shared", name = "ConstructToolHelper")]
+    pub unsafe extern "thiscall" fn fc4p_00645d50(this: *mut u8) -> *mut u8 {
+        unsafe {
+            let object = ToolHelper::from_ptr(this);
+            object.set_primary_table(0x00AA_90C0);
+            object.set_secondary_table(0x00A8_3524);
+            object.set_third_table(0x00A8_1174);
+            initialize_delegate(this.add(0x0C));
+            object.set_primary_table(0x00AA_9140);
+            object.set_secondary_table(0x00AA_9128);
+            object.set_third_table(0x00AA_9118);
+            object.set_delegate_table(0x00AA_9104);
+            for offset in [0x14, 0x18] { put(this, offset, 0); }
+            for offset in [0x24, 0x25, 0x26, 0x27, 0x29, 0x2A, 0x2B] { this.add(offset).write(0); }
+            for offset in [0x2C, 0x30, 0x44, 0x48, 0x4C, 0x54, 0x58, 0x5C] { put(this, offset, 0); }
+            let buffer = allocate_storage(8);
+            object.set_string_first(buffer);
+            object.set_string_last(buffer);
+            object.set_string_limit(buffer.wrapping_add(8));
+            buffer.write(0);
+            object.set_field60(0);
+            object.set_string_table(0x00A8_0810);
+            for offset in [0x74, 0x78, 0x7C, 0xAC, 0xB0, 0xB4, 0xD8, 0xDC, 0xE0,
+                0xE4, 0xE8, 0xEC, 0xF0, 0xF4, 0xF8, 0x124, 0x128, 0x12C, 0x130] { put(this, offset, 0); }
+            this
+        }
+    }
+}
+
+port! {
+    /// Copies eight-byte records backward, with a signed count; returns the destination start and displacement.
+    #[port(address = 0x0066_B340, owner = "shared", name = "CopyEightByteRecordsBackward")]
+    pub unsafe extern "C" fn fc4p_0066b340(first: *mut u8, last: *mut u8, output: *mut u8) -> u64 {
+        unsafe {
+            let count = (last as u32).wrapping_sub(first as u32) as i32 >> 3;
+            let mut output = output;
+            let mut source = last;
+            if count <= 0 { return registers(output as u32, last as u32); }
+            let displacement = (last as u32).wrapping_sub(output as u32);
+            for _ in 0..count {
+                source = source.wrapping_sub(8);
+                let low = word(source, 0);
+                output = output.wrapping_sub(8);
+                put(output, 0, low);
+                put(output, 4, word(source, 4));
+            }
+            registers(output as u32, displacement)
+        }
+    }
+}
+
+port! {
+    /// Sets the key on the embedded resource interface and replaces only AL with one.
+    #[port(address = 0x0067_C220, owner = "shared", name = "SetEmbeddedResourceKey")]
+    pub unsafe extern "thiscall" fn fc4p_0067c220(this: *mut u8, key: *mut u8) -> u64 {
+        unsafe { (set_resource_key(this.add(4), key) & !0xFF) | 1 }
+    }
+}
+
+layout! {
+    /// Sorted pairs used by the shared resource lookup helpers.
+    struct ResourcePairs {
+        0x18 => first / set_first: *mut u8,
+        0x1C => last / set_last: *mut u8,
+    }
+}
+
+unsafe fn find_resource_pair(this: *mut u8, key: u32) -> (u64, bool) {
+    unsafe {
+        let pairs = ResourcePairs::from_ptr(this);
+        let last = pairs.last();
+        let value = [key, 0];
+        let result = lower_bound_pair(pairs.first(), last, value.as_ptr(), key, 0);
+        let candidate = result as u32 as *mut u8;
+        (result, candidate != last && word(candidate, 0) == key)
+    }
+}
+
+port! {
+    /// Checks the key returned by the original pair lower-bound helper, retaining its upper return bytes.
+    #[port(address = 0x0067_C620, owner = "shared", name = "ContainsResourcePair")]
+    pub unsafe extern "thiscall" fn fc4p_0067c620(this: *mut u8, key: u32) -> u64 {
+        let (result, found) = unsafe { find_resource_pair(this, key) };
+        (result & !0xFF) | u64::from(found)
+    }
+}
+
+port! {
+    /// Returns the matching pair's value or zero, retaining the lower-bound helper's EDX.
+    #[port(address = 0x0067_C670, owner = "shared", name = "GetResourcePairValue")]
+    pub unsafe extern "thiscall" fn fc4p_0067c670(this: *mut u8, key: u32) -> u64 {
+        unsafe {
+            let (result, found) = find_resource_pair(this, key);
+            let value = if found { word(result as u32 as *mut u8, 4) } else { 0 };
+            registers(value, (result >> 32) as u32)
+        }
+    }
+}
+
+port! {
+    /// Copies the embedded interface's three-word key in word order, then sets AL to one.
+    #[port(address = 0x0067_CD20, owner = "shared", name = "GetEmbeddedResourceKey")]
+    pub unsafe extern "thiscall" fn fc4p_0067cd20(this: *mut u8, output: *mut u8) -> u64 {
+        unsafe {
+            let mut temporary = core::mem::MaybeUninit::<[u32; 3]>::uninit();
+            let key = get_resource_key(this.add(4), temporary.as_mut_ptr().cast());
+            put(output, 0, word(key, 0));
+            let middle = word(key, 4);
+            put(output, 4, middle);
+            let last = word(key, 8);
+            put(output, 8, last);
+            registers((last & !0xFF) | 1, middle)
+        }
+    }
+}
+
+port! {
+    /// Constructs a retained collection and appends each pair's value. A null output only clears AL.
+    #[port(address = 0x0067_C4B0, owner = "shared", name = "CollectResourcePairValues", naked)]
+    pub unsafe extern "C" fn fc4p_0067c4b0() {
+        core::arch::naked_asm!("push edx", "push eax", "mov edx, esp", "call {body}", "add esp, 8", "ret 4",
+            body = sym collect_resource_pair_values);
+    }
+}
+
+unsafe extern "fastcall" fn collect_resource_pair_values(this: *mut u8, frame: *mut u32) -> u64 {
+    unsafe {
+        let output = frame.add(3).read() as *mut *mut u8;
+        if output.is_null() {
+            return registers(frame.read() & !0xFF, frame.add(1).read());
+        }
+        let allocation = allocate_object(12);
+        let collection = if allocation.is_null() {
+            allocation
+        } else {
+            construct_collection(allocation)
+        };
+        let mut result = vcall!(collection, 4 => fn() -> u64);
+        let pairs = ResourcePairs::from_ptr(this);
+        let (mut first, last) = (pairs.first(), pairs.last());
+        while first != last {
+            result = vcall!(collection, 0x1C => fn(u32) -> u64, word(first, 4));
+            first = first.wrapping_add(8);
+        }
+        output.write_unaligned(collection);
+        (result & !0xFF) | 1
+    }
+}
+
+port! {
+    /// Obtains service number one and forwards to its +0x2C method.
+    #[port(address = 0x0068_B270, owner = "shared", name = "CallFirstServiceMethod")]
+    pub unsafe extern "thiscall" fn fc4p_0068b270(this: *mut u8) -> u64 {
+        unsafe {
+            let service = vcall!(pointer(this, 0x30), 0x50 => fn(u32) -> *mut u8, 1);
+            vcall!(service, 0x2C => fn() -> u64)
+        }
+    }
+}
+
+port! {
+    /// Writes version one, the owned range and its trailing word; success means a zero low error byte.
+    #[port(address = 0x006A_C930, owner = "shared", name = "WriteRangeRecord")]
+    pub unsafe extern "thiscall" fn fc4p_006ac930(this: *mut u8, stream: *mut u8) -> u64 {
+        unsafe {
+            vcall!(stream, 0x1C => fn(u32) -> u32, 1);
+            serialize_range(stream, this.add(0x14));
+            vcall!(stream, 0x24 => fn(u32) -> u32, word(this, 0x1C));
+            let result = vcall!(stream, 0x48 => fn() -> u64);
+            registers(u32::from(result as u8 == 0), (result >> 32) as u32)
+        }
+    }
+}
+
+port! {
+    /// Restores unit scale, then forwards the original frame to the initializer.
+    #[port(address = 0x006A_CF70, owner = "shared", name = "InitializeWithUnitScale", naked)]
+    pub unsafe extern "C" fn fc4p_006acf70() {
+        #[cfg(not(test))]
+        core::arch::naked_asm!("mov dword ptr [ecx + 0x98], 0x3f800000", "jmp dword ptr [2f]", "2: .long 0x006f6a70");
+        #[cfg(test)]
+        core::arch::naked_asm!("mov dword ptr [ecx + 0x98], 0x3f800000",
+            "push eax", "push ecx", "push edx", "push 0x006f6a70", "call {resolve}", "add esp, 4",
+            "xchg eax, [esp + 8]", "pop edx", "pop ecx", "ret", resolve = sym forwarding_target);
+    }
+}
+
+port! {
+    /// Checks two occupant searches in order, releasing the first successful result.
+    #[port(address = 0x0065_9470, owner = "shared", name = "HasEitherOccupant")]
+    pub unsafe extern "thiscall" fn fc4p_00659470(this: *mut u8, x: u32, z: u32) -> u64 {
+        unsafe {
+            let (mut first, mut second) = (core::ptr::null_mut(), core::ptr::null_mut());
+            let service = vcall!(this, 0x144 => fn() -> *mut u8);
+            let result = find_first_occupant(x, z, &mut first, service);
+            if result as u8 != 0 { return (vcall!(first, 8 => fn() -> u64) & !0xFF) | 1; }
+            let service = vcall!(this, 0x144 => fn() -> *mut u8);
+            let result = find_second_occupant(x, z, service, &mut second);
+            if result as u8 != 0 { return (vcall!(second, 8 => fn() -> u64) & !0xFF) | 1; }
+            result & !0xFF
+        }
+    }
+}
+
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
     fc4p_00637e20::PORT,
@@ -660,6 +1026,8 @@ pub const PORTS: &[Port] = &[
     fc4p_0063c020::PORT,
     fc4p_0063c070::PORT,
     fc4p_0063e9d0::PORT,
+    fc4p_00640230::PORT,
+    fc4p_00645d50::PORT,
     fc4p_006480d0::PORT,
     fc4p_006480e0::PORT,
     fc4p_006481d0::PORT,
@@ -691,17 +1059,27 @@ pub const PORTS: &[Port] = &[
     fc4p_00652e50::PORT,
     fc4p_00653d90::PORT,
     fc4p_00657730::PORT,
+    fc4p_00659470::PORT,
+    fc4p_0066b340::PORT,
+    fc4p_0067c220::PORT,
+    fc4p_0067c4b0::PORT,
+    fc4p_0067c620::PORT,
+    fc4p_0067c670::PORT,
     fc4p_0067cb10::PORT,
+    fc4p_0067cd20::PORT,
     fc4p_0068afd0::PORT,
     fc4p_0068aff0::PORT,
     fc4p_0068b000::PORT,
     fc4p_0068b1d0::PORT,
     fc4p_0068b1e0::PORT,
+    fc4p_0068b270::PORT,
     fc4p_0068d230::PORT,
     fc4p_0068d250::PORT,
     fc4p_00695260::PORT,
     fc4p_00695330::PORT,
     fc4p_006aaeb0::PORT,
+    fc4p_006ac930::PORT,
+    fc4p_006acf70::PORT,
     fc4p_006b8ab0::PORT,
     fc4p_006b8ac0::PORT,
     fc4p_006b8b10::PORT,
@@ -771,6 +1149,11 @@ mod tests {
         call.edx = edx;
         let mut probe = Probe { call, saved: [0; 6] };
         let before = environment();
+        let sentinel = 123.25f64;
+        let mut restored = 0.0f64;
+        unsafe {
+            core::arch::asm!("fld qword ptr [{p}]", p = in(reg) &sentinel, out("st(0)") _);
+        }
         // The probe records each preserved register and ESP around the original argument frame.
         unsafe {
             core::arch::asm!(
@@ -785,6 +1168,10 @@ mod tests {
                 in("edi") &mut probe, clobber_abi("C"),
             );
         }
+        unsafe {
+            core::arch::asm!("fstp qword ptr [{p}]", p = in(reg) &mut restored, out("st(0)") _);
+        }
+        assert_eq!(restored.to_bits(), sentinel.to_bits());
         assert_eq!(environment(), before);
         assert_eq!(probe.saved[..3], [0x1234_5678, 0x9ABC_DEF0, 0x7654_3210]);
         assert_eq!(probe.saved[3], (&probe as *const Probe) as u32);
@@ -1456,6 +1843,640 @@ mod tests {
                 );
             }
             assert_eq!(object, before);
+        }
+    }
+
+    #[derive(Default)]
+    struct Extra {
+        owner: usize,
+        allocation: usize,
+        alternate: usize,
+        snapshots: Vec<Vec<u8>>,
+        pairs: [u32; 2],
+        results: [u32; 2],
+        service_calls: usize,
+    }
+
+    thread_local! { static EXTRA: RefCell<Extra> = RefCell::new(Extra::default()); }
+
+    extern "C" fn free_buffer(p: *mut u8) -> u64 {
+        log(0x0090_CF63, p, &[]);
+        STATE.with(|s| {
+            if let Some((owner, offset, value)) = s.borrow_mut().mutate.take() {
+                unsafe {
+                    put(owner as *mut u8, offset, value);
+                }
+            }
+        });
+        registers(0xFAFA_BCDE, (p as u32) ^ 0xDEAD_BEEF)
+    }
+
+    extern "thiscall" fn subtree(this: *mut u8, root: *mut u8) {
+        log(0x0063_D700, this, &[root as u32]);
+    }
+
+    #[test]
+    fn storage_destruction_clears_only_nonempty_tree_links_and_frees_buffers_in_order() {
+        reset();
+        let _free = fake(0x0090_CF63, free_buffer as *const () as usize);
+        let _tree = fake(0x0063_D700, subtree as *const () as usize);
+        let offsets = [0x15C, 0x8C, 0x80, 0x6C, 0x60, 0x50, 0x44, 0x20, 0x14];
+        for (count, present) in [(0, false), (0, true), (3, true)] {
+            for mask in [0u32, 0b101010101, 0b111111111] {
+                let mut object = [0xA5u8; 0x180];
+                let p = object.as_mut_ptr();
+                let mut header = [0xABAB_ABABu32, 0x1234_5678, 0x8765_4321, 0xCAFE_BABE];
+                let h = header.as_mut_ptr().cast::<u8>();
+                unsafe {
+                    put(p, 0x16C, if present { h as u32 } else { 0 });
+                    put(p, 0x170, count);
+                    for (i, &offset) in offsets.iter().enumerate() {
+                        put(
+                            p,
+                            offset,
+                            if mask & (1 << i) != 0 {
+                                0x1000 + (i as u32) * 16
+                            } else {
+                                0
+                            },
+                        );
+                    }
+                }
+                let mut expected_object = object;
+                expected_object[0x158..0x15C].copy_from_slice(&0x00A8_0810u32.to_le_bytes());
+                if count != 0 {
+                    expected_object[0x170..0x174].fill(0);
+                }
+                let mut expected = vec![];
+                if count != 0 {
+                    expected.push(Call(0x0063_D700, p.wrapping_add(0x16C) as usize, vec![0x1234_5678]));
+                }
+                let mut edx = 0x1234_5678;
+                if present {
+                    expected.push(Call(0x0090_CF63, h as usize, vec![]));
+                    edx = (h as u32) ^ 0xDEAD_BEEF;
+                }
+                let mut eax = 0;
+                for (i, &offset) in offsets.iter().enumerate() {
+                    let value = unsafe { word(p, offset) };
+                    if i < 8 {
+                        eax = value;
+                    }
+                    if value != 0 {
+                        expected.push(Call(0x0090_CF63, value as usize, vec![]));
+                        eax = 0xFAFA_BCDE;
+                        edx = value ^ 0xDEAD_BEEF;
+                    }
+                }
+                unsafe {
+                    assert_eq!(
+                        run(fc4p_00640230 as *const (), Conv::Thiscall, p, &[], 0, 0x1234_5678),
+                        (eax, edx)
+                    );
+                }
+                assert_eq!(object, expected_object);
+                assert_eq!(
+                    header,
+                    if count == 0 {
+                        [0xABAB_ABAB, 0x1234_5678, 0x8765_4321, 0xCAFE_BABE]
+                    } else {
+                        [0xABAB_ABAB, 0, h as u32, h as u32]
+                    }
+                );
+                assert_eq!(calls(), expected);
+            }
+        }
+        // A free callback can install a buffer into a field that has not been visited yet.
+        let mut object = [0u32; 0x180 / 4];
+        let p = object.as_mut_ptr().cast::<u8>();
+        unsafe {
+            put(p, 0x15C, 0x1020);
+        }
+        STATE.with(|s| s.borrow_mut().mutate = Some((p as usize, 0x20, 0x3040)));
+        unsafe {
+            assert_eq!(fc4p_00640230(p, 0), registers(0xFAFA_BCDE, 0x3040 ^ 0xDEAD_BEEF));
+        }
+        assert_eq!(
+            calls(),
+            [Call(0x0090_CF63, 0x1020, vec![]), Call(0x0090_CF63, 0x3040, vec![])]
+        );
+    }
+
+    extern "thiscall" fn delegate_init(this: *mut u8) {
+        log(0x0090_D957, this, &[]);
+        EXTRA.with(|s| {
+            let mut s = s.borrow_mut();
+            s.snapshots.push(bytes(this.wrapping_sub(12), 0x134));
+        });
+        unsafe {
+            put(this, 4, 0x0102_0304);
+        }
+    }
+
+    extern "C" fn allocate_buffer(size: u32) -> *mut u8 {
+        log(0x0090_CF54, core::ptr::null_mut(), &[size]);
+        EXTRA.with(|s| {
+            let mut s = s.borrow_mut();
+            let owner = s.owner as *mut u8;
+            s.snapshots.push(bytes(owner, 0x134));
+            unsafe {
+                put(owner, 0x14, 0x1122_3344);
+                put(owner, 0x60, 0x5566_7788);
+            }
+            s.allocation as *mut u8
+        })
+    }
+
+    #[test]
+    fn constructor_preserves_gaps_and_exposes_the_expected_fields_to_each_callback() {
+        reset();
+        let _delegate = fake(0x0090_D957, delegate_init as *const () as usize);
+        let _allocate = fake(0x0090_CF54, allocate_buffer as *const () as usize);
+        let mut object = [0xA5u8; 0x144];
+        let p = object.as_mut_ptr();
+        let mut buffer = [0xCCu8; 8];
+        let b = buffer.as_mut_ptr();
+        EXTRA.with(|s| {
+            *s.borrow_mut() = Extra {
+                owner: p as usize,
+                allocation: b as usize,
+                ..Extra::default()
+            }
+        });
+        unsafe {
+            assert_eq!(fc4p_00645d50(p), p);
+        }
+        let snapshots = EXTRA.with(|s| core::mem::take(&mut s.borrow_mut().snapshots));
+        let mut before_delegate = vec![0xA5u8; 0x134];
+        for (offset, value) in [(0, 0x00AA_90C0u32), (4, 0x00A8_3524), (8, 0x00A8_1174)] {
+            before_delegate[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+        }
+        assert_eq!(snapshots[0], before_delegate);
+        let mut before_allocate = before_delegate;
+        for (offset, value) in [
+            (0, 0x00AA_9140u32),
+            (4, 0x00AA_9128),
+            (8, 0x00AA_9118),
+            (12, 0x00AA_9104),
+            (16, 0x0102_0304),
+        ] {
+            before_allocate[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+        }
+        for offset in [0x14, 0x18, 0x2C, 0x30, 0x44, 0x48, 0x4C, 0x54, 0x58, 0x5C] {
+            before_allocate[offset..offset + 4].fill(0);
+        }
+        for offset in [0x24, 0x25, 0x26, 0x27, 0x29, 0x2A, 0x2B] {
+            before_allocate[offset] = 0;
+        }
+        assert_eq!(snapshots[1], before_allocate);
+        let mut expected = before_allocate;
+        expected.extend_from_slice(&[0xA5; 16]);
+        expected[0x14..0x18].copy_from_slice(&0x1122_3344u32.to_le_bytes());
+        for (offset, value) in [
+            (0x50, 0x00A8_0810u32),
+            (0x54, b as u32),
+            (0x58, b as u32),
+            (0x5C, b.wrapping_add(8) as u32),
+        ] {
+            expected[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+        }
+        for offset in [
+            0x60, 0x74, 0x78, 0x7C, 0xAC, 0xB0, 0xB4, 0xD8, 0xDC, 0xE0, 0xE4, 0xE8, 0xEC, 0xF0, 0xF4, 0xF8, 0x124,
+            0x128, 0x12C, 0x130,
+        ] {
+            expected[offset..offset + 4].fill(0);
+        }
+        assert_eq!(object.as_slice(), expected);
+        assert_eq!(buffer, [0, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC]);
+        assert_eq!(
+            calls(),
+            [
+                Call(0x0090_D957, p.wrapping_add(12) as usize, vec![]),
+                Call(0x0090_CF54, 0, vec![8])
+            ]
+        );
+    }
+
+    #[test]
+    fn backward_copy_keeps_word_order_inside_overlapping_records_and_signed_empty_counts() {
+        unsafe {
+            let mut data = [1u32, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+            let p = data.as_mut_ptr().cast::<u8>();
+            let result = fc4p_0066b340(p, p.add(24), p.add(28));
+            assert_eq!(result, registers(p.add(4) as u32, u32::MAX - 3));
+            assert_eq!(data, [1, 1, 1, 3, 3, 5, 5, 8, 9, 10]);
+            let before = data;
+            for last in [p, p.add(7), p.wrapping_sub(8)] {
+                assert_eq!(
+                    fc4p_0066b340(p, last, p.add(32)),
+                    registers(p.add(32) as u32, last as u32)
+                );
+                assert_eq!(data, before);
+            }
+            let mut source = [11u32, 12, 13, 14];
+            let s = source.as_mut_ptr().cast::<u8>();
+            assert_eq!(
+                fc4p_0066b340(s, s.add(16), p.add(20)),
+                registers(p.add(4) as u32, (s.add(16) as u32).wrapping_sub(p.add(20) as u32))
+            );
+            assert_eq!(data, [1, 11, 12, 13, 14, 5, 5, 8, 9, 10]);
+        }
+    }
+
+    extern "thiscall" fn set_key(this: *mut u8, key: *mut u8) -> u64 {
+        log(0x0097_5402, this, &[key as u32]);
+        registers(0x1122_3344, 0x5566_7788)
+    }
+
+    extern "thiscall" fn get_key(this: *mut u8, output: *mut u32) -> *mut u8 {
+        log(0x0097_53EA, this, &[]);
+        unsafe {
+            output.write(0x1122_3344);
+            output.add(1).write(0xAABB_CCDD);
+            output.add(2).write(0xDEAD_BEEF);
+        }
+        EXTRA.with(|s| {
+            let p = s.borrow().alternate;
+            if p == 0 {
+                output.cast()
+            } else {
+                p as *mut u8
+            }
+        })
+    }
+
+    extern "C" fn lower_pair(first: *mut u8, last: *mut u8, key: *const u32, value: u32, cookie: u32) -> u64 {
+        log(
+            0x005F_E940,
+            first,
+            &[
+                last as u32,
+                unsafe { key.read() },
+                unsafe { key.add(1).read() },
+                value,
+                cookie,
+            ],
+        );
+        STATE.with(|s| {
+            if let Some((p, offset, value)) = s.borrow().mutate {
+                unsafe {
+                    put(p as *mut u8, offset, value);
+                }
+            }
+        });
+        EXTRA.with(|s| registers(s.borrow().alternate as u32, 0x8765_4321))
+    }
+
+    #[test]
+    fn embedded_resource_keys_keep_all_result_bytes_and_copy_aliased_words_in_order() {
+        reset();
+        let _set = fake(0x0097_5402, set_key as *const () as usize);
+        let _get = fake(0x0097_53EA, get_key as *const () as usize);
+        let mut object = [0xA5u8; 32];
+        let p = object.as_mut_ptr();
+        let mut key = [0u32; 5];
+        let k = key.as_mut_ptr().cast::<u8>();
+        unsafe {
+            assert_eq!(fc4p_0067c220(p, k), registers(0x1122_3301, 0x5566_7788));
+        }
+        assert_eq!(calls(), [Call(0x0097_5402, p.wrapping_add(4) as usize, vec![k as u32])]);
+        EXTRA.with(|s| *s.borrow_mut() = Extra::default());
+        unsafe {
+            assert_eq!(fc4p_0067cd20(p, k.add(4)), registers(0xDEAD_BE01, 0xAABB_CCDD));
+        }
+        assert_eq!(key, [0, 0x1122_3344, 0xAABB_CCDD, 0xDEAD_BEEF, 0]);
+        assert_eq!(calls(), [Call(0x0097_53EA, p.wrapping_add(4) as usize, vec![])]);
+        key = [0x1234_5678, 0xAABB_CCDD, 0xDEAD_BEEF, 0, 0xA5A5_A5A5];
+        EXTRA.with(|s| s.borrow_mut().alternate = k as usize);
+        unsafe {
+            assert_eq!(fc4p_0067cd20(p, k.add(4)), registers(0x1234_5601, 0x1234_5678));
+        }
+        assert_eq!(key, [0x1234_5678, 0x1234_5678, 0x1234_5678, 0x1234_5678, 0xA5A5_A5A5]);
+        assert_eq!(object, [0xA5; 32]);
+    }
+
+    #[test]
+    fn pair_lookup_delegates_to_lower_bound_and_keeps_the_original_cached_end() {
+        reset();
+        let _lower = fake(0x005F_E940, lower_pair as *const () as usize);
+        let mut object = [0u32; 8];
+        let p = object.as_mut_ptr().cast::<u8>();
+        let mut data = [3u32, 0x1122_3344, 9, 0x5566_7788];
+        let a = data.as_mut_ptr().cast::<u8>();
+        let b = a.wrapping_add(16);
+        for (key, candidate, found, value) in [
+            (3, a, true, 0x1122_3344),
+            (9, a.wrapping_add(8), true, 0x5566_7788),
+            (4, a.wrapping_add(8), false, 0),
+            (u32::MAX, b, false, 0),
+        ] {
+            for getter in [false, true] {
+                unsafe {
+                    put(p, 0x18, a as u32);
+                    put(p, 0x1C, b as u32);
+                }
+                EXTRA.with(|s| s.borrow_mut().alternate = candidate as usize);
+                STATE.with(|s| s.borrow_mut().mutate = Some((p as usize, 0x1C, candidate as u32)));
+                let result = unsafe {
+                    if getter {
+                        fc4p_0067c670(p, key)
+                    } else {
+                        fc4p_0067c620(p, key)
+                    }
+                };
+                let eax = if getter {
+                    value
+                } else {
+                    (candidate as u32 & !0xFF) | u32::from(found)
+                };
+                assert_eq!(result, registers(eax, 0x8765_4321));
+                assert_eq!(calls(), [Call(0x005F_E940, a as usize, vec![b as u32, key, 0, key, 0])]);
+            }
+        }
+        assert_eq!(data, [3, 0x1122_3344, 9, 0x5566_7788]);
+    }
+
+    extern "C" fn allocate_collection(size: u32) -> *mut u8 {
+        log(0x005E_55E0, core::ptr::null_mut(), &[size]);
+        EXTRA.with(|s| s.borrow().allocation as *mut u8)
+    }
+
+    extern "thiscall" fn collection_new(this: *mut u8) -> *mut u8 {
+        log(0x0090_DC0F, this, &[]);
+        EXTRA.with(|s| s.borrow().alternate as *mut u8)
+    }
+
+    extern "thiscall" fn collection_retain(this: *mut u8) -> u64 {
+        log(4, this, &[]);
+        EXTRA.with(|s| {
+            let s = s.borrow();
+            unsafe {
+                put(s.owner as *mut u8, 0x18, s.pairs[0]);
+                put(s.owner as *mut u8, 0x1C, s.pairs[1]);
+            }
+        });
+        registers(0x1234_5678, 0xAABB_CCDD)
+    }
+
+    extern "thiscall" fn collection_append(this: *mut u8, value: u32) -> u64 {
+        log(0x1C, this, &[value]);
+        registers(0x5566_7700 | value, 0x8877_6655)
+    }
+
+    #[test]
+    fn resource_collection_handles_null_output_and_reads_pairs_after_retaining_the_constructed_object() {
+        reset();
+        let _allocate = fake(0x005E_55E0, allocate_collection as *const () as usize);
+        let _new = fake(0x0090_DC0F, collection_new as *const () as usize);
+        let mut vt = [0usize; 8];
+        vt[1] = collection_retain as *const () as usize;
+        vt[7] = collection_append as *const () as usize;
+        let mut collection = [vt.as_ptr() as usize; 3];
+        let c = collection.as_mut_ptr().cast::<u8>();
+        let mut object = [0u32; 8];
+        let p = object.as_mut_ptr().cast::<u8>();
+        let mut pairs = [1u32, 3, 2, 5, 3, 7];
+        let a = pairs.as_mut_ptr() as u32;
+        unsafe {
+            assert_eq!(
+                run(
+                    fc4p_0067c4b0 as *const (),
+                    Conv::Thiscall,
+                    p,
+                    &[0],
+                    0x1122_3344,
+                    0x5566_7788
+                ),
+                (0x1122_3300, 0x5566_7788)
+            );
+        }
+        assert!(calls().is_empty());
+        for count in 0..=3 {
+            let mut output = core::ptr::null_mut::<u8>();
+            EXTRA.with(|s| {
+                *s.borrow_mut() = Extra {
+                    owner: p as usize,
+                    allocation: 0x1020,
+                    alternate: c as usize,
+                    pairs: [a, a + count * 8],
+                    ..Extra::default()
+                }
+            });
+            let result = unsafe {
+                run(
+                    fc4p_0067c4b0 as *const (),
+                    Conv::Thiscall,
+                    p,
+                    &[(&mut output as *mut *mut u8) as u32],
+                    0,
+                    0,
+                )
+            };
+            assert_eq!(output, c);
+            let mut expected = vec![
+                Call(0x005E_55E0, 0, vec![12]),
+                Call(0x0090_DC0F, 0x1020, vec![]),
+                Call(4, c as usize, vec![]),
+            ];
+            for value in [3u32, 5, 7].into_iter().take(count as usize) {
+                expected.push(Call(0x1C, c as usize, vec![value]));
+            }
+            assert_eq!(calls(), expected);
+            assert_eq!(
+                result,
+                if count == 0 {
+                    (0x1234_5601, 0xAABB_CCDD)
+                } else {
+                    (0x5566_7701, 0x8877_6655)
+                }
+            );
+        }
+    }
+
+    extern "thiscall" fn service(this: *mut u8, index: u32) -> *mut u8 {
+        log(0x50, this, &[index]);
+        EXTRA.with(|s| s.borrow().alternate as *mut u8)
+    }
+
+    extern "thiscall" fn service_method(this: *mut u8) -> u64 {
+        log(0x2C, this, &[]);
+        registers(0xDEAD_BEEF, 0xFEDC_BA98)
+    }
+
+    extern "thiscall" fn scaled_initialize(this: *mut u8, first: u32, second: u32) -> u64 {
+        log(0x006F_6A70, this, &[first, second, unsafe { word(this, 0x98) }]);
+        registers(0x1234_5678, 0x90AB_CDEF)
+    }
+
+    #[test]
+    fn service_forwarder_and_unit_scale_initializer_keep_original_targets_arguments_and_results() {
+        reset();
+        let mut svt = [0usize; 0x54 / 4];
+        svt[0x50 / 4] = service as *const () as usize;
+        let mut target_vt = [0usize; 0x30 / 4];
+        target_vt[0x2C / 4] = service_method as *const () as usize;
+        let mut s = [svt.as_ptr() as usize];
+        let sp = s.as_mut_ptr().cast::<u8>();
+        let mut target = [target_vt.as_ptr() as usize];
+        let t = target.as_mut_ptr().cast::<u8>();
+        let mut object = [0xA5u8; 0xB0];
+        let p = object.as_mut_ptr();
+        unsafe {
+            put(p, 0x30, sp as u32);
+        }
+        EXTRA.with(|s| s.borrow_mut().alternate = t as usize);
+        let mut expected = object;
+        unsafe {
+            assert_eq!(fc4p_0068b270(p), registers(0xDEAD_BEEF, 0xFEDC_BA98));
+        }
+        assert_eq!(
+            calls(),
+            [Call(0x50, sp as usize, vec![1]), Call(0x2C, t as usize, vec![])]
+        );
+        assert_eq!(object, expected);
+        let _initialize = fake(0x006F_6A70, scaled_initialize as *const () as usize);
+        unsafe {
+            assert_eq!(
+                run(
+                    fc4p_006acf70 as *const (),
+                    Conv::Thiscall,
+                    p,
+                    &[0x1122_3344, 0x5566_7788],
+                    0xAABB_CCDD,
+                    0xEEFF_0011
+                ),
+                (0x1234_5678, 0x90AB_CDEF)
+            );
+        }
+        expected[0x98..0x9C].copy_from_slice(&0x3F80_0000u32.to_le_bytes());
+        assert_eq!(object, expected);
+        assert_eq!(
+            calls(),
+            [Call(
+                0x006F_6A70,
+                p as usize,
+                vec![0x1122_3344, 0x5566_7788, 0x3F80_0000]
+            )]
+        );
+    }
+
+    extern "thiscall" fn write_version(this: *mut u8, value: u32) -> u32 {
+        log(0x1C, this, &[value]);
+        0
+    }
+    extern "C" fn write_range(stream: *mut u8, range: *mut u8) {
+        log(0x005D_AFF0, stream, &[range as u32]);
+        unsafe {
+            put(range, 8, 0xCAFE_BABE);
+        }
+    }
+    extern "thiscall" fn write_word(this: *mut u8, value: u32) -> u32 {
+        log(0x24, this, &[value]);
+        0
+    }
+    extern "thiscall" fn stream_error(this: *mut u8) -> u64 {
+        log(0x48, this, &[]);
+        registers(EXTRA.with(|s| s.borrow().results[0]), 0x8765_4321)
+    }
+
+    #[test]
+    fn range_writer_reloads_the_trailing_word_after_serialization_and_tests_only_the_error_byte() {
+        reset();
+        let _range = fake(0x005D_AFF0, write_range as *const () as usize);
+        let mut vt = [0usize; 0x4C / 4];
+        vt[0x1C / 4] = write_version as *const () as usize;
+        vt[0x24 / 4] = write_word as *const () as usize;
+        vt[0x48 / 4] = stream_error as *const () as usize;
+        let mut stream = [vt.as_ptr() as usize];
+        let st = stream.as_mut_ptr().cast::<u8>();
+        let mut object = [0xA5u8; 0x30];
+        let p = object.as_mut_ptr();
+        for error in [0, 0x1234_5600, 1, 0x80, u32::MAX] {
+            EXTRA.with(|s| s.borrow_mut().results[0] = error);
+            let result = unsafe { fc4p_006ac930(p, st) };
+            assert_eq!(result, registers(u32::from(error as u8 == 0), 0x8765_4321));
+            assert_eq!(
+                calls(),
+                [
+                    Call(0x1C, st as usize, vec![1]),
+                    Call(0x005D_AFF0, st as usize, vec![p.wrapping_add(0x14) as u32]),
+                    Call(0x24, st as usize, vec![0xCAFE_BABE]),
+                    Call(0x48, st as usize, vec![])
+                ]
+            );
+        }
+        let mut expected = [0xA5u8; 0x30];
+        expected[0x1C..0x20].copy_from_slice(&0xCAFE_BABEu32.to_le_bytes());
+        assert_eq!(object, expected);
+    }
+
+    extern "thiscall" fn occupant_service(this: *mut u8) -> *mut u8 {
+        log(0x144, this, &[]);
+        EXTRA.with(|s| {
+            let mut s = s.borrow_mut();
+            let service = s.pairs[s.service_calls];
+            s.service_calls += 1;
+            service as *mut u8
+        })
+    }
+    extern "C" fn first_occupant(x: u32, z: u32, output: *mut *mut u8, service: *mut u8) -> u64 {
+        log(0x0065_84D0, service, &[x, z, unsafe { output.read() } as u32]);
+        EXTRA.with(|s| {
+            let s = s.borrow();
+            unsafe {
+                output.write(s.alternate as *mut u8);
+            }
+            registers(s.results[0], 0x1234_5678)
+        })
+    }
+    extern "C" fn second_occupant(x: u32, z: u32, service: *mut u8, output: *mut *mut u8) -> u64 {
+        log(0x0065_85E0, service, &[x, z, unsafe { output.read() } as u32]);
+        EXTRA.with(|s| {
+            let s = s.borrow();
+            unsafe {
+                output.write(s.alternate as *mut u8);
+            }
+            registers(s.results[1], 0x90AB_CDEF)
+        })
+    }
+
+    #[test]
+    fn occupant_search_uses_each_original_search_and_releases_only_the_first_successful_result() {
+        reset();
+        let _first = fake(0x0065_84D0, first_occupant as *const () as usize);
+        let _second = fake(0x0065_85E0, second_occupant as *const () as usize);
+        let mut vt = [0usize; 0x148 / 4];
+        vt[0x144 / 4] = occupant_service as *const () as usize;
+        let mut object = [vt.as_ptr() as usize];
+        let p = object.as_mut_ptr().cast::<u8>();
+        let release_vt = [0usize, 0, release as *const () as usize];
+        let mut found = [release_vt.as_ptr() as usize];
+        let f = found.as_mut_ptr().cast::<u8>();
+        for results in [[0xABCD_0080, 1], [0xABCD_0000, 0xDCBA_0080], [0xABCD_0000, 0xDCBA_0000]] {
+            EXTRA.with(|s| {
+                *s.borrow_mut() = Extra {
+                    alternate: f as usize,
+                    pairs: [0x1020, 0x3040],
+                    results,
+                    ..Extra::default()
+                }
+            });
+            let result = unsafe { fc4p_00659470(p, u32::MAX, 0x8000_0000) };
+            let mut expected = vec![
+                Call(0x144, p as usize, vec![]),
+                Call(0x0065_84D0, 0x1020, vec![u32::MAX, 0x8000_0000, 0]),
+            ];
+            if results[0] as u8 == 0 {
+                expected.push(Call(0x144, p as usize, vec![]));
+                expected.push(Call(0x0065_85E0, 0x3040, vec![u32::MAX, 0x8000_0000, 0]));
+            }
+            if results[0] as u8 != 0 || results[1] as u8 != 0 {
+                expected.push(Call(8, f as usize, vec![]));
+                assert_eq!(result, registers(0xA1B2_C301, 0x0077_8899));
+            } else {
+                assert_eq!(result, registers(0xDCBA_0000, 0x90AB_CDEF));
+            }
+            assert_eq!(calls(), expected);
         }
     }
 }
