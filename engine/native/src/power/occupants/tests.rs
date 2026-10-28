@@ -65,6 +65,10 @@ extern "thiscall" fn release(p: *mut u8) -> u32 {
     log("release", p, &[]);
     unsafe { word(p, 0xC) }
 }
+extern "thiscall" fn addref(p: *mut u8) -> u32 {
+    log("addref", p, &[]);
+    0xAA55_1234
+}
 extern "thiscall" fn bbox(p: *mut u8, low: *mut f32, high: *mut f32) -> u32 {
     log("bbox", p, &[]);
     unsafe {
@@ -193,6 +197,73 @@ extern "thiscall" fn set_count(p: *mut u8, n: u64) -> u32 {
     0x7788_9900
 }
 
+extern "thiscall" fn wire_fake(p: *mut u8, rect: *mut Rect) -> u32 {
+    unsafe {
+        let r = &*rect;
+        log("wire", p, &[r.x0, r.z0, r.x1, r.z1]);
+    }
+    0x4455_6677
+}
+extern "thiscall" fn push_pole_fake(p: *mut u8, value: *mut u32) -> u32 {
+    unsafe {
+        log("push_pole", p, &[value.read()]);
+        let end = word(p, 4) as *mut u32;
+        end.write(value.read());
+        put(p, 4, end.add(1) as u32);
+    }
+    0x1122_3344
+}
+extern "thiscall" fn push_plant_fake(p: *mut u8, value: *mut u32) -> u32 {
+    unsafe {
+        log("push_plant", p, &[value.read(), value.add(1).read()]);
+    }
+    0x2233_4455
+}
+extern "C" fn set_int64_fake(p: *mut u8, id: u32, value: u64) -> u32 {
+    log("set_int64", p, &[id, value as u32, (value >> 32) as u32]);
+    0x3344_5566
+}
+extern "thiscall" fn is_powered(p: *mut u8, x: i32, z: i32) -> u32 {
+    log("is_powered", p, &[x as u32, z as u32]);
+    unsafe { word(p, 0x50) }
+}
+extern "thiscall" fn find_lot(p: *mut u8, occupant: *mut u8) -> *mut u8 {
+    log("find_lot", p, &[occupant as u32]);
+    unsafe { word(p, 8) as *mut u8 }
+}
+extern "thiscall" fn mark_powered(p: *mut u8, value: u32) -> u32 {
+    log("mark_powered", p, &[value]);
+    0x5566_7788
+}
+extern "thiscall" fn class_id(p: *mut u8) -> u32 {
+    log("class_id", p, &[]);
+    unsafe { word(p, 0x1C) }
+}
+extern "thiscall" fn funding_line(p: *mut u8, holder: *mut u8, department: u32, line: u32) -> u32 {
+    log("funding_line", p, &[holder as u32, department, line]);
+    0x6677_8899
+}
+extern "thiscall" fn create_item(p: *mut u8, id: u32, flag: u32) -> *mut u8 {
+    log("create_item", p, &[id, flag]);
+    unsafe { word(p, 0xC) as *mut u8 }
+}
+extern "thiscall" fn item_name(p: *mut u8, a: u32, b: u32) -> u32 {
+    log("item_name", p, &[a, b]);
+    0x7788_99AA
+}
+extern "thiscall" fn add_funding(p: *mut u8, holder: *mut u8, purpose: u32) -> u32 {
+    log("add_funding", p, &[holder as u32, purpose]);
+    0x8899_AABB
+}
+
+#[unsafe(naked)]
+unsafe extern "fastcall" fn invoke_insert(this: *mut u8, eax: u32, occupant: *mut u8) -> u64 {
+    core::arch::naked_asm!(
+        "mov eax, edx", "push dword ptr [esp + 4]", "call {entry}",
+        "mov edx, [esp - 4]", "ret 4", entry = sym fc4p_006ecc50,
+    )
+}
+
 // Return both EAX and the callee-popped argument word, before another call can reuse its storage.
 #[unsafe(naked)]
 unsafe extern "fastcall" fn invoke(this: *mut u8, eax: u32, occupant: *mut u8) -> u64 {
@@ -258,7 +329,7 @@ impl Fixture {
             o,
             &[
                 (0, query as *const () as usize),
-                (4, release as *const () as usize),
+                (4, addref as *const () as usize),
                 (8, release as *const () as usize),
                 (0x18, holder as *const () as usize),
                 (0x1C, kind as *const () as usize),
@@ -377,6 +448,373 @@ impl Fixture {
     }
     fn names(&self) -> Vec<&'static str> {
         calls().into_iter().map(|c| c.0).collect()
+    }
+
+    fn insertion(&mut self) {
+        self._fakes.extend([
+            fake(0x006E_AFD0, wire_fake as *const () as usize),
+            fake(0x007E_BD30, push_pole_fake as *const () as usize),
+            fake(0x006E_C530, push_plant_fake as *const () as usize),
+            fake(0x005F_E450, set_int64_fake as *const () as usize),
+        ]);
+        let (s, i, b, d, it) = (
+            self.sim.ptr(),
+            self.interface.ptr(),
+            self.budget.ptr(),
+            self.department.ptr(),
+            self.item.ptr(),
+        );
+        self.table(s, &[(0x94, is_powered as *const () as usize)]);
+        // Serializable and pole slots are used on different occupant kinds.
+        if unsafe { word(self.occupant.ptr(), 4) } == 0x2781_28A0 {
+            self.table(
+                i,
+                &[
+                    (8, release as *const () as usize),
+                    (0x10, class_id as *const () as usize),
+                ],
+            );
+        }
+        self.table(
+            b,
+            &[
+                (0xCC, budget_query as *const () as usize),
+                (0x70, department as *const () as usize),
+                (0xD0, funding_line as *const () as usize),
+            ],
+        );
+        self.table(
+            d,
+            &[
+                (0x50, item as *const () as usize),
+                (0x48, create_item as *const () as usize),
+                (0x58, add_funding as *const () as usize),
+            ],
+        );
+        self.table(
+            it,
+            &[
+                (0x20, count as *const () as usize),
+                (0x24, set_count as *const () as usize),
+                (0x48, item_name as *const () as usize),
+            ],
+        );
+        unsafe {
+            put(d, 0xC, it as u32);
+        }
+    }
+    fn insert(&mut self) -> (u32, u32) {
+        let r = unsafe { invoke_insert(self.sim.ptr(), 0xFEDC_BA98, self.occupant.ptr()) };
+        (r as u32, (r >> 32) as u32)
+    }
+}
+
+#[test]
+fn insertion_gates_unknown_kinds_and_query_failures_keep_result_and_argument_bytes() {
+    let mut f = Fixture::new(0x2781_28A0);
+    f.insertion();
+    unsafe {
+        put(f.sim.ptr(), 0xC, 0);
+    }
+    assert_eq!(f.insert(), (0xFEDC_BA00, f.occupant.ptr() as u32));
+    assert!(calls().is_empty());
+    unsafe {
+        put(f.sim.ptr(), 0xC, 1);
+        put(f.occupant.ptr(), 4, 0xEEDD_CCBB);
+    }
+    assert_eq!(f.insert(), (0xEEDD_CCBB, f.occupant.ptr() as u32));
+    assert_eq!(f.names(), ["kind"]);
+    for kind in [0x2890_D4DE, 0x0990_B2EA, 0xC772_BF98] {
+        let mut f = Fixture::new(kind);
+        f.insertion();
+        unsafe {
+            put(f.occupant.ptr(), 0x14, 0xFF00);
+            put(f.occupant.ptr(), 0x18, 0);
+        }
+        let arg = if kind == 0xC772_BF98 {
+            0
+        } else {
+            f.occupant.ptr() as u32
+        };
+        assert_eq!(f.insert(), (0xFF00, arg));
+        assert_eq!(f.names(), ["kind", "query"]);
+    }
+}
+
+#[test]
+fn insertion_sets_flora_and_network_wires_with_low_byte_filters_and_releases() {
+    for kind in [0x0990_B2EA, 0xC772_BF98] {
+        for (first, second, active) in [(0u32, 1u32, true), (1, 1, false), (0x100, 0x100, kind == 0x0990_B2EA)] {
+            let mut f = Fixture::new(kind);
+            f.insertion();
+            unsafe {
+                put(f.interface.ptr(), 4, first);
+                put(f.interface.ptr(), 8, second);
+            }
+            assert_eq!(f.insert(), (0xF1E2_D3C4, f.interface.ptr() as u32));
+            let c = calls();
+            let wire: Vec<_> = c.iter().filter(|c| c.0 == "wire").collect();
+            assert_eq!(wire.len(), usize::from(active));
+            if active {
+                assert_eq!(
+                    wire[0].2,
+                    if kind == 0x0990_B2EA {
+                        vec![2, 3, 4, 5]
+                    } else {
+                        vec![3, 4, 3, 4]
+                    }
+                );
+            }
+            assert_eq!(c.last().unwrap().0, "release");
+            unsafe {
+                assert_eq!(word(f.sim.ptr(), 0x338) as u8, u8::from(active));
+            }
+        }
+    }
+}
+
+#[test]
+fn pole_insertion_transfers_interface_reference_and_adds_full_cost_with_carry() {
+    let mut f = Fixture::new(0x2890_D4DE);
+    f.insertion();
+    let mut poles = [core::ptr::null_mut::<u8>(); 2];
+    unsafe {
+        let p = PowerSim::from_ptr(f.sim.ptr());
+        p.set_poles_begin(poles.as_mut_ptr());
+        p.set_poles_end(poles.as_mut_ptr());
+        p.set_pole_count(u32::MAX);
+        p.set_infrastructure_cost(0xFFFF_FFFF);
+        f.holder
+            .ptr()
+            .add(0x10)
+            .cast::<u64>()
+            .write_unaligned(0x1234_5678_0000_0001);
+        assert_eq!(f.insert(), (0x1234_5678, f.interface.ptr() as u32));
+        assert_eq!(p.infrastructure_cost(), 0x1234_5679_0000_0000);
+        assert_eq!(p.pole_count(), 0);
+        assert_eq!(p.poles_end(), poles.as_mut_ptr().add(1));
+        assert_eq!(poles[0], f.interface.ptr());
+    }
+    assert_eq!(
+        f.names(),
+        [
+            "kind",
+            "query",
+            "predicate",
+            "cell",
+            "expand",
+            "wire",
+            "push_pole",
+            "holder",
+            "int64"
+        ]
+    );
+    let mut f = Fixture::new(0x2890_D4DE);
+    f.insertion();
+    unsafe {
+        put(f.interface.ptr(), 4, 1);
+    }
+    assert_eq!(f.insert(), (0xF1E2_D3C4, f.interface.ptr() as u32));
+    assert_eq!(f.names(), ["kind", "query", "predicate", "release"]);
+}
+
+#[test]
+fn consumer_insertion_wraps_words_and_totals_and_leaves_changed_requirement_on_removal() {
+    let _fpu = GameFpu::new();
+    for (consumed, capacity, old_count, old_requirement, expected) in [
+        (40000, 0, 0, 0, (1, 40000, -25536i16)),
+        (1, 0, u32::MAX, u32::MAX, (0, 0, 1)),
+        (0, 0, 1, 1, (1, 1, 0)),
+        (3, 3, 0, 0, (0, 0, 0)),
+    ] {
+        let mut f = Fixture::new(0x2781_28A0);
+        f.insertion();
+        unsafe {
+            put(f.holder.ptr(), 4, consumed);
+            put(f.holder.ptr(), 8, capacity);
+            put(f.sim.ptr(), 0x68, old_count);
+            put(f.sim.ptr(), 0x74, old_requirement);
+        }
+        assert_eq!(f.insert(), (consumed, consumed));
+        unsafe {
+            assert_eq!(
+                (word(f.sim.ptr(), 0x68), word(f.sim.ptr(), 0x74), f.cells[3][2]),
+                expected
+            );
+        }
+        let mut expected = vec![
+            "kind",
+            "holder",
+            "bbox",
+            "width",
+            "depth",
+            "footprint",
+            "expand",
+            "wire",
+            "uint",
+            "uint",
+        ];
+        if consumed > capacity {
+            expected.push("is_powered");
+        }
+        assert_eq!(f.names(), expected);
+    }
+    let mut f = Fixture::new(0x2781_28A0);
+    f.insertion();
+    unsafe {
+        put(f.holder.ptr(), 4, 1);
+    }
+    f.insert();
+    calls();
+    unsafe {
+        put(f.holder.ptr(), 4, 0);
+    }
+    f.run();
+    unsafe {
+        assert_eq!(
+            (word(f.sim.ptr(), 0x68), word(f.sim.ptr(), 0x74), f.cells[3][2]),
+            (1, 1, 1)
+        );
+    }
+    calls();
+}
+
+#[test]
+fn powered_consumer_marks_its_lot_only_when_found_and_uses_float32_centre() {
+    let _fpu = GameFpu::new();
+    for present in [false, true] {
+        let mut f = Fixture::new(0x2781_28A0);
+        f.insertion();
+        let mut manager = Object::new(16);
+        let mut lot = Object::new(16);
+        f.table(manager.ptr(), &[(0x38, find_lot as *const () as usize)]);
+        f.table(lot.ptr(), &[(0x10C, mark_powered as *const () as usize)]);
+        let mut manager_ptr = manager.ptr();
+        let _data = fake_data(0x00B4_3D08, (&mut manager_ptr as *mut *mut u8).cast());
+        unsafe {
+            put(f.sim.ptr(), 0x50, 0x10001);
+            put(f.holder.ptr(), 4, 59);
+            put(f.occupant.ptr(), 0x20, 0x4240_3333);
+            put(f.occupant.ptr(), 0x2C, 0x429F_E666);
+            put(manager.ptr(), 8, if present { lot.ptr() as u32 } else { 0 });
+        }
+        assert_eq!(f.insert(), (59, 59));
+        assert_eq!(f.cells[4][2], 59);
+        let c = calls();
+        assert_eq!(c[10].2, [4, 2]);
+        assert_eq!(c[11].2, [f.occupant.ptr() as u32]);
+        assert_eq!(c.last().unwrap().0, if present { "mark_powered" } else { "find_lot" });
+    }
+}
+
+#[test]
+fn plant_insertion_addrefs_counts_and_short_circuits_failed_budget_and_serializable_queries() {
+    let _fpu = GameFpu::new();
+    for query_stage in [0, 1] {
+        let mut f = Fixture::new(0x2781_28A0);
+        f.insertion();
+        unsafe {
+            put(f.holder.ptr(), 8, 1000);
+            put(f.holder.ptr(), 0xC, 3);
+            put(f.sim.ptr(), 0x2DC, u32::MAX);
+            if query_stage == 1 {
+                put(f.budget.ptr(), 4, 1);
+                put(f.occupant.ptr(), 0x14, 0xFF00);
+            }
+        }
+        assert_eq!(f.insert(), (if query_stage == 0 { 0 } else { 0xFF00 }, 0));
+        let c = calls();
+        assert_eq!(c[10].0, "int");
+        assert_eq!(c[11].0, "addref");
+        assert_eq!(
+            c[12],
+            Call(
+                "push_plant",
+                f.sim.ptr() as usize + 0x298,
+                vec![0, f.occupant.ptr() as u32]
+            )
+        );
+        assert_eq!(c[13].0, "budget_query");
+        assert_eq!(
+            c.last().unwrap().0,
+            if query_stage == 0 { "budget_query" } else { "query" }
+        );
+        unsafe {
+            assert_eq!(word(f.sim.ptr(), 0x2DC), 0);
+            assert_eq!(word(f.sim.ptr(), 0x2EC), 1);
+            assert_eq!(word(f.sim.ptr(), 0x338) as u8, 1);
+        }
+    }
+}
+
+#[test]
+fn plant_insertion_resolves_or_creates_budget_lines_increments_cost_count_and_writes_saved_cost() {
+    let _fpu = GameFpu::new();
+    for (line, class, create) in [
+        (0x456u32, 0u32, false),
+        (0x456, 0, true),
+        (0, 0x777, false),
+        (0, 0, false),
+    ] {
+        let mut f = Fixture::new(0x2781_28A0);
+        f.insertion();
+        unsafe {
+            put(f.holder.ptr(), 8, 1000);
+            put(f.holder.ptr(), 0xC, 1);
+            put(f.budget.ptr(), 4, 1);
+            put(f.budget.ptr(), 0x14, line);
+            put(f.budget.ptr(), 0x20, 0x89AB_CDEF);
+            put(f.budget.ptr(), 0x24, 0x1234_5678);
+            put(f.budget.ptr(), 0x28, 0x8765_4321);
+            put(f.interface.ptr(), 0x1C, class);
+            f.item.ptr().add(0x10).cast::<u64>().write_unaligned(u64::MAX);
+            if create {
+                put(f.department.ptr(), 8, 0);
+            }
+        }
+        assert_eq!(f.insert(), (0xF1E2_D3C4, 0));
+        let c = calls();
+        let mut expected = vec![
+            "kind",
+            "holder",
+            "bbox",
+            "width",
+            "depth",
+            "footprint",
+            "expand",
+            "wire",
+            "uint",
+            "uint",
+            "int",
+            "addref",
+            "push_plant",
+            "budget_query",
+            "query",
+            "department",
+        ];
+        if line == 0 {
+            expected.extend(["class_id", "funding_line"]);
+        }
+        if line != 0 || class != 0 {
+            expected.push("item");
+            if create {
+                expected.extend(["create_item", "item_name"]);
+            }
+            expected.extend(["add_funding", "count", "set_count", "set_int64"]);
+            let cost = c.iter().find(|c| c.0 == "set_int64").unwrap();
+            assert_eq!(cost.2, [0x2A58_D350, 0x89AB_CDEF, 0x1234_5678]);
+            unsafe {
+                assert_eq!(f.item.ptr().add(0x10).cast::<u64>().read_unaligned(), 0);
+            }
+        }
+        if line == 0 {
+            assert_eq!(
+                c.iter().find(|c| c.0 == "funding_line").unwrap().2,
+                [f.holder.ptr() as u32, 0x8765_4321, class]
+            );
+        }
+        expected.push("release");
+        assert_eq!(c.iter().map(|c| c.0).collect::<Vec<_>>(), expected);
     }
 }
 
@@ -656,5 +1094,48 @@ fn missing_budget_department_item_and_plant_leave_list_and_recompute_untouched()
         }
         let c = calls();
         assert_eq!(c.last().unwrap().0, ["budget_query", "department", "item"][stage]);
+    }
+}
+
+#[test]
+fn consumer_notifications_write_only_the_two_totals_and_the_selected_cell() {
+    let _fpu = GameFpu::new();
+    for insert in [false, true] {
+        let mut f = Fixture::new(0x2781_28A0);
+        f.insertion();
+        unsafe {
+            core::ptr::write_bytes(f.sim.ptr().add(0x100), 0xA5, 0x180);
+            put(f.sim.ptr(), 0x68, 2);
+            put(f.sim.ptr(), 0x74, 1000);
+            put(f.holder.ptr(), 4, 59);
+            let mut expected = std::slice::from_raw_parts(f.sim.ptr(), 0x400).to_vec();
+            let count = if insert { 3u32 } else { 1 };
+            let requirement = if insert { 1059u32 } else { 941 };
+            expected[0x68..0x6C].copy_from_slice(&count.to_le_bytes());
+            expected[0x74..0x78].copy_from_slice(&requirement.to_le_bytes());
+            if insert {
+                f.insert();
+            } else {
+                f.run();
+            }
+            assert_eq!(std::slice::from_raw_parts(f.sim.ptr(), 0x400), expected);
+        }
+        for x in 0..8 {
+            for z in 0..8 {
+                assert_eq!(
+                    f.cells[x][z],
+                    if (x, z) == (3, 2) {
+                        if insert {
+                            59
+                        } else {
+                            -59
+                        }
+                    } else {
+                        0
+                    }
+                );
+            }
+        }
+        calls();
     }
 }
