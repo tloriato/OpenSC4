@@ -22,13 +22,18 @@
 //! (`fld`/`fstp tbyte`), so a chain of [`F80`] operations gives the same bits as the same chain held in
 //! registers.
 //!
-//! Float-to-integer conversion is [`F80::ftol`]: the game's helper at 0x009EEF04 truncates toward zero to a
-//! 64-bit integer and returns it in EDX:EAX; code that wants an `int32` keeps the low 32 bits. Out-of-range
-//! values and NaN give the x87 integer indefinite, 0x8000_0000_0000_0000, so the low 32 bits are 0. Neither
-//! `cvttss2si` (0x8000_0000 out of range) nor Rust's `as` (saturating) does that.
+//! Float-to-integer conversion is [`F80::ftol`], which runs our port of the game's helper at 0x009EEF04
+//! ([`fc4p_009eef04`]). The helper does not touch the control word: it rounds the value to a 64-bit integer under
+//! the current rounding mode, subtracts that integer from the value, and moves the integer one step toward zero
+//! when the difference (stored as an `f32`) shows it was rounded away from zero. The result, in EDX:EAX, is the
+//! value truncated toward zero; code that wants an `int32` keeps the low 32 bits. NaN, infinities and values
+//! outside the `i64` range give the x87 integer indefinite, 0x8000_0000_0000_0000, so the low 32 bits are 0.
+//! Neither `cvttss2si` (0x8000_0000 out of range) nor Rust's `as` (saturating) does that. The port runs the same
+//! x87 operations as the helper (the same loads, stores and subtraction on the same values), so it leaves the
+//! same x87 status flags and condition codes.
 //!
-//! Every asm block here leaves the x87 register stack as it found it (empty, as Rust code keeps it). Apart from
-//! [`set_control_word`], only [`F80::ftol`] changes the control word, and it restores it.
+//! Every asm block here leaves the x87 register stack as it found it (empty, as Rust code keeps it). Only
+//! [`set_control_word`] changes the control word.
 
 use core::arch::asm;
 use core::ops::{Add, Div, Mul, Neg, Sub};
@@ -171,27 +176,26 @@ impl F80 {
         Compared(sw)
     }
 
-    /// The game's float-to-integer helper (0x009EEF04): truncation toward zero to 64 bits, whatever the
-    /// rounding mode; the x87 integer indefinite (0x8000_0000_0000_0000) for NaN, infinities and values outside
-    /// the `i64` range. Callers that want an `int32` keep the low 32 bits (`as i32`).
+    /// The game's float-to-integer helper (0x009EEF04), run as our port of it ([`fc4p_009eef04`]) on this value:
+    /// truncation toward zero to 64 bits, whatever the rounding mode; the x87 integer indefinite
+    /// (0x8000_0000_0000_0000) for NaN, infinities and values outside the `i64` range. Callers that want an
+    /// `int32` keep the low 32 bits (`as i32`). The x87 flags it raises are the helper's (see the module docs).
     pub fn ftol(self) -> i64 {
-        let mut out = 0i64;
-        let mut cw = [0u16; 2];
-        x87!(
-            "fnstcw word ptr [{cw}]",
-            "movzx {t:e}, word ptr [{cw}]",
-            "or {t:e}, 0xC00",
-            "mov word ptr [{cw} + 2], {t:x}",
-            "fldcw word ptr [{cw} + 2]",
-            "fld tbyte ptr [{x}]",
-            "fistp qword ptr [{o}]",
-            "fldcw word ptr [{cw}]",
-            cw = in(reg) &mut cw,
-            t = out(reg) _,
-            x = in(reg) &self,
-            o = in(reg) &mut out,
-        );
-        out
+        let (lo, hi): (u32, u32);
+        // SAFETY: the helper takes ST0 (popped) and returns in EDX:EAX; it changes ECX and the flags and uses
+        // 48 bytes of stack below ESP. The register stack is empty again afterwards.
+        unsafe {
+            asm!(
+                "fld tbyte ptr [{x}]",
+                "call {helper}",
+                x = in(reg) &self,
+                helper = sym fc4p_009eef04,
+                lateout("eax") lo, lateout("edx") hi, lateout("ecx") _,
+                out("st(0)") _, out("st(1)") _, out("st(2)") _, out("st(3)") _,
+                out("st(4)") _, out("st(5)") _, out("st(6)") _, out("st(7)") _,
+            );
+        }
+        ((u64::from(hi) << 32) | u64::from(lo)) as i64
     }
 
     /// `fsqrt` (rounded by the precision control, like the arithmetic).
@@ -337,25 +341,64 @@ pub fn status_word() -> u16 {
     sw
 }
 
-// The helper itself, for the prove tool and the loader: value in ST0 (popped), result in EDX:EAX, other registers
-// as the C convention allows (ECX is not touched). The scratch words lie below the entry ESP (dead after the
-// return). Same results as `F80::ftol`.
+// The helper itself, with its own register convention: the value in ST0 (popped), the result in EDX:EAX. Like the
+// original it keeps EBX, ESI, EDI and EBP, leaves the control word alone, and changes ECX only when it corrects
+// the rounded integer (ECX is then the correction's sum, as in the original). Its scratch area is a 16-byte
+// aligned block below the entry ESP (dead after the return): +0 the difference as an f32, +16 the rounded
+// integer, +24 the value as an f32. `F80::ftol` calls it.
 port! {
-    /// The float-to-integer helper's own convention: ST0 in (popped), EDX:EAX out.
+    /// The float-to-integer helper: ST0 in (popped), EDX:EAX out, the value truncated toward zero to 64 bits.
     #[port(address = 0x009E_EF04, owner = "crt", name = "float to int64 helper (ftol)", naked)]
     pub unsafe extern "C" fn fc4p_009eef04() {
         core::arch::naked_asm!(
-            "sub esp, 12",
-            "fnstcw word ptr [esp]",
-            "movzx eax, word ptr [esp]",
-            "or eax, 0xC00",
-            "mov word ptr [esp + 2], ax",
-            "fldcw word ptr [esp + 2]",
-            "fistp qword ptr [esp + 4]",
-            "fldcw word ptr [esp]",
-            "mov eax, dword ptr [esp + 4]",
-            "mov edx, dword ptr [esp + 8]",
-            "add esp, 12",
+            "push ebp",
+            "mov ebp, esp",
+            "sub esp, 32",
+            "and esp, -16",
+            // r = the value rounded by the current mode; the value's f32 image keeps its sign.
+            "fld st(0)",
+            "fst dword ptr [esp + 24]",
+            "fistp qword ptr [esp + 16]",
+            "fild qword ptr [esp + 16]",
+            "mov eax, dword ptr [esp + 16]",
+            "mov edx, dword ptr [esp + 20]",
+            // r = 0, or the integer indefinite (NaN, infinities, out of range; also exactly -2^63): r is the
+            // answer as it stands.
+            "test eax, eax",
+            "jnz 2f",
+            "test edx, 0x7FFFFFFF",
+            "jz 5f",
+            // |r| >= 2^32: r's sign is the value's.
+            "mov ecx, edx",
+            "jmp 3f",
+            "2:",
+            "mov ecx, dword ptr [esp + 24]",
+            "3:",
+            // The difference value - r, as an f32.
+            "fsubp st(1), st(0)",
+            "fstp dword ptr [esp]",
+            "test ecx, ecx",
+            "mov ecx, dword ptr [esp]",
+            "jns 4f",
+            // A negative value: one up when the difference is above +0 (r was rounded down).
+            "xor ecx, 0x80000000",
+            "add ecx, 0x7FFFFFFF",
+            "adc eax, 0",
+            "adc edx, 0",
+            "leave",
+            "ret",
+            "4:",
+            // A positive value: one down when the difference is below -0 (r was rounded up).
+            "add ecx, 0x7FFFFFFF",
+            "sbb eax, 0",
+            "sbb edx, 0",
+            "leave",
+            "ret",
+            // No correction: drop r and the value with the same stores the helper makes.
+            "5:",
+            "fstp dword ptr [esp + 24]",
+            "fstp dword ptr [esp + 24]",
+            "leave",
             "ret",
         )
     }
@@ -567,13 +610,55 @@ mod tests {
     #[test]
     fn exported_helper_convention() {
         let _fpu = GameFpu::new();
-        for x in [0.0f64, 2.9, -2.9, 3e9, -3e9, 1e19, f64::NAN, 4_294_967_296.5] {
+        // (value, ECX after): ECX is kept when the rounded integer r is 0 or the integer indefinite; otherwise it
+        // is the difference value - r as f32 bits (sign flipped for a negative value) plus 0x7FFF_FFFF.
+        let flip = |d: f32| (d.to_bits() ^ 0x8000_0000).wrapping_add(0x7FFF_FFFF);
+        let keep = |d: f32| d.to_bits().wrapping_add(0x7FFF_FFFF);
+        let cases: &[(f64, u32)] = &[
+            (0.0, 0x1234_5678),
+            (0.4, 0x1234_5678),
+            (-0.4, 0x1234_5678),
+            (2.9, keep((2.9f64 - 3.0) as f32)),
+            (-2.9, flip((-2.9f64 + 3.0) as f32)),
+            (2.5, keep(0.5)),
+            (-2.5, flip(-0.5)),
+            (3e9, keep(0.0)),
+            (-3e9, flip(0.0)),
+            (1e19, 0x1234_5678),
+            (f64::NAN, 0x1234_5678),
+            (f64::NEG_INFINITY, 0x1234_5678),
+            (-9_223_372_036_854_775_808.0, 0x1234_5678),
+            // r = 2^32 (low word 0): the sign comes from r's high word.
+            (4_294_967_296.5, keep(0.5)),
+            (-4_294_967_296.5, flip(-0.5)),
+        ];
+        for &(x, want_ecx) in cases {
             let (got, before, after, ecx) = call_export(x);
             assert_eq!(got, reference(x), "helper({x:e})");
             assert_eq!(before & 0x3800, after & 0x3800, "the helper pops its argument");
-            assert_eq!(ecx, 0x1234_5678, "ECX untouched");
+            assert_eq!(ecx, want_ecx, "ECX after helper({x:e})");
         }
         assert_eq!(control_word(), GAME_CONTROL_WORD);
+    }
+
+    #[test]
+    fn helper_rounds_by_the_mode_then_corrects() {
+        // Under round-to-nearest 2.5 rounds to 2 and 3.5 to 4: inexact either way (PE, bit 5), and the
+        // correction runs only for 3.5. Under truncation (RC 3) no correction is needed for 3.5.
+        let saved = control_word();
+        for rc in [0u16, 3] {
+            set_control_word(GAME_CONTROL_WORD | (rc << 10));
+            // SAFETY: clears the sticky exception flags only.
+            unsafe { asm!("fnclex") };
+            assert_eq!(F80::from_f32(3.5).ftol(), 3, "rc {rc}");
+            assert_ne!(status_word() & 0x20, 0, "inexact raised, rc {rc}");
+            let (_, _, _, ecx) = call_export(3.5);
+            assert_eq!(ecx, if rc == 0 { keep_bits(-0.5) } else { keep_bits(0.5) }, "rc {rc}");
+        }
+        set_control_word(saved);
+        fn keep_bits(d: f32) -> u32 {
+            d.to_bits().wrapping_add(0x7FFF_FFFF)
+        }
     }
 
     #[test]

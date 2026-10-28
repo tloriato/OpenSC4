@@ -20,6 +20,7 @@
 #include "compat/FC4Compat.h"
 
 #include <windows.h>
+#include <tlhelp32.h>
 
 #include <cstdint>
 #include <cstdio>
@@ -124,20 +125,93 @@ bool IsExeCode(uint32_t address, const compat::ExecutableVersion* v) {
            reinterpret_cast<uintptr_t>(m.BaseAddress) + m.RegionSize >= static_cast<uintptr_t>(address) + 5;
 }
 
-// Writes `jmp target` (E9 rel32) at `address`; `replaced` receives the 5 bytes it overwrote.
-bool WriteJump(uint32_t address, const void* target, uint8_t replaced[5]) {
-    auto* at = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(address));
+// One enabled port, checked and waiting for its jump.
+struct Pending {
+    uint32_t address = 0;
+    const void* entry = nullptr;
+    const char* owner = "";
+    const char* name = "?";
+    char exportName[16] = {};
+    bool written = false;
+    DWORD error = 0;
+    uint8_t replaced[5] = {};
+};
+
+// The game's other threads, suspended while the jumps are written; none may be inside the 5 bytes of any
+// entry (as FC4Schedule.cpp does for its hooks). Nothing here allocates or logs, since a suspended thread may
+// hold the heap or the log.
+class PausedThreads {
+public:
+    explicit PausedThreads(const std::vector<Pending>& pending) {
+        const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+        if (snapshot == INVALID_HANDLE_VALUE) {
+            ok_ = false;
+            return;
+        }
+        THREADENTRY32 t{};
+        t.dwSize = sizeof(t);
+        for (BOOL more = Thread32First(snapshot, &t); more; more = Thread32Next(snapshot, &t)) {
+            if (t.th32OwnerProcessID != GetCurrentProcessId() || t.th32ThreadID == GetCurrentThreadId()) continue;
+            if (count_ == kMax) {
+                ok_ = false;
+                break;
+            }
+            const HANDLE h = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT, FALSE, t.th32ThreadID);
+            if (h == nullptr) continue;  // a thread that has just exited
+            if (SuspendThread(h) == static_cast<DWORD>(-1)) {
+                CloseHandle(h);
+                continue;
+            }
+            handles_[count_++] = h;
+            CONTEXT c{};
+            c.ContextFlags = CONTEXT_CONTROL;
+            if (!GetThreadContext(h, &c)) {
+                ok_ = false;
+                break;
+            }
+            for (const Pending& p : pending) {
+                if (c.Eip >= p.address && c.Eip < p.address + 5) ok_ = false;
+            }
+            if (!ok_) break;
+        }
+        CloseHandle(snapshot);
+    }
+    ~PausedThreads() {
+        for (unsigned i = count_; i > 0; --i) {
+            ResumeThread(handles_[i - 1]);
+            CloseHandle(handles_[i - 1]);
+        }
+    }
+    PausedThreads(const PausedThreads&) = delete;
+    PausedThreads& operator=(const PausedThreads&) = delete;
+    bool ok() const { return ok_; }
+
+private:
+    static constexpr unsigned kMax = 256;
+    HANDLE handles_[kMax] = {};
+    unsigned count_ = 0;
+    bool ok_ = true;
+};
+
+// Writes `jmp p.entry` (E9 rel32) at p.address; p.replaced receives the 5 bytes it overwrote, p.error the
+// VirtualProtect error. No allocation and no logging (other threads are suspended).
+void WriteJump(Pending& p) {
+    auto* at = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(p.address));
     DWORD old = 0;
-    if (!VirtualProtect(at, 5, PAGE_EXECUTE_READWRITE, &old)) return false;
-    std::memcpy(replaced, at, 5);
-    const int32_t rel = static_cast<int32_t>(reinterpret_cast<uintptr_t>(target) - (static_cast<uintptr_t>(address) + 5));
+    if (!VirtualProtect(at, 5, PAGE_EXECUTE_READWRITE, &old)) {
+        p.error = GetLastError();
+        return;
+    }
+    std::memcpy(p.replaced, at, 5);
+    const int32_t rel =
+        static_cast<int32_t>(reinterpret_cast<uintptr_t>(p.entry) - (static_cast<uintptr_t>(p.address) + 5));
     uint8_t jump[5] = {0xE9};
     std::memcpy(jump + 1, &rel, 4);
     std::memcpy(at, jump, 5);
     DWORD ignored = 0;
     VirtualProtect(at, 5, old, &ignored);
     FlushInstructionCache(GetCurrentProcess(), at, 5);
-    return true;
+    p.written = true;
 }
 
 }  // namespace
@@ -185,6 +259,8 @@ void NativeStartup() {
     std::vector<bool> itemUsed(items.size(), false);
 
     unsigned installed = 0, enabled = 0;
+    std::vector<Pending> pending;
+    pending.reserve(table->count);
     for (uint32_t i = 0; i < table->count; ++i) {
         const NativePort& p = table->entries[i];
         const std::string owner = p.owner != nullptr ? p.owner : "";
@@ -219,16 +295,42 @@ void NativeStartup() {
                 static_cast<unsigned long>(p.address), name, owner.c_str());
             continue;
         }
-        uint8_t replaced[5] = {};
-        if (!WriteJump(p.address, p.entry, replaced)) {
-            Log("native: WARNING 0x%08lX %s (%s): VirtualProtect failed, error %lu; not installed",
-                static_cast<unsigned long>(p.address), name, owner.c_str(), static_cast<unsigned long>(GetLastError()));
+        Pending w;
+        w.address = p.address;
+        w.entry = p.entry;
+        w.owner = p.owner != nullptr ? p.owner : "";
+        w.name = name;
+        std::memcpy(w.exportName, exportName, sizeof(exportName));
+        pending.push_back(w);
+    }
+    // All jumps at once, with the game's other threads suspended and none inside an entry (a few retries).
+    bool paused = pending.empty();
+    for (int attempt = 0; attempt < 50 && !paused; ++attempt) {
+        {
+            PausedThreads threads(pending);
+            if (threads.ok()) {
+                paused = true;
+                for (Pending& w : pending) WriteJump(w);
+            }
+        }
+        if (!paused) Sleep(1);
+    }
+    if (!paused) {
+        Log("native: WARNING could not pause the game's other threads outside the entries; nothing installed");
+    }
+    for (const Pending& w : pending) {
+        if (!w.written) {
+            if (paused) {
+                Log("native: WARNING 0x%08lX %s (%s): VirtualProtect failed, error %lu; not installed",
+                    static_cast<unsigned long>(w.address), w.name, w.owner, static_cast<unsigned long>(w.error));
+            }
             continue;
         }
         ++installed;
         Log("native: jump installed 0x%08lX -> %s at 0x%08lX (%s, %s); entry bytes were %02X %02X %02X %02X %02X",
-            static_cast<unsigned long>(p.address), exportName, static_cast<unsigned long>(entry), owner.c_str(), name,
-            replaced[0], replaced[1], replaced[2], replaced[3], replaced[4]);
+            static_cast<unsigned long>(w.address), w.exportName,
+            static_cast<unsigned long>(reinterpret_cast<uintptr_t>(w.entry)), w.owner, w.name, w.replaced[0],
+            w.replaced[1], w.replaced[2], w.replaced[3], w.replaced[4]);
     }
     for (size_t k = 0; k < items.size(); ++k) {
         if (!itemUsed[k] && items[k] != "all") {
