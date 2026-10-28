@@ -5,7 +5,7 @@
 
 use super::*;
 use crate::testing::{fake, Object};
-use crate::tract_developer::testing::{run, snapshot, EAX, ECX, EDX};
+use crate::tract_developer::testing::{run, snapshot, ECX, EDX};
 use std::cell::RefCell;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -319,5 +319,4 @@ fn layout_matches_interface_adjustments() {
     assert!(TractDeveloper::FIELDS.contains(&("style_index", 0x124, 4)));
     assert!(TractDeveloper::FIELDS.contains(&("years_since_change", 0x128, 4)));
     assert!(TractDeveloper::FIELDS.contains(&("single_style", 0x12C, 1)));
-    assert_eq!(EAX, 0x1234_5678);
 }

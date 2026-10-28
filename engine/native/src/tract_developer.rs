@@ -23,11 +23,18 @@ layout! {
         0x00 => vtable / set_vtable: u32,
         0x10 => references / set_references: i32,
         0x7C => years_between_changes / set_years_between_changes: i32,
+        0x80 => developer / set_developer: u32,
+        0x8C => maximum_stage / set_maximum_stage: i32,
+        0xB4 => existing / set_existing: i32,
+        0xB8 => desired / set_desired: i32,
+        0xBC => desired_maximum / set_desired_maximum: i32,
+        0xC8 => relaxed / set_relaxed: u8,
         0x118 => styles_begin / set_styles_begin: u32,
         0x11C => styles_end / set_styles_end: u32,
         0x124 => style_index / set_style_index: i32,
         0x128 => years_since_change / set_years_since_change: i32,
         0x12C => single_style / set_single_style: u8,
+        0x170 => debug_context / set_debug_context: u32,
     }
 }
 
@@ -128,12 +135,27 @@ unsafe fn store(base: u32, offset: u32, value: u32) {
     unsafe { write_unaligned(base.wrapping_add(offset) as *mut u32, value) }
 }
 
+pub mod copying;
 pub mod geometry;
+pub mod sorting;
+pub mod suitability;
 pub mod surface;
 pub mod trees;
 
-const COUNT: usize = geometry::PORTS.len() + surface::PORTS.len() + trees::PORTS.len();
-const ALL: [Port; COUNT] = crate::port::concat(&[geometry::PORTS, surface::PORTS, trees::PORTS]);
+const COUNT: usize = copying::PORTS.len()
+    + geometry::PORTS.len()
+    + sorting::PORTS.len()
+    + suitability::PORTS.len()
+    + surface::PORTS.len()
+    + trees::PORTS.len();
+const ALL: [Port; COUNT] = crate::port::concat(&[
+    copying::PORTS,
+    geometry::PORTS,
+    sorting::PORTS,
+    suitability::PORTS,
+    surface::PORTS,
+    trees::PORTS,
+]);
 
 /// This module's replacements.
 pub const PORTS: &[Port] = &ALL;
