@@ -103,7 +103,7 @@ remapping", "Shadow edge remapping" and "UK path remapping". Those tables only f
 | Field | Type | Saved |
 |---|---|---|
 | `lots` | hash map `u16 key → network lot` (key below) | **yes** (§4.2) |
-| `configs` | hash map `u32 pieceId → vector of network lot configurations`, in load order | no; rebuilt in `Init` |
+| `configs` | hash map `u32 pieceId → vector of network lot configurations`; load order within each vector, hash order between groups (§2.2.1) | no; rebuilt in `Init` |
 | `forced` | network lot configuration ref or null: the configuration for the next piece (slot 13) | no |
 | a scanning iterator over the city | reset in `Init` to `[0, X−1] × [0, Z−1]`; no other reader was found | no |
 | `potholes` | hash map `u16 key → pothole effect prop` | **yes** (§4.2) |
@@ -112,10 +112,14 @@ remapping", "Shadow edge remapping" and "UK path remapping". Those tables only f
 
 The cell **key** is `(x & 0xFF) << 8 | z` (u16). `X` and `Z` are the city's cell counts (city slots 93 and 94).
 
-#### 2.2.1 Saved-map iteration evidence (NM21, partial) *[compat]*
+#### 2.2.1 Lots, potholes and configuration-group iteration (NM21) *[compat]*
 
-**Partial answer 2026-10-28 (re-blockers37b).** The following applies to both the `lots` and `potholes`
-u16-key maps; it is proved from their shared instantiated functions, not borrowed from `pending`.
+The following applies to both the `lots` and `potholes` u16-key maps; it is proved from their shared
+instantiated functions, not borrowed from `pending`. The lot-manager constructor is the unnamed function
+`0060EE50`: it constructs `lots` at `+0C`, configuration groups at `+20`, `potholes` at `+58`, and `pending`
+at `+74`. **Each requests 100 buckets**, through `00829BC0`, which selects the first prime at least 100:
+**193 initially**, with count zero (`0060EE62–0060EEA4`, `0060EEE5–0060EF12`, `00829BC0–00829C27`). This
+shared constructor initializes bucket storage only; it does not change each map's key width or node type.
 Their hash is the **zero-extended u16 key itself**, bucket `key % B`; collision equality compares exactly
 16 bits (`0060DA58–0060DA80`). A node has next/key/value at `+0/+4/+8`. `operator[]` searches the existing
 chain first. A hit returns the existing value slot without moving its node or resizing. A miss calls
@@ -131,15 +135,36 @@ buckets in ascending order (`0060D72A–0060D765`); the lots and potholes use th
 
 Read inserts both kinds through this **ordinary `operator[]`**, then assigns the acquired lot/prop pointer
 (`0060DB67`, `0060DBBB`); it does not restore a serialized bucket layout or append to collision tails.
-For example, **given B=193**, keys 2 then 195 collide, producing chain `[195,2]`; reassigning key 2 keeps
+For example, at initial B=193, keys 2 then 195 collide, producing chain `[195,2]`; reassigning key 2 keeps
 that order. A later resize to 389 separates these two into buckets 2 and 195. Reading serialized keys
 195 then 2 into an empty B=193 map produces `[2,195]`, rather than preserving that collision order.
 
-Still required before NM21 is closed: prove each manager map's initial bucket request and constructor,
-the complete u32 configuration-group map insertion/resize/iteration path, and a worked actual component-11
-save spanning its native resize. In particular **193 above is a conditional example, not yet a proved
-initial B for either saved map**. Existing first-loaded configuration order is not established as native
-map order by this partial answer. No CRT `rand()` occurs in the map operations proved here.
+The configuration-group map uses the **full unsigned u32 piece ID** as its hash and equality key,
+bucket `pieceId % B` (`0060E3CB–0060E3F9`). Its node contains next/key/vector at `+0/+4/+8`. A hit returns
+the existing vector without moving or resizing the node. A miss requests `count+1`, then prepends a new
+node containing an empty vector (`0060E401–0060E43D`, `0060E250–0060E2C8`). Its resize routine `004F0940`
+uses the same prime table/strict count-over-B trigger, and moves old heads to new heads while walking old
+buckets in ascending order (`004F094C–004F09FA`). `AddLotConfiguration` first AddRefs the configuration,
+gets its piece ID, and appends the pointer to that group's vector (`0060E7A0–0060E7FC`). Adding another
+configuration to an existing group neither replaces earlier pointers nor changes group position.
+`GetNetworkLotConfigurationSet` enumerates groups by ascending bucket/head-to-tail chain, then each
+vector from index zero upward; it appends and AddRefs each returned configuration (`0060DC2E–0060DCCB`).
+Thus resource callback/load order determines **within-group** order, not a global first-loaded group order.
+Configuration groups are rebuilt, not read from component 11. No CRT `rand()` occurs in these map paths.
+
+**Worked component-11 ordering fixture, derived from the native operations (not a recorded game save).**
+Use an otherwise empty manager, no potholes, and insert lots with keys `0…191` in increasing order,
+then key 389 (`0185`, cell `(1,133)`), for 193 distinct entries. Component-11 Write's lot entries are
+`0,1,2,389,3,4,…191`: at B=193, bucket 3 contains `[389,3]`. Updating key 3 leaves this order unchanged.
+Now insert key 778 (`030A`, cell `(3,10)`), the 194th distinct key. The count request 194 grows B to
+389 **before insertion**. Rehash visits old bucket 0's key 0 before old bucket 3's key 389, so new bucket
+0 becomes `[389,0]`; insertion prepends 778 there. The next Write enumerates
+`778,389,0,1,2,3,…191`, with count 194 and a zero pothole count. Each entry's own cell key and reference
+payload are unchanged; only the entry/reference visitation order changes. Potholes undergo the same
+transformation in their separate map. For a group-map collision, adding piece IDs 2 then 195 yields
+group order `[195,2]` within bucket 2; adding a second configuration for piece 2 appends inside its vector
+and retains that group order. These are finite conformance examples, not attribution of the question's
+reported object-ID shifts to a particular insertion history.
 
 ### 2.3 Network lot (cSC4NetworkLot, vtable `0x00AA78E0`, IID `0x89A5BA66`)
 

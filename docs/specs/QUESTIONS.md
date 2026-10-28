@@ -331,7 +331,7 @@ generated index: the questions live one file per spec, so read only the file for
 | neighbors | 0 | 64 | NB20, NG46 | - |
 | network-bridges | 1 | 2 | NB4 | questions/network-bridges.md |
 | network-geometry | 1 | 9 | NG17 | questions/network-geometry.md |
-| network-manager | 1 | 21 | NM23 | questions/network-manager.md |
+| network-manager | 0 | 22 | NM23 | questions/network-manager.md |
 | network-occupants | 16 | 35 | NO48 | questions/network-occupants.md |
 | network-overlay-views | 1 | 2 | NOV4 | questions/network-overlay-views.md |
 | network-routines | 1 | 0 | NRT2 | questions/network-routines.md |
@@ -438,4 +438,4 @@ generated index: the questions live one file per spec, so read only the file for
 | win-grid | 2 | 7 | WG10 | questions/win-grid.md |
 | zone-tool | 1 | 0 | ZT2 | questions/zone-tool.md |
 | zones | 2 | 56 | ZG43, ZQ17 | questions/zones.md |
-| **total** | **631** | **1707** | | |
+| **total** | **630** | **1708** | | |
