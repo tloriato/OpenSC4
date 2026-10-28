@@ -49,6 +49,8 @@ mod manager;
 mod occupancy;
 mod face;
 mod region;
+mod placement;
+mod street;
 
 /// Call a virtual method with its incoming scratch-register values and retain EDX:EAX.
 unsafe fn virtual_registers(this: *mut u8, slot: usize, eax: u32, edx: u32, args: &[u32]) -> u64 {
@@ -77,6 +79,8 @@ pub const PORTS: &[Port] = &crate::port::concat::<
             + altitude::PORTS.len()
             + face::PORTS.len()
             + region::PORTS.len()
+            + placement::PORTS.len()
+            + street::PORTS.len()
     },
 >(&[
     basic::PORTS,
@@ -87,4 +91,6 @@ pub const PORTS: &[Port] = &crate::port::concat::<
     altitude::PORTS,
     face::PORTS,
     region::PORTS,
+    placement::PORTS,
+    street::PORTS,
 ]);
