@@ -26,6 +26,7 @@ layout! {
         0x18 => message_server / set_message_server: *mut u8,
         0x1C => connections / set_connections: *mut u8,
         0x20 => deals / set_deals: *mut u8,
+        0x28 => exemplar / set_exemplar: *mut u8,
         0x3C => deals_dirty / set_deals_dirty: u8,
         0x3D => stats_dirty / set_stats_dirty: u8,
     }
@@ -37,6 +38,7 @@ mod deletion;
 mod geometry;
 mod graph;
 mod lists;
+mod pricing;
 mod proposal;
 mod proposition;
 mod queries;
@@ -54,6 +56,7 @@ const COUNT: usize = surface::PORTS.len()
     + queries::PORTS.len()
     + accounting::PORTS.len()
     + lists::PORTS.len()
+    + pricing::PORTS.len()
     + proposal::PORTS.len()
     + removal::PORTS.len()
     + regional::PORTS.len()
@@ -69,6 +72,7 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     queries::PORTS,
     accounting::PORTS,
     lists::PORTS,
+    pricing::PORTS,
     proposal::PORTS,
     removal::PORTS,
     regional::PORTS,
