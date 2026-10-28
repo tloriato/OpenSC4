@@ -305,3 +305,32 @@ fn connection_lists_cover_every_low_three_bit_combination_and_retain_output_tail
         );
     }
 }
+
+#[test]
+fn register_shims_preserve_callee_saved_registers_and_pop_only_their_arguments() {
+    let mut word = 0xAABB_CCDDu32;
+    let mut frame = [
+        fc4p_00620de0 as *const () as u32,
+        &mut word as *mut u32 as u32,
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    ];
+    unsafe {
+        core::arch::asm!(
+            "push ebx", "push esi", "push ebp", "mov [edi + 12], esp",
+            "mov ebx, 0x12345678", "mov esi, 0x87654321", "mov ebp, 0xabcdef12",
+            "mov ecx, [edi + 4]", "push dword ptr [edi + 8]", "call dword ptr [edi]",
+            "mov [edi + 16], esp", "mov [edi + 20], ebx", "mov [edi + 24], esi", "mov [edi + 28], ebp", "mov [edi + 32], eax",
+            "pop ebp", "pop esi", "pop ebx",
+            in("edi") frame.as_mut_ptr(), clobber_abi("C"),
+        );
+    }
+    assert_eq!(frame[3], frame[4]);
+    assert_eq!(&frame[5..8], &[0x1234_5678, 0x8765_4321, 0xABCD_EF12]);
+    assert_eq!(frame[8], 0xAABB);
+}

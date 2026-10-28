@@ -19,9 +19,32 @@ use crate::port::Port;
 layout! {
     /// Primary `cISC4NetworkTool` interface.
     pub struct NetworkTool {
+        0x00 => vtable / set_vtable: u32,
         0x44 => terrain / set_terrain: *mut u8,
+        0x48 => occupant_manager / set_occupant_manager: *mut u8,
+        0x50 => real / set_real: u8,
+        0x98 => solved_begin / set_solved_begin: *mut u8,
+        0x9C => solved_end / set_solved_end: *mut u8,
+        0xCC => support_begin / set_support_begin: *mut u8,
+        0xD0 => support_end / set_support_end: *mut u8,
+        0xD8 => bridge_begin / set_bridge_begin: *mut u8,
+        0xDC => bridge_end / set_bridge_end: *mut u8,
+        0xE4 => tunnel_begin / set_tunnel_begin: *mut u8,
+        0xE8 => tunnel_end / set_tunnel_end: *mut u8,
+        0x1F0 => preview / set_preview: *mut u8,
+        0x208 => insertion_data / set_insertion_data: u32,
+        0x220 => fixed_cost / set_fixed_cost: u32,
+        0x228 => retained_header / set_retained_header: *mut u8,
+        0x22C => retained_count / set_retained_count: u32,
         0x240 => width / set_width: u32,
         0x244 => height / set_height: u32,
+        0x248 => vertex_stride / set_vertex_stride: u32,
+        0x2C4 => tolerance / set_tolerance: f32,
+        0x2C8 => elevation_threshold / set_elevation_threshold: f32,
+        0x320 => bridge_unit_extra / set_bridge_unit_extra: u32,
+        0x324 => tunnel_unit_cost / set_tunnel_unit_cost: u32,
+        0x328 => terrain_unit_cost / set_terrain_unit_cost: f32,
+        0x32C => support_id / set_support_id: u32,
         0x358 => type_info / set_type_info: *mut u8,
     }
 }
@@ -60,6 +83,7 @@ mod cost;
 mod geometry;
 mod helpers;
 mod occupants;
+mod placement;
 mod preview;
 mod rules;
 mod storage;
@@ -70,7 +94,8 @@ const COUNT: usize = helpers::PORTS.len()
     + geometry::PORTS.len()
     + occupants::PORTS.len()
     + storage::PORTS.len()
-    + cost::PORTS.len();
+    + cost::PORTS.len()
+    + placement::PORTS.len();
 /// Completed replacements, ordered by original address within each group.
 pub const PORTS: &[Port] = &crate::port::concat::<COUNT>(&[
     helpers::PORTS,
@@ -80,4 +105,5 @@ pub const PORTS: &[Port] = &crate::port::concat::<COUNT>(&[
     occupants::PORTS,
     storage::PORTS,
     cost::PORTS,
+    placement::PORTS,
 ]);
