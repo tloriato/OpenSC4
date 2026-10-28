@@ -163,10 +163,14 @@ void DemolitionRegionMaskChecks(FC4TestSeamFn seam) {
     uint32_t row0[] = {0x80000001, 5}, row1[] = {2, 4};
     uint32_t* rows[] = {row0, row1};
     region.map.rows = rows;
-    uint8_t mask[32]{};
-    CHECK(seam(kFC4SeamDemolitionRegionMask, &region, mask) == 9);
-    const uint8_t expected[] = {1, 0, 0, 0x80, 0x15, 0, 0, 0, 0x20};
-    CHECK(std::memcmp(mask, expected, sizeof(expected)) == 0);
+    uint8_t mask[256]{};
+    CHECK(seam(kFC4SeamDemolitionRegionMask, &region, mask) == 70);
+    // fc4_zone_region: one byte per cell at dz * width + dx. The native
+    // bitmap is column-major and spans two words per column here.
+    for (size_t i = 0; i < 70; ++i) {
+        const bool included = i == 0 || i == 3 || i == 62 || i == 64 || i == 68 || i == 69;
+        CHECK(mask[i] == (included ? 1 : 0));
+    }
     // Invalid dimensions/strides/pointers fail before indexing the bitmap.
     region.map.words = 1;
     CHECK(seam(kFC4SeamDemolitionRegionMask, &region, mask) == -1);

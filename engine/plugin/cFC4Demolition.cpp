@@ -38,7 +38,7 @@ namespace fc4 {
 
 // The game's SC4CellRegion<long> as fc4_zone_region (zones.md, 0x24 bytes:
 // x1, z1, x2, z2, then the cell map; bit (dx, dz) is bit dz % 32 of
-// rows[dx][dz / 32]). The mask is rebuilt here in the C ABI's bit order.
+// rows[dx][dz / 32]). The C ABI instead takes one byte per cell, row-major.
 bool DemolitionRegionToC(const SC4CellRegion<int32_t>& r, fc4_zone_region& out, std::vector<uint8_t>& mask) {
     const auto* raw = reinterpret_cast<const uint8_t*>(&r);
     int32_t x0, z0, x1, z1;
@@ -60,14 +60,13 @@ bool DemolitionRegionToC(const SC4CellRegion<int32_t>& r, fc4_zone_region& out, 
         words < static_cast<uint32_t>((h + 31) / 32)) {
         return false;
     }
-    mask.assign(static_cast<size_t>((w * h + 7) / 8), 0);
+    mask.assign(static_cast<size_t>(w * h), 0);
     for (int64_t dx = 0; dx < w; ++dx) {
         const uint32_t* row = rows[dx];
         if (row == nullptr) return false;
         for (int64_t dz = 0; dz < h; ++dz) {
             if ((row[dz / 32] >> (dz % 32)) & 1u) {
-                const size_t i = static_cast<size_t>(dx * h + dz);
-                mask[i / 8] |= static_cast<uint8_t>(1u << (i % 8));
+                mask[static_cast<size_t>(dz * w + dx)] = 1;
             }
         }
     }
