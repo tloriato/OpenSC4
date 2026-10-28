@@ -114,7 +114,7 @@ Nonvirtual/native helpers are part of the inventory too:
 | Mid / Left / Right | 0x0090EA57 / 0x0090F45F / 0x0090F4B3 | Independent substrings (§5) |
 | Strcat / Strncpy | 0x0090EA42 / 0x0090F430 | C-string append / bounded copy (§3) |
 | SplitToken | 0x0090E98C | Destructive literal delimiter split (§5) |
-| SplitTokenDelimited / SplitTokenSeparated | 0x0090F335 / 0x0090F39D | Native split variants; unresolved parameter/empty-field edges RZS4 |
+| SplitTokenDelimited / SplitTokenSeparated | 0x0090F335 / 0x0090F39D | Single-byte-separator splits into a caller string (§5) |
 | Native assignment / append entry points | 0x00408A70 / 0x004081D0 | Buffer operations underlying owned copies; not additional interface slots |
 
 Neither this owner nor the base detokenizer has a message subscription, message
@@ -288,8 +288,35 @@ When found, it returns the prefix and removes prefix plus delimiter from the
 receiver. No match returns empty and leaves the receiver unchanged. A null or
 empty delimiter returns a copy of the receiver without consuming it
 (`0x0090E98C`). This is a literal substring delimiter, not a set of whitespace
-characters. The separately named Delimited/Separated variants are not aliases;
-their remaining edge contract is RZS4.
+characters. The separately named Delimited/Separated variants are not aliases.
+
+SplitTokenDelimited(separator byte, destination string) and
+SplitTokenSeparated(separator byte, destination string) take a single separator
+byte first and the string to receive the token second, and return a Boolean
+*[compat]*. Both are destructive on the receiver and replace (never append to)
+the destination's old content:
+
+- Delimited (`0x0090F335`) finds the first separator byte. When found, the
+  destination becomes the text before it (possibly empty), the receiver loses that
+  text and the separator, and the result is true. An empty field between two
+  separators, or before the first one, is therefore returned as an empty token
+  with true. When there is no separator byte, the destination takes the
+  whole receiver, the receiver becomes empty and the result is false (so the last
+  token comes with false, and an empty receiver gives an empty destination and
+  false).
+- Separated (`0x0090F39D`) skips leading separators first: while the receiver
+  begins with the separator, the whole leading run is erased. It then finds the
+  next separator. When one is found, the destination becomes the text before it and
+  the receiver loses that text plus the entire following run of separator bytes
+  (an all-separator remainder empties the receiver); the result is true. When there
+  is no separator, a nonempty receiver moves wholesale to the destination, leaving
+  the receiver empty, with true. An empty receiver (including one that held only
+  separators) returns false and leaves the destination **unchanged**. Repeated
+  separators therefore never produce empty tokens, and false means "nothing
+  left".
+
+Neither variant reads the separator as a string; both compare one byte
+(`0x0090F335`–`0x0090F39A`, `0x0090F39D`–`0x0090F42D`).
 
 MakeLower and MakeUpper transform in place. Bytes through 0x7E use runtime byte
 classification/case mapping (ordinary A–Z/a–z folding in the C or an
@@ -956,6 +983,8 @@ are part of the expected result.
 | RZ14 | ` \tA\r\n \t`; Trim | `A\r\n` |
 | RZ15 | `abcd`: Mid(2,99), Mid(4,1), Left(99), Right(2) | `cd`, empty, `abcd`, `cd` |
 | RZ16 | `a::b`; SplitToken(`::`) twice | first `a`, receiver `b`; then empty, receiver still `b` |
+| RZ16a | `,a,,b`; SplitTokenDelimited(`,`) three times, then once more | empty true; `a` true; empty true; then `b` false, receiver empty |
+| RZ16b | `,a,,b`; SplitTokenSeparated(`,`) twice, then once more | `a` true; `b` true; then false with the destination still `b` |
 | RZ17 | [41 7A 00 42]: MakeLower, then MakeUpper | [61 7A 00 62], then [41 5A 00 42] |
 | RZ18 | Nonempty; Sprintf(`x=%s %%`, `ok`); then Sprintf(empty) | `x=ok %`; then empty; both return receiver |
 | RZ19 | Sprintf(`%04u`,7); Sprintf(`%-4s`, `ab`) | `0007`; `ab  ` |

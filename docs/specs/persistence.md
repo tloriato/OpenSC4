@@ -87,9 +87,43 @@ The adapters share the record's reference count and position; the stream `SetVoi
 writes exactly what `SetFieldString` writes for `s`.
 
 Each record carries a one-byte **native-order flag**, fixed at construction. The SDF file record (`0x00979985`)
-and the bitmap-resource record (`0x0097CCFF`) pass 1; the DBPF packed-file records pass the value their
-segment supplies (see question PR-1). Every shipped package and save is little-endian (foundations §2.2), so the
-flag is 1 in practice.
+and the bitmap-resource record (`0x0097CCFF`) pass 1. The DBPF packed-file records do **not** take the value
+from their segment: every one of the five construction sites (read records from the open-record routine
+`0x009701FD`, write records from `0x00971178` and `0x009712D7`) passes the constant 1, and the segment has no
+setting that could change it (`0x00970291`, `0x009702C7`, `0x009703A0`, `0x00970C71`, `0x00970E87` and the
+call sites above). No shipped path can create a big-endian packed-file record; the flag is always 1
+*[compat]*.
+
+#### 3.1.1 Packed-file record kinds and construction quirks *[compat]*
+
+The packed-file records carry a kind number next to the flag (stored in the record at +0x40): 1 = read
+record that reads a region of the package file by (offset, size) (`0x0096D8D0`); 2 = read record over an
+in-memory copy (`0x0096D9D1`, `0x0096DA30`); 3 = write record (`0x00970C4D`, `0x00970E67`). All start with
+reference count 0 and access flags 1 (read) or 3 (write); the open routine then adds the caller's reference
+and the segment's own reference before returning the record.
+
+- Opening a record that is already open on the same key creates another record of the same kind that
+  **shares** the first one's description (file region, or the in-memory buffer plus its use count) rather than
+  reading again (`0x0097025E`–`0x009702C7`). The shared in-memory buffer's use count is incremented with no null
+  check, both in the sharing constructor (`0x0096D9D1`, `0x0096DA20`) and in the constructor that wraps a freshly
+  decompressed buffer (`0x0096DA30`, `0x0096DA95`), where the 8-byte share block allocation can fail and then
+  leaves a null block: a failed allocation or a buffer already released by `Close` (`0x0096DB72` clears the
+  buffer reference) is a crash, not a false return.
+- The open routine writes its out parameter on every path: a null result when the segment is not open for
+  reading or no record could be made, the new record otherwise (`0x0097041C`–`0x0097042B`); it returns whether
+  the result is non-null.
+- Write-record constructor `0x00970C4D`, used to reopen an existing **uncompressed** record for writing: with a
+  size above 2,000,000 bytes it spills the content to a temporary file named from `Record_` plus the key type in
+  eight hex digits, copying in 0x4000-byte steps. *[quirk]* The copy counter starts at the record's offset in
+  the package but stops when it reaches the record's *size*, so the temporary file receives size − offset bytes
+  (nothing when the offset is not below the size); a 2,100,000-byte record at offset 96 reopens with 2,099,904
+  bytes, one at offset 2,100,100 reopens empty. If the temporary file cannot be made or the copy fails, the
+  record falls back to reading the whole record into memory correctly (`0x00970CC1`–`0x00970E5E`). Records up
+  to 2,000,000 bytes, and records reopened from a decompressed buffer (`0x00970E67`), are copied whole.
+- *[quirk]* A write (`0x00970F0F`) that makes position + length reach 2,000,000 or more triggers the same
+  spill; the existing bytes go to the temporary file first and the new bytes are written at the **end** of
+  the file, not at the current position, so a write begun short of the end is displaced to the end
+  (`0x00970F46`–`0x00971005`). A smaller write goes into memory at the position as usual.
 
 ### 3.2 Integer fields *[compat]*
 

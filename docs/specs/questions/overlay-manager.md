@@ -43,6 +43,3 @@
 
 <!-- from: core-overlay-manager-close5 (2026-10-23) -->
 - **OV10 - §§1.1,3.1,3.2,3.7 exceptional numeric domain:** what are the cell-conversion results and ordered mutation prefix for zero/nonfinite resource aspect or placement size, nonfinite/out-of-i32 bounds, negative/inverted round extents, and invalid terrain dimensions? The published floor/ceil contracts qualify ordinary finite coordinates; they do not establish exceptional conversion or allocation behavior. Also specify required precision for rotated sine/cosine under caller FP state. [core implements ordered rotated coefficients with portable f64 intermediates and binary32 stores; rejects unconvertible bounds instead of fabricating saturated rectangles; invalid backing handles/services remain explicit safe-Rust errors, not native validation claims]
-
-<!-- from: core-overlay-manager-close5 (2026-10-23) -->
-- **OV11 - §4.2 simultaneous wrap flags:** when both repeat bit1 and replacement-matrix bit5 are set, does repeat/repeat or repeat/clamp take precedence? Slot21 sets bit5 without clearing bit1. [literal first matching rule: bit1 selects repeat/repeat, otherwise bit5 selects repeat/clamp; no native precedence claim]

@@ -1,6 +1,6 @@
 # Spec: the hardware 3D driver (`nSGLDX7::cGDriver`, "Maxis 3D GDriver DirectX")
 
-Status: **implementation spec (interface coverage; residual questions RD1, RD3, RD4, RD6-RD7)**, clean-room input. The
+Status: **implementation spec (interface coverage; residual question RD3)**, clean-room input. The
 83 graphics slots have a contract or an explicit unsupported/no-op classification (§12); the owner inventory
 distinguishes auxiliary interfaces and unresolved pixel-converter details. This document describes *behaviour*, not code. It was
 written by the analysis team from observing the original program. Implementers must work from this spec, the public
@@ -126,7 +126,7 @@ driver's AddRef quirk. Do not add an implicit texture upload or draw flush to th
 1. If a scene is open, it is ended (§4.4 rule for errors) and the "scene open" flag cleared.
 2. `mode == -1`: if a mode is current and a window exists, the 3D environment is destroyed (§4.5), the window is
    destroyed and the current mode becomes -1. Return.
-3. Otherwise the fourth argument's low byte is stored (request for a flipping surface chain, §14.2; caller usage remains RD1). If `mode` ≥ the mode count the error
+3. Otherwise the fourth argument's low byte is stored (request for a flipping surface chain, §14.2; callers are described after the failure-path note below). If `mode` ≥ the mode count the error
    becomes 2 and the call returns without change.
 4. If a mode is current, the driver first calls its own slot 66 with `(-1, 0, 0, 0)`.
 5. The window procedure is remembered (`DefWindowProcA` when null). The driver fills its current-mode record from
@@ -144,7 +144,18 @@ driver's AddRef quirk. Do not add an implicit texture upload or draw flush to th
 `0xFFFFFFFF` through it after cleanup. It does not write the current-mode index there. The same argument's low
 byte was used as the flip request earlier. Passing a small boolean or null can therefore fault on this path.
 The supported success path does not perform that write. An implementation must not promise a clean error-only
-return for failed setup; caller intent behind this overloaded argument remains RD1.
+return for failed setup.
+
+*[compat]* **Callers of the fourth argument.** The only caller in the executable that requests a real mode is the
+canvas window-realization helper (`0x0098D9C0`, call at `0x0098DB08`). It passes the matched mode index, its window
+procedure bridge, show = 0, and as the fourth argument the result of slot 23 of the graphics system's
+driver-control interface (`0x00741740`, reads the one-byte "page flipping" flag; construction sets that flag to 1,
+`0x0098FF40`; slot 22, `0x0098AD30`, writes it). The value reaching the driver is therefore exactly 0 or 1, never a
+pointer, and with the default flag the flip-chain request is on. Every other caller passes mode −1 with all other
+arguments 0 (or 1, 1 from the canvas teardown, `0x0098DBC9`), which returns before the fourth argument is read.
+Consequently a failed setup in the realization helper executes the failure write into address 0 or 1 (an access
+violation), exactly the hazard above; the intended meaning of the argument is "request flipping", not a result
+pointer, and the failure write is a latent defect of the original.
 
 ### 4.3 Setting up the 3D environment (`SetupViewport 0x00888E10`, `Initialize3DEnvironment 0x00887A10`)
 
@@ -193,7 +204,7 @@ otherwise not, and the error code follows §3. It then resets every texture-stag
   is ended (`0x00887260`, §11.1; it does not present), the context presents (§14.3), the
   vertex buffer is recreated if it was lost (`0x00889260`), and a new scene is begun.
 * **Device just lost** (the cooperative-level test fails and the driver was not already lost): the driver marks
-  itself lost, posts message `0xAACB92A3` (*[unlisted]*) through the message server, drops its texture surfaces
+  itself lost, posts message `0xAACB92A3` (*[unlisted]*; *[inferred]* no receiver exists: the only occurrence of that 32-bit value anywhere in the executable image, code or data, is this post at `0x00884E25`, so no handler or subscription names it) through the message server, drops its texture surfaces
   (`0x0088A400`), stops the primitive manager, swaps in a placeholder device object and releases the real
   DirectX objects. `IsDeviceReady` (slot 81) now returns false.
 * **Lost, cooperative level restored**: the driver asks its context to restore the surfaces; on failure it ends the
@@ -1463,7 +1474,7 @@ recorded during setup is not the sole source of window position.
 A zero-width or zero-height client rectangle returns `0x887601C2` before either blit (`0x0088C43E`–`0x0088C450`,
 `0x0088C4B1`). If neither presentation path is active, the incoming flags/result word is returned without
 presenting. The normal `Flush` caller supplies zero. This establishes presentation independently of EndScene;
-it does not establish which clients consume the device-lost message (RD4).
+it does not establish which clients consume the device-lost message (no handler is inferred, see RD4 in §14).
 
 ### 14.4 Mode descriptor enrichment
 
@@ -1568,6 +1579,6 @@ The checklist covers the 83-slot graphics interface, including explicit no-ops. 
 coverage of undefined invalid-pointer/overflow inputs. Available pixel converters and CopyColorBuffer
 are specified in §§9.6 and 12.6; RD12 surface aliases/ownership are in §14.2. RD6/RD7/RD12
 have vectors DX7-32–62. RD8–RD11 are
-answered in §§2, 4.1, 8.3, 8.6, 10.1 and 14.2 with vectors DX7-19–31. RD1, RD3 and RD4 retain their
+answered in §§2, 4.1, 8.3, 8.6, 10.1 and 14.2 with vectors DX7-19–31. RD3 retains its
 specifically listed caller, descriptor and message gaps.
 No C ABI proposal or implementation behavior is inferred from those open items.

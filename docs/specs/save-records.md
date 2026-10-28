@@ -294,6 +294,11 @@ Consequences:
   foundations §3.5 if its "for each class C, ascending class ID" loop walks the live sorted set. Loading does not
   depend on file order (the loader walks the index), so *[choice]* FreeCity4 may write class records in any order.
 - The class index lists classes in ascending ID order in every save.
+- *[quirk]* The first time a class is registered in a save session (registering an object of a class not yet in the
+  serializer's table, `0x005D43F0`), the writer checks whether the destination package already has a class record
+  for that class and, if so, **deletes it** before any object is written. A class record left in a package the
+  save is rewriting therefore disappears as soon as one object of the class registers, while a class that never
+  registers an object keeps its old record in the output.
 
 ---
 

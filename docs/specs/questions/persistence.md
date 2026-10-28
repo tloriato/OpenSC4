@@ -2,12 +2,6 @@
 <!-- Questions about [persistence.md](../persistence.md). Append new entries at the END; when one is answered, move it to answered/persistence.md. Rules: README.md. -->
 
 <!-- from: re-persistence4 (2026-10-21) -->
-- **PR1:** (§3.1) which native-order flag do the DBPF packed-file records (`cGZDBRecordPackedFile` constructor
-  `0x0096D859`, called from `0x0096D8D0`, `0x0096D9D1`, `0x0096DA30` and the two write-record constructors) receive
-  from their segment, and can any segment in the shipped game be configured big-endian? [expected: always 1 for
-  the shipped packages and saves, which are little-endian]
-
-<!-- from: re-persistence4 (2026-10-21) -->
 - **PR2:** (§6) does any shipped package or save contain entries of type `0x62B9DA24` (buffer resources, forms
   v0/v1/v2), and which forms occur? A DBPF index scan of the install answers it. [expected: few or none; UI images
   are PNG (`0x856DDBAC`) and load through the persist-buffer / gimex factories, not here]
@@ -19,6 +13,7 @@
 
 <!-- from: core-persist-runtime4 (2026-10-22) -->
 - **PR9 - sections 2 and 4.2 constructor/failure domains:** what initial reference counts do DBRecord and ResourceFactory receive, and what happens to out parameters when allocation or QI fails? Are there defined overflow/reentrant-callback contracts? [Counts are explicit constructor inputs; no native constructor-default, overflow or unspecified failure-output claim. Portable factories preserve caller outputs unless QI succeeds; reentrant foreign callbacks are unsupported.]
+  PARTIAL 2026-10-27: initial counts are fixed by the constructors: a DB record starts with reference count 0 and access flags 0 (0x00975C77; the packed-file constructors then set flags 1 or 3), a resource factory with count 0 and a freshly built critical section (0x0097564D). Native out-parameters: the segment open routine writes null on every failure path (persistence.md 3.1.1); the factory's record-based create (0x0097554F) writes its caller's out parameter only through the final QueryInterface after a successful allocation, Read and key copy, so every earlier failure leaves it untouched. Still open: overflow of the 16-bit record count and reentrant-callback contracts, which static reading does not settle.
 
 <!-- from: core-persist-runtime4 (2026-10-22) -->
 - **PR10 - section 3.4 malformed strings and short I/O:** what destination state and byte values are defined after failed header/payload/legacy byte reads, malformed UTF-16, or the second-byte-zero guess reading beyond the payload? [Return the published raw result; preserve only host-defined partial-byte effects for typed fields. Support complete valid UTF-16, never read outside an allocation; malformed/odd guessed input is an explicitly unsupported domain. No post-failure string-state/native allocation claim.]

@@ -1133,6 +1133,12 @@ or repeat / clamp with bit 5, the texture transform, then its cell rectangle is 
 from the terrain view's land or water arrays (`0x007541C0`–`0x00755700`, by the water flag, the dynamic flag and
 the vertex-buffer extension). Transparency, shade and vertex colours are restored.
 
+*[compat]* Wrap precedence: the replacement-matrix bit 5 is tested **first**. When bit 5 is set the decal uses
+repeat in the first texture axis and clamp in the second, even if the repeat bit 1 is also set; only with bit 5
+clear does bit 1 select repeat/repeat, and with neither bit set the texture is clamp/clamp
+(`0x007368BD`–`0x007368E4`). Slot 21 sets bit 5 without clearing bit 1 (§3.4), so a repeated decal that later gets
+a replacement matrix switches from repeat/repeat to repeat/clamp.
+
 ### 4.3 Shadows (`DrawShadows`, `0x00736BF0`; `DrawShadowsRough`, `0x00737870`)
 
 Both forms set depth offset 3 and obtain global shadow parameters through view-manager slot 9's lighting

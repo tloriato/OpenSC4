@@ -1,0 +1,4 @@
+va	name	evidence
+0096d8d0	cGZDBRecordPackedFile::cGZDBRecordPackedFile_FileRegionRead	persistence.md 3.1.1; sole caller DoOpenRecord (0x009702C7); builds kind-1 read record over a package file region (offset, size), native-order flag constant 1
+0096d9d1	cGZDBRecordPackedFile::cGZDBRecordPackedFile_SharedBufferRead	persistence.md 3.1.1; sole caller DoOpenRecord (0x00970291); builds kind-2 read record sharing an already-open record buffer, use count incremented unchecked at 0x0096DA20
+0096da30	cGZDBRecordPackedFile::cGZDBRecordPackedFile_DecompressedBufferRead	persistence.md 3.1.1; sole caller DoOpenRecord (0x009703A0); wraps a freshly decompressed buffer in an 8-byte share block, allocation unchecked before the increment at 0x0096DA95

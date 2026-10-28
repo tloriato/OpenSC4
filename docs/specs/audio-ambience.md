@@ -93,7 +93,10 @@ In order; any failure returns 0 *[compat]*:
 4. Recompute the attention rectangle (§4.2).
 5. Make the occupant filter `+0x28`, reset the random iterator, set stage `+0xB0 = 0`.
 6. Add itself to the framework's tick list (framework slot `+0x24`).
-7. Walk the existing occupants (§3.1, `_IterateOccupantsThatNeedToBeTracked` `0x004EAAE0`).
+7. Walk the existing occupants (§3.1, `_IterateOccupantsThatNeedToBeTracked` `0x004EAAE0`). *[quirk]* The walk builds an
+   occupant-type filter in a freshly allocated 0x18-byte object and does not test the allocation: a failed allocation
+   continues into reads through a null filter pointer (`0x004EAAF6`–`0x004EAB20`), so the original has no defined
+   out-of-memory result here.
 8. `+0x50 = 1`; return 1.
 
 ### 2.3 City shutdown (`0x26D31EC2`, `0x004E9810`)
@@ -235,6 +238,17 @@ Remove from the tracked set (`+0x11C −= 1` when it was present). Then for each
 unlinks an automaton through its slot `+0xA0`); for each of `0x0A36AFA2`, `0x2A53BE13` present: remove the
 alarm entry (`_RemoveAlarmOccupant` `0x004EA080`). The stop is posted even when nothing was started
 *[compat]*; the sound manager ignores unknown instance ids (audio.md §8.3).
+
+*[compat]* **Alarm removal match rule** (`_RemoveAlarmOccupant(o, id)`, `0x004EA080`, one call per present property,
+`0x004EA35E` and `0x004EA382`, with `id` = the property value read *now*): a null occupant returns false. Otherwise
+the alarm list is walked from the head and the **first entry whose occupant is `o`** is taken — the entry's saved
+sound id and its kind byte are **not** compared. If that entry's "on" byte is set the sound with the *current* `id`
+is stopped (`_RemoveOccupantSndInstance`) and the byte cleared; then the entry releases its occupant reference, its
+time list and itself are freed and it is unlinked; true. Nothing else is touched: only one entry per call goes, no match
+returns false, and an occupant holding both properties makes two calls that remove its first two entries in list
+order whatever their kinds (so with duplicates or a changed property the entry removed need not be the one
+that property created, and a sound started under an old id is not stopped, because the stop uses the
+current id) (`0x004EA08D`–`0x004EA0EE`).
 
 ### 3.4 Condition and state changes
 
@@ -386,8 +400,14 @@ entries 70.0 *[choice]*; ids absent → unchanged *[compat]*.
    a zoom outside the vector, the game dereferences null or reads foreign memory (AA6d). The game only runs
    this with a city view and zoom 0–4 *[compat]*; a replacement treats any other case as "keep the previous
    rectangle" *[choice]*.
-3. World rectangle `(x − m, z − m) .. (x + m, z + m)`; both corners to cells through occupant-manager slot
-   `+0x4C`.
+3. World rectangle `(x − m, z − m) .. (x + m, z + m)` **intersected with the city's world bounds** (`+0x9C..+0xA8`,
+   §2.2 step 3) and stored as four f32 at `+0x8C` (x0, z0, x1, z1; `0x004E9322`–`0x004E9351`, helper `0x004E8380`):
+   each side is the larger of the two minima and the smaller of the two maxima; rectangles that merely touch still
+   intersect; when they are disjoint all four stored floats become 0.0 and the clip reports failure, which the
+   caller ignores. Both corners of the stored rectangle then go to cells through occupant-manager slot `+0x4C`.
+   This stored f32 rectangle (not the cell rectangle) is what stage 0 hands to every layer's `BeginUpdate`
+   (§5): the layer copies those 16 bytes verbatim and uses them as the world-space attention rectangle
+   (`0x004EA1B5`–`0x004EA1F6`, `0x004E4CE0`); the even cell rectangle `+0x6C` only seeds the block iterator.
 4. Clamp each cell coordinate to `[0, n − 1]` (the city's cell counts), then clear bit 0 (round down to even).
 5. The first call after start-up (global byte `0x00B09824` set) writes the result to both rectangles and
    clears the byte; later calls move current → previous and store the new current.

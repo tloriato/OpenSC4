@@ -3,7 +3,6 @@
 Questions about [rz-strings.md](../rz-strings.md). Filed 2026-10-23 by re-strings5.
 
 - **RZS3 — §§1–3, mutation boundaries:** Determine alias-overlap guarantees for setters/append/insert/replace, allocation-failure outcomes and maximal byte counts; distinguish normal range errors from crash/termination and adapter policy. [Ordinary independent-range edits settled; no recoverable false return inferred.]
-- **RZS4 — §§2/5, native split helpers:** Settle complete argument order, empty-field consumption, no-match output and repeated-separator rules for SplitTokenDelimited 0x0090F335 and SplitTokenSeparated 0x0090F39D. [SplitToken 0x0090E98C is separately specified; do not alias these methods to it.]
 - **RZS5 — §5, Sprintf edges:** Verify signed negative/extreme integers and exact sign/prefix order, negative dynamic width/precision, unsupported/wide conversions, null strings, malformed/trailing percent, embedded-NUL %c and %n destination/value semantics. Verify glyph counting and precision for invalid encodings. [Literal/%%/%s and positive unsigned/padding vectors settled; no complete host printf equivalence claim.]
 
 <!-- from: core-rzstrings5b (2026-10-23) -->

@@ -17,3 +17,10 @@
   false on empty/all-false, true otherwise, preserving every callback; this is a deterministic clean-room
   policy, not a recovered native baseline. §10.1 separates callback traces, native constraints and chosen
   outputs in six independent vectors. The audit does not claim behavior for arbitrary external plugins.
+
+<!-- from: re-persistence4 (2026-10-21) -->
+- ~~**PR1:** (§3.1) which native-order flag do the DBPF packed-file records (`cGZDBRecordPackedFile` constructor
+  `0x0096D859`, called from `0x0096D8D0`, `0x0096D9D1`, `0x0096DA30` and the two write-record constructors) receive
+  from their segment, and can any segment in the shipped game be configured big-endian? [expected: always 1 for
+  the shipped packages and saves, which are little-endian]~~
+  **ANSWERED 2026-10-27 (re-x-fw):** DIFFERS — persistence.md section 3.1 corrected: the packed-file records never take the order flag from their segment. All five construction sites (0x00970291, 0x009702C5, 0x009703A0, 0x00970C71, 0x00970E87, via the open and write routines 0x009701FD, 0x00971178, 0x009712D7) pass the constant 1, and nothing in the segment can change it, so no big-endian packed-file record exists. New section 3.1.1 lists the kinds and construction quirks.

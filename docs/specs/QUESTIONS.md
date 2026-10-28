@@ -240,7 +240,7 @@ generated index: the questions live one file per spec, so read only the file for
 | app-directors | 3 | 0 | ADIR4 | questions/app-directors.md |
 | application | 15 | 7 | AP22 | questions/application.md |
 | audio | 3 | 17 | AU51 | questions/audio.md |
-| audio-ambience | 3 | 12 | AA15 | questions/audio-ambience.md |
+| audio-ambience | 1 | 14 | AA15 | questions/audio-ambience.md |
 | audio-preferences | 3 | 0 | APW4 | questions/audio-preferences.md |
 | audio-scape | 4 | 0 | SCP5 | questions/audio-scape.md |
 | aura | 1 | 15 | AU17 | questions/aura.md |
@@ -346,14 +346,14 @@ generated index: the questions live one file per spec, so read only the file for
 | occupants-props | 6 | 14 | OP20 | questions/occupants-props.md |
 | ordinance | 0 | 1 | SV3 | questions/ordinance.md |
 | output-streams | 3 | 4 | OS8 | questions/output-streams.md |
-| overlay-manager | 5 | 14 | OV20 | questions/overlay-manager.md |
+| overlay-manager | 4 | 15 | OV20 | questions/overlay-manager.md |
 | overlay-views | 1 | 6 | OVV8 | questions/overlay-views.md |
 | parks | 0 | 11 | PK12 | - |
 | particles | 0 | 13 | PT14 | questions/particles.md |
 | pathfinder | 0 | 15 | PF16 | - |
 | paths | 5 | 0 | PA11 | questions/paths.md |
 | pedestrians | 2 | 1 | PN4 | questions/pedestrians.md |
-| persistence | 8 | 1 | PR14 | questions/persistence.md |
+| persistence | 7 | 2 | PR14 | questions/persistence.md |
 | persistence-manager | 4 | 1 | PR10 | questions/persistence-manager.md |
 | plumbing | 1 | 8 | PS10 | questions/plumbing.md |
 | pollution | 0 | 16 | PG17 | questions/pollution.md |
@@ -373,7 +373,7 @@ generated index: the questions live one file per spec, so read only the file for
 | regional-city-records | 2 | 7 | RR10 | questions/regional-city-records.md |
 | render-properties | 4 | 4 | RP9 | questions/render-properties.md |
 | render3d | 2 | 2 | RND5 | questions/render3d.md |
-| renderer-driver | 6 | 11 | RD13 | questions/renderer-driver.md |
+| renderer-driver | 1 | 13 | RD13 | questions/renderer-driver.md |
 | renderer-gdrivers-director | 1 | 0 | GD2 | questions/renderer-gdrivers-director.md |
 | renderer-gdrivers-director-inventory | 2 | 0 | GI3 | questions/renderer-gdrivers-director-inventory.md |
 | residential | 2 | 17 | G35, RS18 | questions/residential.md |
@@ -384,7 +384,7 @@ generated index: the questions live one file per spec, so read only the file for
 | rigid-body-2d | 7 | 0 | RB8 | questions/rigid-body-2d.md |
 | rz-draw | 1 | 0 | RZD2 | questions/rz-draw.md |
 | rz-sparse-matrix | 5 | 0 | SM6 | questions/rz-sparse-matrix.md |
-| rz-strings | 4 | 8 | RZS12 | questions/rz-strings.md |
+| rz-strings | 3 | 9 | RZS12 | questions/rz-strings.md |
 | save-records | 0 | 2 | SR34 | questions/save-records.md |
 | sc-resources | 1 | 11 | SCR12 | questions/sc-resources.md |
 | simgrid | 2 | 1 | SG4 | questions/simgrid.md |
@@ -438,4 +438,4 @@ generated index: the questions live one file per spec, so read only the file for
 | win-grid | 2 | 7 | WG10 | questions/win-grid.md |
 | zone-tool | 1 | 0 | ZT2 | questions/zone-tool.md |
 | zones | 2 | 56 | ZG43, ZQ17 | questions/zones.md |
-| **total** | **629** | **1705** | | |
+| **total** | **619** | **1712** | | |

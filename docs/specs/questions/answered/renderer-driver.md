@@ -119,3 +119,18 @@
   texture-stage calls and an unbound stage-0 texture in fixed order (stencil depth-fail defaults to invert,
   texture factor 0xFFFFFFFF, lighting off, colour vertex on), then every stage record marked dirty; the `+0x138`
   word has no reader in 0x00881A00-0x0088B400 (write-only).
+
+<!-- from: re-driver4 (2026-10-21) -->
+- ~~**RD1 - section 4.2:** which callers pass non-zero fourth arguments to `SetVideoMode`, and how do they handle
+  its dual use? The low byte requests a flip chain (§14.2), but setup failure writes `0xFFFFFFFF` through the
+  full argument word (§4.2, `0x0088916E`–`0x0088917F`). Resolve caller intent and whether the faulting small-boolean
+  failure path is exercised. [needs: indirect callers and setup failure observations]~~
+  **ANSWERED 2026-10-27 (re-x-fw):** MATCHES — renderer-driver.md section 4.2: the only caller requesting a real mode is the canvas realization helper (0x0098D9C0, call 0x0098DB08), which passes show=0 and, as the fourth argument, the page-flipping flag byte of the graphics system's driver-control interface (default 1, 0x0098FF40; getter 0x00741740), so the value is exactly 0 or 1. All other callers pass mode -1 and never reach the argument. A failed setup in that helper therefore writes 0xFFFFFFFF to address 0 or 1 (a fault); the dual use is a latent original defect.
+
+- ~~**RD4 - section 4.4:** what `0x00887260` does at the frame boundary (end scene and present? windowed blit to the
+  client rectangle?), and who handles message `0xAACB92A3` (device lost), which is not in `re/class_id_table.tsv`.
+  *Partly answered 2026-10-21 (re-driverdraw4): `0x00887260` only ends the scene (§11.1); presentation is
+  inferred to be the context's per-frame update.*
+  *Further narrowed 2026-10-23 (re-gdriver5): §14.3 establishes Flip versus Blt presentation, empty-client
+  result and retry flags. Still open: the `0xAACB92A3` handler.*~~
+  **ANSWERED 2026-10-27 (re-x-fw):** MATCHES — renderer-driver.md section 4.4: presentation is the context's per-frame update (14.3) and 0x00887260 only ends the scene (11.1). The device-lost message 0xAACB92A3 is posted at 0x00884E25 and that 32-bit value occurs nowhere else in the executable image (code or data), so no handler or subscription names it [inferred: nothing in the original reacts to it by ID; a handler that ignores the ID would be indistinguishable].

@@ -78,3 +78,11 @@ retains the latch/count, and singular loop removal sends no stop.
   and §8.3 the repeated-CreateFilters question (bit vectors and interface counters only); archived here. The
   remaining small members, `_RemoveLayers`, `_RemoveAllFilters`, `_StaticRemoveAllFilters` and a correction (each
   filter-list entry holds a reference) are audio-owner-closure.md §2.
+
+<!-- from: core-audio-ambience5 (2026-10-23) -->
+- ~~**AA13 - section 3.3 alarm removal:** when duplicate alarms exist or properties have changed since registration, does removal match occupant and kind, occupant and saved sound ID, or all entries for the occupant; is only the first match removed? [literal singular entry: remove the first entry matching occupant and kind, in list order]~~
+  **ANSWERED 2026-10-27 (re-x-fw):** DIFFERS — audio-ambience.md section 3.3: removal matches the occupant only, taking the first alarm entry for it in list order; the saved sound id and the kind are never compared. The stop for a playing on/off entry uses the property value read at removal time. One entry is removed per call; HandleRemoveOccupant makes one call per property present (0x004EA35E, 0x004EA382), so an occupant with both properties loses its first two entries whatever their kinds. No match returns false.
+
+<!-- from: core-audio-ambience5 (2026-10-23) -->
+- ~~**AA12 - sections 5 and 8.4 BeginUpdate rectangle:** is the layer's 16-byte attention rectangle the world-space f32 rectangle or the even cell-coordinate rectangle? [literal attention rectangle: world-space WorldRect; the cell rectangle is used only for iterator seeding]~~
+  **ANSWERED 2026-10-27 (re-x-fw):** DIFFERS — audio-ambience.md section 4.2 step 3: the layers receive the world-space f32 rectangle stored at +0x8C (OnTick passes that address at 0x004EA1F5), not the even cell rectangle at +0x6C, which only seeds the block iterator. The world rectangle is the listener +/- margin square intersected with the city's world bounds (helper 0x004E8380: max of minima, min of maxima, touching allowed, all zero when disjoint), a clipping step the spec did not state.
