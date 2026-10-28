@@ -50,7 +50,7 @@ name cited is the first in path order.
 | `0xCA027EDB / 0xCA027EE1 / 0` | 417 | regional-city record | neighbours (standalone mode) | foundations §11.2; validated in §7.5 |
 | `0xA9C8647C / 0xE9C8647E / 1` | 417 | `cSC4View3DWin::DoSave` (`0x007EA5B0`). Holds refs to the camera control `0xC9C628EC`, the 3D renderer `0xE9C622D8`, the class `0xA9C741B3` and the **simulator** `0x2990C1E5`, then u32 lists | not replaced, but it refers to a replaced object (§5) | not specified |
 | `0x49DD6F4C / 0x49DD6F4E / 1` | 417 | root record: `u16 1, u16 2, ref city` | written | foundations §3.7 |
-| `0x89D9B9EE / 0x69D9B9F1 / 0` | 417 | written from inside `cSC4City::Write` (`0x0045C5B0`), 58 bytes max | city (not replaced) | not specified |
+| `0x89D9B9EE / 0x69D9B9F1 / 0` | 417 | auxiliary cheat-code state, written from inside `cSC4City::Write` (`0x0045C5B0`), 58 bytes max in that corpus | city (not replaced) | **§2.1** |
 | `0x8A91E7E0 / 0xE98F9525 / 2` | 417 | terrain vertex properties (`cSTETerrain::SaveVertexProperties`) | not replaced | — |
 | `0x8A91E7E3 / 0xE98F9525 / 3` | 417 | terrain misc data (`SaveMiscTerrainData`) | not replaced | — |
 | `0xA9DD6FF4 / 0xE98F9525 / 1, 0x64…0x67` | 417 | terrain altitudes and the four edge-altitude strips (`SaveAltitudes`, `SaveEdgeAltitudes`) | not replaced | — |
@@ -62,6 +62,64 @@ name cited is the first in path order.
 No save holds a record of group `0xAB85E27D` (the retained group, foundations §3.8).
 
 ---
+
+### 2.1 City auxiliary cheat-state record *[compat]*
+
+Key **`0x89D9B9EE / 0x69D9B9F1 / 0`**. This is a non-class record: no class-entry size/CRC/object ID surrounds
+it. `cSC4City::Write` opens it with `cSC4AutoSaveRecord`, version **1** (`0x0045CA2A`–`0x0045CA3C`);
+the helper writes the first u16 (auto-records §2). The remaining fields are:
+
+| Order | Field | Wire type / rule |
+|---|---|---|
+| 1 | version | `u16 1` |
+| 2 | cheat-data byte length `N` | `u32` |
+| 3 | cheat data | exactly `N` bytes, structured below |
+
+All integers in both layers are little-endian. The city asks the cheat-code manager for the required size,
+allocates a zero-filled byte buffer, asks it to fill that buffer, writes `N` and then the bytes
+(`0x0045CA4B`–`0x0045CAB1`). These are serial-record field calls (`SetFieldUint32`, then a byte-array write),
+not a §2.7 reference and not a GZ string. There is no 58-byte format limit: 58 was a corpus maximum.
+If no cheat manager exists, the writer still opens/closes the version-1 record but emits no length or data;
+that exceptional output consists of the two version bytes alone.
+
+**Inner cheat data** (`cGZCheatCodeManager::GetCheatCodeSaveData`, `0x00921060`; see also cheat-codes §4):
+
+| Order | Field | Encoding |
+|---|---|---|
+| 1 | duplicate total length | `u32 N`, including this word and all following inner fields |
+| 2 | padded password size `P` | `u32`, password byte size rounded up to a multiple of 4 (0 when size is 0) |
+| 3 | password byte size `B` | `u32` |
+| 4 | password data | `B` compressed password bytes, then `P−B` zero bytes |
+| 5 | history byte size `H` | `u32`, a multiple of 16 |
+| 6 | history | `H / 16` records, each four retained `u32` words (cheat ID, date word, action, auxiliary word); stored history order |
+| 7 | enabled-state byte size `E` | `u32`, **4 × the number of saved IDs**, not an element count |
+| 8 | enabled-state IDs | `E / 4` × `u32 cheatID`, ascending ID (set iteration) |
+
+Thus **`N = 20 + P + H + E`**, and the whole DBPF record is **`6 + N` bytes**. The password is the compressed
+lock data of cheat-codes §3.1, not a NUL-terminated string. History action 1/2 records enabling/disabling a
+state; other action words and the auxiliary word retain their history values. The manager's integer sizing
+and raw-copy instructions are `0x0092106C`–`0x009210DB`, `0x009210F1`–`0x00921145`.
+
+**Load and versions.** City Read opens the separate record after consuming its own final flag. Only version
+**1**, with a live record and cheat manager, enters the payload reader (`0x0045D153`–`0x0045D16B`). Other
+versions, or a missing record/manager, are skipped; there is no accepted legacy v0 layout or speculative
+new-version decode. For v1 it reads a `u32 N`, sizes a byte vector to N, reads N bytes and passes `(buffer, N)`
+to `SetCheatCodeSaveData` (`0x0045D16D`–`0x0045D1B2`). A header-only record has no successful length read;
+it is not an empty 20-byte cheat block. Missing auxiliary data does not add or remove bytes from the city
+class entry, and this optional read does not govern the city's success result.
+
+**Original reader quirks** (cheat-codes §4, CCM1). `SetCheatCodeSaveData` (`0x009214DB`) checks only non-null
+buffer and `N ≥ 4`. It ignores the duplicate total length, copies B password bytes, skips P bytes to reach
+history, appends `H >> 4` history entries and then mistakes **E for an ID count**: it reads E dwords rather
+than E/4 (`0x00921571`–`0x00921598`). For nonzero E this overreads the allocated inner block; no DBPF field
+follows that block to define the extra IDs. It does not update the stored password-size field or the manager's
+enabled flag and does not clear existing history or enabled IDs. *[choice]* A standalone reader validates
+the inner lengths against N, consumes only E/4 IDs, and never reads beyond the record. Preserve the on-wire
+byte-count convention in the writer; do not change E to an element count to compensate for the original bug.
+
+**Worked empty-state record.** Version 1, N = 20, duplicate N = 20, P = B = H = E = 0 gives **26 bytes**, with
+no password, history or state IDs. All 547 checked reference end saves have exactly that record. Both layers
+were parsed to their exact end, not just skipped using the DBPF size (foundations §3.6.3).
 
 ## 3. Class store: inventory
 
@@ -118,6 +176,24 @@ of the brief. The owner column names the spec section with the layout.
 | `0x6990C1AA` | traffic simulator | 417 | 417 | **§7.1** (replaces traffic-simulator §6.1, §6.4) |
 
 The pathfinder has no record (pathfinder §6). Its compressed routes are saved inside the lots' trip data (§8).
+
+The separate traffic **network map**, city component 42 (IID `0xCA0F81B9`, class/record type `0x6A0F82B2`),
+has its full versioned wire layout in [traffic-network.md §6.2](traffic-network.md#62-traffic-network-map-0x6a0f82b2-compat),
+including tiles, intersections, reference lists and the final occupant-to-four-lists table.
+
+The remaining SR36 occupant layouts are now specified by their owners:
+
+| Class record | Complete wire layout | Validation in 749 reference end saves (re-sr37, 2026-10-28) |
+|---|---|---|
+| `0x2977AA48` terrain-decal prop | [lot-records §10.5](lot-records.md#105-csc4propoccupantterraindecal-0x2977aa48-compat): outer v3, complete prop, 47-byte extension | 44 class records / 4,683 objects / 641,571 decompressed bytes |
+| `0x29D25F1D` fire occupant | [disasters §5.11.2](disasters.md#5112-saved-fire-occupant-and-inline-flames-sr36-2-compat): outer v3, occupant base, three u32, target reference, inline flames with independent versions | 498 class records / 860 objects / 1,264 inline flames / 107,840 decompressed bytes |
+| `0xC9EFB016` burnt-building prop | [lot-records §10.6](lot-records.md#106-csc4propoccupantburntbuilding-0xc9efb016-compat): outer v3, complete prop, 24-byte source bounds | 38 class records / 75 objects / 8,550 decompressed bytes |
+
+These class records use group `0x299B2D1B`, instance 0 and foundations §3.3 entry framing.
+All 5,618 object payloads were decoded field by field and re-encoded exactly, with no bytes
+left over; counts above include the 12-byte entry headers. Legacy inner-prop timer gates and
+flame-v2 transforms are instruction-derived rules, not additional observed corpus variants.
+The proof concerns these layouts; it does not rerun the standalone archive's full-type audit.
 
 ### 3.2 Classes FreeCity4 does not replace
 
@@ -656,10 +732,9 @@ All of these have been applied to the specs named (M6 integration); the list sta
 - Q3: No save holds a placed MySim (`state` ≠ 0), a v4 landfill zone, a tunnel, a ferry terminal, or a v < 20
   edge density with data. Their layouts are verified against the executable only; a 1.1.641 save exercising them
   would close this.
-- Q4: The `0x89D9B9EE` record written by the city and the View3D record are not specified; FreeCity4 does not
-  replace their writers, but standalone mode needs both. **Partly answered 2026-10-21 (re-view3dwin):** the View3D
-  record is specified in view3d-window.md §6k (four references, then the global effect triggers); the `0x89D9B9EE`
-  record is still open.
+- ~~Q4: The city auxiliary and View3D records were unspecified.~~ **ANSWERED 2026-10-28 (re-sr36):** auxiliary
+  cheat-state record `0x89D9B9EE` is §2.1; the city object itself is foundations §3.6. The View3D record was
+  answered 2026-10-21 (re-view3dwin), view3d-window.md §6k (four references, then global effect triggers).
 - ~~Q5: The unnamed classes `0xA9C741B3`, `0xC9B84E10`, `0xCA15ED6B` and `0xEA0A5ACF` (§3.2).~~ **ANSWERED
   2026-10-15 (re-specs14a, re-inventory6):** `0xC9B84E10` is the terrain's 3D view (`cSTETerrainView3D`), saved
   through a reference in the terrain's class record (u16 1 and one byte, render only; terrain.md §13.2).

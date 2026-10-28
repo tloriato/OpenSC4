@@ -104,7 +104,7 @@ incident list `0x00552A80` / `0x00553E90`).
 | 50 | `0x0050A5D0` | sets "visible" from the zoom (zoom ≥ the manager's threshold `+0xA3C`) and shows or hides every automaton accordingly (those outside the given filter are hidden) |
 | 54 | `0x00506D50` | on a building occupant (`0x278128A0`) whose source property (`0x87DDA3A9`) value is at least 1, slot 53 (`HandleNewBuilding`) |
 | 55 | `0x0050C7E0` (base); `0x005516C0` (traffic) | on an occupant removal: a city situation `0xC772BF98` / `0xA821EF94` is passed to slot 52; group counters of the occupant's groups go down; the traffic version first drops the occupant's queued dispatch requests (§3.3) |
-| 56 | `0x0050F2C0` (base); `0x0054F7B0` (traffic) | the periodic update of the tracked group counts *[summary]*; the traffic version then refreshes each automaton's network occupant and route *[summary]* |
+| 56 | `0x0050F2C0` (base); `0x0054F7B0` (traffic) | **PostCityInit**, no stack args; base restores/removes loaded automata before the old-version source recount, then updates view/zoom. Traffic performs a second path/model reference-repair pass. This is not periodic; exact ordered operations and remaining native-object boundary gaps: automata.md §4.2 (AD6 partial) |
 | 57 | `0x0050A670` | passes a value to every automaton (automaton slot 81) |
 | 59 | `0x0050F690` | registers an occupant in the tracked groups it belongs to (once per group) |
 | 60 | `0x0050A520` | **zoom update**: at or above the threshold zoom (`+0xA3C`), or when the camera follows an automaton whose group this manager can create (slot 30), an inactive manager activates (slot 5 `Activate(true)`); otherwise an active one deactivates; while active every automaton gets the zoom and rotation (automaton slot 74) |
@@ -187,6 +187,69 @@ time is reduced by the time since the last tick; an expired effect detaches its 
 one follows its occupant's cell. `0x00552A20` detaches all of them and `0x00551FC0` frees them; `0x00552D00`
 (called from the vehicle and pedestrian managers' `Shutdown`) releases the traffic data and the dispatch requests
 and clears the effects.
+
+### 3.4.1 Accident creation and the native caller boundary (AD5) *[compat]*
+
+Both entries have x86 `thiscall` ABI: ECX is the concrete receiver; three 32-bit stack
+arguments in declaration order are **`cISC4Occupant* occupant, int32 radius,
+uint32 durationMs`**; callee pops 12 bytes, EAX returns an opaque borrowed effect-record
+pointer. This is a token for StopEffect, not an `IGZUnknown*`, boolean or owning reference.
+`0x00554400` adjusts ECX by `+0xAB8` and tail-jumps to `0x00554040`; its receiver is the
+traffic/vehicle manager's primary concrete view. The latter receiver is its embedded traffic
+effect manager. Neither is a virtual/interface slot. The conflicting argument-source inference
+in the ABI inventory is resolved by the body and native caller's pushes (`0x0071876E`–`0x0071877E`),
+not by the decompiler's argument list. Network-occupant `AsOccupant()` has no argument;
+the pushed 2 is the radius of CreateAccident. Full caller ordering: traffic-simulator §4.13.2.
+
+Creation is unconditional for a valid live receiver, initialized list and non-null occupant:
+
+1. Append a new list node (0x40 bytes including two link words), with a zero-initialized
+   0x38-byte effect payload, to the tail. The returned token addresses the payload, not the links.
+   There is no capacity, duplicate, visibility, pause or random admission test here, and no
+   graceful allocation-failure return in this body. `0x0055404B` loads the list sentinel;
+   `0x005540A3` and `0x005540AF` access/link its tail. Faults there precede controller creation.
+2. Store durationMs (u32). Ask the **occupant** view for its cell rectangle (slot 11,
+   one output pointer to four s32 bounds; no reference transfer), compute centre x and z
+   as signed division of each endpoint sum by 2, truncating toward zero, and store radius.
+   Compute two inclusive effect rectangles: centre ± max(radius−1,0) and centre ± radius
+   (`0x005540C5`–`0x005540FE`, `0x0054EC60`–`0x0054ECB1`). The helper calculates bounds;
+   it does not start a timer, call a controller or draw randomness.
+3. Obtain the automata-controller manager from city slot 47. Ask the same occupant for its
+   world position (slot 8, output pointer to three binary32 coordinates). Call controller-manager
+   slot 10 with `(string "traffic_accident_2", occupant, positionPointer)`. Store its AL result
+   as the attached byte, including false. This record is kept even if attachment fails.
+4. Retain the occupant with AddRef and store it in the record (Release a different old occupant
+   if present; a new record has none). Return the payload pointer in EAX. The creation body
+   makes **zero RNG calls** and reads/restarts **no stopwatch**. Any RNG activity within the
+   named controller belongs to the controller manager/script, not an extra manager admission draw.
+
+The effect manager owns the token and occupant reference until removal. StopEffect searches
+for the exact payload pointer; if found, an attached non-null occupant has all its controllers
+removed through controller-manager slot 14, the attachment byte is cleared, its retained
+occupant released and duration cleared, then the node is unlinked/freed. It returns true in AL
+also when the token is absent (`0x00552B80`–`0x00552BCD`, `0x0054ECC0`–`0x0054ED06`).
+Callers must not AddRef, Release or free the token.
+
+The embedded stopwatch is constructed in unit 4 (milliseconds), with next-update and last-update
+u32 values zero (`0x005543DA`–`0x005543F3`). Update reads elapsed milliseconds once; if
+`now < nextUpdate` it returns. Otherwise set `nextUpdate=now+500` (u32), and in list order use
+`delta=now−lastUpdate` (u32). Remove records whose remaining duration is **strictly less than**
+delta; otherwise subtract delta, including the equality case which leaves a live zero-duration
+record. A retained occupant is converted from its world position to a city cell through city
+slot 95; a changed centre recomputes both rectangles. Finally set lastUpdate=now, also with
+an empty list (`0x00552BD0`–`0x00552CFB`). CreateAccident does not give a new record its own
+start stamp: the next effect update charges the shared delta to it.
+
+**Boundary for replacing a manager while the simulator remains native.** City slot 43's vehicle
+manager pointer is used as a *concrete receiver*, then the simulator calls `0x00554400` directly.
+There is no QueryInterface/version test or vtable dispatch at that call. A replacement that only
+implements the published manager vtable cannot service it: the native entry still adds 0xAB8 and
+interprets replacement storage as an STL list. This explains the shape of the reported sentinel
+faults; it does not establish that every reported pool fault has the same cause. A version-checked
+integration must route this concrete three-argument operation to the owner of the replacement
+manager, or replace the traffic-simulator caller as a whole. Supporting a public manager IID alone
+does not establish that boundary. No guessed private padding/list layout or same-owner native
+forwarding is licensed by this contract. No new public accident-creation interface was found.
 
 ## 4. Constructors and base helpers *[summary]*
 

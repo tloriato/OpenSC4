@@ -8,11 +8,13 @@ param(
     [Parameter(Mandatory=$true)][string]$City,
     [Parameter(Mandatory=$true)][string]$Until,
     [string]$Region = 'FC4 Test',
+    [string]$SlotRoot = '',
     [ValidateRange(1,16)][int]$Slot = 6,
     [ValidateRange(30,3600)][int]$Seconds = 180
 )
 $ErrorActionPreference = 'Stop'
 $runner = Join-Path $HarnessRoot 'tools/ingame_run.ps1'
+Write-Output "golden runner: $runner"
 $parameters = (Get-Command -Name $runner).Parameters
 if ($Region -ne 'FC4 Test' -and -not $parameters.ContainsKey('Region')) {
     throw "The harness does not support -Region yet; cannot run '$Region' (no fallback to FC4 Test)."
@@ -22,7 +24,8 @@ if ($City -notmatch '^[A-Za-z0-9 ._()''-]+$' -or $Region -notmatch '^[A-Za-z0-9 
 }
 $Output = [IO.Path]::GetFullPath($Output)
 if (Test-Path -LiteralPath $Output) { throw "Run output already exists: $Output" }
-$slotRoot = Join-Path $HarnessRoot 'build-runs/sc4slots'
+if (-not $SlotRoot) { $SlotRoot = Join-Path $HarnessRoot 'build-runs/sc4slots' }
+$slotRoot = $SlotRoot
 $userDir = [IO.Path]::GetFullPath((Join-Path $slotRoot ("slot{0:D2}" -f $Slot)))
 $docs = [IO.Path]::GetFullPath((Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'SimCity 4'))
 if ($userDir -match '\\\.' -or $userDir.StartsWith($docs, [StringComparison]::OrdinalIgnoreCase)) {
@@ -31,7 +34,10 @@ if ($userDir -match '\\\.' -or $userDir.StartsWith($docs, [StringComparison]::Or
 $claim = New-Object Threading.Mutex($false, "FC4QueueSlot-$Slot")
 $held = $false
 try {
-    try { $held = $claim.WaitOne(0) } catch [Threading.AbandonedMutexException] { $held = $true }
+    # A labelled queue verdict can precede release of its slot claim by a few
+    # seconds. Queue behind it rather than fail a completed qcheck's
+    # immediate window re-check. The Python watchdog bounds the whole run.
+    try { $held = $claim.WaitOne(180000) } catch [Threading.AbandonedMutexException] { $held = $true }
     if (-not $held) { throw "Slot $Slot is claimed by the game queue; choose another --slot." }
     # The harness takes FC4UserDir itself; the queue claim prevents reuse during export.
     New-Item -ItemType Directory -Path $Output | Out-Null

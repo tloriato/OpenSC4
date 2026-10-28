@@ -277,9 +277,10 @@ departments, line items and demand nodes, live in their own class records. A sub
 located by its key alone**. It is reached through a reference from the city (§3.6). The key only follows from the
 class ID.
 
-Other records in a city file (region thumbnails and views, terrain data, city name strings `0x2026960B` in groups
-`0x6AAEE931`/`0x6AAEE932`, a record `0x89D9B9EE/0x69D9B9F1/0` written by the city) are outside this spec, except
-the **regional-city record** `0xCA027EDB/0xCA027EE1/0`, which is specified in §11.
+Other records in a city file include region thumbnails and views, terrain data and city name strings
+`0x2026960B` in groups `0x6AAEE931`/`0x6AAEE932`. The city's auxiliary cheat-state record
+`0x89D9B9EE/0x69D9B9F1/0` is specified in save-records §2.1; the **regional-city record**
+`0xCA027EDB/0xCA027EE1/0` is specified in §11.
 
 ### 3.3 Class-object store
 
@@ -378,10 +379,76 @@ for each class C in the index, ascending class ID:
 
 ### 3.6 The city and its subsystems
 
-The **city** object (class `0x8990C372`) is stored in the class-object store like any other object. The root
-record (§3.2) refers to it. The city's payload (version 12, accepted on read: 8..12) holds the city's own fields
-and then **53 references** to its components, in this fixed order *[compat]*. On read each reference is
-resolved and `QueryInterface`d to the IID shown. The class IDs are those found in sample saves.
+The **city** object (class `0x8990C372`) is stored in the class-object store like any other object, at
+`0x8990C372 / 0x299B2D1B / 0`. The root record (§3.2) refers to it. Write is `0x0045C5B0`; Read is
+`0x0045CB10`. Write emits **version 12**. Read accepts **8, 9, 10, 11, 12 only**; its two unsigned comparisons
+at `0x0045CB42`–`0x0045CB50` reject every other `u16` after consuming the version, before the property holder.
+
+#### 3.6.1 Complete city payload *[compat]*
+
+All fields below are in order, little-endian and unaligned. `u8`, `u16`, `u32`, `s32`, `f32` are 1, 2, 4, 4,
+4 bytes. A string is the **full §2.3 encoding**, including its `u32` header; an empty string still occupies
+4 bytes. A `ref` is §2.7 (4 bytes for null, 8 for non-null), not an inline component payload. `S+offset` names
+a field relative to the **serializable interface passed to Read/Write**; this is 8 bytes after the city's
+primary interface. These offsets disambiguate retained unnamed state and are not additional wire bytes.
+
+| Order | Field | Wire encoding / version gate |
+|---|---|---|
+| 1 | city version | `u16`, writer 12 |
+| 2 | city's property holder | inline §10.2 holder: `u16 2`, `u32 propertyCount`, then each `u32 key`, `u32 propertyID`, §9.2 variant; no object reference or byte-size prefix |
+| 3 | own state word (`S+0x28`) | `u32` |
+| 4 | occupant serial counter (`S+0x2C`) | `u32` |
+| 5 | original language, original country | `s32`, `s32` (`S+0x30`, `+0x34`) |
+| 6 | last language, last country | `s32`, `s32` (`S+0x38`, `+0x3C`) |
+| 7 | own state word (`S+0x40`) | `u32` |
+| 8 | established | `u8` (`S+0x1D`) |
+| 9 | city state | **v10–12 only**, `u8`, zero-extended into the internal 32-bit field `S+0x20` |
+| 10 | city name | §2.3 string (`S+0x6C`) |
+| 11 | second city-name string | §2.3 string (`S+0x80`), retained separately |
+| 12 | mayor name | §2.3 string (`S+0x94`) |
+| 13 | second mayor-name string | §2.3 string (`S+0xA8`), retained separately |
+| 14 | city description | §2.3 string (`S+0xBC`) |
+| 15 | second description string | §2.3 string (`S+0xD0`), retained separately |
+| 16 | world longitude, latitude, base elevation | `f32` × 3 (`S+0xE4`, `+0xE8`, `+0xEC`) |
+| 17 | own state word (`S+0xF0`) | `u32` |
+| 18 | six size/scale values | `f32` × 6, in field order `S+0xF8`, `+0xFC`, `+0x100`, `+0x104`, `+0x108`, `+0x10C` |
+| 19 | cell dimensions | `s32` X, `s32` Z (`S+0x110`, `+0x114`) |
+| 20 | components | the applicable references from §3.6.2, in that table's order |
+| 21 | final city flag | `u8` (`S+0x1FC`), **in every accepted version**, immediately after the last applicable reference |
+
+No trailing size, checksum, or alignment belongs to this payload; the enclosing class entry supplies its size
+and CRC (§3.3–§3.4). In particular, the property's version/count and all six string headers must be read before
+looking for component references. The two name strings and two description strings in each pair are distinct
+serialized fields, even if one is empty or their contents match.
+
+**Byte-size check.** Let `H` be the complete inline holder's byte size, `C` the number of component-reference
+slots for the city version, `U` the number of those slots that are non-null, and `D` the total encoded data
+bytes in the six strings, excluding their six headers. The payload size is
+**`104 + H + (1 if version ≥ 10, otherwise 0) + 4×C + 4×U + D`**. Reference bytes inside properties belong to
+H, not U. For example, a v12 payload with an empty holder (`H = 6`), six empty strings (`D = 0`) and all 53
+component references non-null occupies **535 bytes**, or **547 bytes** with its class-entry header. Omitting
+the state byte for v8/v9 and the absent reference slots changes the size; adding null placeholders does not
+reproduce those legacy layouts.
+
+**Legacy differences and load effects.** The own-field sequence above is shared by v8–12 apart from row 9.
+For v8/v9 there is **no state byte** between established and the first string. Read synthesizes city state
+0 when established is zero, otherwise 2 (`0x0045CBB8`–`0x0045CBE0`). Versions 10–12 read the state byte
+literally. If established is zero, the reader replaces the loaded city-name field with localized string
+`0x6A231EAA / 0xAA738C4E` after the scalar fields. That substitution consumes no save bytes. Later, after
+the auxiliary record, existing language-specific city/mayor name records (type `0x2026960B`, groups
+`0x6AAEE931`/`0x6AAEE932`) may replace those names; those records are not embedded here.
+
+**Instruction checks.** Property holder `0x0045C5DB` / `0x0045CB5B`; first seven scalar fields
+`0x0045C5E0`–`0x0045C62A`; established and state are **byte** writes `0x0045C637`, `0x0045C644`; six strings
+`0x0045C64F`–`0x0045C695`; nine binary32 fields and the intervening u32 `0x0045C6A3`–`0x0045C721` (not
+doubles); two s32 dimensions `0x0045C72F`, `0x0045C73D`; final flag `0x0045CA03`–`0x0045CA13`.
+
+#### 3.6.2 Component references *[compat]*
+
+Version 12 has **53 references** to components, in this fixed order. On read each reference is resolved and
+`QueryInterface`d to the IID shown, with deferred loading (`loadNow = false`, §2.7). The class IDs are those
+found in sample saves. Every slot consumes a reference, including the zone developer / lot manager alias;
+two references to the same object share its object ID rather than omitting the second slot.
 
 | # | Component | IID requested on read | Class (sample saves) |
 |---|---|---|---|
@@ -436,8 +503,31 @@ resolved and `QueryInterface`d to the IID shown. The class IDs are those found i
 | 52 | city situation manager (version ≥ 11) | `0x6BB1437A` | `0x0BB14381` |
 | 53 | network manager (version ≥ 12) | `0xA9764C8C` | `0xC990BD46` |
 
-A `uint8` follows the references. The city's other fields are a later city spec's business. The fire-protection
-slot class `0x2990C05A` is the class the ID table also names `cSC4ProtectionSimulator`.
+| City version | References present | Count | Fields immediately after the references |
+|---|---|---|---|
+| 8 | #1–50 | 50 | final `u8` |
+| 9, 10 | #1–51 | 51 | final `u8` |
+| 11 | #1–52 | 52 | final `u8` |
+| 12 | #1–53 | 53 | final `u8` |
+
+The three reference gates are independent comparisons at `0x0045D0D6`, `0x0045D0F4`, `0x0045D112`.
+There are **no placeholder null references** for absent legacy slots. The fire-protection slot class
+`0x2990C05A` is the class the ID table also names `cSC4ProtectionSimulator`.
+
+#### 3.6.3 Auxiliary record and corpus proof
+
+After the final flag, Write separately opens **`0x89D9B9EE / 0x69D9B9F1 / 0`, version 1**, using an auto-save
+record. Its payload holds cheat-code save data; the full outer and inner layouts and load quirks are in
+[save-records §2.1](save-records.md#21-city-auxiliary-cheat-state-record-compat). These bytes are never
+appended to the city class entry. Retained-record writes also target separate DBPF records.
+
+**SR33-3 proof, 2026-10-28.** All **547** available reference `build-runs/golden/<key>/end.sc4` files were read
+in place. A throwaway parser consumed all 547 city class records (v12, **318,073 decompressed bytes** including
+entry headers), all **28,991** component-reference slots and all 547 auxiliary records (v1, **14,222 bytes**,
+including their inner cheat-data framing), with zero bytes left over in any record. The size equation in
+§3.6.1 also matched every city payload. The city's inline property holders were empty in this corpus.
+Legacy city gates and nonempty property holders follow the executable
+and §10.2; this check is not a claim of legacy save fixtures.
 
 **What a replacement subsystem must do to interoperate** *[compat]*:
 
@@ -959,8 +1049,8 @@ RNG-free quantities (clock, budget arithmetic) or distributions (growth statisti
 2. **Text encoding** of `SetGZStr` for non-ASCII city, mayor and department names. A save with an accented city
    name would confirm UTF-8 (or reveal a code page).
 3. ~~**Variant tags** (§2.8)~~: answered in §9 (tag table) and §10 (property holders, the records that use them).
-4. **Other city-file records** (§3.2): `0x89D9B9EE/0x69D9B9F1`, region, thumbnail and terrain records, and
-   unnamed message `0x26C63346`. Not needed for simulator replacement, but needed for standalone mode.
+4. **Other city-file records** (§3.2): region, thumbnail and terrain records, and unnamed message `0x26C63346`.
+   The auxiliary `0x89D9B9EE/0x69D9B9F1` record is answered in save-records §2.1 (SR33-3).
 5. ~~**C runtime `rand()`** seeding~~: answered in §12 (never seeded by the game; algorithm and users listed).
 6. **RNG vectors** (§7 items 13–14): confirm with a runtime capture from the original (force a seed and log the
    first outputs).

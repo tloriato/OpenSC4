@@ -177,7 +177,7 @@ generated index: the questions live one file per spec, so read only the file for
 | SM | rz-sparse-matrix |
 | SN | snapshots |
 | SP | span-render-4444 |
-| SR | span-render-1555, span-render-565, span-render-8, span-render-8888 |
+| SR | save-records, span-render-1555, span-render-565, span-render-8, span-render-8888 |
 | SRN | sound-renderer |
 | SS | sound-system |
 | SSP | system-service-pointer |
@@ -246,7 +246,7 @@ generated index: the questions live one file per spec, so read only the file for
 | aura | 1 | 15 | AU17 | questions/aura.md |
 | auto-game-pause | 1 | 0 | AGP2 | questions/auto-game-pause.md |
 | automata | 9 | 44 | A5, AM13, AT34 | questions/automata.md |
-| automata-managers | 4 | 0 | AD5 | questions/automata-managers.md |
+| automata-managers | 5 | 1 | AD7 | questions/automata-managers.md |
 | automata-support | 2 | 0 | AN3 | questions/automata-support.md |
 | budget | 0 | 8 | BQ9 | - |
 | budget-window | 6 | 19 | BW27 | questions/budget-window.md |
@@ -330,14 +330,14 @@ generated index: the questions live one file per spec, so read only the file for
 | nation | 0 | 4 | NQ5 | questions/nation.md |
 | neighbors | 0 | 64 | NB20, NG46 | - |
 | network-bridges | 1 | 2 | NB4 | questions/network-bridges.md |
-| network-geometry | 1 | 8 | NG16 | questions/network-geometry.md |
-| network-manager | 3 | 20 | NM21 | questions/network-manager.md |
+| network-geometry | 2 | 8 | NG17 | questions/network-geometry.md |
+| network-manager | 5 | 20 | NM23 | questions/network-manager.md |
 | network-occupants | 16 | 35 | NO48 | questions/network-occupants.md |
 | network-overlay-views | 1 | 2 | NOV4 | questions/network-overlay-views.md |
 | network-routines | 1 | 0 | NRT2 | questions/network-routines.md |
 | network-rules | 3 | 12 | NR18 | questions/network-rules.md |
 | network-tool-ui | 0 | 0 | - | questions/network-tool-ui.md |
-| network-tools | 16 | 15 | NT37 | questions/network-tools.md |
+| network-tools | 18 | 15 | NT39 | questions/network-tools.md |
 | network-transport | 4 | 0 | Q15 | questions/network-transport.md |
 | network-type-info | 4 | 0 | TI5 | questions/network-type-info.md |
 | news-ticker | 4 | 0 | NTK5 | questions/news-ticker.md |
@@ -350,7 +350,7 @@ generated index: the questions live one file per spec, so read only the file for
 | overlay-views | 1 | 6 | OVV8 | questions/overlay-views.md |
 | parks | 0 | 11 | PK12 | - |
 | particles | 0 | 13 | PT14 | questions/particles.md |
-| pathfinder | 0 | 15 | PF16 | - |
+| pathfinder | 0 | 15 | PF16 | questions/pathfinder.md |
 | paths | 5 | 0 | PA11 | questions/paths.md |
 | pedestrians | 2 | 1 | PN4 | questions/pedestrians.md |
 | persistence | 8 | 1 | PR14 | questions/persistence.md |
@@ -385,7 +385,7 @@ generated index: the questions live one file per spec, so read only the file for
 | rz-draw | 1 | 0 | RZD2 | questions/rz-draw.md |
 | rz-sparse-matrix | 5 | 0 | SM6 | questions/rz-sparse-matrix.md |
 | rz-strings | 4 | 8 | RZS12 | questions/rz-strings.md |
-| save-records | 0 | 0 | - | questions/save-records.md |
+| save-records | 0 | 5 | SR37 | questions/save-records.md |
 | sc-resources | 1 | 11 | SCR12 | questions/sc-resources.md |
 | simgrid | 2 | 1 | SG4 | questions/simgrid.md |
 | simulator | 0 | 0 | - | questions/simulator.md |
@@ -438,4 +438,4 @@ generated index: the questions live one file per spec, so read only the file for
 | win-grid | 2 | 7 | WG10 | questions/win-grid.md |
 | zone-tool | 1 | 0 | ZT2 | questions/zone-tool.md |
 | zones | 2 | 56 | ZG43, ZQ17 | questions/zones.md |
-| **total** | **629** | **1703** | | |
+| **total** | **635** | **1709** | | |

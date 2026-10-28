@@ -44,9 +44,11 @@ because some other saved object holds a reference to it (§14).
 | `cSC4FloraOccupant` | `0xA9C05C85` | trees and plants, on lots and wild | `0x00472990` / `0x00472A20` | `0x00A88564` | 3 / 3 |
 | `cSC4TripData` | — (inline element) | one trip of a lot's trip list | `0x0070E0B0` / `0x0070E160` | non-virtual | 2 / any |
 
-Three more prop subclasses exist but occur in no save: burnt building `0xC9EFB016` (Write `0x005EDB10` / Read
-`0x005EFBA0`), terrain decal `0x2977AA48` (`0x005ED710` / `0x005EF4E0`), automata controller `0x2A4017A0`
-(`0x005EDDB0` / `0x005EFBF0`). Their layouts are not specified here (§16 Q6).
+Two further prop subclasses occur in the reference end-save corpus: terrain decal `0x2977AA48`
+(Write `0x005ED710` / Read `0x005EF4E0`, §10.5) and burnt building `0xC9EFB016`
+(`0x005EDB10` / `0x005EFBA0`, §10.6). Both write and accept outer version 3 only.
+The automata-controller prop `0x2A4017A0` (`0x005EDDB0` / `0x005EFBF0`) remains outside these
+specified layouts (§16 Q6).
 
 Interfaces requested when these objects are read through references (foundations §2.7): `cISC4Lot` `0xE818FCED`,
 `cISC4BusinessUnit` `0x6A233069`, `cISC4BuildingOccupant` `0x87DDA3A9`, `cISC4PropOccupant` `0xE9793A65`,
@@ -1300,6 +1302,100 @@ by §10.3: its serializable receiver is O+0x10 and stream slot 15 receives O+0x9
 Creator `0x005F84D0` uses pool `0x00B0A9B8`; registration is at `0x00460851`.
 These are interface/provenance facts, not an alternative TextDecal behavior contract.
 
+### 10.5 `cSC4PropOccupantTerrainDecal` (`0x2977AA48`) *[compat]*
+
+**SR36-1, re-sr37 (2026-10-28).** Class-store key `(0x2977AA48, 0x299B2D1B, 0)`.
+The following is the object payload, after the class entry's size, CRC and object ID
+(foundations §3.3). Every primitive is little-endian; there is no alignment or trailing padding.
+
+| Order | Field | Encoding | Rule |
+|---|---|---|---|
+| 1 | decal record version | u16 | Write emits 3; Read rejects every value other than 3 before reading the base |
+| 2 | complete embedded prop record | §10.1 | Starts with its own u16 version (Write emits 6), then occupant v4 and its exemplar holder; includes every prop field through timer bits when present |
+| 3 | decal extension | 47 bytes | The table below, immediately after the embedded prop |
+
+For the next table, **tail offset** starts at #3. **O** is the complete terrain-decal object,
+whose terrain-decal interface is at O+0, embedded prop at O+4 and serializable receiver at O+0x10
+(constructor `0x005EE365`–`0x005EE398`). These offsets are explanatory; they add no bytes to the stream.
+
+| Tail offset | Field | Encoding | In-memory destination / meaning |
+|---|---|---|---|
+| 0 | decal ID | u32 | O+0x6C; terrain renderer's decal handle, persisted as its raw value, **not** an object reference |
+| 4 | texture resource key | 3 × u32 | O+0x70…0x78; **type, group, instance** order (stream-helpers §2 `key3`) |
+| 16 | decal size | f32 | O+0x7C; `SetDecalTexture` / `SetDecalSize` size |
+| 20 | horizontal position | 2 × f32 | O+0x80, O+0x84; world x, z, not x, y; vertical bounds remain in the embedded prop box |
+| 28 | opacity | f32 | O+0x88; current opacity sent to the terrain renderer |
+| 32 | fade accumulator | f32 | O+0x8C; initial/current value advanced during a fade |
+| 36 | fade endpoint | f32 | O+0x90 |
+| 40 | fade rate | f32 | O+0x94 |
+| 44 | fade completion mode | s8 | O+0x98; stored through Sint8, not a Boolean |
+| 45 | held-reference flag | u8 | O+0x99; saved as a literal byte, without Boolean normalization |
+| 46 | animation-tick registration flag | u8 | O+0x9A; saved as a literal byte, without Boolean normalization |
+
+The width/order evidence is Write `0x005ED731`–`0x005ED7C0` and Read
+`0x005EF519`–`0x005EF5AA`: Uint32 for the ID, `key3` helpers `0x005DA0A0` / `0x005DA070`,
+Float32 for the size and four opacity/fade values, `vec2` helpers `0x005DA520` / `0x005DA4F0`,
+then Sint8, Uint8, Uint8. No Float64, count prefix, nested version or reference framing belongs
+to this extension. `SetPosition` copies the source x and z into its two position destinations
+(`0x005EE6DA`–`0x005EE6E2`, occupant receiver O+0x0C). `SetOpacityFade`
+(`0x005ECBA7`–`0x005ECBC0`) identifies the accumulator, endpoint, rate and mode.
+
+**Version and return rules.** The outer comparison is equality with 3 (`0x005EF4F8`);
+there is no outer v1/v2 legacy body or future-version acceptance. The embedded prop reader
+does not reject any u16 version: versions 0…5 omit its final timer byte and set timer bits to
+`0x0F`; versions 6…65535 read that byte (`0x005EF479`–`0x005EF4A0`). All its other fields,
+including the optional 16-byte date range, retain §10.1's order. The extension is unchanged
+by that inner version. The occupant base still requires v4 and its holder has the independent
+version rules in foundations §10.2–§10.3.
+
+Write calls the prop writer and writes the extension only when that call returns true, then
+returns `GetError() == 0`. Read returns false immediately on an outer mismatch or a false
+prop return; otherwise it reads the whole extension and returns `GetError() == 0`
+(`0x005EF511`–`0x005EF5C2`). These operations load/store the fields directly; Read does not
+call the decal setters or rebuild renderer state. The inherited base/prop false-return quirks
+in §2.3/§10.1 still apply; an outer reader does not independently validate the holder version.
+
+**Corpus proof / worked size.** The 749 reference `golden/<key>/end.sc4` files available to
+re-sr37 contained 44 class records, **4,683 decal objects**, 641,571 decompressed class-record
+bytes (585,375 payload bytes). A field-driven parser consumed every object and re-encoded
+every primitive exactly, with zero remainder. Every object had versions outer 3 / prop 6 /
+occupant 4 / exemplar and plain holder 2; no own properties or date range. Thus each embedded
+prop occupied 76 bytes, each payload `2 + 76 + 47 = 125` bytes, and each class entry 137 bytes.
+Flags `(mode, held-reference, tick-registered)` were `(0,0,0)` for 75 objects and `(1,0,1)`
+for 4,608. Legacy inner versions are supported by the instructions, not observed corpus cases.
+
+### 10.6 `cSC4PropOccupantBurntBuilding` (`0xC9EFB016`) *[compat]*
+
+**SR36-3, re-sr37 (2026-10-28).** Class-store key `(0xC9EFB016, 0x299B2D1B, 0)`.
+
+| Order | Field | Encoding | Rule |
+|---|---|---|---|
+| 1 | burnt-building record version | u16 | Write emits 3; Read accepts exactly 3 |
+| 2 | complete embedded prop record | §10.1 | Its own version, occupant base and holder, and all prop fields, including optional date range and version-dependent timer byte |
+| 3 | source-occupant bounds | box (24 bytes) | Six f32: min x, y, z, then max x, y, z; independent of the prop box already in #2 |
+
+There are **no other trailing fields**, flags, references, counts or padding. Write
+`0x005EDB1A`–`0x005EDB35` emits the version, calls the prop writer and, if it succeeds,
+uses the six-Float32 box writer `0x005DA600` on serializable-receiver +0x94.
+Read `0x005EFBB4`–`0x005EFBD7` rejects every outer version except 3, calls the prop reader,
+then, if that succeeds, uses the corresponding box reader `0x005DA5B0` on the same field.
+This is complete-object +0xA0…+0xB4 (serializable receiver O+0x0C). `SetBoundsFromOccupant`
+copies the source occupant's box there (`0x005EEB86`–`0x005EEBB6`), explaining why this
+second box must survive even when it equals the prop's box.
+
+Both methods finish with `GetError() == 0`; unlike the terrain-decal reader, a false embedded
+prop return skips the tail but still reaches that final stream-error test (`0x005EFBCB`–
+`0x005EFBE6`). There is no rollback. No rebuild or setter is called by Read. The legacy
+variant is solely the embedded prop's timer gate: prop versions ≤5 have no timer byte and
+default it to `0x0F`; versions >5 include it. There is no supported outer v1/v2 variant.
+
+**Corpus proof / worked size.** In the same 749 end saves, 38 class records contained
+**75 burnt-building objects**, 8,550 decompressed class-record bytes (7,650 payload bytes).
+Every field was consumed and re-encoded exactly, with zero remainder. Versions were outer
+3 / prop 6 / occupant 4 / both holders 2, with no own properties or date range. The payload
+was always `2 + 76 + 24 = 102` bytes, entry size 114 bytes. These measurements establish
+the current layout; the inner legacy timer gate is instruction evidence only.
+
 ---
 
 ## 11. Flora occupant (`cSC4FloraOccupant`, `0xA9C05C85`) *[compat]*
@@ -2194,7 +2290,8 @@ Open questions:
 - **Q4** Meaning of the five `0xFF`-default bytes of a base-texture record (§6) and of the effect prop's two bytes
   and u32 (§10.2).
 - **Q5** Who sets lot flag bit 7 (§3.2)?
-- **Q6** Layouts of the burnt-building, terrain-decal and automata-controller prop subclasses (absent from saves).
+- **Q6** The automata-controller prop's save layout remains open. Terrain-decal and burnt-building
+  layouts are answered in §10.5/§10.6 (SR36-1/SR36-3, re-sr37); both occur in the reference end saves.
 - **Q7** Answered statically 2026-10-23: the text-decal serializable receiver is O+16. Its
   extension writes position twice, height then size, RGB, alpha and orientation byte; no decal
   IDs or duplicate lot tag. See text-decal-occupant.md §§1–2,7; archived OP1 and OP2-TD.

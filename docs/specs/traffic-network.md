@@ -1062,8 +1062,11 @@ traffic-simulator.md).
 
 Entering the state (`0x0072134C`):
 
-1. For every terminal: last riders := current riders and current := 0. The simulator adds the last riders to a city
-   total. Each link's last := current and current := 0, for both counter pairs.
+1. **Reset the city u32 rider total to zero first** (`0x00721352`), then for every terminal:
+   last riders := current riders (u16) and current := 0. Add the zero-extended last riders to
+   that total (u32, wraps). Each link's last := current and current := 0, for both counter pairs.
+   The total is a replacement sum for this pass, not an accumulated lifetime count
+   (TC29-FERRY-1; worked second-pass/load cases: traffic-simulator §4.12.2).
 2. Set every terminal's re-route flag.
 3. Rebuild the vector of type-9 neighbour connection cells.
 4. Start at the first terminal.
@@ -1081,7 +1084,7 @@ computed again after load; in any other saved state it leaves the ferries alone 
 next state-19 pass (traffic-simulator.md §3.5 step 11; corrected by TS7). In state 19 it does **only** that
 (`0x00720C8A`–`0x00720CAE`): every terminal's re-route flag := 1, the pass points at the first terminal, and its
 sub-step := 0 (TN8). Unlike entering state 19:
-- it does **not** rotate any counter (riders and link counters keep their loaded values);
+- it does **not** rotate any counter or reset the city ferry rider total (all keep their loaded values);
 - it does **not** rebuild the vector of type-9 neighbour connection cells.
 
 So the post-load pass reroutes every pair of terminals. Its neighbour step walks whatever the vector already holds:
@@ -1456,6 +1459,8 @@ The rebuilds post nothing.
 
 ## 6. Persistence
 
+### 6.1 Traffic simulator state
+
 The traffic simulator's save record belongs to traffic-simulator.md. For this spec:
 
 - **Saved**:
@@ -1476,6 +1481,154 @@ The traffic simulator's save record belongs to traffic-simulator.md. For this sp
   - subnetwork labels and info;
   - the water depth map (recomputed on message `0x26D31EC1`).
 - **Lot property** `0x2A4F9C74` is saved with the lot as an ordinary property. It is rewritten by the next §4.12 pass.
+
+### 6.2 Traffic network map (`0x6A0F82B2`) *[compat]*
+
+This is the separate **automata traffic network map**, `cSC4TrafficNetworkMap`, city component 42
+(foundations §3.6). `0xCA0F81B9` is its requested **interface ID**; its serializable class/record type is
+`0x6A0F82B2` (`GetGZCLSID`, `0x004B3AB0`; factory `0x004B42E0`). Do not put this payload in the traffic
+simulator's `0x6990C1AA` record. Its DBPF key is `0x6A0F82B2 / 0x299B2D1B / 0`, with the class-entry framing
+of foundations §3.3.
+
+**Sources and conventions.** Write `0x004B1CE0`, Read `0x004B4DE0`. All tables below are in wire order, without
+alignment or padding. `u8`, `u16`, `u32`, `s32`, `f32` occupy 1, 2, 4, 4, 4 bytes respectively, little-endian.
+`ref` is foundations §2.7: a `u32 objectID`, followed by a `u32 classID` only when the ID is nonzero. Counts are
+`u32` element counts, not byte sizes. The memory offsets below identify otherwise unnamed scalar state; they
+are not extra wire fields. `M` means the map's serializable-interface pointer, `T` a tile record, and `I` an
+intersection hash node (including its link and occupant key).
+
+**Versions.** Write emits `u16 7` (`0x004B1CEF`–`0x004B1CF7`). Read consumes the version and rejects **0, 1, 2**
+without reading the rest (`0x004B4E05`–`0x004B4E1C`). It has **no upper-version check**: versions 3–65535 enter
+the reader; values above 7 take all the version-7 branches. The accepted legacy layouts are:
+
+| Version | Tile's four-by-four values and following discard | Tile extra vector | Intersection flag and reference list | Final occupant table |
+|---|---|---|---|---|
+| 3 | `f32` values, then one discarded `f32` | absent | absent | absent |
+| 4 | `u16` values, then one discarded `u16` | absent | absent | absent |
+| 5 | as v4 | present | absent | absent |
+| 6 | as v4 | present | absent | present |
+| 7 and higher | as v4 | present | present | present |
+
+These gates are instructions at `0x004B5280`, `0x004B52F5`, `0x004B531A`, `0x004B564F`, `0x004B566E` and
+`0x004B59A7`. A vestigial pre-v2 branch later in Read is unreachable through the entry version check; it does
+not describe an accepted v1/v2 format.
+
+#### 6.2.1 Outer order
+
+| Order | Field | Encoding / repetition |
+|---|---|---|
+| 1 | version | `u16`, writer 7 |
+| 2 | cell bucket count | `u32`, writer `M+0x10` × `M+0x14` |
+| 3 | tile count | `u32`, total linked tile records across all cell buckets |
+| 4 | tiles | that many §6.2.2 records |
+| 5 | intersection count | `u32`, `M+0x2C` |
+| 6 | intersections | that many §6.2.3 records |
+| 7 | keyed-reference group count | `u32`, `M+0xA74` |
+| 8 | keyed-reference groups | each: `u32 key`, `u32 referenceCount`, then `referenceCount` × `ref` (read IID `0xA821EF94`) |
+| 9 | four map integers | `s32` × 4, `M+0x54`, `+0x58`, `+0x5C`, `+0x60` |
+| 10 | first map value and flag | `f32` (`M+0xA54`), `u8` (`M+0xA58`) |
+| 11 | second map value and flag | `f32` (`M+0xA5C`), `u8` (`M+0xA60`) |
+| 12 | occupant table, version ≥ 6 only | `u32 count`, then that many §6.2.4 records |
+
+There is no footer. The four integers and two value/flag pairs occupy **26 bytes** in every accepted version
+(`0x004B219F`–`0x004B2203`, `0x004B5939`–`0x004B599F`). The keyed-reference groups are neither inline
+occupants nor lists of raw pointer-sized numbers: each member is a variable-width `ref`
+(`0x004B2114`–`0x004B2151`, `0x004B57C1`–`0x004B585C`).
+
+**Walk order.** Tiles are written by increasing cell bucket index, following each bucket's linked list from
+head to tail (`0x004B1D50`, `0x004B1F57`–`0x004B1F71`). Per-tile vectors and all reference lists retain their
+stored order. Intersections and the final network-occupant table are address-keyed hash walks in the original;
+under simulator §5.8 **Address order**, write them in the occupants' creation order, first created first.
+The intervening `u32`-keyed reference-group table follows its hash-container walk, not the occupant creation
+walk. Read appends tiles to the saved cell's chain and reconstructs the tables in the order encountered.
+
+#### 6.2.2 Per-cell network-tile record
+
+| Order | Field | Wire type / rule |
+|---|---|---|
+| 1 | cell bucket index | `u32` |
+| 2 | network occupant | `ref`, read IID `0xA821EF94` |
+| 3 | path-side vector size | `u32 S` |
+| 4 | path-side vectors | `S` repetitions: `u32 sideIndex`, `u32 pathCount`, then `pathCount` pairs of **`u32 pathKey`, `f32 value`** |
+| 5 | tile occupant list | `u32 count`, then `count` × `ref`, read IID `0xA9B40F05` |
+| 6 | discarded flag | `u8`; writer always 0, reader consumes without retaining |
+| 7 | three tile state words | `u32` × 3 (`T+0x20`, `+0x24`, `+0x28`) |
+| 8 | four timing rows | repeat exactly 4 times: `f32 timer`, then 4 values (`f32` in v3, `u16` in v4+) |
+| 9 | discarded value | `f32` in v3; `u16` in v4+, writer always 0 |
+| 10 | extra vector, v5+ only | `u32 count`, then `count` triples **`s32 key`, `f32 value`, `u16 state`** (10 bytes per triple) |
+
+The writer emits side indices **0, 1, …, S−1**; the reader consumes each index but fills the vector in encounter
+order (`0x004B1DB6`–`0x004B1DF9`, `0x004B4FC0`–`0x004B5038`). Do not confuse this variable-length path-side
+vector with either of the two fixed four-side blocks elsewhere in the format. A path pair is 8 bytes on disk,
+although its memory element is 16 bytes. An extra triple is 10 on disk, although its memory element is 12
+(`0x004B1F2D`–`0x004B1F46`, `0x004B5360`–`0x004B5391`).
+
+The four timers are held internally as `u16` (`T+0x2C` onwards), but are **always written as `f32`**, including
+v7 (`0x004B1EA4`–`0x004B1EB7`). Their four associated values are the `u16[4][4]` beginning at `T+0x34` in
+row order, not column order. Read converts the timers and the legacy v3 float values to `u16` using the game's
+single-precision add/bit conversion: add **12,582,912.0** (constant `0x00A8FDF4`) to the input and round the sum
+to binary32; add `0xB4C00000` to that sum's bit pattern modulo 2³². Use the resulting unsigned integer when it
+is at most 65,535, otherwise `0xFFFF` (`0x004B5240`–`0x004B5274`, `0x004B5295`–`0x004B52CA`; arithmetic
+conventions in foundations §18). The flag, three state words, timing
+rows and discard are present even for an empty path vector and an empty occupant list.
+
+#### 6.2.3 Intersection record and its four sides
+
+| Order | Field | Wire type / rule |
+|---|---|---|
+| 1 | network occupant key | `ref`, read IID `0xA821EF94` |
+| 2 | intersection flag, v7+ only | `u8` (`I+0x58`) |
+| 3 | marked-train list, v7+ only | `u32 count`, then `count` × `ref`, read IID `0x8B99EE7C` |
+| 4 | side 0, then 1, 2, 3 | each: **`u32 state`, `u8 flag`, `f32 value0`, `f32 value1`, `f32 value2`** |
+
+Each side occupies **17 wire bytes** and 20 memory bytes, starting at `I+0x08` with a memory stride of `0x14`.
+There are no side tags or counts around these four sides (`0x004B2030`–`0x004B206E`,
+`0x004B56E0`–`0x004B5742`). The marked-train list is the list changed by `MarkTrainInCell` (`0x004B19F0`).
+Versions 3–6 consume neither the intersection flag nor that list; the list starts empty. New-intersection
+scalar initialization in reference runs follows simulator §5.8 **Uninitialised values**. On every load the
+reader also clears unsaved per-side byte `I+0x0D+0x14×side` and intersection byte `I+0x6C`; these are not wire
+fields (`0x004B566A`, `0x004B5728`).
+
+#### 6.2.4 Final network occupant → four lists record (v6+)
+
+Read one network-occupant **`ref`** (IID `0xA821EF94`), then exactly four list records in stored side order.
+Each list record consists of **`u32 length`, `length` × `u32 value`, `u16 state`**. The values are plain
+32-bit words, **not object references**; there is no conditional class ID after a nonzero value. The trailing
+`u16` exists even for an empty list (`0x004B2263`–`0x004B22C4`, `0x004B59E0`–`0x004B5B28`). The `u16` is the junction's current index into that list (ToggleTrainJunction `0x004B0990` advances it); the original's add-junction (`0x004B44F0`) sets it to 0 only for a side with a path, and leaves the other sides' stack contents, which the game never reads. Under simulator §5.8 **Uninitialised values** it is 0.
+
+The original loader uses an 8-bit loop index for the values despite the 32-bit length. A length above 255
+therefore cannot terminate that loop normally (`0x004B5A38`, `0x004B5AF8`–`0x004B5B0D`). *[choice]* Reject
+such malformed lists and all counts/indices that cannot fit the enclosing record or allocated cell table;
+do not reproduce an unbounded read. Successful ordinary Read/Write returns “stream not in error.”
+
+#### 6.2.5 Byte-size checks and corpus proof
+
+These sizes exclude class-entry framing. Let `R` be the sum of the actual reference widths **within the
+record being sized**, `S` a tile's path-side vector size, `P` its total path-pair count, and `X` its extra-triple
+count. In particular, a null reference contributes 4 to R; a non-null reference contributes 8.
+
+| Record | Wire bytes |
+|---|---|
+| Tile, v3 | `109 + R + 8×S + 8×P` |
+| Tile, v4 | `75 + R + 8×S + 8×P` |
+| Tile, v5+ | `79 + R + 8×S + 8×P + 10×X` |
+| Intersection, v3–6 | `68 + R` |
+| Intersection, v7+ | `73 + R`, including the marked-train references in R |
+| Keyed-reference group | `8 + R` |
+| Final occupant entry, v6+ | `24 + R + 4×(sum of its four list lengths)` |
+
+The complete map payload is **44 bytes** in v3–5, or **48 bytes** in v6+, **plus** the sizes of all its tiles,
+intersections, keyed-reference groups and final occupant entries. Those fixed bytes include the outer counts
+and the 26-byte scalar tail. For example, a v7 map with all four outer element counts zero occupies 48 payload
+bytes, or 60 bytes including its class-entry header. No cell bucket emits a placeholder for an empty chain.
+
+**Corpus proof (SR33-2, 2026-10-28).** A throwaway parser checked all **547** available reference
+`build-runs/golden/<key>/end.sc4` files, in place. All 547 v7 map objects consumed their complete decompressed
+class records (**583,750,387 bytes**, including the 12-byte entry headers), with zero bytes left over. This
+included 1,602,187 tiles, 44,270,243 path pairs, 95,284 tile-list references, 1,608,109 extra triples,
+110,768 intersections and 245 final occupant entries with 498 list values. The size equations above also
+matched every map payload. The marked-train and keyed-reference lists were empty in this corpus; their layouts
+and the legacy gates are executable evidence, not exercised legacy save fixtures.
 
 ---
 

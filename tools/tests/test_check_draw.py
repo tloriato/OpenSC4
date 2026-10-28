@@ -167,7 +167,7 @@ class DrawSelectionTests(unittest.TestCase):
 
     def test_run_adds_only_draws_reaching_switched_key_even_for_explicit_save(self):
         calls = []
-        def compare(row, dll, keys):
+        def compare(row, dll, keys, options=()):
             calls.append(row['name'])
             return {'verdict': 'exact'}
         with patch.object(check, 'compare', side_effect=compare), contextlib.redirect_stdout(io.StringIO()):
@@ -184,9 +184,28 @@ class DrawSelectionTests(unittest.TestCase):
         self.assertEqual(check.draw_names(['mysims'], {'draw-advisors': {'keys': ['advisors']}}),
                          {'draw-advisors'})
 
+    def test_direct_and_window_save_rechecks_do_not_add_draw_sweeps(self):
+        for options in (['--backend', 'direct'], ['--from', 'auto']):
+            with self.subTest(options=options):
+                calls = []
+
+                def compare(row, dll, keys, options=()):
+                    calls.append(row['name'])
+                    return {'verdict': 'exact'}
+
+                with patch.object(check, 'compare', side_effect=compare), \
+                        patch.object(check, 'draw_references') as references, \
+                        contextlib.redirect_stdout(io.StringIO()):
+                    code = check.main(['run', '--store', str(self.root), '--dll', str(self.dll),
+                                       '--replace', 'span565', '--scenarios', 'save-city',
+                                       '--jobs', '1', *options])
+                self.assertEqual(code, 0)
+                self.assertEqual(calls, ['save-city'])
+                references.assert_not_called()
+
     def test_each_draw_failure_changes_owner_verdict_and_preserves_save_table(self):
         (self.root / 'owner-check.tsv').write_text('save-only evidence', encoding='utf-8')
-        def compare(row, dll, keys):
+        def compare(row, dll, keys, options=()):
             return {'verdict': 'error', 'error': 'incomplete draw'}
         with patch.object(check, 'compare', side_effect=compare), contextlib.redirect_stdout(io.StringIO()):
             code = check.main(['run', '--store', str(self.root), '--dll', str(self.dll), '--replace', 'each',
@@ -199,7 +218,7 @@ class DrawSelectionTests(unittest.TestCase):
         self.assertEqual((self.root / 'owner-check.tsv').read_text(), 'save-only evidence')
 
     def test_credit_includes_draw_failure_as_scenario(self):
-        def compare(row, dll, keys):
+        def compare(row, dll, keys, options=()):
             return {'verdict': 'error', 'error': 'draw differs', 'key': 'a' * 64} if row['kind'] == 'draw' else {
                 'verdict': 'exact', 'key': 'c' * 64}
         with patch.object(check, 'compare', side_effect=compare), contextlib.redirect_stdout(io.StringIO()):

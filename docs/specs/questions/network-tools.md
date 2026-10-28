@@ -115,3 +115,28 @@
   nonzero previously-placed count making intermediate steps pivots, or is another pivot/spacing
   rule missing? [literal pivot rule implemented; PL-G1 spacing vector tested with previous=6,
   fresh previous=0 remains endpoint-only; no guessed intermediate pivot]
+
+<!-- from: network-exact33 R5 (engine lane, 2026-10-28) -->
+- **NT37 - slot 59 UpdateOccupantHighlights, validation and demolition cost:** sections 5.1/6/8
+  name this pass and its cost but do not specify its candidate enumeration, demolition eligibility,
+  valid-prefix reduction, or cost accumulation. Please supply those rules and the interface calls
+  that observe their inputs, including the surface versus underground overrides. The plugin's
+  current host preserves the input valid count and has no demolition-cost observation.
+  Original-tool diagnostic `network-exact33-nettool-shadow-r5-1` is clean/ref_warnings=0. On
+  gen27-konradshohe-s1-default's first road, 2026-01-30 (57,80)-(25,80), native reports
+  ok=0/failure=1/valid=0/cost=0, replay 1/0/33/330, with identical 33 dragged cells. The next
+  street succeeds on both sides but costs 4031 versus 168. The Boolean failure does not identify
+  the refusing pass; these observations do not establish that slot 59 caused the first refusal.
+  Log: build-runs/game-results/network-exact33-nettool-shadow-r5-1.log in this lane worktree.
+  [retain the existing pass until specified; do not infer a rejection rule from failure=1]
+
+<!-- from: network-exact33 R11 (engine lane, 2026-10-28) -->
+- **NT38 - underground refit's solved-cell order and missing depth-property defaults (§§2, 11):**
+  Please specify the solved-cell set's hash, buckets, insertion/rehash and iteration order used by
+  step 4, including a colliding-cell example. Also specify the four underground properties' defaults
+  and whether ReloadNetworkSpecificInfo uses the pipe/subway instances listed in network-geometry
+  §2.4. The replacement now seeds the geometry from the refit inputs, with the specified ranges and
+  depth target, and invokes the live tool instead of its old no-op callback. It preserves first-input
+  order where the hash contract is absent, uses that per-type exemplar table, and keeps zero for absent
+  depth/cover values. These are explicit implementation gaps, not inferred native map parameters;
+  no qcheck difference has yet been attributed to either choice.

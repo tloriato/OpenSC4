@@ -9,6 +9,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import re
 import shutil
 import statistics
 import struct
@@ -41,6 +42,8 @@ def snapshot(entry, run):
         names = ['end.sc4', 'digests.json', 'verdict.json', 'summary.json', 'game.log', 'harness.txt']
         if (run / 'reach.tsv').is_file():
             names.append('reach.tsv')
+        if (run / 'monthly.json').is_file():
+            names.append('monthly.json')
         for name in names:
             shutil.copyfile(run / name, stage / name)
         metadata = {'source_run': str(run.resolve()), 'recorded_ns': time.time_ns(),
@@ -67,7 +70,9 @@ def sample_paths(entry):
     for path in paths:
         metadata = _json(path / ('baseline.json' if path == entry else 'sample.json'))
         for name, expected in metadata['artifacts'].items():
-            if Path(name).name != name or not (path / name).is_file() or _hash(path / name) != expected:
+            nested_snapshot = re.fullmatch(r'months/\d{4}-\d{2}-\d{2}\.sc4', name)
+            if ((Path(name).name != name and not nested_snapshot)
+                    or not (path / name).is_file() or _hash(path / name) != expected):
                 raise ValueError(f'corrupt golden sample artifact: {path / name}')
     return paths
 
