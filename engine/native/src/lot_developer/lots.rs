@@ -6,6 +6,56 @@
 use super::*;
 
 game_fn! { fn refresh_retaining_walls(lot: *mut u8) -> u64 = "C" 0x005E_37F0; }
+game_fn! { fn framework() -> *mut u8 = "C" 0x0090_DDF1; }
+game_fn! { fn allocate_texture(size: u32) -> *mut u8 = "C" 0x005D_ECF0; }
+game_fn! { fn construct_texture(this: *mut u8) -> *mut u8 = "thiscall" 0x005E_05B0; }
+
+port! {
+    /// Finds the base texture at the lot origin and queries its texture interface. On request, creates a
+    /// missing texture through the framework, falling back to the game's allocator and constructor.
+    /// Query failure retains the found occupant's reference. Success is the final output pointer's presence.
+    #[port(address = 0x006C_41A0, owner = "lotdeveloper", name = "cSC4LotDeveloper::GetLotBaseTextureOccupant")]
+    pub unsafe extern "thiscall" fn fc4p_006c41a0(this: *mut u8, lot: *mut u8, output: *mut *mut u8, create: u32) -> u64 {
+        unsafe {
+            output.write_unaligned(core::ptr::null_mut());
+            let developer = LotDeveloper::from_ptr(this);
+            let (mut x, mut z) = (core::mem::MaybeUninit::<u32>::uninit(), core::mem::MaybeUninit::<u32>::uninit());
+            vcall!(lot, 0x54 => fn(*mut u32, *mut u32) -> u32, x.as_mut_ptr(), z.as_mut_ptr());
+            let manager = developer.occupant_manager();
+            let mut occupant = core::mem::MaybeUninit::<*mut u8>::uninit();
+            let mut call = virtual_call(manager, 0x84,
+                &[occupant.as_mut_ptr() as u32, x.assume_init(), z.assume_init(), 0x497F_6D9D],
+                table(manager), occupant.as_mut_ptr() as u32, false);
+            if call.eax as u8 != 0 {
+                let occupant = occupant.assume_init();
+                call = virtual_call(occupant, 0, &[0x097F_6D98, output as u32], table(occupant), call.edx, false);
+                if call.eax as u8 != 0 {
+                    let texture = output.read_unaligned();
+                    call = virtual_call(texture, 0x14, &[2], call.eax, table(texture), false);
+                    call = virtual_call(occupant, 8, &[], table(occupant), call.edx, false);
+                }
+            } else if create as u8 != 0 {
+                let services = framework();
+                call = virtual_call(services, 0x0C, &[0xC97F_987C, 0x097F_6D98, output as u32],
+                    services as u32, table(services), false);
+                if call.eax as u8 == 0 {
+                    let allocation = allocate_texture(0x60);
+                    let texture = if allocation.is_null() { allocation } else { construct_texture(allocation) };
+                    output.write_unaligned(texture);
+                    call = virtual_call(texture, 4, &[], texture as u32, table(texture), false);
+                }
+                let texture = output.read_unaligned();
+                call = virtual_call(texture, 0x0C, &[], table(texture), call.edx, false);
+                let occupant = call.eax as *mut u8;
+                call = virtual_call(occupant, 0x0C, &[], occupant as u32, table(occupant), false);
+                let texture = output.read_unaligned();
+                call = virtual_call(texture, 0x14, &[2], table(texture), call.edx, false);
+            }
+            call.eax = u32::from(!output.read_unaligned().is_null());
+            result(call)
+        }
+    }
+}
 
 port! {
     /// Changes the lot state, repeatedly removes its first building, then removes its props.
@@ -136,6 +186,7 @@ pub const PORTS: &[Port] = &[
     fc4p_006c3d30::PORT,
     fc4p_006c3d50::PORT,
     fc4p_006c4190::PORT,
+    fc4p_006c41a0::PORT,
     fc4p_006c4290::PORT,
     fc4p_006c42d0::PORT,
 ];

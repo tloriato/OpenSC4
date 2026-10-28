@@ -11,6 +11,7 @@ game_fn! {
 game_fn! { fn read_uint(holder: *mut u8, id: u32, output: *mut u32) -> u64 = "C" 0x005F_D480; }
 game_fn! { fn random_uniform(random: *mut u8, count: u32) -> u64 = "thiscall" 0x0091_36B1; }
 game_data! { static file_random: u8 = 0x00B4_9AF0; }
+game_data! { static world_to_cell_scale: f32 = 0x00AB_1B04; }
 
 layout! {
     /// Foundation configuration object's type and optional ID vector.
@@ -260,6 +261,51 @@ unsafe extern "fastcall" fn add_lot_foundation(
     }
 }
 
+port! {
+    /// Removes the foundation at a world position. For lot foundations, converts z then x with the game's
+    /// integer helper and clears both foundation flags on the lot found at that cell.
+    #[port(address = 0x006C_54E0, owner = "lotdeveloper", name = "cSC4LotDeveloper::RemoveFoundation")]
+    pub unsafe extern "thiscall" fn fc4p_006c54e0(this: *mut u8, kind: u32, x: u32, z: u32) -> u64 {
+        unsafe {
+            let developer = LotDeveloper::from_ptr(this);
+            let mut call = virtual_call(this, 0xC8, &[kind, x, z], table(this), x, false);
+            let foundation = call.eax as *mut u8;
+            let found = !foundation.is_null();
+            if found {
+                call = virtual_call(foundation, 0x0C, &[], call.eax, table(foundation), false);
+                let occupant = call.eax as *mut u8;
+                if !occupant.is_null() {
+                    call = virtual_call(occupant, 4, &[], table(occupant), call.edx, false);
+                }
+                let manager = developer.occupant_manager();
+                call = virtual_call(manager, 0x54, &[occupant as u32, 1, 0], call.eax, table(manager), false);
+                if !occupant.is_null() {
+                    call = virtual_call(occupant, 8, &[], table(occupant), call.edx, false);
+                }
+            }
+            if kind == 2 {
+                let manager = developer.lot_manager();
+                let t = table(manager);
+                let cz = terrain::multiply_float(F80::from_f32(f32::from_bits(z)), *world_to_cell_scale()).ftol();
+                let cx = terrain::multiply_float(F80::from_f32(f32::from_bits(x)), *world_to_cell_scale()).ftol();
+                let args = [cx as u32, cz as u32, 0];
+                let target = (t as *const u8).add(0x18).cast::<usize>().read_unaligned();
+                call = RawCall::new(Conv::Thiscall, target, manager as u32, &args);
+                call.eax = cx as u32;
+                call.edx = ((cx as u64) >> 32) as u32;
+                call_raw(&mut call);
+                let lot = call.eax as *mut u8;
+                if !lot.is_null() {
+                    let flags = vcall!(lot, 0x30 => fn() -> u32) & !3;
+                    call = virtual_call(lot, 0x34, &[flags], flags, table(lot), false);
+                }
+            }
+            call.eax = (call.eax & !255) | u32::from(found);
+            result(call)
+        }
+    }
+}
+
 pub const PORTS: &[Port] = &[
     fc4p_006c3e10::PORT,
     fc4p_006c3e70::PORT,
@@ -271,4 +317,5 @@ pub const PORTS: &[Port] = &[
     fc4p_006c40e0::PORT,
     fc4p_006c4150::PORT,
     fc4p_006c5460::PORT,
+    fc4p_006c54e0::PORT,
 ];

@@ -8,6 +8,8 @@ use super::*;
 game_fn! { fn curve_output(curve: *mut u8, input: f32) -> St0 = "thiscall" 0x005F_4250; }
 game_data! { static slope_scale: f32 = 0x00AB_1B04; }
 game_data! { static coverage_inset: f32 = 0x00A8_80D8; }
+game_data! { static level_sentinel: f32 = 0x00AB_1B00; }
+game_data! { static level_slope_limit: f32 = 0x00A8_FAF0; }
 
 /// The entry adapter retains the integer results as well as the unrounded floating result.
 #[repr(C)]
@@ -63,6 +65,17 @@ fn with_live_value(status: u16) -> u16 {
     (status & !0x3800) | (status.wrapping_sub(0x0800) & 0x3800)
 }
 
+/// Compares the returned water value with stored altitude, retaining the live value for the status word.
+/// The stored operand is not loaded or quieted before the water callback.
+fn compare_stored_altitude(value: F80, altitude: f32) -> u16 {
+    let status: u16;
+    unsafe {
+        core::arch::asm!("fld tbyte ptr [{value}]", "fcom dword ptr [{altitude}]", "fnstsw ax", "fstp st(0)",
+            value = in(reg) &value, altitude = in(reg) &altitude, out("ax") status, out("st(0)") _,);
+    }
+    status
+}
+
 unsafe fn finish(output: *mut FloatReturn, call: RawCall, st0: F80) {
     unsafe {
         output.write(FloatReturn {
@@ -93,16 +106,19 @@ unsafe extern "fastcall" fn vertex_altitude(this: *mut u8, stack: *mut u32, outp
         let altitude = call.st0.to_f32();
         let water = stack.add(3).read();
         call.eax = (call.eax & !255) | (water & 255);
-        let mut answer = F80::from_f32(altitude);
-        if water as u8 != 0 {
+        let answer = if water as u8 != 0 {
             let terrain = developer.terrain();
             call = virtual_call(terrain, 0x7C, &[index as u32], call.eax, table(terrain), true);
-            let cmp = call.st0.compare(answer);
-            call.eax = (call.eax & 0xFFFF_0000) | u32::from(with_live_value(cmp.status_word()));
-            if !cmp.less() && !cmp.equal() && !cmp.unordered() {
-                answer = call.st0;
+            let status = compare_stored_altitude(call.st0, altitude);
+            call.eax = (call.eax & 0xFFFF_0000) | u32::from(status);
+            if status & 0x4100 == 0 {
+                call.st0
+            } else {
+                F80::from_f32(altitude)
             }
-        }
+        } else {
+            F80::from_f32(altitude)
+        };
         finish(output, call, answer);
     }
 }
@@ -322,10 +338,98 @@ port! {
     }
 }
 
+port! {
+    /// Levels internal vertices in x then z order, counting modifications. Negative targets use the average;
+    /// water vertices may be skipped, and unforced changes require a strict positive altitude delta.
+    #[port(address = 0x006C_43D0, owner = "lotdeveloper", name = "cSC4LotDeveloper::LevelAreaInternalVertices")]
+    pub unsafe extern "fastcall" fn fc4p_006c43d0(this: *mut u8, entry_edx: u32, rect: *const i32,
+        target: f32, skip_water: u32, force: u32, lot: u32) -> u64 {
+        unsafe {
+            let developer = LotDeveloper::from_ptr(this);
+            let mut target = target;
+            let mut edx = entry_edx;
+            if F80::from_f32(target).compare(F80::ZERO).less() {
+                let call = virtual_call(this, 0x48, &[rect as u32, 1], table(this), edx, true);
+                target = call.st0.to_f32();
+                edx = call.edx;
+            }
+            let mut count = 0u32;
+            let mut x = rect.read_unaligned().wrapping_add(1);
+            while x <= rect.add(2).read_unaligned() {
+                let mut z = rect.add(1).read_unaligned().wrapping_add(1);
+                while z <= rect.add(3).read_unaligned() {
+                    let mut wet = false;
+                    if skip_water as u8 != 0 {
+                        wet = vcall!(developer.terrain(), 0x94 => fn(i32, i32) -> u32, x, z) as u8 != 0;
+                    }
+                    if !wet {
+                        let call = virtual_call(this, 0x3C, &[x as u32, z as u32, 1], table(this), edx, true);
+                        let delta = subtract_float(call.st0, target);
+                        let change = if force as u8 != 0 { true } else {
+                            let cmp = delta.compare(F80::from_f32(developer.level_delta()));
+                            !cmp.less() && !cmp.equal() && !cmp.unordered()
+                        };
+                        if change {
+                            let demolition = developer.demolition();
+                            vcall!(demolition, 0x24 => fn(u32, u32, i32, i32, i32, i32, f32, u32, u32, u32) -> u32,
+                                1, 1, x, z, x, z, target, lot, 5, 0);
+                            count = count.wrapping_add(1);
+                        }
+                    }
+                    z = z.wrapping_add(1);
+                }
+                edx = rect as u32;
+                x = x.wrapping_add(1);
+            }
+            (u64::from(edx) << 32) | u64::from(count)
+        }
+    }
+}
+
+/// Quiet comparison used for the sentinel test; unordered values select the tuned maximum too.
+fn is_sentinel(value: f32, sentinel: f32) -> bool {
+    let status: u16;
+    unsafe {
+        core::arch::asm!("fld dword ptr [{sentinel}]", "fld dword ptr [{value}]", "fucompp", "fnstsw ax",
+            value = in(reg) &value, sentinel = in(reg) &sentinel, out("ax") status,
+            out("st(0)") _, out("st(1)") _,);
+    }
+    status & 0x4400 != 0
+}
+
+port! {
+    /// Levels the whole rectangle to its stored vertex average unless an enabled slope limit rejects it.
+    /// The sentinel or an unordered maximum selects the tuned limit. The second stack word is unused.
+    #[port(address = 0x006C_44F0, owner = "lotdeveloper", name = "cSC4LotDeveloper::AttemptAreaLevelling")]
+    pub unsafe extern "thiscall" fn fc4p_006c44f0(this: *mut u8, rect: *const i32, _unused: u32,
+        water: u32, per_vertex: u32, max_slope: f32, lot: u32) -> u64 {
+        unsafe {
+            let developer = LotDeveloper::from_ptr(this);
+            let average = vcall_st0!(this, 0x48, rect, water).to_f32();
+            let maximum = if is_sentinel(max_slope, *level_sentinel()) { developer.level_max_slope() } else { max_slope };
+            if F80::from_f32(maximum).compare(F80::from_f32(*level_slope_limit())).less() {
+                let mut call = virtual_call(this, 0x74, &[rect as u32, water], water, table(this), true);
+                let cmp = call.st0.compare(F80::from_f32(maximum));
+                if !cmp.less() && !cmp.equal() && !cmp.unordered() {
+                    call.eax = 0;
+                    return result(call);
+                }
+            }
+            let demolition = developer.demolition();
+            result(virtual_call(demolition, 0x24,
+                &[1, per_vertex, rect.read_unaligned() as u32, rect.add(1).read_unaligned() as u32,
+                    rect.add(2).read_unaligned().wrapping_add(1) as u32, rect.add(3).read_unaligned().wrapping_add(1) as u32,
+                    average.to_bits(), lot, 5, 0], table(demolition), per_vertex, false))
+        }
+    }
+}
+
 pub const PORTS: &[Port] = &[
     fc4p_006c4310::PORT,
     fc4p_006c4360::PORT,
+    fc4p_006c43d0::PORT,
     fc4p_006c44b0::PORT,
+    fc4p_006c44f0::PORT,
     fc4p_006c4590::PORT,
     fc4p_006c5620::PORT,
     fc4p_006c5b70::PORT,

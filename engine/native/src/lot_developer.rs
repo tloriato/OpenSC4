@@ -33,6 +33,8 @@ layout! {
         0xD4 => foundation_slope / set_foundation_slope: f32,
         0xD8 => lot_foundation_type / set_lot_foundation_type: u32,
         0xDC => building_foundation_type / set_building_foundation_type: u32,
+        0xE4 => level_delta / set_level_delta: f32,
+        0xE8 => level_max_slope / set_level_max_slope: f32,
     }
 }
 

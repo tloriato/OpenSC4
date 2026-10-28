@@ -1455,3 +1455,352 @@ fn floating_adapter_keeps_existing_x87_values_control_word_mxcsr_and_direction_f
     assert_eq!(before_flags & 0x400, after_flags & 0x400);
     finished();
 }
+
+slot!(find_occupant, output, x, z, kind);
+slot!(query_texture, iid, output);
+slot!(texture_kind, kind);
+slot!(create_texture, clsid, iid, output);
+slot!(initialize_occupant);
+
+unsafe extern "C" fn framework_fake() -> *mut u8 {
+    run(core::ptr::null_mut(), "framework", &[]) as u32 as *mut u8
+}
+unsafe extern "C" fn allocate_texture_fake(size: u32) -> *mut u8 {
+    run(core::ptr::null_mut(), "allocate_texture", &[size]) as u32 as *mut u8
+}
+unsafe extern "thiscall" fn construct_texture_fake(this: *mut u8) -> *mut u8 {
+    run(this, "construct_texture", &[]) as u32 as *mut u8
+}
+
+#[test]
+fn base_texture_lookup_observes_query_results_and_retains_failed_queries() {
+    let mut dev_object = mock!();
+    let mut lot_object = mock!(0x54 => get_location);
+    let mut manager_object = mock!(0x84 => find_occupant);
+    let mut occupant_object = mock!(0 => query_texture, 8 => release);
+    let mut texture_object = mock!(0x14 => texture_kind);
+    let (this, lot, manager, occupant, texture) = (
+        dev_object.ptr(),
+        lot_object.ptr(),
+        manager_object.ptr(),
+        occupant_object.ptr(),
+        texture_object.ptr(),
+    );
+    unsafe { LotDeveloper::from_ptr(this) }.set_occupant_manager(manager);
+    for (found, query, output_present, create) in [
+        (false, 0, false, 0u32),
+        (false, 0, false, 0x100),
+        (true, 0, false, 1),
+        (true, 0x100, true, 1),
+        (true, 0xFF, true, 0),
+    ] {
+        let mut output = 0x1234usize as *mut u8;
+        expect(lot, "get_location", vec![out(&[7]), out(&[9])], RETURN);
+        expect(
+            manager,
+            "find_occupant",
+            vec![out(&[occupant as u32]), w(7), w(9), w(0x497F_6D9D)],
+            RETURN & !255 | u64::from(found),
+        );
+        if found {
+            expect(
+                occupant,
+                "query_texture",
+                vec![w(0x097F_6D98), out(&[if output_present { texture as u32 } else { 0 }])],
+                RETURN & !0xFFFF_FFFF | query,
+            );
+            if query as u8 != 0 {
+                expect(texture, "texture_kind", vec![w(2)], RETURN);
+                expect(occupant, "release", vec![], RETURN);
+            }
+        }
+        assert_eq!(
+            unsafe { fc4p_006c41a0(this, lot, &mut output, create) },
+            RETURN & !0xFFFF_FFFF | u64::from(output_present)
+        );
+        assert_eq!(output, if output_present { texture } else { core::ptr::null_mut() });
+        finished();
+    }
+}
+
+#[test]
+fn missing_base_texture_uses_framework_then_allocator_fallback_and_initializes_in_order() {
+    let _framework = fake(0x0090_DDF1, framework_fake as *const () as usize);
+    let _allocate = fake(0x005D_ECF0, allocate_texture_fake as *const () as usize);
+    let _construct = fake(0x005E_05B0, construct_texture_fake as *const () as usize);
+    let mut dev_object = mock!();
+    let mut lot_object = mock!(0x54 => get_location);
+    let mut manager_object = mock!(0x84 => find_occupant);
+    let mut framework_object = mock!(0x0C => create_texture);
+    let mut texture_object = mock!(4 => add_ref, 0x0C => get_occupant, 0x14 => texture_kind);
+    let mut occupant_object = mock!(0x0C => initialize_occupant);
+    let (this, lot, manager, framework, texture, occupant) = (
+        dev_object.ptr(),
+        lot_object.ptr(),
+        manager_object.ptr(),
+        framework_object.ptr(),
+        texture_object.ptr(),
+        occupant_object.ptr(),
+    );
+    unsafe { LotDeveloper::from_ptr(this) }.set_occupant_manager(manager);
+    for factory_success in [false, true] {
+        let mut output = core::ptr::null_mut();
+        expect(lot, "get_location", vec![out(&[7]), out(&[9])], RETURN);
+        expect(manager, "find_occupant", vec![out(&[]), w(7), w(9), w(0x497F_6D9D)], 0);
+        expect(core::ptr::null_mut(), "framework", vec![], framework as u64);
+        expect(
+            framework,
+            "create_texture",
+            vec![
+                w(0xC97F_987C),
+                w(0x097F_6D98),
+                out(&if factory_success { vec![texture as u32] } else { vec![] }),
+            ],
+            u64::from(factory_success),
+        );
+        if !factory_success {
+            expect(core::ptr::null_mut(), "allocate_texture", vec![w(0x60)], texture as u64);
+            expect(texture, "construct_texture", vec![], texture as u64);
+            expect(texture, "add_ref", vec![], RETURN);
+        }
+        expect(texture, "get_occupant", vec![], occupant as u64);
+        expect(occupant, "initialize_occupant", vec![], RETURN);
+        expect(texture, "texture_kind", vec![w(2)], RETURN);
+        assert_eq!(
+            unsafe { fc4p_006c41a0(this, lot, &mut output, 0xABCD_0001) },
+            RETURN & !0xFFFF_FFFF | 1
+        );
+        assert_eq!(output, texture);
+        finished();
+    }
+}
+
+#[test]
+fn positional_foundation_removal_accepts_null_occupants_and_only_clears_lot_kind_flags() {
+    let _fpu = GameFpu::new();
+    let mut scale = 0.0625f32;
+    let _scale = fake_data(0x00AB_1B04, (&mut scale as *mut f32).cast());
+    let mut dev_object = mock!(0xC8 => foundation_position);
+    let mut foundation_object = mock!(0x0C => get_occupant);
+    let mut occupant_object = mock!(4 => add_ref, 8 => release);
+    let mut manager_object = mock!(0x54 => remove_occupant);
+    let mut lots_object = mock!(0x18 => get_lot);
+    let mut lot_object = mock!(0x30 => get_flags, 0x34 => set_flags);
+    let (this, foundation, occupant, manager, lots, lot) = (
+        dev_object.ptr(),
+        foundation_object.ptr(),
+        occupant_object.ptr(),
+        manager_object.ptr(),
+        lots_object.ptr(),
+        lot_object.ptr(),
+    );
+    let developer = unsafe { LotDeveloper::from_ptr(this) };
+    developer.set_occupant_manager(manager);
+    developer.set_lot_manager(lots);
+    for kind in [1u32, 2, 3] {
+        for found in [false, true] {
+            for has_occupant in [false, true] {
+                for has_lot in [false, true] {
+                    let occupant = if has_occupant { occupant } else { core::ptr::null_mut() };
+                    expect(
+                        this,
+                        "foundation_position",
+                        vec![w(kind), w((-17.0f32).to_bits()), w(31.0f32.to_bits())],
+                        RETURN & !0xFFFF_FFFF | if found { foundation as u64 } else { 0 },
+                    );
+                    if found {
+                        expect(foundation, "get_occupant", vec![], occupant as u64);
+                        if has_occupant {
+                            expect(occupant, "add_ref", vec![], RETURN);
+                        }
+                        expect(manager, "remove_occupant", vec![p(occupant), w(1), w(0)], RETURN);
+                        if has_occupant {
+                            expect(occupant, "release", vec![], RETURN);
+                        }
+                    }
+                    if kind == 2 {
+                        expect(
+                            lots,
+                            "get_lot",
+                            vec![w(u32::MAX), w(1), w(0)],
+                            RETURN & !0xFFFF_FFFF | if has_lot { lot as u64 } else { 0 },
+                        );
+                        if has_lot {
+                            expect(lot, "get_flags", vec![], u64::from(u32::MAX));
+                            expect(lot, "set_flags", vec![w(0xFFFF_FFFC)], RETURN);
+                        }
+                    }
+                    let call = unsafe { fc4p_006c54e0(this, kind, (-17.0f32).to_bits(), 31.0f32.to_bits()) };
+                    let last_full_result = (kind != 2 && found) || (kind == 2 && has_lot);
+                    assert_eq!(
+                        call,
+                        RETURN & !0xFFFF_FFFF | if last_full_result { 0xA1B2_C300 } else { 0 } | u64::from(found)
+                    );
+                    finished();
+                }
+            }
+        }
+    }
+}
+
+float_slot!(average_float, average_body, 2, rect, water);
+slot!(is_water, x, z);
+
+fn expect_modify(demo: *mut u8, x: u32, z: u32, altitude: f32) {
+    expect(
+        demo,
+        "modify_height",
+        vec![
+            w(1),
+            w(1),
+            w(x),
+            w(z),
+            w(x),
+            w(z),
+            w(altitude.to_bits()),
+            w(0x1234),
+            w(5),
+            w(0),
+        ],
+        RETURN,
+    );
+}
+
+#[test]
+fn internal_levelling_observes_strict_delta_water_skips_and_force() {
+    let _fpu = GameFpu::new();
+    let mut dev_object = mock!(0x3C => vertex_float);
+    let mut terrain_object = mock!(0x94 => is_water);
+    let mut demo_object = mock!(0x24 => modify_height);
+    let (this, terrain, demo) = (dev_object.ptr(), terrain_object.ptr(), demo_object.ptr());
+    let developer = unsafe { LotDeveloper::from_ptr(this) };
+    developer.set_terrain(terrain);
+    developer.set_demolition(demo);
+    developer.set_level_delta(2.0);
+    let rect = [0i32, 0, 2, 2];
+    for (skip, force) in [(0u32, 0u32), (1, 1), (0x100, 0x100)] {
+        let mut count = 0;
+        for (x, z, altitude) in [(1, 1, 11.0), (1, 2, 12.0), (2, 1, 13.0), (2, 2, f32::NAN)] {
+            let wet = x == 1 && z == 2;
+            if skip as u8 != 0 {
+                expect(terrain, "is_water", vec![w(x), w(z)], 0xFFFF_FF00 | u64::from(wet));
+            }
+            if skip as u8 != 0 && wet {
+                continue;
+            }
+            expect_float(
+                this,
+                "vertex_body",
+                vec![w(x), w(z), w(1)],
+                RETURN,
+                F80::from_f32(altitude),
+            );
+            if force as u8 != 0 || altitude > 12.0 {
+                expect_modify(demo, x, z, 10.0);
+                count += 1;
+            }
+        }
+        assert_eq!(
+            unsafe { fc4p_006c43d0(this, 0, rect.as_ptr(), 10.0, skip, force, 0x1234) },
+            ((rect.as_ptr() as u64) << 32) | count
+        );
+        finished();
+    }
+}
+
+#[test]
+fn internal_levelling_uses_average_for_negative_targets_and_rereads_mutated_bounds() {
+    let _fpu = GameFpu::new();
+    let mut dev_object = mock!(0x3C => vertex_float, 0x48 => average_float);
+    let mut demo_object = mock!(0x24 => modify_height);
+    let (this, demo) = (dev_object.ptr(), demo_object.ptr());
+    let developer = unsafe { LotDeveloper::from_ptr(this) };
+    developer.set_demolition(demo);
+    let mut rect = [0i32, 0, 2, 2];
+    expect_float(
+        this,
+        "average_body",
+        vec![Arg::In(rect.map(|v| v as u32).to_vec()), w(1)],
+        RETURN,
+        F80::from_f32(10.5),
+    );
+    expect_float(this, "vertex_body", vec![w(1), w(1), w(1)], RETURN, F80::from_f32(15.0));
+    expect_modify(demo, 1, 1, 10.5);
+    edit_last(unsafe { rect.as_mut_ptr().add(2).cast() }, 0);
+    edit_last(unsafe { rect.as_mut_ptr().add(3).cast() }, 0);
+    assert_eq!(
+        unsafe { fc4p_006c43d0(this, 0, rect.as_ptr(), -1.0, 0, 1, 0x1234) },
+        ((rect.as_ptr() as u64) << 32) | 1
+    );
+    finished();
+    let empty = [3i32, 0, 1, 1];
+    let returned = unsafe { fc4p_006c43d0(this, 0xAABB_CCDD, empty.as_ptr(), f32::NAN, 1, 1, 0) };
+    assert_eq!(returned, 0xAABB_CCDD_0000_0000);
+    finished();
+}
+
+#[test]
+fn attempt_levelling_tests_slope_only_below_the_limit_and_handles_sentinel_or_nan_maxima() {
+    let _fpu = GameFpu::new();
+    let mut sentinel = f32::MAX;
+    let mut limit = 1000.0f32;
+    let _sentinel = fake_data(0x00AB_1B00, (&mut sentinel as *mut f32).cast());
+    let _limit = fake_data(0x00A8_FAF0, (&mut limit as *mut f32).cast());
+    let mut dev_object = mock!(0x48 => average_float, 0x74 => area_slope_float);
+    let mut demo_object = mock!(0x24 => modify_height);
+    let (this, demo) = (dev_object.ptr(), demo_object.ptr());
+    let developer = unsafe { LotDeveloper::from_ptr(this) };
+    developer.set_demolition(demo);
+    developer.set_level_max_slope(5.0);
+    let rect = [1i32, 2, 3, 4];
+    for (maximum, slope, check, reject) in [
+        (5.0, 6.0, true, true),
+        (5.0, 5.0, true, false),
+        (1000.0, 0.0, false, false),
+        (f32::INFINITY, 0.0, false, false),
+        (f32::MAX, 6.0, true, true),
+        (f32::NAN, 3.0, true, false),
+        (5.0, f32::NAN, true, false),
+    ] {
+        expect_float(
+            this,
+            "average_body",
+            vec![Arg::In(rect.map(|v| v as u32).to_vec()), w(0x1234_0100)],
+            RETURN,
+            F80::from_f32(12.5),
+        );
+        if check {
+            expect_float(
+                this,
+                "area_slope_body",
+                vec![Arg::In(rect.map(|v| v as u32).to_vec()), w(0x1234_0100)],
+                RETURN,
+                F80::from_f32(slope),
+            );
+        }
+        if !reject {
+            expect(
+                demo,
+                "modify_height",
+                vec![
+                    w(1),
+                    w(0xABCD_0080),
+                    w(1),
+                    w(2),
+                    w(4),
+                    w(5),
+                    w(12.5f32.to_bits()),
+                    w(0x1234),
+                    w(5),
+                    w(0),
+                ],
+                RETURN,
+            );
+        }
+        assert_eq!(
+            unsafe { fc4p_006c44f0(this, rect.as_ptr(), u32::MAX, 0x1234_0100, 0xABCD_0080, maximum, 0x1234) },
+            if reject { RETURN & !0xFFFF_FFFF } else { RETURN }
+        );
+        finished();
+    }
+}
