@@ -349,6 +349,38 @@ and chain order matter only for the failure fallback (§4.12).
 
 Equal-`f` nodes are therefore not served first-in-first-out (conformance test 1).
 
+#### 4.7.1 Equal-score Walk-to-Bus corner: limits of the local trace (TE33-PATH-1, partial)
+
+Instruction recheck on 2026-10-28 confirms the existing strict comparisons: Push compares
+stored binary32 f at `0x006D8905`–`0x006D8910`; Pop moves the last entry to the root
+at `0x006D63A9`–`0x006D63B5` and compares left, then right, with strict less-than at
+`0x006D63E5`–`0x006D6413`. Neither key order nor insertion sequence is a secondary
+comparison. This does not justify changing the heap to FIFO on ties.
+
+Two small conformance fixtures distinguish the rules. W is the reported West node
+`0x0E02F33B`, S the South node `0x0D02F43C`; both have stored f bits `0x3CAAF6A7`.
+
+| Initial/action sequence | Required pop order | Reason |
+|---|---|---|
+| Empty heap; push W, then S | W, S | Equal f does not sift S above W |
+| Empty heap; push an unrelated R with f=0, W, then S; pop all | R, S, W | Removing R moves last entry S to root; equal-f left child W does not displace it |
+
+Thus the reported West-before-South *pushes* do not determine their subsequent pop
+order without the entire preceding heap. This fixture is synthetic, not a replay of Jinae.
+For the reported start rectangle (244,61)–(245,63), ring 1's eligible cells, before
+network/type/side filtering, are (244,60), (245,60), (243,61), (246,61), (243,62),
+(246,62), (243,63), (246,63), (244,64), (245,64). Apply §4.6's network 0…5,
+travel-type 0…8 and side 0…3 loops within each cell. Start costs and coordinates alone
+do not identify which of these nodes exist: connection nibbles and network-info records
+are necessary inputs.
+
+Still missing for a native input-and-pop replay: the eligible start nodes and their stored
+score bits, the complete heap before the reported expansion, and earlier insert/update/pop
+operations from the original search. The filed temporary trace observes the replacement
+only. The Braus route bytes likewise do not establish its first search divergence or any
+step-cost rounding error. No native full-search trace was obtained in this lane, and neither
+route case is answered by the two fixtures. TE33-PATH-1 stays open.
+
 ### 4.8 Main loop
 
 While the open set is not empty: pop node `c` (cell `(x, z)`, type `t`, entry side `s`, predecessor `p`).

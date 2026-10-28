@@ -1153,6 +1153,10 @@ record).
 
 ### 4.9 CreateMaps (state 2, `0x0071A0C0`)
 
+TE33-PATH-1 remains a routing prerequisite for route-dependent map exactness:
+pathfinder §4.7.1 records the confirmed heap rules and missing native search inputs.
+The switch-cell floor below does not establish Jinae or Braus route equivalence.
+
 Per cell (x innermost), with `B` = peak volume grid, `D` = peak ratio grid:
 
 1. `B := 0`, `D := 0`.
@@ -1211,8 +1215,15 @@ Per cell (x innermost), with `B` = peak volume grid, `D` = peak ratio grid:
    * road (`n = 1`): `volume[1] := r24(volume[1] + GetBackgroundTraffic(x, z))` — background traffic therefore
      appears in the **next** cycle's maps.
 4. Transit switch at the cell: `prevUsage := usage`; `ratio := usage / capacity`; `D := max(D, ratio)`;
-   `switch.ratio := min(ratio, 1)`.
-5. If any network info exists at the cell: `B := max(B, 1.0)`.
+   `switch.ratio := min(ratio, 1)`. Update the switch statistics as in §4.9.2, once per
+   nonzero switch-ID **cell**, including cells without network info.
+5. If any network info exists **or the switch-ID grid is nonzero** at the cell:
+   `B := max(B, 1.0)` (TE33-MAPS-1 correction, `0x0071A5A6`–`0x0071A5C7`).
+   The switch branch jumps directly to this floor; it does not create a network-info
+   record. No reported network occupant is needed for it. D is the raw maximum ratio,
+   not floored by this step: for B=D=0 and a switch with usage=capacity>0, both become 1;
+   usage=0 instead gives B=1, D=0. A switch's saved flags can select no statistics rows
+   and its cell still receives this volume floor.
 
 At the end of the pass (`0x0071A5D7`–`0x0071A701`):
 
@@ -1334,6 +1345,55 @@ OneWayRoad 10, Street 458, Highway 100, GroundHighway 21, Avenue 37, Rail 143, S
 Roads: item 2 := 55, item 1 := 23, item 3 := 60, item 4 := 6. Mass transit: item 3 := 4, item 4 := 18, item 5 := 1,
 item 6 := 1.
 
+#### 4.9.2 The twelve switch-statistics rows (TC29-STATS-1, TE33-MAPS-1) *[compat]*
+
+These are independent of the thirteen network rows and bridge row. Each set's serialized
+offsets **314 + 18·i**, i=0…11, contain `(u16 cellCount, f32 averageOrSum,
+s32 minX, s32 minZ, f32 minRatio)`. They occupy 20 bytes each in memory (two padding
+bytes after count), 18 on disk. The working set holds the sum until publication.
+The last float and coordinates describe a **minimum**, not a maximum. Evidence is the
+strict less-than comparison at `0x0071A580`–`0x0071A59A`.
+
+**Entering state 2**, before any scanning work: reset all twelve working rows to
+`(0, +0.0f, 0, 0, float bits 0x3F8147AE)`; the last constant is binary32 1.01.
+The sum uses the static zero at `0x00B4B2E8` (zero in the executable's .data).
+The exact stores/widths are `0x007211DC`–`0x0072120D`. This reset is additional to
+the network-row reset, leaves the published switch rows alone, and replaces even
+nonzero values restored from a save. Read itself restores both sets; it does not
+pretend a pending state-2 entry has already occurred. A save resuming a state-2 scan
+continues its saved working sums rather than resetting them on every work slice.
+
+For **each cell** whose switch-ID grid is nonzero, fetch the switch with insert-if-missing
+lookup. Copy usage to prevUsage. Store `raw=r24(usage/capacity)`, update D only if raw
+is ordered-greater than D, and store `q = raw > 1.0f ? 1.0f : raw` in switch.ratio
+(so an unordered raw is retained). For i=0…11, test bit i of the switch's **u8 flags**:
+when set, sum becomes `r24(sum+q)` and cellCount increments modulo 2¹⁶; if q is
+ordered-strictly-less than minRatio, replace minRatio and both coordinates with the cell.
+Equal minima retain the first cell in scan order. No separate congested counter is
+present in these rows. A multi-cell station contributes once per tagged cell, not once
+per building or ID (`0x0071A50B`–`0x0071A5A4`).
+
+Flags are the category bits of traffic-network §2.4, not a travel-type index: i=0 Bus,
+1 Passenger train, 2 Subway, 3 Elevated train, 4 Monorail, and 6 the subway/elevated
+interchange bit. The other bits are used literally if present. Because flags is loaded
+as a byte, rows 8…11 cannot receive contributions from this pass. No network-info
+record is required for any switch-row contribution.
+
+At scan completion, for every row in order, divide its working sum by its **wrapped
+u16 count**, zero-extended, only when count is nonzero; store the binary32 result
+back to the working row. With count zero leave the sum as it stands (normally +0).
+Then copy the row to published statistics, including its minimum sentinel. This happens
+before cell-count replacement and department-cost updates (`0x0071A67D`–`0x0071A6C9`).
+The published empty row is `(0,0,0,0,1.01f)`, not an all-zero row. No RNG calls occur.
+
+Worked entry: a loaded working row `(7,3.5,112,146,0.5)` becomes `(0,0,0,0,1.01f)`
+on entering state 2. One eligible switch cell (112,146) at ratio 1 gives
+`(1,1,112,146,1)`. A later one at (120,146) at ratio 0.5 gives
+`(2,1.5,120,146,0.5)`; completion publishes and leaves working
+`(2,0.75,120,146,0.5)`. If no cell has the row's bit, its reset sentinel survives.
+These are the entry-reset bytes missing from TC29-STATS-1, independent of the
+peak-volume correction. Both are required even when the occupant callback reports no occupant.
+
 ### 4.10 CreateFinalMap (state 4, `0x0070F460`)
 
 Per cell with `b := B`:
@@ -1419,9 +1479,59 @@ counter, and destination bits plus `freeDest` on the off-map edge cells; not a n
 
    The pathfinder and `ConfirmRoute` treat state 1 as "on strike" (pathfinder.md, traffic-network.md).
 3. `CheckForAccident` (`0x007184E0`, §4.13).
-4. History (history warehouse slot 12 `+0x30`, `(id, u32)`): `0xEA5BA01D ← low32(ftol(r24(stats[0] × 100)))`,
+4. Snapshot the two department funding fractions into the published statistics (§4.12.1).
+5. History (history warehouse slot 12 `+0x30`, `(id, u32)`): `0xEA5BA01D ← low32(ftol(r24(stats[0] × 100)))`,
    `0x8A5D4116 ← low32(ftol(r24(avgCarCommute × 25.0f)))` (25 hard-coded, `0x00AB32C0`), `0xABB8FAAC + i ←
    typeCount[i]` (i = 0…8), `0xEC0BDBF8 ←` the ferry total.
+
+#### 4.12.1 Published funding snapshots (TC29-STATS-2) *[compat]*
+
+The unnamed binary32 values at serialized statistics offsets **530 and 534** are,
+respectively, the last monthly **roads funding fraction** and **mass-transit funding
+fraction**. Full funding is 1.0, not 100.0 (budget.md §1's SC4Percentage convention).
+After the accident check and before any monthly history writes, call roads department
+slot 10 (`+0x28`, no args, EAX points to its binary32 percentage), copy the pointed-to
+32 bits to published offset 530; then do the same with mass transit into offset 534.
+There is no ×100, clamp, curve, average or conversion here. The native destinations
+are primary simulator +0x40C and +0x410 (`0x00718AF9`–`0x00718B25`). These are
+fresh reads, in addition to the two department reads used earlier for ApplyFunding.
+
+The constructor initializes these snapshots to +0 and Read restores the saved values.
+State-2 entry and CreateMaps publication do **not** overwrite them from the working
+statistics: map publication copies individual network/switch rows, not the whole block.
+They retain their last monthly values until the next monthly snapshot, even if funding
+changes in the interim. `GetTrafficStats` (slot 34, `0x00720000`–`0x00720006`) is
+only a pointer getter to the published block; it performs no update and no RNG draw.
+It is not a lazy recomputation operation. A record check before a later delivery can
+therefore differ because an earlier monthly call already changed this block.
+
+Example: saved values 100.0/100.0 are initially restored literally. With both live
+departments returning full funding 1.0, the next monthly call replaces them with
+bits `0x3F800000`/`0x3F800000`, whatever the traffic cycle state. Subsequent map work
+leaves them there; it does not restore the saved 100.0 values or copy working snapshots.
+
+#### 4.12.2 Ferry total reset and history (TC29-FERRY-1) *[compat]*
+
+An ordinary transition **into state 19** first sets the city's saved **u32 ferry rider
+total to zero**, before walking any terminal (`0x0072134C`–`0x00721352`). For every
+terminal in list order, read current riders as u16, zero-extend for the addition,
+copy it to last riders (u16), clear current riders (u16), and add the zero-extended
+value to the city total modulo 2³² (`0x00721360`–`0x0072136F`). Then flag the terminal
+and rotate its two link-counter pairs as traffic-network §4.9.3 specifies. The sum
+counts terminal rider values, not the link counters. An empty terminal list gives zero.
+
+The total is initialized to zero by construction and restored by Read. Between ordinary
+state-19 entries, routing, ApplyTraffic's terminal-current-rider increments, terminal
+removal and monthly publication do not add to or clear this saved total. The monthly
+history call reads it unchanged for `0xEC0BDBF8` (`0x00718B92`–`0x00718BA6`).
+DoPostCityInit's special restart of an already-saved state 19 marks/restarts the pass
+without this rotation **or this total reset** (traffic-network §4.9.3).
+
+Worked second pass: load city total 93 and terminals whose new current riders sum to
+93. On the next ordinary state-19 entry, reset 93→0, rotate/add the terminal u16 values,
+and finish at 93, not 186. A monthly publication before the next state-19 entry writes
+93 even if new current riders have since accumulated. Loading a save already in state
+19 keeps its saved total 93 during the special post-load rerouting restart.
 
 ### 4.13 Accidents
 
