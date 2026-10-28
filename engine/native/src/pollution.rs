@@ -100,6 +100,7 @@ pub mod aging;
 pub mod io;
 pub mod maintenance;
 pub mod release;
+pub mod recycling;
 pub mod capacity;
 pub mod com;
 pub mod garbage;
@@ -112,6 +113,7 @@ const COUNT: usize = access::PORTS.len()
     + io::PORTS.len()
     + maintenance::PORTS.len()
     + release::PORTS.len()
+    + recycling::PORTS.len()
     + com::PORTS.len()
     + garbage::PORTS.len()
     + grids::PORTS.len()
@@ -124,6 +126,7 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     io::PORTS,
     maintenance::PORTS,
     release::PORTS,
+    recycling::PORTS,
     com::PORTS,
     garbage::PORTS,
     grids::PORTS,
