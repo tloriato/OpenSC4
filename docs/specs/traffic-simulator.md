@@ -1425,7 +1425,8 @@ counter, and destination bits plus `freeDest` on the off-map edge cells; not a n
 
 ### 4.13 Accidents
 
-**CheckForAccident** runs only when the accident timer (wall clock, ms) has passed the next check time; next check
+**CheckForAccident** uses the running wall-clock stopwatch in **whole seconds**, not milliseconds. The
+complete timing and empty-list rules are in §4.13.1. It runs only when elapsed seconds have passed the next check time; next check
 := now + `ftol(accidentCheckPeriod)` *[compat: wall-clock driven]*. It computes the visible cell rect from the view
 (`0x00B43DD8` + `0x3EC`, world units / 16, rounded with the idiom and adjusted to the outer cells) and walks the
 accident-prone list in the order of a **linear random iterator** (foundations §12.4, prime-step mode: one `rand()`
@@ -1433,8 +1434,9 @@ at reset). For each entry: draw `u := RandomDoubleRangeUniform(0.0, 1.0)` on the
 and the cell is in the visible rect and has an occupant (network-occupant query, `+0x1C` grid slot 14): create an
 accident there (`cSC4TrafficAutomataManager::CreateAccident`, duration `ftol(r24(accidentDuration × 1000))` ms),
 post the accident message `0x0C05E4C3` (§5; data1 = x, data2 = z of the entry, queued) and stop. The result of
-`CreateAccident` is not checked: the message is posted even if the automata manager made no accident. *[choice]* FreeCity4 replaces the wall-clock period by the simulation clock
-(the check runs once per `accidentCheckPeriod` seconds of game time at the current speed) and keeps the draw order.
+`CreateAccident` is not checked: the message is posted even if the automata manager made no accident.
+For exact replacement under the fixed schedule, use the shared virtual counter of simulator §5.8,
+with the same stopwatch reads; a game-date or simulation-speed timer is insufficient.
 
 **CheckRailAccident(x, z)** (slot 17, `0x00711590`): if the cell is in the damaged-cell set (hash at +0x804, key
 `(x << 8 | z)` truncated to 16 bits, `x` the first argument): `u := RandomDoubleUniform()` on the simulator's
@@ -1444,6 +1446,69 @@ caller (train automata *[not traced]*).
 
 **IsRoadDamaged(x, z)** (slot 16, `0x00720070`): membership of `(x << 8 | z)` in the damaged-road list
 (traffic-network.md).
+
+#### 4.13.1 Accident clock and the monthly random boundary (TE33-ACCIDENT-1) *[compat]*
+
+Evidence: Init `0x0071F781`–`0x0071F798`, monthly call `0x00718AF4`, check
+`0x007184EF`–`0x00718515`, iterator reset `0x00718675`–`0x0071869A` and
+`0x005CF610`–`0x005CF636`, `0x005CF773`–`0x005CF784`; timer conversion
+`0x00890229`–`0x0089024C`. These instruction checks supersede the earlier ms description.
+
+- Init sets the unsigned 32-bit next-check field to **0**, calls timer `SetUnits(5)`
+  (which clears accumulated time and the start stamp), then `Start()` once. Unit 5 is seconds
+  (timers.md §1). This is not an initial deadline of 60 or 60,000. The stopwatch and deadline
+  are runtime state, absent from the traffic save record. Reading the traffic record does not
+  restore or restart them. At a fixed-schedule load, simulator §5.8 rebases the already running
+  stopwatch to the load with zero accumulated ticks; the Init deadline is still zero.
+- Every monthly call runs roads funding, mass-transit funding and UpdateStrikes, then this check,
+  before funding snapshots and history publication (`0x00718AC4`–`0x00718AF9`). The check makes
+  **one** `GetElapsedTime()` call, even if not due or the accident list is empty. A running unit-5
+  timer makes one performance-counter read; it subtracts timer overhead and converts the tick
+  interval using the stored binary32 seconds-per-tick factor, then truncates to integer seconds
+  (timers.md §1.3). It neither stops nor restarts the stopwatch. Do not add a second read for scheduling.
+- Compare the low unsigned 32-bit elapsed result `t` with the unsigned deadline: return immediately
+  when `t <= nextCheck`. If `t > nextCheck`, set `nextCheck := t + trunc(accidentCheckPeriod)`
+  modulo 2³², using the binary32 tuning value directly. There is **no ×1000** for this period,
+  no catch-up loop, and no addition to the old deadline. The separate accident *duration* is
+  converted to milliseconds by multiplication by 1000 (`0x0071875D`–`0x00718769`).
+- After advancing the deadline, convert the view's four world-coordinate binary32 bounds to the
+  inclusive cell rectangle (minima floor, maxima ceil, world scale 1/16). Then construct a fresh
+  linear random iterator of the current accident-copy vector's entry count, with random traversal
+  and reset-randomization enabled. With **zero entries**, Reset terminates without `rand()`;
+  with **one or more entries**, it consumes exactly one CRT `rand()` to choose its initial index
+  (`rand() % count`). The stride/visit rules are those of the linear random iterator (§4.15).
+- Each visited entry consumes one simulator-generator `RandomDoubleRangeUniform(0.0,1.0)`
+  **before** probability, rectangle or occupant rejection. Stop at the first qualifying entry
+  that has a network occupant; otherwise visit the whole list. These are separate streams:
+  the initial CRT draw does not replace a simulator-generator word. Controller attachment can
+  have further effects owned by automata; its concrete call contract is automata-managers §3.4.1.
+- The original directly dereferences the global view, without a null/unavailable-view branch
+  (`0x0071851B`–`0x00718525`). There is no native rule permitting a missing view to skip the
+  check or its CRT draw. A replacement needs a valid view-bounds provider for exact operation;
+  reporting no occupant still happens after the iterator and per-entry draws.
+
+Worked timing, shipped period 60: with `nextCheck=0`, a monthly read of 0 seconds consumes
+zero accident draws. A later monthly read of 1 second sets the deadline to 61 and, for a
+nonempty list of ten entries with no qualifying visible occupant, consumes **one CRT draw and
+ten simulator-generator words**. A read of exactly 61 consumes neither; a read of 62 sets
+122 and starts another check. This accounts for the type of January/February boundary in
+TE33-ACCIDENT-1: 22 and 54 frames contribute 726 and 1782 ms before counter-read ticks, so
+the first read can still truncate to zero and the second to one. The question's six measured
+one-advance CRT states are consistent with this reset site. Their exact original entry counts,
+probability outcomes and total counter-read ticks were not measured by that evidence and are
+not inferred from the CRT stamps alone.
+
+#### 4.13.2 Native accident creation boundary (AD5) *[compat]*
+
+On probability/visibility success, the simulator obtains the vehicle manager from city slot 43,
+then queries its network-info grid (slot 14) for the cell. If the network-info pointer and its first
+network-occupant pointer are both non-null, it calls network-occupant slot 48 `AsOccupant()`
+(no stack arguments), and directly calls the **concrete**, nonvirtual traffic-manager entry with
+`(occupantView, int32 radius=2, uint32 durationMs)`. The occupant view is `cISC4Occupant*`,
+not `cISC4NetworkOccupant*`. The duration is `trunc(r24(accidentDuration × 1000))`, low 32 bits.
+The manager lookup precedes the grid lookup, with no manager-null check. Evidence:
+`0x00718719`–`0x0071877E`; network-occupants §2.4 slot 48. See automata-managers §3.4.1
+for the returned effect token, ownership and the integration restriction when that manager is replaced.
 
 ### 4.14 Tuning (`ReadSimulatorTunableValues`, `0x00716AE0`)
 
@@ -1578,7 +1643,7 @@ delivery and compare draw sequences (reading changes nothing), or seed both gene
 |---|---|---|---|---|---|
 | 1 | strategy re-draw (§3.3) | simulator's `cRZRandomSuper` | `RandomUint32Uniform(100)` (1 word) | — | once per lot of the day's bucket, in multimap order, before any cycle work of that day |
 | 2 | `DoLotActivated` (§4.1.3) | same | `RandomUint32Uniform(100)` (1) | — | after the bucket registration; only when the lot is found again and the building's `0xE90E25A1`, if present, has a byte size that is a multiple of 4 |
-| 3 | `CheckForAccident` (§4.13) | C `rand()` (one call at iterator reset), then the simulator's generator | `RandomDoubleRangeUniform(0.0, 1.0)` (1 word per visited entry) | doubles 0.0, 1.0 | per accident-prone entry visited, until the first accident |
+| 3 | `CheckForAccident` (§4.13.1) | C `rand()` (one call at a due check's iterator reset **only if its entry count is nonzero**), then the simulator's generator | `RandomDoubleRangeUniform(0.0, 1.0)` (1 word per visited entry, before visibility/occupant rejection) | doubles 0.0, 1.0 | until the first created accident or list exhaustion; not-due checks take neither stream |
 | 4 | `CheckRailAccident` (slot 17) | same generator | `RandomDoubleUniform()` (1) | — | only for damaged cells; caller-driven (train automata) |
 | 6 | `ApplyPotholeChanges` (§4.12) | same generator | `RandomUint32Uniform(sourceCount)` (1 per moved cell) | current size of the source set | monthly: road moves first, then rail |
 | 7 | `UpdateStrikes` (§4.12) | same generator | `RandomDoubleUniform()` (1) | — | monthly, only in the normal state with `f < 0.7` and `E > 0`; after the pothole draws, before the accident check |
@@ -1910,7 +1975,7 @@ Not needed for the simulation:
 | Original read | Why not |
 |---|---|
 | The wall clock for the 4 ms slice deadline (§3.3) | replaced by the unit budget (§3.4) |
-| The accident check: the accident timer (wall clock), the view's visible cell rect (global view `0x00B43DD8` + `0x3EC`), the network-occupant test of the cell and `cSC4TrafficAutomataManager::CreateAccident` (§4.13) | `CheckForAccident` (`0x007184E0`) runs from `DoMonthlySimulation` (`0x00718AF4`) only when the wall-clock timer has expired, considers only visible cells, and its only results are an automaton and a message with no compiled receiver (§5). Its one simulation-side effect is the draws it takes from the simulator's generator, which is seeded from the wall clock (§4.15), so the effect is not reproducible in the original either. Leaving it out loses the visible car crashes only. |
+| The accident check's visible creation can be omitted only by a replacement that does not claim exact equivalence | **TE33-ACCIDENT-1 correction:** exact replacement requires the unit-5 stopwatch read and scheduling, the CRT iterator-reset draw and the simulator-generator draws (§4.13.1), plus a valid view rectangle and network-info/occupant provider. Omitting this check changes both shared randomness and the fixed schedule's counter-read clock. Omitting only creation also differs in controller/automata state. The earlier permission to omit the entire check lost more than visible crashes and is withdrawn. The native manager call additionally requires the concrete boundary of automata-managers §3.4.1. |
 | The occupant filter of pathfinder filter 2 | filter 2 is unreachable (pathfinder.md §4.10.3, Q2) |
 
 **TG1, a route deque.** The original fills it (pathfinder.md §4.13 step 5, §4.12 fallback), and the traffic
