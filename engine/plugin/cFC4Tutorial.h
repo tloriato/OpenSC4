@@ -21,17 +21,10 @@
 // 0xE98B2F57) at +8, cIGZSerializable at +0x10 (here: wherever MSVC puts
 // it). QueryInterface answers those four IIDs and 1.
 //
-// What the shim cannot reach (no route in docs/abi; questions TU6-TU9 in
-// docs/specs/questions/tutorial.md):
-//   - the tutorial registry's entry lookup and SetActive (TU6: a plain C++
-//     object at app+0x1C0, no vtable, its calls not in docs/abi/direct-calls.md)
-//     and the tutorial window (TU9: cSC4TutorialUIWinProc, no rows): the host
-//     answers "no entry" / "no window", so a loaded tutorial city keeps
-//     is-tutorial set without a window (quirk 2's state);
+// The registry and retained original window use tutorial.md 4.2.1-4.2.2's
+// version-checked native boundary. Window callbacks use 4.4.1-4.4.2.
+// Remaining host work:
 //   - the debug cheat's subcommands (TU7): the handler logs and ignores them;
-//   - FilterMessage's argument (TU8, §4.4: "a message of kind 3"): its layout
-//     is not specified, so it is not decoded (without a window the slot only
-//     answers true anyway).
 // The 3D view slots 60 / 59 of endTutorial (TU2, answered) are called.
 //
 // IsTutorial (§4.1) is read on the fire, flammability and advisor paths,

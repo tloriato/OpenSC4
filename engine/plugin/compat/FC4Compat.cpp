@@ -140,6 +140,12 @@ const ExecutableVersion kVersions[] = {
             0x0046EFB0,  // dispatch.md §4.1.3: UntrackOccupant
             0x0046D3A0,  // functions.tsv: ShowAllIndicators,
             0x0088FF19,  // cRZTimer::GetTimerCycle (timers §1.3; functions.tsv, cdecl out pointer),
+            0x004B5D10,  // tutorial.md 4.2.1: registry GetItem
+            0x004B5D80,  // registry SetActive
+            0x00442920,  // tutorial.md 4.2.2: window constructor
+            0x00443E60,  // window Init, ignored result
+            0x00442C80,  // window Close
+            0x00443970,  // window OnTutorialEvent
         },
         {0x00AB1160, 0x00AB2490},  // fire / police primary vtables (protection.md §15.1, §15.2)
         0x00AB3118,  // cSC4TractDeveloper primary vtable (tract-developer.md §1.1, §7.1)
@@ -181,6 +187,7 @@ const ExecutableVersion kVersions[] = {
         0x00B207C0,  // the advisor system's private global (advisors.md §14.2, §8.3.1),
         0x0061B490,  // cISC4NetworkOccupant slot 30 SetPiece (network-rules.md §11.2, NR14)
         0x00B44870,  // network-manager §17.2
+        0x00B20E88,  // tutorial.md 4.2.2: live owner for the original UI
     },
 };
 
@@ -843,6 +850,16 @@ void** AdvisorSystemGlobal() {
         }
     }
     return state == 1 ? slot : nullptr;
+}
+
+void** TutorialSystemGlobal() {
+    static void** slot = []() -> void** {
+        const ExecutableVersion* v = IdentifiedVersion();
+        if (!v || !v->tutorialSystemGlobalVA || v->tutorialSystemGlobalVA % 4 != 0 ||
+            !CheckAddress("tutorial system global", v->tutorialSystemGlobalVA, v->imageBase)) return nullptr;
+        return reinterpret_cast<void**>(static_cast<uintptr_t>(v->tutorialSystemGlobalVA));
+    }();
+    return slot;
 }
 
 bool CaptureNetworkLotRandom(uint32_t* words625) {

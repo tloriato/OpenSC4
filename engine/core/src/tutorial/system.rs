@@ -192,9 +192,11 @@ impl TutorialSystem {
     pub fn start_tutorial(&self) -> bool {
         if self.s.borrow().window.is_none() {
             let w = self.host.create_window();
+            // §4.2.2: Init calls the owner synchronously. Publish the window
+            // before opening it, with no state borrow spanning those calls.
+            self.s.borrow_mut().window = Some(w);
             self.host.add_ref(w);
             self.host.init_window(w);
-            self.s.borrow_mut().window = Some(w);
         }
         let guid = {
             let mut s = self.s.borrow_mut();

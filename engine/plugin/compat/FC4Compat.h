@@ -153,6 +153,13 @@ enum class Direct : unsigned {
     DispatchUntrackOccupant,  // thiscall (handle,immediate), AL
     DispatchShowAllIndicators,  // functions.tsv 0046d3a0: thiscall (kind,visible), void
     TimerGetCycle,                   // cRZTimer static counter getter: cdecl (uint64_t*), timers §1.3
+    // tutorial.md 4.2.1-4.2.2; functions.tsv, original registry/window boundary.
+    TutorialRegistryGetItem,         // thiscall (GUID), borrowed pointer
+    TutorialRegistrySetActive,       // thiscall (GUID,bool), AL
+    TutorialWindowConstruct,         // thiscall (), EAX = allocated base
+    TutorialWindowInit,              // thiscall (), result ignored
+    TutorialWindowClose,             // thiscall (), result ignored
+    TutorialWindowEvent,             // thiscall (event), AL ignored
     Count
 };
 
@@ -261,6 +268,8 @@ struct ExecutableVersion {
     uint32_t networkOccupantSetPieceVA;
     // network-manager §17.2: file-local cRZRandomSuper raw state.
     uint32_t networkLotRandomVA;
+    // tutorial.md 4.2.2: borrowed cISC4TutorialSystem* used by the retained UI.
+    uint32_t tutorialSystemGlobalVA;
 };
 
 // The running executable if it is a table entry loaded at its preferred base
@@ -366,6 +375,7 @@ bool SpanRender4444Entries(void*** vtable, uintptr_t functions[5]);
 // nullptr (logged once) if the executable is not identified or the address is not aligned, committed,
 // writable memory inside its image.
 void** AdvisorSystemGlobal();
+void** TutorialSystemGlobal();
 // The compatibility table.
 const ExecutableVersion* SupportedVersions(int* count);
 
