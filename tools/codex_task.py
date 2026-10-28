@@ -31,8 +31,9 @@ def alive(pid):
             return True
         except OSError:
             return False
-    out = subprocess.run(['tasklist', '/FI', f'PID eq {pid}', '/NH'], capture_output=True, text=True,
-                         creationflags=NOWIN).stdout
+    # Windows reuses pids quickly, so the process must still be codex.exe.
+    out = subprocess.run(['tasklist', '/FI', f'PID eq {pid}', '/FI', 'IMAGENAME eq codex.exe', '/NH'],
+                         capture_output=True, text=True, creationflags=NOWIN).stdout
     return str(pid) in out
 
 
