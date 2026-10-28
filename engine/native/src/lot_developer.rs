@@ -63,18 +63,24 @@ fn result(call: RawCall) -> u64 {
 pub mod foundation;
 pub mod lots;
 pub mod maintenance;
+pub mod props;
 pub mod small;
 pub mod terrain;
 
 const ALL: [Port;
-    foundation::PORTS.len() + lots::PORTS.len() + small::PORTS.len() + terrain::PORTS.len() + maintenance::PORTS.len()] =
-    crate::port::concat(&[
-        small::PORTS,
-        lots::PORTS,
-        foundation::PORTS,
-        terrain::PORTS,
-        maintenance::PORTS,
-    ]);
+    foundation::PORTS.len()
+        + lots::PORTS.len()
+        + small::PORTS.len()
+        + terrain::PORTS.len()
+        + maintenance::PORTS.len()
+        + props::PORTS.len()] = crate::port::concat(&[
+    small::PORTS,
+    lots::PORTS,
+    foundation::PORTS,
+    terrain::PORTS,
+    maintenance::PORTS,
+    props::PORTS,
+]);
 
 /// This module's replacements.
 pub const PORTS: &[Port] = &ALL;

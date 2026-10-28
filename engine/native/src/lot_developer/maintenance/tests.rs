@@ -4,7 +4,8 @@
 //! Cases for the core population-transfer and boundary rules, plus container and callback edges.
 
 use super::*;
-use crate::testing::{call_thiscall_with_eax, fake, Object};
+use crate::lot_developer::props::*;
+use crate::testing::{call_thiscall_with_eax, fake, fake_data, Object};
 use std::cell::RefCell;
 use std::collections::VecDeque;
 
@@ -74,6 +75,25 @@ slot!(designate);
 slot!(accumulate, source);
 slot!(business_unit);
 slot!(remove_member, lot);
+slot!(get_config);
+slot!(configuration_objects);
+slot!(position_object, lot, config, record, position, facing);
+slot!(create_prop, instance, position, facing);
+slot!(set_appearance, appearance);
+slot!(enumerate_instances, record, output);
+slot!(safe_iterator);
+slot!(set_empty, lot);
+slot!(normal_textures, lot, config);
+slot!(replacement_normal, lot, config);
+slot!(get_config_create, create);
+
+unsafe extern "thiscall" fn unregister(this: *mut u8, iterator: *mut *mut u8) -> u64 {
+    run(this, "unregister", &[iterator as u32])
+}
+
+unsafe extern "C" fn delete_iterator(iterator: *mut u8) -> u64 {
+    run(core::ptr::null_mut(), "free_iterator", &[iterator as u32])
+}
 
 fn object(table: &[(usize, usize)], size: usize) -> (Vec<usize>, Object) {
     let mut slots = vec![0; 0x108 / 4];
@@ -424,4 +444,400 @@ fn release_thunks_adjust_this_and_forward_edx_and_return_words() {
         assert_eq!((c.eax, c.edx), (RETURN as u32, (RETURN >> 32) as u32));
         finished();
     }
+}
+
+unsafe extern "thiscall" fn choose_instance(this: *mut u8, count: u32) -> u64 {
+    run(this, "choose_instance", &[count])
+}
+
+unsafe extern "thiscall" fn family_prop(this: *mut u8, lot: *mut u8, index: i32) -> u64 {
+    run(this, "family_prop", &[lot as u32, index as u32])
+}
+
+#[test]
+fn prop_creation_rejects_null_lot_and_null_configuration_before_positioning() {
+    for entry in [fc4p_006c6230 as *const () as usize, fc4p_006c6d70 as *const () as usize] {
+        let (_lt, mut lot) = object(&[(0x24, get_config as *const () as usize)], 4);
+        let arg_count = if entry == fc4p_006c6230 as *const () as usize {
+            3
+        } else {
+            2
+        };
+        let mut args = [0, 0x1122_3344, 0x5566_7788];
+        let mut c = RawCall::new(Conv::Thiscall, entry, 0, &args[..arg_count]);
+        c.edx = 0x1234_5678;
+        unsafe {
+            call_raw(&mut c);
+        }
+        assert_eq!((c.eax, c.edx), (0, 0x1234_5678));
+        finished();
+        args[0] = lot.ptr() as u32;
+        expect(lot.ptr(), "get_config", &[], RETURN & !0xFFFF_FFFF);
+        let mut c = RawCall::new(Conv::Thiscall, entry, 0, &args[..arg_count]);
+        unsafe {
+            call_raw(&mut c);
+        }
+        assert_eq!((c.eax, c.edx), (0, (RETURN >> 32) as u32));
+        finished();
+    }
+}
+
+#[test]
+fn explicit_prop_positions_before_checking_instance_and_applies_fresh_appearance() {
+    for scenario in 0..3 {
+        let mut initial = 0x7FC0_0123u32;
+        let _initial = fake_data(0x00B4_9AEC, (&mut initial as *mut u32).cast());
+        let (_dt, mut developer) = object(&[(0x9C, position_object as *const () as usize)], 0x108);
+        let (_lt, mut lot) = object(&[(0x24, get_config as *const () as usize)], 4);
+        let (_ct, mut config) = object(&[(0x5C, configuration_objects as *const () as usize)], 4);
+        let (_mt, mut manager) = object(&[(0x68, create_prop as *const () as usize)], 4);
+        let (_pt, mut prop) = object(&[(0x70, set_appearance as *const () as usize)], 4);
+        let mut records = Object::new(104);
+        let mut vector = [
+            records.ptr() as u32,
+            records.ptr() as u32 + 104,
+            records.ptr() as u32 + 104,
+        ];
+        let record = unsafe { records.ptr().add(52) };
+        expect(lot.ptr(), "get_config", &[], config.ptr() as u64);
+        expect(config.ptr(), "configuration_objects", &[], vector.as_mut_ptr() as u64);
+        expect(developer.ptr(), "position_object", &[], RETURN);
+        let lot_pointer = lot.ptr() as u32;
+        let config_pointer = config.ptr() as u32;
+        let record_pointer = record as u32;
+        let developer_pointer = developer.ptr() as usize;
+        let manager_pointer = manager.ptr() as usize;
+        effect(move |args| unsafe {
+            assert_eq!(&args[..3], &[lot_pointer, config_pointer, record_pointer]);
+            assert_eq!(std::slice::from_raw_parts(args[3] as *const u32, 3), [0x7FC0_0123; 3]);
+            assert_eq!(*(args[4] as *const u32), lot_pointer);
+            core::ptr::copy_nonoverlapping([10u32, 20, 30].as_ptr(), args[3] as *mut u32, 3);
+            (args[4] as *mut u32).write(0x1234_ABCD);
+            ConfigurationObject::from_ptr(record_pointer as *mut u8).set_appearance(0x9876_5432);
+            LotDeveloper::from_ptr(developer_pointer as *mut u8).set_prop_manager(manager_pointer as *mut u8);
+        });
+        if scenario != 0 {
+            expect(
+                manager.ptr(),
+                "create_prop",
+                &[],
+                if scenario == 2 {
+                    prop.ptr() as u64
+                } else {
+                    RETURN & !0xFFFF_FFFF
+                },
+            );
+            effect(|args| unsafe {
+                assert_eq!((args[0], args[2]), (0xBEEF, 0x1234_ABCD));
+                assert_eq!(std::slice::from_raw_parts(args[1] as *const u32, 3), [10, 20, 30]);
+            });
+            if scenario == 2 {
+                expect(prop.ptr(), "set_appearance", &[0x9876_5432], RETURN);
+            }
+        }
+        let returned =
+            unsafe { fc4p_006c6230(developer.ptr(), 0, lot.ptr(), 1, if scenario == 0 { 0 } else { 0xBEEF }) };
+        assert_eq!(returned as u32, if scenario == 2 { prop.ptr() as u32 } else { 0 });
+        assert_eq!(returned >> 32, RETURN >> 32);
+        finished();
+    }
+}
+
+#[test]
+fn family_prop_draws_only_for_nonempty_arrays_and_frees_on_every_exit() {
+    let _random = fake(0x0091_36B1, choose_instance as *const () as usize);
+    let _free = fake(0x0090_CF63, free as *const () as usize);
+    for scenario in 0..5 {
+        let mut initial = 0u32;
+        let _initial = fake_data(0x00B4_9AEC, (&mut initial as *mut u32).cast());
+        let mut random_state = Object::new(16);
+        let _state = fake_data(0x00B4_9AF0, random_state.ptr());
+        let (_dt, mut developer) = object(&[(0x9C, position_object as *const () as usize)], 0x108);
+        let (_lt, mut lot) = object(&[(0x24, get_config as *const () as usize)], 4);
+        let (_ct, mut config) = object(&[(0x5C, configuration_objects as *const () as usize)], 4);
+        let (_rt, mut resources) = object(&[(0x6C, enumerate_instances as *const () as usize)], 4);
+        let (_mt, mut manager) = object(&[(0x68, create_prop as *const () as usize)], 4);
+        let (_pt, mut prop) = object(&[(0x70, set_appearance as *const () as usize)], 4);
+        unsafe {
+            LotDeveloper::from_ptr(developer.ptr()).set_prop_manager(manager.ptr());
+        }
+        let mut resource_pointer = resources.ptr();
+        let _resources = fake_data(0x00B4_3D18, (&mut resource_pointer as *mut *mut u8).cast());
+        let mut records = Object::new(104);
+        let record = unsafe { records.ptr().add(52) };
+        unsafe {
+            ConfigurationObject::from_ptr(record).set_appearance(0x8765);
+        }
+        let mut vector = [records.ptr() as u32, 0, 0];
+        let mut instances = [0x1234u32, if scenario == 2 { 0 } else { 0x5678 }];
+        let original_instances = instances;
+        expect(lot.ptr(), "get_config", &[], config.ptr() as u64);
+        expect(config.ptr(), "configuration_objects", &[], vector.as_mut_ptr() as u64);
+        expect(developer.ptr(), "position_object", &[], RETURN);
+        let rp = record as u32;
+        effect(move |args| unsafe {
+            assert_eq!(args[2], rp);
+            (args[4] as *mut u32).write(3);
+        });
+        expect(resources.ptr(), "enumerate_instances", &[], RETURN);
+        let begin = if scenario == 0 {
+            0
+        } else {
+            instances.as_mut_ptr() as u32
+        };
+        let end = if scenario <= 1 { begin } else { begin.wrapping_add(8) };
+        effect(move |args| unsafe {
+            assert_eq!(args[0], rp);
+            assert_eq!(std::slice::from_raw_parts(args[1] as *const u32, 3), [0; 3]);
+            core::ptr::copy_nonoverlapping([begin, end, end].as_ptr(), args[1] as *mut u32, 3);
+        });
+        if scenario >= 2 {
+            expect(random_state.ptr(), "choose_instance", &[2], 1);
+        }
+        if scenario >= 3 {
+            expect(
+                manager.ptr(),
+                "create_prop",
+                &[],
+                if scenario == 4 {
+                    prop.ptr() as u64
+                } else {
+                    RETURN & !0xFFFF_FFFF
+                },
+            );
+            effect(|args| unsafe {
+                assert_eq!((args[0], args[2]), (0x5678, 3));
+                assert_eq!(std::slice::from_raw_parts(args[1] as *const u32, 3), [0; 3]);
+            });
+        }
+        if scenario == 4 {
+            expect(prop.ptr(), "set_appearance", &[0x8765], RETURN);
+        }
+        if scenario != 0 {
+            expect(core::ptr::null_mut(), "free", &[begin], RETURN);
+        }
+        let returned = unsafe { fc4p_006c6d70(developer.ptr(), 0, lot.ptr(), 1) };
+        assert_eq!(returned as u32, if scenario == 4 { prop.ptr() as u32 } else { 0 });
+        assert_eq!(returned >> 32, RETURN >> 32);
+        assert_eq!(instances, original_instances);
+        finished();
+    }
+}
+
+#[test]
+fn family_prop_walk_filters_type_and_flags_and_reloads_array_after_callback() {
+    let _family = fake(0x006C_6D70, family_prop as *const () as usize);
+    let (_ct, mut config) = object(&[(0x5C, configuration_objects as *const () as usize)], 4);
+    let mut developer = Object::new(0x108);
+    let mut lot = Object::new(4);
+    let mut old_records = Object::new(4 * 52);
+    let mut new_records = Object::new(4 * 52);
+    for (index, kind, flags) in [(0, 2, 0), (1, 1, 1), (2, 1, 2)] {
+        let record = unsafe { ConfigurationObject::from_ptr(old_records.ptr().add(index * 52)) };
+        record.set_kind(kind);
+        record.set_flags(flags);
+    }
+    unsafe {
+        ConfigurationObject::from_ptr(new_records.ptr().add(3 * 52)).set_kind(1);
+    }
+    let mut vector = [old_records.ptr() as u32, old_records.ptr() as u32 + 4 * 52, 0];
+    expect(config.ptr(), "configuration_objects", &[], vector.as_mut_ptr() as u64);
+    expect(developer.ptr(), "family_prop", &[lot.ptr() as u32, 2], RETURN);
+    let vp = vector.as_mut_ptr() as usize;
+    let next_begin = new_records.ptr() as u32;
+    effect(move |_| unsafe {
+        (vp as *mut u32).write(next_begin);
+    });
+    expect(developer.ptr(), "family_prop", &[lot.ptr() as u32, 3], RETURN);
+    unsafe {
+        assert_eq!(
+            fc4p_006c7860(developer.ptr(), 0, lot.ptr(), config.ptr(), 0xFFFF_FFFF),
+            RETURN
+        );
+    }
+    finished();
+    for difference in [0i32, -1, -52, i32::MIN] {
+        vector = [0x8000_0000, 0x8000_0000u32.wrapping_add(difference as u32), 0];
+        expect(config.ptr(), "configuration_objects", &[], vector.as_mut_ptr() as u64);
+        let product = i64::from(difference) * 0x4EC4_EC4F;
+        let returned = unsafe { fc4p_006c7860(developer.ptr(), 0, lot.ptr(), config.ptr(), 0) };
+        assert_eq!(returned as u32, product as u32);
+        assert_eq!(returned >> 32, ((product >> 32) as i32 >> 4) as u32 as u64);
+        finished();
+    }
+    expect(config.ptr(), "configuration_objects", &[], RETURN & !0xFFFF_FFFF);
+    unsafe {
+        assert_eq!(
+            fc4p_006c7860(developer.ptr(), 0, lot.ptr(), config.ptr(), 0),
+            RETURN & !0xFFFF_FFFF
+        );
+    }
+    finished();
+}
+
+#[test]
+fn unchanged_texture_mode_keeps_upper_eax_and_edx_and_compares_only_the_low_byte() {
+    let mut developer = Object::new(0x108);
+    for mode in [0u8, 1, 0xFD] {
+        unsafe {
+            LotDeveloper::from_ptr(developer.ptr()).set_force_empty(mode);
+        }
+        let args = [0x1234_5600 | u32::from(mode)];
+        let mut c = RawCall::new(
+            Conv::Thiscall,
+            fc4p_006c77d0 as *const () as usize,
+            developer.ptr() as u32,
+            &args,
+        );
+        c.eax = 0xAABB_CCDD;
+        c.edx = 0x1234_ABCD;
+        unsafe {
+            call_raw(&mut c);
+        }
+        assert_eq!((c.eax, c.edx), (0xAABB_CC00 | u32::from(mode), 0x1234_ABCD));
+        finished();
+    }
+}
+
+#[test]
+fn texture_mode_advances_iterator_before_callback_rereads_mode_and_keeps_saved_method() {
+    let _unregister = fake(0x0080_9580, unregister as *const () as usize);
+    let _delete = fake(0x005E_5620, delete_iterator as *const () as usize);
+    let (_mt, mut manager) = object(&[(0x3C, safe_iterator as *const () as usize)], 4);
+    let mut manager_pointer = manager.ptr();
+    let _manager = fake_data(0x00B4_3D08, (&mut manager_pointer as *mut *mut u8).cast());
+    let (_dt, mut developer) = object(
+        &[
+            (0xAC, set_empty as *const () as usize),
+            (0xB0, normal_textures as *const () as usize),
+        ],
+        0x108,
+    );
+    let (replacement_table, _replacement) = object(&[(0xB0, replacement_normal as *const () as usize)], 4);
+    let mut first_lot = Object::new(4);
+    let (_lt, mut second_lot) = object(&[(0x24, get_config_create as *const () as usize)], 4);
+    let mut sentinel = node(core::ptr::null_mut());
+    let mut first = node(first_lot.ptr());
+    let mut second = node(second_lot.ptr());
+    link(&mut [&mut sentinel, &mut first, &mut second]);
+    let mut owner = [sentinel.ptr() as u32, 0, 0];
+    let mut iterator = [first.ptr() as u32, owner.as_mut_ptr() as u32];
+    expect(manager.ptr(), "safe_iterator", &[], iterator.as_mut_ptr() as u64);
+    let dp = developer.ptr() as usize;
+    let ip = iterator.as_mut_ptr() as usize;
+    let next = second.ptr() as u32;
+    effect(move |_| unsafe {
+        assert_eq!(LotDeveloper::from_ptr(dp as *mut u8).force_empty(), 0xFD);
+    });
+    expect(developer.ptr(), "set_empty", &[first_lot.ptr() as u32], RETURN);
+    effect(move |_| unsafe {
+        assert_eq!(*(ip as *const u32), next);
+        LotDeveloper::from_ptr(dp as *mut u8).set_force_empty(0);
+    });
+    expect(second_lot.ptr(), "get_config_create", &[1], 0xABCD);
+    let rt = replacement_table.as_ptr() as usize;
+    effect(move |_| unsafe {
+        (dp as *mut u32).write(rt as u32);
+    });
+    expect(
+        developer.ptr(),
+        "normal_textures",
+        &[second_lot.ptr() as u32, 0xABCD],
+        RETURN,
+    );
+    expect(unsafe { owner.as_mut_ptr().add(1).cast() }, "unregister", &[], RETURN);
+    let original_iterator = iterator.as_mut_ptr() as u32;
+    effect(move |args| unsafe {
+        assert_eq!(*(args[0] as *const u32), original_iterator);
+    });
+    expect(core::ptr::null_mut(), "free_iterator", &[original_iterator], RETURN);
+    let returned =
+        unsafe { call_thiscall_with_eax(fc4p_006c77d0 as *const () as usize, developer.ptr(), &[0x1234_56FD], 0) };
+    assert_eq!(returned, (RETURN as u32, (RETURN >> 32) as u32));
+    assert_eq!(iterator[0], sentinel.ptr() as u32);
+    finished();
+}
+
+#[test]
+fn texture_mode_handles_detached_and_empty_iterators_and_callback_detachment() {
+    let _unregister = fake(0x0080_9580, unregister as *const () as usize);
+    let _delete = fake(0x005E_5620, delete_iterator as *const () as usize);
+    for scenario in 0..3 {
+        let (_mt, mut manager) = object(&[(0x3C, safe_iterator as *const () as usize)], 4);
+        let mut manager_pointer = manager.ptr();
+        let _manager = fake_data(0x00B4_3D08, (&mut manager_pointer as *mut *mut u8).cast());
+        let (_dt, mut developer) = object(&[(0xAC, set_empty as *const () as usize)], 0x108);
+        let mut lot = Object::new(4);
+        let mut sentinel = node(core::ptr::null_mut());
+        let mut member = node(lot.ptr());
+        link(&mut [&mut sentinel, &mut member]);
+        let mut owner = [sentinel.ptr() as u32, 0, 0];
+        let mut iterator = [
+            if scenario == 2 {
+                member.ptr() as u32
+            } else {
+                sentinel.ptr() as u32
+            },
+            if scenario == 0 { 0 } else { owner.as_mut_ptr() as u32 },
+        ];
+        expect(manager.ptr(), "safe_iterator", &[], iterator.as_mut_ptr() as u64);
+        if scenario == 2 {
+            expect(developer.ptr(), "set_empty", &[lot.ptr() as u32], RETURN);
+            let ip = iterator.as_mut_ptr() as usize;
+            effect(move |_| unsafe {
+                (ip as *mut u32).add(1).write(0);
+            });
+        }
+        if scenario == 1 {
+            expect(unsafe { owner.as_mut_ptr().add(1).cast() }, "unregister", &[], RETURN);
+        }
+        expect(
+            core::ptr::null_mut(),
+            "free_iterator",
+            &[iterator.as_mut_ptr() as u32],
+            RETURN,
+        );
+        unsafe {
+            call_thiscall_with_eax(fc4p_006c77d0 as *const () as usize, developer.ptr(), &[1], 0);
+        }
+        finished();
+    }
+}
+
+#[test]
+fn inflated_rectangle_calls_original_helper_and_preserves_source_and_aliasing() {
+    let _inflate = fake(0x006C_6010, inflate_copy as *const () as usize);
+    for alias in [false, true] {
+        let mut source = [1u32, 2, 3, 4];
+        let mut destination = [0xA5A5_A5A5u32; 4];
+        let out = if alias {
+            source.as_mut_ptr()
+        } else {
+            destination.as_mut_ptr()
+        };
+        // The temporary rectangle's address is private, so check it in the callback.
+        expect(core::ptr::null_mut(), "inflate", &[i32::MIN as u32], RETURN);
+        let returned = unsafe {
+            call_thiscall_with_eax(
+                fc4p_006c6860 as *const () as usize,
+                source.as_mut_ptr().cast(),
+                &[out as u32, i32::MIN as u32],
+                0,
+            )
+        };
+        assert_eq!(returned, (out as u32, 0x8765_4321));
+        assert_eq!(unsafe { std::slice::from_raw_parts(out, 4) }, [5, 6, 7, 0x8765_4321]);
+        if !alias {
+            assert_eq!(source, [1, 2, 3, 4]);
+        }
+        finished();
+    }
+}
+
+unsafe extern "thiscall" fn inflate_copy(this: *mut u8, amount: i32) -> u64 {
+    unsafe {
+        assert_eq!(std::slice::from_raw_parts(this.cast::<u32>(), 4), [1, 2, 3, 4]);
+        core::ptr::copy_nonoverlapping([5u32, 6, 7, 0x8765_4321].as_ptr(), this.cast::<u32>(), 4);
+    }
+    run(core::ptr::null_mut(), "inflate", &[amount as u32])
 }

@@ -19,6 +19,19 @@ game_fn! { fn free_storage(storage: *mut u8) -> u64 = "C" 0x0090_CF63; }
 game_fn! { fn find_boundary(this: *mut u8, output: *mut *mut u8, key: *const i32) -> u64 = "thiscall" 0x006C_0030; }
 game_fn! { #[allow(dead_code)] fn release_developer(this: *mut u8, edx: u32) -> u64 = "fastcall" 0x006C_49D0; }
 
+game_data! { static lot_manager: *mut u8 = 0x00B4_3D08; }
+game_fn! { fn unregister_iterator(this: *mut u8, iterator: *mut *mut u8) -> u64 = "thiscall" 0x0080_9580; }
+game_fn! { fn free_iterator(iterator: *mut u8) -> u64 = "C" 0x005E_5620; }
+game_fn! { fn inflate_rectangle(this: *mut u32, amount: i32) -> u64 = "thiscall" 0x006C_6010; }
+
+layout! {
+    /// A safe lot iterator. Its owner can be cleared by callbacks while iteration is in progress.
+    pub struct LotIterator {
+        0x00 => current / set_current: *mut u8,
+        0x04 => owner / set_owner: *mut u8,
+    }
+}
+
 port! {
     /// Removes inserted occupants, shuts each one down, and releases it. The sentinel is captured once;
     /// each next link and the developer's occupant manager are read after the preceding callbacks.
@@ -211,15 +224,103 @@ port! {
     }
 }
 
+port! {
+    /// Marshals both entry result words for the unchanged-mode path and keeps the original four-byte pop.
+    #[port(address = 0x006C_77D0, owner = "lotdeveloper", name = "cSC4LotDeveloper::SetForceEmptyLotBaseTextures", naked)]
+    pub unsafe extern "C" fn fc4p_006c77d0() {
+        core::arch::naked_asm!(
+            "push dword ptr [esp + 4]", "push edx", "mov edx, eax", "call {}", "ret 4",
+            sym set_force_empty_textures,
+        );
+    }
+}
+
+unsafe extern "fastcall" fn set_force_empty_textures(this: *mut u8, entry_eax: u32, entry_edx: u32, mode: u32) -> u64 {
+    unsafe {
+        let developer = LotDeveloper::from_ptr(this);
+        let mode = mode as u8;
+        if mode == developer.force_empty() {
+            return (u64::from(entry_edx) << 32) | u64::from((entry_eax & !255) | u32::from(mode));
+        }
+        developer.set_force_empty(mode);
+        let manager = lot_manager().read();
+        let mut call = virtual_call(manager, 0x3C, &[], table(manager), entry_edx, false);
+        let iterator_pointer = call.eax as *mut u8;
+        let iterator = LotIterator::from_ptr(iterator_pointer);
+        loop {
+            let owner = iterator.owner();
+            if owner.is_null() {
+                break;
+            }
+            let current = iterator.current();
+            if current == owner.cast::<*mut u8>().read_unaligned() {
+                break;
+            }
+            iterator.set_current(OccupantNode::from_ptr(current).next());
+            let lot = OccupantNode::from_ptr(current).occupant();
+            call.eax = (current as u32 & !255) | u32::from(developer.force_empty());
+            if call.eax as u8 != 0 {
+                call = virtual_call(this, 0xAC, &[lot as u32], call.eax, table(this), false);
+            } else {
+                // The table pointer is captured before the lot's configuration callback; its method
+                // word is read afterwards, so edits to the old table are still visible.
+                let saved_table = table(this);
+                call = virtual_call(lot, 0x24, &[1], table(lot), call.edx, false);
+                let target = (saved_table as *const usize).add(0xB0 / 4).read_unaligned();
+                let args = [lot as u32, call.eax];
+                let mut normal = RawCall::new(Conv::Thiscall, target, this as u32, &args);
+                normal.eax = call.eax;
+                normal.edx = call.edx;
+                call_raw(&mut normal);
+                call = normal;
+            }
+        }
+        let owner = iterator.owner();
+        if !owner.is_null() {
+            let mut iterator_word = iterator_pointer;
+            unregister_iterator(owner.add(4), &mut iterator_word);
+        }
+        free_iterator(iterator_pointer)
+    }
+}
+
+port! {
+    /// Copies a rectangle, inflates the copy through the game's helper, and writes four output words.
+    /// EAX and ECX both return the output pointer; EDX returns its fourth word.
+    #[port(address = 0x006C_6860, owner = "lotdeveloper", name = "InflatedLotRectangle", naked)]
+    pub unsafe extern "C" fn fc4p_006c6860() {
+        core::arch::naked_asm!(
+            "push dword ptr [esp + 8]", "push dword ptr [esp + 8]", "call {}", "mov ecx, eax", "ret 8",
+            sym inflated_rectangle,
+        );
+    }
+}
+
+unsafe extern "thiscall" fn inflated_rectangle(this: *mut u8, output: *mut u32, amount: i32) -> u64 {
+    unsafe {
+        let mut copy = [0u32; 4];
+        for (i, value) in copy.iter_mut().enumerate() {
+            *value = this.add(i * 4).cast::<u32>().read_unaligned();
+        }
+        inflate_rectangle(copy.as_mut_ptr(), amount);
+        for (i, value) in copy.iter().enumerate() {
+            output.add(i).write_unaligned(*value);
+        }
+        (u64::from(copy[3]) << 32) | u64::from(output as u32)
+    }
+}
+
 pub const PORTS: &[Port] = &[
     fc4p_006c62f0::PORT,
     fc4p_006c6340::PORT,
+    fc4p_006c6860::PORT,
     fc4p_006c6ca0::PORT,
     fc4p_006c6cf0::PORT,
     fc4p_006c6e90::PORT,
     fc4p_006c7320::PORT,
     fc4p_006c7360::PORT,
     fc4p_006c7370::PORT,
+    fc4p_006c77d0::PORT,
 ];
 
 #[cfg(test)]
