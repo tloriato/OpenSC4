@@ -330,14 +330,14 @@ generated index: the questions live one file per spec, so read only the file for
 | nation | 0 | 4 | NQ5 | questions/nation.md |
 | neighbors | 0 | 64 | NB20, NG46 | - |
 | network-bridges | 1 | 2 | NB4 | questions/network-bridges.md |
-| network-geometry | 2 | 8 | NG17 | questions/network-geometry.md |
-| network-manager | 5 | 20 | NM23 | questions/network-manager.md |
+| network-geometry | 1 | 9 | NG17 | questions/network-geometry.md |
+| network-manager | 0 | 22 | NM23 | questions/network-manager.md |
 | network-occupants | 16 | 35 | NO48 | questions/network-occupants.md |
 | network-overlay-views | 1 | 2 | NOV4 | questions/network-overlay-views.md |
 | network-routines | 1 | 0 | NRT2 | questions/network-routines.md |
 | network-rules | 3 | 12 | NR18 | questions/network-rules.md |
 | network-tool-ui | 0 | 0 | - | questions/network-tool-ui.md |
-| network-tools | 18 | 15 | NT39 | questions/network-tools.md |
+| network-tools | 16 | 17 | NT39 | questions/network-tools.md |
 | network-transport | 4 | 0 | Q15 | questions/network-transport.md |
 | network-type-info | 4 | 0 | TI5 | questions/network-type-info.md |
 | news-ticker | 4 | 0 | NTK5 | questions/news-ticker.md |
@@ -438,4 +438,4 @@ generated index: the questions live one file per spec, so read only the file for
 | win-grid | 2 | 7 | WG10 | questions/win-grid.md |
 | zone-tool | 1 | 0 | ZT2 | questions/zone-tool.md |
 | zones | 2 | 56 | ZG43, ZQ17 | questions/zones.md |
-| **total** | **635** | **1709** | | |
+| **total** | **627** | **1714** | | |

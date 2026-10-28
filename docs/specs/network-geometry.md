@@ -586,6 +586,27 @@ On any failure `+0x78 := 0` and the world cache is popped.
 
 ### 8.1 Cell infos (`cSC4NetworkCellInfo`, `0xBC` bytes)
 
+**Existing occupant selection (NG16).** `ComputeAndStoreCellInfo` (`00633030`) calls the base tool's
+`GetNetworkOccupant(x,z,toolFilter,&network)` (`00624B70`). The filter is tool `+0x364`, the OR filter made
+from layer mask `+0x360`: `1F4F` for surface tools and the own-type bit for pipe, power line and subway
+(network-tools.md §2). The helper checks x/z against unsigned city width/height, initializes a local
+occupant pointer to null, and calls the retained occupant manager at tool `+0x48`, **slot 32**
+`GetFirstOccupantByStandardCityCell(out,x,z,filter)` (`00624B89–00624BA3`). This is the strict standard-cell
+overlap query in occupant-manager.md §7, taking the **first match in newest-first spatial list order**.
+On a hit QI only that occupant for `A821EF94`, return its Boolean QI result, and release the temporary
+occupant reference (`00624BB2–00624BCD`). There is no second match search after a failed QI, no sort by
+network type, and no combination of several occupants' data. The successful QI reference is owned by the
+caller. Miss/outside leaves the caller's output unchanged; this caller initializes it to null.
+
+The cell-info builder reads all thirteen type positions in increasing order 0…12 from that **one** network:
+slot 22 (`+0x58`) tests membership, and slot 38 (`+0x98`) supplies the corresponding edge word only on a
+true membership test. Thus a crossing inside one occupant retains each represented type; a separate
+overlapping occupant contributes nothing to this record. The record retains the selected network pointer
+and uses its network-kind mask restricted to `1FFF`. No random draw is involved. For two qualifying
+overlapping surface occupants A then newer B, B supplies all thirteen membership/edge decisions; removing
+B lets a subsequent uncached rebuild choose A. A cached cell record is reused by `GetCellInfo` until the
+world cache is cleared; changing spatial order alone does not revise that cached record.
+
 | Offset | Field |
 |---|---|
 | `+0x00`, `+0x04` | x, z |

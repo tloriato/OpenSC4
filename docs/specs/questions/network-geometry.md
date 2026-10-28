@@ -36,10 +36,3 @@
   rather than being resolved by changing rounding or accepting a price tolerance.
 
 <!-- from: network-exact33 R8 (engine lane, 2026-10-28) -->
-- **NG16 — section 8.1 existing-piece lookup during removal rebuilds.**
-  Please specify how `ComputeAndStoreCellInfo` selects an existing occupant when a cell
-  contains several matching network occupants: layer mask, query interface and tie order,
-  or whether their data is combined. The replacement's section 10 rebuild now reads the
-  requested surviving neighbours instead of starting an empty drag; its current choice is
-  the first spatial-query match on the tool's layer. A crossing within one occupant retains
-  all thirteen edge words. No remaining qcheck difference is attributed to this tie choice.

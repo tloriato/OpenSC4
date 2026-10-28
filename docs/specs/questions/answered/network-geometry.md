@@ -106,3 +106,13 @@ Open points from network-geometry.md §17. The current answer is in brackets; ea
   accept QI for the tool's underground occupant class, otherwise a connection QI whose slot 38
   returns that class. Release list and QI references. Slot 67 never participates in the draw
   extension. Nine conformance vectors specify selection, counters, bounds and ownership.
+
+- **NG16 — section 8.1 existing-piece lookup during removal rebuilds.**
+  Please specify how `ComputeAndStoreCellInfo` selects an existing occupant when a cell
+  contains several matching network occupants: layer mask, query interface and tie order,
+  or whether their data is combined. The replacement's section 10 rebuild now reads the
+  requested surviving neighbours instead of starting an empty drag; its current choice is
+  the first spatial-query match on the tool's layer. A crossing within one occupant retains
+  all thirteen edge words. No remaining qcheck difference is attributed to this tie choice.
+
+**ANSWERED 2026-10-28 (re-blockers37b):** MATCHES — network-geometry.md §8.1 specifies first spatial match through occupant-manager slot 32 with the tool OR layer filter, one QI, newest-first tie order and no merging of distinct occupants.
