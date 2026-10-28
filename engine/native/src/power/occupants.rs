@@ -6,7 +6,7 @@
 use super::*;
 
 layout! {
-    /// Fields changed when an occupant leaves the city.
+    /// Accounting fields used by occupant notifications.
     struct OccupantSim {
         0x0C => initialized / set_initialized: u8,
         0x18 => city / set_city: *mut u8,
