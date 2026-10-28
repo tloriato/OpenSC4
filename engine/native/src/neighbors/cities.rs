@@ -38,7 +38,7 @@ layout! {
     }
 }
 
-unsafe fn service(cache: *mut *mut u8, scratch: *mut *mut u8, edx: &mut u32) -> *mut u8 {
+pub(super) unsafe fn service(cache: *mut *mut u8, scratch: *mut *mut u8, edx: &mut u32) -> *mut u8 {
     unsafe {
         if cache.read().is_null() {
             scratch.write_unaligned(core::ptr::null_mut());

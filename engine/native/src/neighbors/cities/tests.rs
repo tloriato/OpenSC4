@@ -536,6 +536,43 @@ fn adjacent_scans_four_edges_filters_missing_and_unestablished_and_sorts_unique_
         assert!(calls.contains(&Call::Subtree(if include as u8 != 0 { 4 } else { 0 })));
         assert!(calls.contains(&Call::FreeTree(3)));
         assert!(calls.contains(&Call::FreeTree(1)));
+        let mut expected = vec![
+            Call::ClearOutput,
+            Call::AllocateTree(20),
+            Call::Region,
+            Call::Current,
+            Call::Position,
+            Call::Size,
+        ];
+        for (x, z, city) in [
+            (3, 2, 3),
+            (3, 5, 1),
+            (4, 2, 3),
+            (4, 5, 4),
+            (2, 3, 0),
+            (5, 3, 2),
+            (2, 4, 0),
+            (5, 4, 0),
+        ] {
+            expected.push(Call::At(x, z));
+            if city != 0 {
+                if include as u8 == 0 {
+                    expected.push(Call::Established(city));
+                }
+                if city != 4 || include as u8 != 0 {
+                    expected.push(Call::Insert(city));
+                }
+            }
+        }
+        expected.extend(tail);
+        expected.extend([
+            Call::Subtree(if include as u8 != 0 { 4 } else { 0 }),
+            Call::FreeTree(3),
+            Call::Subtree(2),
+            Call::FreeTree(1),
+            Call::FreeTree(u32::MAX),
+        ]);
+        assert_eq!(calls, expected);
     }
 }
 
