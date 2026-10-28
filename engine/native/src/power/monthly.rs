@@ -22,61 +22,76 @@ port! {
     /// truncate the unsigned pole count times that stored fraction. NaN remains NaN and yields target 0.
     /// If the target differs, copy and shuffle the poles through the game, visit until it is reached,
     /// and free the copy. Coordinates are queried even when a pole needs no change.
-    /// EAX is the target on the early exit, otherwise the last count or the storage release result.
-    #[port(address = 0x006E_C3F0, owner = "power", name = "cSC4PowerSimulator::ApplyPoleFunding")]
-    pub unsafe extern "thiscall" fn fc4p_006ec3f0(this: *mut u8, funding: *const f32) -> u32 {
-        // SAFETY: the simulator, funding pointer, pole interfaces and game vector storage are live.
-        unsafe {
-            let sim = PowerSim::from_ptr(this);
-            let x = multiply_float(F80::from_f32(funding.read_unaligned()), 100.0).to_f32();
-            let delta = curve_output(this.add(0x3B8), x);
-            let fraction = subtract_from_float(delta, sim.broken_fraction());
-            let upper = fraction.compare(F80::from_f64(1.0));
-            sim.set_broken_fraction(fraction.to_f32());
-            if !upper.less() && !upper.equal() && !upper.unordered() {
-                sim.set_broken_fraction(1.0);
-            } else if fraction.compare(F80::from_f64(0.0)).less() {
-                sim.set_broken_fraction(0.0);
-            }
-            let count = sim.pole_count();
-            let mut total = F80::from_i32(count as i32);
-            if (count as i32) < 0 { total = add_float(total, 4_294_967_296.0); }
-            let target = multiply_float(total, sim.broken_fraction()).ftol() as u32;
-            if target == sim.broken_count() { return target; }
-            let mut copy = MaybeUninit::<[u32; 3]>::uninit();
-            let vector = copy.as_mut_ptr().cast::<u32>();
-            copy_poles(vector, this.add(0x29C));
-            let begin = vector.read() as *mut *mut u8;
-            let end = vector.add(1).read() as *mut *mut u8;
-            shuffle_poles(begin, end);
-            let mut eax = vector.add(1).read();
-            let mut cursor = begin;
-            while cursor != vector.add(1).read() as *mut *mut u8 {
-                if target == sim.broken_count() { break; }
-                let pole = cursor.read_unaligned();
-                let mut x = MaybeUninit::<i32>::uninit();
-                let mut z = MaybeUninit::<i32>::uninit();
-                cursor = cursor.wrapping_add(1);
-                vcall!(pole, 0x20 => fn(*mut i32, *mut i32), x.as_mut_ptr(), z.as_mut_ptr());
-                let distressed = vcall!(pole, 0x2C => fn() -> u32) as u8 != 0;
-                eax = sim.broken_count();
-                if distressed && eax > target {
-                    vcall!(pole, 0x30 => fn(u32), 0);
-                    eax = sim.broken_count().wrapping_sub(1);
-                    sim.set_broken_count(eax);
-                } else if !distressed && eax < target {
-                    vcall!(pole, 0x30 => fn(u32), 1);
-                    eax = sim.broken_count().wrapping_add(1);
-                    sim.set_broken_count(eax);
-                }
-                if cursor == vector.add(1).read() as *mut *mut u8 { break; }
-            }
-            if !begin.is_null() { eax = free_poles(begin); }
-            eax
-        }
+    /// The funding argument word is reused as the pole coordinate's second output. EAX is the target
+    /// on the early exit, otherwise the last count or the storage release result.
+    #[port(address = 0x006E_C3F0, owner = "power", name = "cSC4PowerSimulator::ApplyPoleFunding", naked)]
+    pub unsafe extern "C" fn fc4p_006ec3f0() {
+        core::arch::naked_asm!("lea edx, [esp + 4]", "jmp {body}", body = sym funding_body);
     }
 }
 
+unsafe extern "fastcall" fn funding_body(this: *mut u8, argument: *mut i32, funding: *const f32) -> u32 {
+    // SAFETY: the simulator, funding pointer, pole interfaces and game vector storage are live.
+    unsafe {
+        let sim = PowerSim::from_ptr(this);
+        let x = multiply_float(F80::from_f32(funding.read_unaligned()), 100.0).to_f32();
+        let delta = curve_output(this.add(0x3B8), x);
+        let fraction = subtract_from_float(delta, sim.broken_fraction());
+        let upper = fraction.compare(F80::from_f64(1.0));
+        sim.set_broken_fraction(fraction.to_f32());
+        if !upper.less() && !upper.equal() && !upper.unordered() {
+            sim.set_broken_fraction(1.0);
+        } else if fraction.compare(F80::from_f64(0.0)).less() {
+            sim.set_broken_fraction(0.0);
+        }
+        let count = sim.pole_count();
+        let mut total = F80::from_i32(count as i32);
+        if (count as i32) < 0 {
+            total = add_float(total, 4_294_967_296.0);
+        }
+        let target = multiply_float(total, sim.broken_fraction()).ftol() as u32;
+        if target == sim.broken_count() {
+            return target;
+        }
+        let mut copy = MaybeUninit::<[u32; 3]>::uninit();
+        let vector = copy.as_mut_ptr().cast::<u32>();
+        copy_poles(vector, this.add(0x29C));
+        let begin = vector.read() as *mut *mut u8;
+        let end = vector.add(1).read() as *mut *mut u8;
+        shuffle_poles(begin, end);
+        let mut eax = vector.add(1).read();
+        let mut cursor = begin;
+        let mut release_begin = begin;
+        while cursor != vector.add(1).read() as *mut *mut u8 {
+            if target == sim.broken_count() {
+                break;
+            }
+            let pole = cursor.read_unaligned();
+            let mut x = MaybeUninit::<i32>::uninit();
+            cursor = cursor.wrapping_add(1);
+            vcall!(pole, 0x20 => fn(*mut i32, *mut i32), x.as_mut_ptr(), argument);
+            let distressed = vcall!(pole, 0x2C => fn() -> u32) as u8 != 0;
+            eax = sim.broken_count();
+            if distressed && eax > target {
+                vcall!(pole, 0x30 => fn(u32), 0);
+                eax = sim.broken_count().wrapping_sub(1);
+                sim.set_broken_count(eax);
+            } else if !distressed && eax < target {
+                vcall!(pole, 0x30 => fn(u32), 1);
+                eax = sim.broken_count().wrapping_add(1);
+                sim.set_broken_count(eax);
+            }
+            release_begin = vector.read() as *mut *mut u8;
+            if cursor == vector.add(1).read() as *mut *mut u8 {
+                break;
+            }
+        }
+        if !release_begin.is_null() {
+            eax = free_poles(release_begin);
+        }
+        eax
+    }
+}
 /// The ring row calculation wraps like the game's word-sized address arithmetic.
 fn ring_cell(this: *mut u8, index: i32, kind: usize) -> *mut i32 {
     this.wrapping_add(0x90)

@@ -153,7 +153,7 @@ impl World {
     }
     fn apply(&mut self, funding: f32, delta: f32) -> u32 {
         STATE.with(|s| s.borrow_mut().delta = delta);
-        unsafe { fc4p_006ec3f0(self.object.ptr(), &funding) }
+        unsafe { apply_pole_funding(self.object.ptr(), &funding) }
     }
 }
 
@@ -253,6 +253,55 @@ fn distress_uses_low_byte_and_count_is_reloaded_after_set() {
     w.apply(0.0, -1.0);
     assert_eq!(w.sim().broken_count(), 8);
     assert!(calls().iter().any(|c| matches!(c, Call::Set(_, 1))));
+}
+
+#[unsafe(naked)]
+extern "thiscall" fn funding_argument(_this: *mut u8, _funding: *const f32) -> u64 {
+    core::arch::naked_asm!(
+        "push dword ptr [esp + 4]", "call {entry}", "mov edx, dword ptr [esp - 4]", "ret 4",
+        entry = sym fc4p_006ec3f0,
+    );
+}
+
+#[test]
+fn pole_coordinates_overwrite_the_original_funding_argument_word() {
+    let mut w = World::new(1, 0);
+    let funding = 0.0f32;
+    STATE.with(|s| s.borrow_mut().delta = -1.0);
+    let result = funding_argument(w.object.ptr(), &funding);
+    assert_eq!(result as u32, 0xFACE_4321);
+    assert_eq!((result >> 32) as i32, -30);
+    assert_eq!(funding.to_bits(), 0);
+    STATE.with(|s| s.borrow_mut().delta = 0.0);
+    let result = funding_argument(w.object.ptr(), &funding);
+    assert_eq!(result as u32, 1);
+    assert_eq!((result >> 32) as u32, &funding as *const f32 as u32);
+}
+
+#[test]
+fn funding_preserves_an_existing_x87_value_control_word_mxcsr_and_direction_flag() {
+    let mut w = World::new(0, 0);
+    let held = F80::from_f32(7.25);
+    let mut restored = F80::ZERO;
+    let (mut cw_before, mut cw_after) = (0u16, 0u16);
+    let (mut mxcsr_before, mut mxcsr_after) = (0u32, 0u32);
+    let (flags_before, flags_after): (u32, u32);
+    unsafe {
+        core::arch::asm!("fld tbyte ptr [{held}]", "fnstcw word ptr [{cw}]", "stmxcsr dword ptr [{mxcsr}]",
+            "pushfd", "pop {flags:e}", held = in(reg) &held, cw = in(reg) &mut cw_before,
+            mxcsr = in(reg) &mut mxcsr_before, flags = lateout(reg) flags_before, out("st(0)") _);
+    }
+    w.apply(0.5, 0.0);
+    unsafe {
+        core::arch::asm!("fstp tbyte ptr [{held}]", "fnstcw word ptr [{cw}]", "stmxcsr dword ptr [{mxcsr}]",
+            "pushfd", "pop {flags:e}", held = in(reg) &mut restored, cw = in(reg) &mut cw_after,
+            mxcsr = in(reg) &mut mxcsr_after, flags = lateout(reg) flags_after, out("st(0)") _);
+    }
+    assert_eq!(restored, held);
+    assert_eq!(
+        (cw_before, mxcsr_before, flags_before & 0x400),
+        (cw_after, mxcsr_after, flags_after & 0x400)
+    );
 }
 
 extern "thiscall" fn factor(this: *mut u8, id: u32, context: u32) -> f32 {
