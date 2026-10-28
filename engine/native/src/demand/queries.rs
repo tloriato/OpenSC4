@@ -15,7 +15,7 @@ game_fn! {
 // Stored operands remain memory operands so a signaling NaN is handled by the arithmetic itself.
 macro_rules! stored_op {
     ($name:ident, $instruction:literal) => {
-        fn $name(value: F80, operand: f32) -> F80 {
+        pub(super) fn $name(value: F80, operand: f32) -> F80 {
             let mut output = F80::ZERO;
             unsafe {
                 core::arch::asm!(
@@ -30,6 +30,8 @@ macro_rules! stored_op {
 }
 stored_op!(add_float, "fadd dword ptr [{operand}]");
 stored_op!(multiply_float, "fmul dword ptr [{operand}]");
+stored_op!(subtract_from_float, "fsubr dword ptr [{operand}]");
+stored_op!(divide_float, "fdiv dword ptr [{operand}]");
 
 unsafe fn supply(object: *mut u8, eax: u32, edx: u32) -> RawCall {
     unsafe {

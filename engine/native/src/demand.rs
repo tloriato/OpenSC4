@@ -113,9 +113,11 @@ unsafe fn successor(node: *mut u8) -> *mut u8 {
 
 mod capacity;
 mod census;
+mod effects;
 mod interface;
 mod io;
 mod jobs;
+mod links;
 mod queries;
 mod sort;
 mod tree;
@@ -125,18 +127,22 @@ mod test_support;
 
 const COUNT: usize = capacity::PORTS.len()
     + census::PORTS.len()
+    + effects::PORTS.len()
     + interface::PORTS.len()
     + io::PORTS.len()
     + jobs::PORTS.len()
+    + links::PORTS.len()
     + queries::PORTS.len()
     + sort::PORTS.len()
     + tree::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
     capacity::PORTS,
     census::PORTS,
+    effects::PORTS,
     interface::PORTS,
     io::PORTS,
     jobs::PORTS,
+    links::PORTS,
     queries::PORTS,
     sort::PORTS,
     tree::PORTS,
