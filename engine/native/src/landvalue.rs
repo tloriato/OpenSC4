@@ -23,10 +23,34 @@ layout! {
     /// "Land-value native progress"). The altitude fields are the ones `SetupAltitudeEffect` (0x006BD750) reads
     /// and writes (§7.3).
     pub struct LandValueSim {
+        /// Whether initialization completed.
+        0x0C => initialized / set_initialized: u8,
+        /// Subscribed message server.
+        0x14 => message_server / set_message_server: *mut u8,
+        /// Retained city interface.
+        0x18 => city / set_city: *mut u8,
+        /// Retained terrain interface.
+        0x1C => terrain / set_terrain: *mut u8,
         /// The zone manager (`cISC4ZoneManager*`), taken in `Init`.
         0x20 => zone_manager / set_zone_manager: *mut u8,
         /// The intrinsic land value grid (`cISC4SimGrid<uint8>*`), the first grid `Init` creates (§2).
         0x24 => intrinsic_grid / set_intrinsic_grid: *mut u8,
+        /// Published total grid.
+        0x28 => total_grid / set_total_grid: *mut u8,
+        /// Working grid.
+        0x2C => scratch_grid / set_scratch_grid: *mut u8,
+        /// Slope grid.
+        0x30 => slope_grid / set_slope_grid: *mut u8,
+        /// Pending changes since the last pass.
+        0x34 => dirty / set_dirty: u8,
+        /// Current pipeline state.
+        0x38 => state / set_state: i32,
+        /// Tract scanning iterator.
+        0x3C => tract_iterator / set_tract_iterator: *mut u8,
+        /// Slope scanning iterator.
+        0x40 => slope_iterator / set_slope_iterator: *mut u8,
+        /// Altitude histogram bin shift.
+        0x5C => histogram_shift / set_histogram_shift: u32,
         /// pivot (§7.3).
         0x60 => pivot / set_pivot: f32,
         /// lowRange (§7.3).
@@ -37,8 +61,12 @@ layout! {
         0x6C => top_index / set_top_index: i32,
         /// meanAlt (§3).
         0x78 => mean_altitude / set_mean_altitude: f32,
+        /// Tuned grid tract size.
+        0x7C => tract_size / set_tract_size: u8,
         /// The altitude curve (`cSC4ResponseCurve*`, tuning `0x47E2C320`).
         0x84 => altitude_curve / set_altitude_curve: *mut u8,
+        /// Developer desirability response curve.
+        0x88 => desirability_curve / set_desirability_curve: *mut u8,
         /// minAlt (§3).
         0x98 => min_altitude / set_min_altitude: f32,
         /// maxAlt (§3).
