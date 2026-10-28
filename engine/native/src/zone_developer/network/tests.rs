@@ -38,6 +38,7 @@ struct State {
     framework: usize,
     cache: usize,
     reset_cache: bool,
+    expected_free_edx: u32,
     get_result: u64,
     connection: u32,
     street: Option<u32>,
@@ -74,10 +75,11 @@ extern "thiscall" fn service_fake(_this: *mut u8, cls: u32, iid: u32, out: *mut 
     1
 }
 
-extern "thiscall" fn temporary_fake(slot: *mut *mut u8) -> u64 {
+extern "fastcall" fn temporary_fake(slot: *mut *mut u8, edx: u32) -> u64 {
     STATE.with(|s| {
         let mut s = s.borrow_mut();
         let reference = unsafe { slot.read() };
+        assert_eq!(edx, reference as u32);
         assert_eq!(unsafe { (s.cache as *const usize).read() }, reference as usize);
         s.events.push(Event::DropTemporary(reference as usize));
     });
@@ -167,11 +169,15 @@ extern "thiscall" fn clear_fake(list: *mut *mut u8) -> u64 {
     0x1122_3344_0000_0000
 }
 
-extern "thiscall" fn free_record(_this: *mut u8, node: *mut u8) {
+extern "fastcall" fn free_record(_this: *mut u8, edx: u32, node: *mut u8) {
     assert_eq!(unsafe { node.cast::<*mut u8>().read() }, node);
     assert_eq!(unsafe { node.add(4).cast::<*mut u8>().read() }, node);
     assert_eq!(unsafe { node.add(8).cast::<u32>().read() }, 0xA5A5_A5A5);
-    STATE.with(|s| s.borrow_mut().events.push(Event::Free));
+    STATE.with(|s| {
+        let mut s = s.borrow_mut();
+        assert_eq!(edx, s.expected_free_edx);
+        s.events.push(Event::Free);
+    });
 }
 
 #[unsafe(naked)]
@@ -257,6 +263,7 @@ impl Fixture {
         let mut cache = Box::new(objects[0].ptr() as usize);
         STATE.with(|s| {
             let mut s = s.borrow_mut();
+            s.expected_free_edx = 0x1122_3344;
             s.allocator = objects[0].ptr() as usize;
             s.framework = objects[1].ptr() as usize;
             s.cache = &mut *cache as *mut usize as usize;
@@ -516,6 +523,45 @@ fn real_connections_short_circuit_drafts_and_preserve_edx_on_every_exit() {
             Event::Get(1, 2, 8),
             Event::Draft(3, 1, 2, 8),
             Event::Draft(11, 1, 2, 0x800)
+        ]
+    );
+}
+
+extern "thiscall" fn release_list_tagged(this: *mut u8, list: *mut *mut u8) -> u64 {
+    release_list_fake(this, list);
+    0xAABB_CCDD_1234_5678
+}
+
+extern "fastcall" fn clear_preserving_edx(list: *mut *mut u8, edx: u32) -> u64 {
+    clear_fake(list);
+    u64::from(edx) << 32
+}
+
+#[test]
+fn empty_network_list_keeps_release_list_edx_through_node_cleanup_into_allocator_free() {
+    let mut f = Fixture::new();
+    f._tables[2][0xC0 / 4] = release_list_tagged as *const () as usize;
+    let _clear = fake(0x0041_3E60, clear_preserving_edx as *const () as usize);
+    STATE.with(|s| s.borrow_mut().expected_free_edx = 0xAABB_CCDD);
+    assert_eq!(
+        unsafe {
+            crate::testing::call_thiscall_with_eax(
+                fc4p_0072fca0 as *const () as usize,
+                f.developer.ptr(),
+                &[0, 0, 0],
+                0,
+            )
+        },
+        (0, CALL_EDX)
+    );
+    assert_eq!(
+        events(),
+        vec![
+            Event::Allocate(12),
+            Event::Collect([0, 0], 0xC772_BF98, u32::MAX),
+            Event::ReleaseList,
+            Event::Clear,
+            Event::Free
         ]
     );
 }

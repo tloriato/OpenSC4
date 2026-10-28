@@ -50,6 +50,7 @@ layout! {
 
 mod altitude;
 mod basic;
+mod deletion;
 mod dezone;
 mod edges;
 mod examine;
@@ -63,6 +64,7 @@ mod placement;
 mod region;
 mod registers;
 mod remnants;
+mod search;
 mod street;
 
 /// Call a virtual method with its incoming scratch-register values and retain EDX:EAX.
@@ -86,6 +88,7 @@ pub const PORTS: &[Port] = &crate::port::concat::<
     {
         basic::PORTS.len()
             + dezone::PORTS.len()
+            + deletion::PORTS.len()
             + lot::PORTS.len()
             + edges::PORTS.len()
             + examine::PORTS.len()
@@ -96,6 +99,7 @@ pub const PORTS: &[Port] = &crate::port::concat::<
             + altitude::PORTS.len()
             + face::PORTS.len()
             + region::PORTS.len()
+            + search::PORTS.len()
             + placement::PORTS.len()
             + street::PORTS.len()
             + remnants::PORTS.len()
@@ -103,6 +107,7 @@ pub const PORTS: &[Port] = &crate::port::concat::<
 >(&[
     basic::PORTS,
     dezone::PORTS,
+    deletion::PORTS,
     lot::PORTS,
     edges::PORTS,
     examine::PORTS,
@@ -113,6 +118,7 @@ pub const PORTS: &[Port] = &crate::port::concat::<
     altitude::PORTS,
     face::PORTS,
     region::PORTS,
+    search::PORTS,
     placement::PORTS,
     street::PORTS,
     remnants::PORTS,
