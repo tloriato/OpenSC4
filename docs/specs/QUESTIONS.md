@@ -385,7 +385,7 @@ generated index: the questions live one file per spec, so read only the file for
 | rz-draw | 1 | 0 | RZD2 | questions/rz-draw.md |
 | rz-sparse-matrix | 5 | 0 | SM6 | questions/rz-sparse-matrix.md |
 | rz-strings | 4 | 8 | RZS12 | questions/rz-strings.md |
-| save-records | 0 | 2 | SR34 | questions/save-records.md |
+| save-records | 0 | 5 | SR37 | questions/save-records.md |
 | sc-resources | 1 | 11 | SCR12 | questions/sc-resources.md |
 | simgrid | 2 | 1 | SG4 | questions/simgrid.md |
 | simulator | 0 | 0 | - | questions/simulator.md |
@@ -438,4 +438,4 @@ generated index: the questions live one file per spec, so read only the file for
 | win-grid | 2 | 7 | WG10 | questions/win-grid.md |
 | zone-tool | 1 | 0 | ZT2 | questions/zone-tool.md |
 | zones | 2 | 56 | ZG43, ZQ17 | questions/zones.md |
-| **total** | **636** | **1705** | | |
+| **total** | **636** | **1708** | | |
