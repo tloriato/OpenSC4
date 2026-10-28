@@ -164,6 +164,7 @@ unsafe fn store(base: u32, offset: u32, value: u32) {
 
 pub mod compatibility;
 pub mod cache;
+pub mod configuration;
 pub mod copying;
 pub mod evaluation;
 pub mod geometry;
@@ -178,6 +179,7 @@ pub mod trees;
 
 const COUNT: usize = compatibility::PORTS.len()
     + cache::PORTS.len()
+    + configuration::PORTS.len()
     + copying::PORTS.len()
     + evaluation::PORTS.len()
     + geometry::PORTS.len()
@@ -192,6 +194,7 @@ const COUNT: usize = compatibility::PORTS.len()
 const ALL: [Port; COUNT] = crate::port::concat(&[
     compatibility::PORTS,
     cache::PORTS,
+    configuration::PORTS,
     copying::PORTS,
     evaluation::PORTS,
     geometry::PORTS,
