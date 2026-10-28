@@ -389,12 +389,13 @@ A brush or game component therefore acts only inside this tick, and only while b
 `kSC4MessageAnimationTick` is sent by `cSC4AnimationTickManager::DoAnimationTick` (`0x004487F0`) to each
 tickable object. The manager keeps a pause counter (`+0x84`, `PauseAnimationSystem` `0x00447EE0`); while it is
 non-zero the per-target sweep is skipped (`0x004488C0`–`0x004488D6`), so no ticks are delivered. Separately the
-effects manager registers a callback with the tick manager in `Init` (`0x00594EEE`:
-`EnableAutoStep(1, EffectsTickCallback)` on the `cISC4AnimationTickManager` at `+0xCD8`), and
-`EffectsTickCallback` `0x0058D9A0` posts `0x697D01ED` (`DoEffectsTick`, §12) through the message server every
-time the animation tick manager steps. So the effects manager's own tick runs **once per animation tick in any
-session that ticks**, not only in the draw pass. The tick manager's own `DoAnimationTick` is driven from outside the
-effects subsystem (the framework scheduler), which is why a paused game stops it and a ticking harness keeps it.
+effects manager registers its message target (`manager + 8`) with the animation-tick manager's slot 5
+`AddAnimationTickTarget(target, 192)` (`00594EF6–00594F0E`). This is direct target delivery, not a message-server
+subscription to `0x86AD10EE`. The animation-tick manager owns the elapsed-microsecond measurement.
+**The object at `+0xCD8` is a separate embedded `cRZCallbackTimer`, not the tick manager.** Init sets its callback
+to `EffectsTickCallback` (`0058D9A0`) with argument zero through timer slot 9 (`00594EE1–00594EF3`).
+That timer posts `0x697D01ED` (`DoEffectsTick`, §12) on its own schedule (§6.1.1). It does not deliver or measure
+animation ticks. Pausing animation-target delivery and running the ordinary effects timer are separate operations.
 
 **Corrects (EF12, re-effects-contracts4): `DoEffectsTick` `0x00593D00` does not rebuild or activate anything on
 an ordinary tick.** Its body, in order:
@@ -418,6 +419,71 @@ own `UpdateActiveVisualEffects`), and cleared by `Shutdown` (`0x00595828`). Once
 calls `UpdateVisualEffect(effect, 0)` on each, then `ActivateNewVisualEffects`. Its callers are that message,
 `DoZoomChanged`, the reload of step 1, and `DoRenderPropertiesChanged` (also with `+0xB8C` = 1, when the
 cached pointer `+0xB90` changes, `0x00593E10+`).
+
+### 6.1.1 Init, ordinary messages, timer and clock ownership (DSEX33-EF02) *[compat]*
+
+This corrects the former callback-as-`EnableAutoStep` description. All offsets below are from the primary
+manager; `DoMessage` receives `manager + 8`, so its timer receiver at `this + 0xCD0` is `manager + 0xCD8`.
+Do not create a second animation subscription to reproduce the ordinary timer.
+
+**Construction and Init order.** The constructor constructs the callback timer at `00591530`. Its initial state
+and retained timer service are timers.md §§2.1–2.3: callback null, period 1000 ms, delay 100 ms, stopped, periodic.
+Init (`00594A30`) returns true without repeating work when byte `+0x1AC` is already set. On first entry:
+
+1. Set initialized, clear post-services-ready byte `+0x1AD`, obtain the current thread ID, send the two initial
+   progress notifications, and zero the unsigned 32-bit accumulated animation microseconds `+0x1B8` and float32
+   seconds `+0x1BC`. Read terrain cell size, height, then width to cache the horizontal city center.
+2. Retain the city in `+0xDE0`; call city slot 32 (`+0x80`) with `(manager + 4, 5, 0x76C)`
+   (`00594B96–00594BA9`). Retain the lighting collaborator from global `00B43DAC` in `+0xB88`. Obtain the city's
+   service-directory member at city slot 10 result `+0x30`, QI `09CD86F9`, and keep it in `+0xDEC`.
+3. Create flash materials, construct and retain the effect-map service, and initialize it (§18.12). Create the
+   file queue (CLSID `5CF9459A`, IID `1CF94583`) and command parser (CLSID `6956BABC`, IID `A956AD14`), send
+   the next progress notification, and load the effects bootstrap (§6.2).
+4. When the message server exists, subscribe **in this order** using `manager + 8`: `A6B79620`, `A6B79602`,
+   `697D01ED`, `2ACD2CF3`, `66956814`, `26D31EC1`, `AB96B05F`, `26D31EC2`, `C9F775BB`, `99EF1142`,
+   `99EF1143` (`00594D78–00594E14`). Register the cheat target and Effect command; Snow/HeapCheck are conditional
+   on the development-mode collaborator. Set the timer callback `(0058D9A0, 0)`, then register the animation
+   target at priority **192**, then register the scripting `effects` object and `create_effect` command, and
+   send the final progress notification. **Init does not start the callback timer.**
+
+**PostCityInit `26D31EC1`.** First invoke timer slot 5 `Start(1000, manager)`, then occupant-manager slot 45
+(`+0xB4`) with `(InsertOccupantIterationFunction = 0058F140, manager, 0, 0, 0)` (`005942B1–005942DD`). The
+iteration seeds building heights by calling `DoOccupantInserted` (§18.12). Start keeps a counted reference to
+the primary manager; repeated starts while running fail without a restart, and the handler does not branch on
+that result. The timer uses the framework timer scheduler's milliseconds, periodic/non-fixed-rate flags
+`(oneShot=0, fixedRate=0)`, not animation microseconds (timers.md §2.5). `26D31EC2` sets byte `+0x1AE` to 1,
+which suppresses subsequent building-map changes. `AB96B05F` sets `+0x1AD` and calls `UpdateActiveVisualEffects`.
+View, lighting, render-property and occupant messages retain the dispatch described in §§5, 6.1, 12 and 18.12.
+
+**Callback ABI.** `0058D9A0` is a plain caller-cleaned callback (bare `RET`), receiving the timer's opaque
+32-bit argument; it ignores that argument and does not use an effects `this` pointer. If the global message
+server is null it does nothing. Otherwise it creates a standard message, sets its type to `697D01ED`, and posts
+it through message-server slot 4 with delivery argument zero (`0058D9C7–0058D9DA`). The message has no elapsed
+time payload. Its delivery calls `DoEffectsTick`, not `DoAnimationTick`.
+
+**Clock reads, in their owning operations.** There is no manager-owned stopwatch or performance-counter read
+in Init, `DoAnimationTick` (`0058E580`), ordinary `DoEffectsTick` (`00593D00`) or draw `Update` (`00593120`).
+Do not synthesize a read to adjust another owner's fixed-clock delta. The relevant transitive operations are:
+
+| Path / condition | Clock and ordering |
+|---|---|
+| PostCityInit, successful first timer Start, enabled scheduler | Scheduler `AddTimer` reads its millisecond `cRZTimer::GetElapsedTime` **once**, before inserting the deadline. Both empty-list and nonempty-list branches do this (`0093384F`, `0093388F`); that timer reads QPC. No read if Start refuses because already running/no callback, or scheduler disabled. Worker-thread timing belongs to the scheduler, timers.md §2.5. |
+| `DoAnimationTick` | Obtain simulator animation dilation if the simulator exists, use the delivered unsigned microseconds, add modulo 2^32, convert to seconds, obtain the input-manager pick ray, then update started effects in active-list order. The dilation getter is not a stopwatch read (`0058E588–0058E5E8`). Components own any operations they perform during their updates. |
+| `DoEffectsTick`, lighting collaborator present | After the optional file reload, call lighting slot 22 (`+0x58`) once, copy the returned X/Z values into `+0xCA8/+0xCB0` with Y zero, then construct a local-date object (`00593D7F–00593DA6`). The date constructor reads wall time and localtime (`0091308B–00913097`), not QPC. Only December 25 enters the snowline branch. No lighting pointer means no date read. |
+| Draw `Update` | Uses cached accumulated animation time for component draw calls, flashes and camera effects, then performs the end-of-draw deactivation/activation pass. It does not fetch a new animation delta. Render/component/activation calls retain their own contracts. |
+
+The manager's registration, timer callback, ordinary non-reload tick and map maintenance draw no CRT `rand()`.
+Effect bootstrap/activation and component simulation keep their separately specified generators and draws.
+
+**Shutdown order.** An uninitialized manager does nothing and returns true. Otherwise clear `+0x1AC`, remove
+script registrations, stop/release camera effects, remove `manager + 8` from animation priority 192, then
+call embedded timer `Stop` (`0059511F–0059512B`). Stop removes its scheduler timer and releases the manager it
+kept; the embedded timer itself remains until manager destruction. Remove cheat registrations, remove the
+eleven ordinary message subscriptions in their Init order and dynamic subscriptions, clear message hashes,
+shut down/release maps, release parser/queue and effects/components, then release `+0xDEC`. Finally city slot
+33 (`+0x84`) unregisters `manager + 4`, release the city and lighting pointers, and clear `+0x1AD`
+(`005957CB–00595828`). Native effect-map shutdown invalidates its terrain-backed contents even if a client
+retained the map interface. No claim about the cause of the cited save differences follows from these rules.
 
 ### 6.2 File queue and bootstrap lifetime (EF18) *[compat]*
 
@@ -1603,10 +1669,9 @@ saves nothing).
     overloads (`0x00593AB0`, `0x00593B68`), the end of `DeactivateUnusedVisualEffects` (`0x00592A01`, the draw
     pass), and `UpdateActiveVisualEffects` `0x00593B90`. The last one runs on `kSC4MessageDoEffectsTick`
     `0x697D01ED` (from `DoMessage` `0x00594476`) and on zoom/render-property changes. `0x697D01ED` is posted by
-    `EffectsTickCallback` `0x0058D9A0`, which the manager registered with the animation-tick manager in `Init`
-    (`0x00594EEE`: `EnableAutoStep(1, 0x0058D9A0)`). So **in a session that only ticks, an effect created during
-    a draw-pass sweep is activated on the next animation tick** (when the sweep flag `+0x1B4` is clear), not only
-    on the next draw pass. §6.1.
+    `EffectsTickCallback` `0x0058D9A0`, registered on the embedded callback timer in Init. It starts with a
+    1000-ms period at PostCityInit, independently of animation-target delivery (§6.1.1). Creation, reload and
+    draw-pass activation follow §6.1; ordinary non-reload `697D01ED` delivery alone does not activate effects.
 - ~~**EF5.** Whether a hidden pause counts as "paused" for the time dilation.~~
   **ANSWERED 2026-10-20 (re-answers34): DIFFERS from the earlier dilation reading.** `GetAnimationTimeDilation`
   `0x007026F0` consults, in order: `IsEmergencyPaused` (slot 17) → the paused value; the object at global
@@ -3485,6 +3550,95 @@ or a delay, are required to distinguish the two unchanged-DLL runs. EF28 is
 statically answered for ownership/registration and narrowed to this runtime
 observation for the actual failing execution; no replacement acceptance is
 inferred from either the earlier corrupt run or the later clean repeat.
+
+### 18.12 Aircraft height-map service (DSEX33-EF01) *[compat]*
+
+**Identity and lifetime.** Manager slot 9 `GetEffectMaps` (`0058FD40`) returns the pointer at primary manager
+`+0xD98` in EAX, **without AddRef**. Before first Init and after Shutdown it is null. Init constructs an
+`0x88`-byte `cSC4EffectMaps` (`00586890`), retains it, then calls its Init (`005869C0`), before effects bootstrap
+and message/tick registration (§6.1.1). Map IID **`0A5EAA1A`** returns the map primary pointer and AddRefs it
+(`00585AD0`). Other IIDs forward to the `cRZUnknown` subobject at map `+4`; the two share the count. Map-primary
+AddRef/Release adjust by +4 (`005BE3E0`, `005BCB30`). A client needing its own reference must obtain one.
+Shutdown explicitly releases the retained terrain and destroys the map contents (`00586990`), then releases
+the manager's map reference (`0059528B`); retaining the interface does not extend the validity of those contents.
+
+The primary vtable `00A9F008` has these relevant zero-based slots (all receivers are the map primary):
+
+| Slot / offset | Contract |
+|---|---|
+| 0 / `+00` | QI as above; arguments `(u32 iid, void** out)`, Boolean AL, pop 8 |
+| 1, 2 / `+04`, `+08` | Shared counted AddRef/Release |
+| 3 / `+0C` | Number of maps, unsigned 32-bit **2** (`005868D0`) |
+| 4, 5 / `+10`, `+14` | Vertex width / height, u32, read map `+0x28/+0x2C` |
+| 6 / `+18` | `MapLerpedHeight(u32 map, float32 X, float32 Z)`, x87 result, pop 12 (`00585B00`) |
+| 7 / `+1C` | `MapHeight(u32 map, u32 x, u32 z)`, x87 result, pop 12 (`00586030`) |
+| 9 / `+24` | Add a spread to an overlay rectangle (`005863D0`) |
+| 10 / `+28` | Max-combine a spread into an overlay rectangle (`005864F0`) |
+| 11 / `+2C` | Clear an overlay rectangle (`00586640`) |
+
+**Dimensions and data.** Let terrain width/height in cells be W/H, terrain cell size be S and sea level be L.
+Init retains the terrain, caches float32 L, u32 W/H, integer vertex dimensions `(W+1,H+1)`, unsigned
+`trunc(S)` at `+0x30`, and float32 `1 / unsigned(trunc(S))` at `+0x34`
+(`00586A0E–00586A83`). It makes **one** zero-filled float32 overlay of `(W+1)*(H+1)` vertices, indexed
+`x + (W+1)*z`, and a clip rectangle `[0,0,W,H]`, inclusive. The reported count 2 includes the terrain;
+it does not mean two allocated overlays. Mutators accept map indices 1 through the overlay count; index 0
+and indices beyond it are ignored. The reader `MapHeight` **does not inspect the map argument**: map 0 and
+map 1 take the same shipped path through this overlay (`00586030–00586098`).
+
+At vertex `(x,z)`, first call terrain slot 14 (`+0x38`) for its current height T and store T as float32, then
+read the overlay value B. If `T >= L`, return `B + T` in x87 precision. If `T < L`, form `B + L - 50.0`,
+round that candidate to float32, and return the greater of that candidate and T (`00586044–00586095`).
+Thus terrain changes are visible on the next query without rebuilding the overlay; L and S remain the
+values cached at map Init. No terrain-change message or periodic terrain-height resampling is performed.
+
+**Interpolation, including the shipped axis order.** X/Z are world coordinates in terrain units, with no
+city-center subtraction. Compute `u = X*reciprocalS` in x87 precision, `v = float32(Z*reciprocalS)`, and
+`i=floor(u)`, `j=floor(v)` using the subtract-half / add-12582912 / bit-extraction floor sequence
+(`00585B0A–00585B83`). Exact integers are corrected to themselves. Compute `a=float32(u-unsigned(i))`.
+Read four heights, strictly in order: `A=H(i,j)`, `B=H(i,j+1)`, `C=H(i+1,j)`, `D=H(i+1,j+1)`.
+Store A and C as float32. Form `P=float32((B-A)*a+A)`, then return
+`(((D-C)*a+C)-P)*(v-unsigned(j))+P` in x87 precision
+(`00585BAA–00585C16`). **The X fraction blends the z-neighbour pair first, and the Z fraction blends the
+x-neighbour pair second.** Do not silently transpose this to the usual bilinear weights. The calls preserve
+the map argument even though the shipped vertex reader ignores it. The caller may subsequently round the
+result to float32, as the aircraft does.
+
+There is **no clamp, wrap, bounds test or zero-height fallback** in either height reader. Interpolation reads
+the `+1` neighbours even at an exact integer. Valid callers must keep all four sample indices within the
+allocated vertex grid; beyond it the native implementation performs unchecked indexing and has no portable
+height result. Negative indices are not a supported extension: fraction construction converts them as u32.
+Example with S=16, X=4, Z=12, four returned vertex heights A=0, B=10, C=20, D=30: a=0.25, v-j=0.75,
+P=2.5, final height **17.5**. On a flat dry terrain at T=100, all overlays zero, every valid sample is 100.
+For submerged T=200, L=250 and overlay B=30, a vertex returns max(200,230)=230.
+
+**Building population.** PostCityInit enumerates all occupants using the callback in §6.1.1. Subsequent
+`99EF1142`/`99EF1143` messages call insertion/removal with their occupant pointer. Both map handlers are
+suppressed when maps are null or manager byte `+0x1AE` is set. `IsStaticBuilding` (`0058E260`) requires an
+occupant property holder, rejects holder classification `029244DB`, and requires one of `27812821`,
+`27812820`, `27812822`, `27812823`, `27812824` (tested in that order). It then accepts QI `87DDA3A9`
+(releasing the acquired interface), or, if that QI fails, a present, true byte property `8A5E5DB8`.
+These are classification checks on the property holder, not the occupant's runtime type alone.
+
+Insertion (`0058E720`) obtains world AABB minima/maxima through occupant slot 10 (`+0x28`) and its cell
+rectangle through slot 11 (`+0x2C`). Let h be float32(maxY-minY), and R the cell rectangle with **both maxima
+incremented by one** to cover vertices. Invoke map slot 10 `(1, &R, h, 2)` (`0058E795–0058E7D5`). That operation
+copies the rectangle, intersects each pass with the vertex clip rectangle, traverses z increasing then x
+increasing, and stores `max(old,h)` at each vertex. It makes **three** passes, expanding the working rectangle
+outward by one cell after each; clipping replaces that working rectangle (an empty intersection zeroes all
+four coordinates), so the next expansion starts from the clipped result. h is multiplied by the float32
+factor `1 - 1/(2+1)` and stored as float32
+between passes (`0058653F–0058661F`). Overlap uses maximum, not addition, with no random draw. Insertion also
+raises `GetTallestBuildingAltitude`'s cached float32 at manager `+0xDA0` to max(old,maxY); removal does not
+recompute that high-water mark (`0058E7D8–0058E7ED`, getter `0058FD50`).
+
+Removal (`00590380`) clears overlay 1 on the removed occupant's cell rectangle expanded by 2 at each minimum
+and 3 at each maximum (inclusive). It then expands that cleared rectangle by another 2 on all four sides,
+queries occupant-manager slot 41 (`+0xA4`) with `(outList, &lowerCell, &upperCell, 278128A0, FFFFFFFF)`, and
+replays insertion on each acquired occupant in returned-list order, releasing each entry afterward
+(`00590402–00590526`). Thus overlapping neighbours rebuild the cleared region; this is not subtracting the
+removed building's old height. Rectangle clear clips to `[0,0,W,H]`, writes float32 zeros in z/x order, and
+marks the debug mesh dirty. All successful overlay mutators mark that dirty byte. Building changes have no
+CRT `rand()` or clock read. Aircraft reads do not force a rebuild or acquire occupants.
 
 ## 19. Effects-script command contracts *[compat]*
 
