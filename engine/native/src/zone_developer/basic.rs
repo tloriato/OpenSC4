@@ -176,8 +176,8 @@ unsafe fn position_cell(position: f32) -> i32 {
 }
 
 port! {
-    /// Read an occupant position, convert X and Z to cells and parcellize at that cell with a null output.
-    #[port(address = 0x0072_A110, owner = "zonedeveloper", name = "ParcellizeAtOccupant")]
+    /// Read an occupant position, convert X and Z to cells and ask the lot manager for that cell's lot.
+    #[port(address = 0x0072_A110, owner = "zonedeveloper", name = "GetOccupantLot")]
     pub unsafe extern "thiscall" fn fc4p_0072a110(this: *mut u8, occupant: *mut u8) -> u32 {
         unsafe {
             let mut position = [0.0f32; 3];

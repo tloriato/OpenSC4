@@ -41,8 +41,12 @@ layout! {
 }
 
 mod basic;
+mod edges;
 mod lot;
+mod manager;
+mod occupancy;
 
 /// This module's replacements.
-pub const PORTS: &[Port] =
-    &crate::port::concat::<{ basic::PORTS.len() + lot::PORTS.len() }>(&[basic::PORTS, lot::PORTS]);
+pub const PORTS: &[Port] = &crate::port::concat::<
+    { basic::PORTS.len() + lot::PORTS.len() + edges::PORTS.len() + manager::PORTS.len() + occupancy::PORTS.len() },
+>(&[basic::PORTS, lot::PORTS, edges::PORTS, manager::PORTS, occupancy::PORTS]);
