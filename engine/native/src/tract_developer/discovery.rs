@@ -39,7 +39,9 @@ unsafe fn cleanup<const N: usize>(r: &mut Entry<N>, set: u32) {
         r.ecx = set;
         invoke(r, Conv::Thiscall, crate::abi::target(0x008E_BA60), &[]);
         r.eax = word(set, 4);
-        if r.eax != 0 { invoke(r, Conv::Cdecl, crate::abi::target(0x0090_CF63), &[r.eax]); }
+        if r.eax != 0 {
+            invoke(r, Conv::Cdecl, crate::abi::target(0x0090_CF63), &[r.eax]);
+        }
     }
 }
 

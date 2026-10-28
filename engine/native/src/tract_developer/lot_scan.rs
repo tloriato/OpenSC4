@@ -19,13 +19,19 @@ unsafe fn initialize<const N: usize>(r: &mut Entry<N>, iterator: u32, flag: *mut
     // SAFETY: both ports supply their game's writable iterator and initialization flag.
     unsafe {
         r.eax = (r.eax & !0xFF) | u32::from(*flag as u8);
-        if r.eax & 1 != 0 { return; }
+        if r.eax & 1 != 0 {
+            return;
+        }
         r.edx = *flag;
         r.eax = 1;
         r.edx |= r.eax;
         *flag = r.edx;
-        for offset in 0..3 { *(iterator.wrapping_add(offset) as *mut u8) = 1; }
-        for offset in (4..0x2C).step_by(4) { store(iterator, offset, 0); }
+        for offset in 0..3 {
+            *(iterator.wrapping_add(offset) as *mut u8) = 1;
+        }
+        for offset in (4..0x2C).step_by(4) {
+            store(iterator, offset, 0);
+        }
         store(iterator, 0x2C, 1);
         invoke(r, Conv::Cdecl, crate::abi::target(0x009E_F059), &[exit]);
     }
@@ -48,8 +54,12 @@ unsafe fn bounds<const N: usize>(r: &mut Entry<N>, iterator: u32, x: u32, z: u32
         store(iterator, 0xC, r.eax);
         r.edx = r.edx.wrapping_sub(1);
         store(iterator, 0x10, r.edx);
-        if (r.eax as i32) < min_x as i32 { store(iterator, 0xC, min_x); }
-        if (r.edx as i32) < min_z as i32 { store(iterator, 0x10, min_z); }
+        if (r.eax as i32) < min_x as i32 {
+            store(iterator, 0xC, min_x);
+        }
+        if (r.edx as i32) < min_z as i32 {
+            store(iterator, 0x10, min_z);
+        }
         r.ecx = iterator;
         *(iterator.wrapping_add(2) as *mut u8) = 1;
         invoke(r, Conv::Thiscall, crate::abi::target(0x0049_D1C0), &[1]);

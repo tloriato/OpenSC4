@@ -51,6 +51,8 @@ layout! {
         0xBC => desired_maximum / set_desired_maximum: i32,
         0xC0 => built / set_built: i32,
         0xC8 => relaxed / set_relaxed: u8,
+        0xCC => lots_header / set_lots_header: u32,
+        0xD8 => configurations_header / set_configurations_header: u32,
         0xE4 => candidates_begin / set_candidates_begin: u32,
         0xE8 => candidates_end / set_candidates_end: u32,
         0xF0 => chosen_configuration / set_chosen_configuration: u32,
@@ -190,6 +192,7 @@ pub mod networks;
 pub mod pool;
 pub mod population;
 pub mod removal;
+pub mod sites;
 pub mod sorting;
 pub mod suitability;
 pub mod surface;
@@ -209,6 +212,7 @@ const COUNT: usize = compatibility::PORTS.len()
     + population::PORTS.len()
     + removal::PORTS.len()
     + sorting::PORTS.len()
+    + sites::PORTS.len()
     + suitability::PORTS.len()
     + surface::PORTS.len()
     + trees::PORTS.len();
@@ -227,6 +231,7 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     population::PORTS,
     removal::PORTS,
     sorting::PORTS,
+    sites::PORTS,
     suitability::PORTS,
     surface::PORTS,
     trees::PORTS,
