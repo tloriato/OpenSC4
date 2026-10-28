@@ -15,6 +15,42 @@
 
 use crate::port::Port;
 
+layout! {
+    /// A three-word key. Accesses remain sequential when source and destination overlap.
+    struct ThreeWordKey {
+        0x00 => first / set_first: u32,
+        0x04 => second / set_second: u32,
+        0x08 => third / set_third: u32,
+    }
+}
+
+layout! {
+    /// Reference counting is optional for this object shape.
+    struct FlaggedReference {
+        0x09 => enabled / set_enabled: u8,
+        0x0C => references / set_references: u32,
+    }
+}
+
+layout! {
+    /// Initialized by the stream constructor's direct field stores.
+    #[allow(dead_code)]
+    struct StreamState {
+        0x00 => vtable / set_vtable: u32,
+        0x04 => count / set_count: u32,
+        0x08 => status / set_status: u8,
+    }
+}
+
+layout! {
+    /// Two independent byte options; their argument words are never normalized.
+    #[allow(dead_code)]
+    struct ByteOptions {
+        0x0E => first / set_first: u8,
+        0x0F => second / set_second: u8,
+    }
+}
+
 /// The entry saves the three volatile registers immediately below the original return address.
 /// Rust bodies edit their return values here so that partial results and untouched registers survive.
 #[repr(C)]
@@ -137,18 +173,305 @@ unsafe fn copy_key_to_output(r: &mut Registers, offset: usize) {
     // Read and write each word in sequence, including when output overlaps the object's fields.
     // SAFETY: the game supplies three readable key words and a three-word output.
     unsafe {
-        let object = r.ecx;
-        r.edx = word(object, offset);
+        let key = ThreeWordKey::from_ptr((r.ecx as *mut u8).wrapping_add(offset));
+        r.edx = key.first();
         r.eax = r.argument(0);
-        put_word(r.eax, 0, r.edx);
-        r.edx = word(object, offset + 4);
-        put_word(r.eax, 4, r.edx);
-        r.ecx = word(object, offset + 8);
-        put_word(r.eax, 8, r.ecx);
+        let output = ThreeWordKey::from_ptr(r.eax as *mut u8);
+        output.set_first(r.edx);
+        r.edx = key.second();
+        output.set_second(r.edx);
+        r.ecx = key.third();
+        output.set_third(r.ecx);
     }
 }
 
 game_data! { static directory_type_table: [u32; 80] = 0x00B1_69F8; }
+
+/// Tail entries forward the original argument words and all return registers directly to the game.
+macro_rules! thunk_port {
+    ($address:literal, $export:ident, $callee:ident, $name:literal, $target:literal,
+     ($($arg:ident: $ty:ty),*), $($instruction:literal),+ $(,)?) => {
+        game_fn! {
+            #[allow(dead_code)]
+            fn $callee(this: *mut u8 $(, $arg: $ty)*) -> u64 = "thiscall" $target;
+        }
+        port! {
+            #[port(address = $address, owner = "shared", name = $name, naked)]
+            pub unsafe extern "C" fn $export() {
+                #[cfg(not(test))]
+                core::arch::naked_asm!($($instruction,)+
+                    "jmp dword ptr [2f]", "2: .long {target}", target = const $target);
+                #[cfg(test)]
+                core::arch::naked_asm!($($instruction,)+
+                    "push {target}", "jmp {dispatch}",
+                    target = const $target, dispatch = sym test_tail_dispatch);
+            }
+        }
+    };
+}
+
+#[cfg(test)]
+extern "fastcall" fn resolve_tail(address: u32, _edx: u32) -> usize {
+    crate::testing::resolve(address)
+}
+
+#[cfg(test)]
+#[unsafe(naked)]
+unsafe extern "C" fn test_tail_dispatch() {
+    core::arch::naked_asm!(
+        "push edx", "push ecx", "push eax", "mov ecx, [esp + 12]", "call {resolve}",
+        "mov [esp + 12], eax", "pop eax", "pop ecx", "pop edx", "ret",
+        resolve = sym resolve_tail,
+    );
+}
+
+thunk_port!(
+    0x0090dc2f,
+    fc4p_0090dc2f,
+    destroy_embedded_text,
+    "DestroyTextContainer",
+    0x0093BAEF,
+    (),
+    "mov dword ptr [ecx], 0xace650",
+    "add ecx, 4"
+);
+thunk_port!(
+    0x00934742,
+    fc4p_00934742,
+    add_directory_service_reference,
+    "AddDirectoryServiceReference",
+    0x0093784B,
+    (),
+    "sub ecx, 0x1c"
+);
+thunk_port!(
+    0x0093474a,
+    fc4p_0093474a,
+    release_directory_service_reference,
+    "ReleaseDirectoryServiceReference",
+    0x00937850,
+    (),
+    "sub ecx, 0x1c"
+);
+thunk_port!(
+    0x009359bd,
+    fc4p_009359bd,
+    add_primary_reference,
+    "AddPrimaryReference",
+    0x0094C47C,
+    (),
+    "sub ecx, 4"
+);
+thunk_port!(
+    0x0093e552,
+    fc4p_0093e552,
+    add_stream_reference,
+    "AddStreamReference",
+    0x0093A897,
+    (),
+    "sub ecx, 4"
+);
+thunk_port!(
+    0x0093e55a,
+    fc4p_0093e55a,
+    release_stream_reference,
+    "ReleaseStreamReference",
+    0x0093A89E,
+    (),
+    "sub ecx, 4"
+);
+thunk_port!(
+    0x0093e5fa,
+    fc4p_0093e5fa,
+    release_secondary_stream_reference,
+    "ReleaseSecondaryStreamReference",
+    0x0093A89E,
+    (),
+    "sub ecx, 0x1c"
+);
+thunk_port!(
+    0x0095ba81,
+    fc4p_0095ba81,
+    add_window_reference,
+    "AddWindowReference",
+    0x008FB729,
+    (),
+    "sub ecx, 0xd8"
+);
+thunk_port!(
+    0x0095ba8c,
+    fc4p_0095ba8c,
+    release_window_reference,
+    "ReleaseWindowReference",
+    0x008FB72E,
+    (),
+    "sub ecx, 0xd8"
+);
+thunk_port!(
+    0x0097569c,
+    fc4p_0097569c,
+    destroy_record_member,
+    "DestroyRecordMember",
+    0x00930B02,
+    (),
+    "mov dword ptr [ecx], 0xad8ca0",
+    "add ecx, 8"
+);
+thunk_port!(
+    0x00975a70,
+    fc4p_00975a70,
+    release_directory_record_reference,
+    "ReleaseDirectoryRecordReference",
+    0x009759CE,
+    (),
+    "add ecx, 4"
+);
+thunk_port!(0x00991e80, fc4p_00991e80, delete_secondary_reference, "DeleteSecondaryReference", 0x00991E90,
+    (flags: u32), "sub ecx, 4");
+thunk_port!(0x009c409f, fc4p_009c409f, query_scrollbar_interface, "QueryScrollbarInterface", 0x009C38FD,
+    (iid: u32, output: *mut *mut u8), "sub ecx, 0x124");
+thunk_port!(
+    0x009c40b5,
+    fc4p_009c40b5,
+    release_scrollbar_window_reference,
+    "ReleaseScrollbarWindowReference",
+    0x008FB72E,
+    (),
+    "sub ecx, 0x124"
+);
+thunk_port!(
+    0x009c40c0,
+    fc4p_009c40c0,
+    get_primary_window_interface,
+    "GetPrimaryWindowInterface",
+    0x0095BA6F,
+    (),
+    "sub ecx, 0x4c"
+);
+thunk_port!(0x009c40c8, fc4p_009c40c8, set_scrollbar_position, "SetScrollbarPosition", 0x009C3EAD,
+    (position: i32), "sub ecx, 0x4c");
+thunk_port!(
+    0x009cc22d,
+    fc4p_009cc22d,
+    release_web_service_reference,
+    "ReleaseWebServiceReference",
+    0x0091DD89,
+    (),
+    "add ecx, 8"
+);
+thunk_port!(
+    0x009d6090,
+    fc4p_009d6090,
+    add_button_reference,
+    "AddButtonReference",
+    0x0094C47C,
+    (),
+    "add ecx, 4"
+);
+thunk_port!(
+    0x009d6098,
+    fc4p_009d6098,
+    release_button_reference,
+    "ReleaseButtonReference",
+    0x0099B7A3,
+    (),
+    "add ecx, 4"
+);
+thunk_port!(
+    0x009d6608,
+    fc4p_009d6608,
+    add_secondary_button_reference,
+    "AddSecondaryButtonReference",
+    0x009D6090,
+    (),
+    "sub ecx, 4"
+);
+thunk_port!(
+    0x009d6610,
+    fc4p_009d6610,
+    release_secondary_button_reference,
+    "ReleaseSecondaryButtonReference",
+    0x009D6098,
+    (),
+    "sub ecx, 4"
+);
+thunk_port!(0x009dae69, fc4p_009dae69, query_window_manager_interface, "QueryWindowManagerInterface", 0x009DAF24,
+    (iid: u32, output: *mut *mut u8), "sub ecx, 4");
+
+register_port!(
+    0x0090e230,
+    fc4p_0090e230,
+    forward_value_and_return_this,
+    "ForwardValueAndReturnThis",
+    4,
+    |r| {
+        // SAFETY: the object's slot at 56 takes the original stack word.
+        unsafe {
+            let object = r.ecx;
+            let value = r.argument(0);
+            r.eax = word(object, 0);
+            r.virtual_call(object, 0x38, &[value]);
+            r.eax = object;
+        }
+    }
+);
+
+unsafe fn set_scrollbar_limit(r: &mut Registers, offset: usize) {
+    // SAFETY: this is the embedded scrollbar interface; the enclosing window has both notification slots.
+    unsafe {
+        let window = r.ecx.wrapping_sub(0xD8);
+        r.eax = r.argument(0);
+        put_word(r.ecx, offset, r.eax);
+        r.eax = word(window, 0);
+        r.virtual_call(window, 0x264, &[]);
+        r.eax = word(window, 0);
+        r.virtual_call(window, 0x170, &[]);
+    }
+}
+
+register_port!(
+    0x009c3286,
+    fc4p_009c3286,
+    set_scrollbar_minimum,
+    "SetScrollbarMinimum",
+    4,
+    |r| {
+        // SAFETY: the embedded scrollbar's minimum and enclosing window.
+        unsafe { set_scrollbar_limit(r, 8) };
+    }
+);
+register_port!(
+    0x009c32b0,
+    fc4p_009c32b0,
+    set_scrollbar_maximum,
+    "SetScrollbarMaximum",
+    4,
+    |r| {
+        // SAFETY: the embedded scrollbar's maximum and enclosing window.
+        unsafe { set_scrollbar_limit(r, 0xC) };
+    }
+);
+
+register_port!(
+    0x009c3f8f,
+    fc4p_009c3f8f,
+    set_two_window_values,
+    "SetTwoWindowValues",
+    8,
+    |r| {
+        // SAFETY: the enclosing interface has one-word methods at 24 and 32; its table is reloaded between calls.
+        unsafe {
+            let window = r.ecx.wrapping_sub(0x4C);
+            let first = r.argument(0);
+            r.eax = word(window, 0);
+            r.virtual_call(window, 0x18, &[first]);
+            let second = r.argument(1);
+            r.eax = word(window, 0);
+            r.virtual_call(window, 0x20, &[second]);
+            r.eax = (r.eax & !255) | 1;
+        }
+    }
+);
 
 register_port!(
     0x009100de,
@@ -195,7 +518,7 @@ register_port!(
     |r| {
         // SAFETY: the flag byte and reference word belong to this object.
         unsafe {
-            if *((r.ecx as *const u8).add(9)) != 0 {
+            if FlaggedReference::from_ptr(r.ecx as *mut u8).enabled() != 0 {
                 add_reference(r, 0xC);
             } else {
                 r.eax = 1;
@@ -213,7 +536,7 @@ register_port!(
     |r| {
         // SAFETY: the flag byte, reference word and deleting destructor belong to this object.
         unsafe {
-            if *((r.ecx as *const u8).add(9)) != 0 {
+            if FlaggedReference::from_ptr(r.ecx as *mut u8).enabled() != 0 {
                 release_reference(r, 0xC, false, 0, 0x20);
             } else {
                 r.eax = 1;
@@ -336,14 +659,15 @@ register_port!(
 register_port!(0x0096d895, fc4p_0096d895, keys_equal, "KeysEqual", 4, |r| {
     // SAFETY: both pointers cover the three key words read before the first mismatch.
     unsafe {
-        let other = r.argument(0);
-        r.edx = word(r.ecx, 0);
+        let other = ThreeWordKey::from_ptr(r.argument(0) as *mut u8);
+        let key = ThreeWordKey::from_ptr(r.ecx as *mut u8);
+        r.edx = key.first();
         r.eax = 0;
-        if r.edx == word(other, 0) {
-            r.edx = word(r.ecx, 4);
-            if r.edx == word(other, 4) {
-                r.ecx = word(r.ecx, 8);
-                r.eax = u32::from(r.ecx == word(other, 8));
+        if r.edx == other.first() {
+            r.edx = key.second();
+            if r.edx == other.second() {
+                r.ecx = key.third();
+                r.eax = u32::from(r.ecx == other.third());
             }
         }
     }
@@ -402,13 +726,14 @@ register_port!(
 register_port!(0x00975402, fc4p_00975402, set_key_at_twelve, "SetKeyAtTwelve", 4, |r| {
     // SAFETY: the source key and writable record key; each word is read after the preceding write.
     unsafe {
-        let source = r.argument(0);
-        r.edx = word(source, 0);
-        put_word(r.ecx, 0xC, r.edx);
-        r.edx = word(source, 4);
-        put_word(r.ecx, 0x10, r.edx);
-        r.eax = word(source, 8);
-        put_word(r.ecx, 0x14, r.eax);
+        let source = ThreeWordKey::from_ptr(r.argument(0) as *mut u8);
+        let key = ThreeWordKey::from_ptr((r.ecx as *mut u8).add(0xC));
+        r.edx = source.first();
+        key.set_first(r.edx);
+        r.edx = source.second();
+        key.set_second(r.edx);
+        r.eax = source.third();
+        key.set_third(r.eax);
         r.eax = (r.eax & !255) | 1;
     }
 });
@@ -752,6 +1077,8 @@ port! {
 pub const PORTS: &[Port] = &[
     fc4p_008fe5ac::PORT,
     fc4p_009086ac::PORT,
+    fc4p_0090dc2f::PORT,
+    fc4p_0090e230::PORT,
     fc4p_009100de::PORT,
     fc4p_009103b0::PORT,
     fc4p_0091559a::PORT,
@@ -760,10 +1087,16 @@ pub const PORTS: &[Port] = &[
     fc4p_0092b33a::PORT,
     fc4p_009334b1::PORT,
     fc4p_009334c2::PORT,
+    fc4p_00934742::PORT,
+    fc4p_0093474a::PORT,
+    fc4p_009359bd::PORT,
     fc4p_009377c9::PORT,
     fc4p_009378bc::PORT,
     fc4p_00937ef1::PORT,
     fc4p_0093877e::PORT,
+    fc4p_0093e552::PORT,
+    fc4p_0093e55a::PORT,
+    fc4p_0093e5fa::PORT,
     fc4p_00943917::PORT,
     fc4p_00945942::PORT,
     fc4p_00949ade::PORT,
@@ -773,6 +1106,8 @@ pub const PORTS: &[Port] = &[
     fc4p_0094c4b1::PORT,
     fc4p_0094d34f::PORT,
     fc4p_0095ba6f::PORT,
+    fc4p_0095ba81::PORT,
+    fc4p_0095ba8c::PORT,
     fc4p_00968303::PORT,
     fc4p_0096831b::PORT,
     fc4p_0096d895::PORT,
@@ -783,10 +1118,13 @@ pub const PORTS: &[Port] = &[
     fc4p_009753ea::PORT,
     fc4p_00975402::PORT,
     fc4p_00975666::PORT,
+    fc4p_0097569c::PORT,
+    fc4p_00975a70::PORT,
     fc4p_009779c9::PORT,
     fc4p_0097ce34::PORT,
     fc4p_00989960::PORT,
     fc4p_00990010::PORT,
+    fc4p_00991e80::PORT,
     fc4p_00994e71::PORT,
     fc4p_00994ee4::PORT,
     fc4p_00999055::PORT,
@@ -797,12 +1135,25 @@ pub const PORTS: &[Port] = &[
     fc4p_009a5faa::PORT,
     fc4p_009b1f4b::PORT,
     fc4p_009c1772::PORT,
+    fc4p_009c3286::PORT,
     fc4p_009c32ac::PORT,
+    fc4p_009c32b0::PORT,
     fc4p_009c3eb7::PORT,
+    fc4p_009c3f8f::PORT,
+    fc4p_009c409f::PORT,
+    fc4p_009c40b5::PORT,
+    fc4p_009c40c0::PORT,
+    fc4p_009c40c8::PORT,
+    fc4p_009cc22d::PORT,
     fc4p_009cede1::PORT,
     fc4p_009d41a1::PORT,
     fc4p_009d4714::PORT,
+    fc4p_009d6090::PORT,
+    fc4p_009d6098::PORT,
+    fc4p_009d6608::PORT,
+    fc4p_009d6610::PORT,
     fc4p_009d8564::PORT,
+    fc4p_009dae69::PORT,
     fc4p_009db37a::PORT,
     fc4p_009db663::PORT,
     fc4p_009db800::PORT,
@@ -826,7 +1177,7 @@ mod tests {
         this: u32,
         eax: u32,
         edx: u32,
-        argument: Option<u32>,
+        arguments: Vec<u32>,
     }
 
     #[derive(Default)]
@@ -847,7 +1198,7 @@ mod tests {
         STATE.with(|s| core::mem::take(&mut s.borrow_mut().calls))
     }
 
-    unsafe fn observe(frame: *mut Registers, has_argument: bool) {
+    unsafe fn observe(frame: *mut Registers, argument_count: usize) {
         // SAFETY: the fake entry supplies its saved registers and original argument words.
         unsafe {
             let r = &*frame;
@@ -857,7 +1208,7 @@ mod tests {
                     this: r.ecx,
                     eax: r.eax,
                     edx: r.edx,
-                    argument: if has_argument { Some(r.argument(0)) } else { None },
+                    arguments: (0..argument_count).map(|i| r.argument(i)).collect(),
                 });
                 if let Some((p, n)) = s.watch {
                     s.snapshots
@@ -872,12 +1223,12 @@ mod tests {
 
     unsafe extern "thiscall" fn observe_zero(frame: *mut Registers) {
         // SAFETY: the fake's register frame, with no stack arguments.
-        unsafe { observe(frame, false) };
+        unsafe { observe(frame, 0) };
     }
 
     unsafe extern "thiscall" fn observe_one(frame: *mut Registers) {
         // SAFETY: the fake's register frame, with one stack argument.
-        unsafe { observe(frame, true) };
+        unsafe { observe(frame, 1) };
     }
 
     #[unsafe(naked)]
@@ -903,8 +1254,22 @@ mod tests {
             this,
             eax,
             edx: ENTRY_EDX,
-            argument,
+            arguments: argument.into_iter().collect(),
         }
+    }
+
+    unsafe extern "thiscall" fn observe_two(frame: *mut Registers) {
+        // SAFETY: the fake's register frame, with two stack arguments.
+        unsafe { observe(frame, 2) };
+    }
+
+    #[unsafe(naked)]
+    unsafe extern "C" fn fake_two() {
+        core::arch::naked_asm!(
+            "push edx", "push ecx", "push eax", "mov ecx, esp", "call {}", "add esp, 12",
+            "mov eax, 0xa1b2c3d4", "mov ecx, 0x4321abcd", "mov edx, 0xd4c3b2a1", "ret 8",
+            sym observe_two,
+        );
     }
 
     /// The call probe also checks stack cleanup and the preserved machine state.
@@ -929,6 +1294,8 @@ mod tests {
         sw_after: u16,
         mxcsr_before: u32,
         mxcsr_after: u32,
+        x87_input: [u8; 10],
+        x87_output: [u8; 10],
     }
 
     #[unsafe(naked)]
@@ -1008,9 +1375,22 @@ mod tests {
             sw_after: 0,
             mxcsr_before: 0,
             mxcsr_after: 0,
+            x87_input: [0xEF, 0xCD, 0xAB, 0x89, 0x67, 0x45, 0x23, 0x81, 0xFF, 0x3F],
+            x87_output: [0; 10],
         };
-        // SAFETY: each test supplies the export's exact convention and live object storage.
-        unsafe { probe(&mut call) };
+        // SAFETY: each test supplies the export's convention and live storage. The probe preserves
+        // EDI, and the existing x87 value must survive the port and is popped after the probe.
+        unsafe {
+            core::arch::asm!(
+                "fld tbyte ptr [edi + 68]", "push edi", "call {probe}", "add esp, 4",
+                "fstp tbyte ptr [edi + 78]",
+                in("edi") &mut call,
+                probe = sym probe, clobber_abi("C"),
+                out("st(0)") _, out("st(1)") _, out("st(2)") _, out("st(3)") _,
+                out("st(4)") _, out("st(5)") _, out("st(6)") _, out("st(7)") _,
+            );
+        }
+        assert_eq!(call.x87_output, call.x87_input, "existing x87 value");
         assert_eq!(call.stack_delta, 0, "stack cleanup");
         assert_eq!((call.ebx, call.esi, call.ebp), (0x1357_9BDF, 0x2468_ACE0, 0x1122_3344));
         assert_eq!(call.flags & 0x400, 0, "direction flag");
@@ -1538,5 +1918,169 @@ mod tests {
             );
             assert!(calls().is_empty());
         }
+    }
+
+    #[test]
+    fn tail_adapters_forward_exact_addresses_arguments_and_all_return_registers() {
+        for (f, target, adjustment, count) in [
+            (fc4p_00934742 as *const () as usize, 0x0093_784B, -0x1C, 0),
+            (fc4p_0093474a as *const () as usize, 0x0093_7850, -0x1C, 0),
+            (fc4p_009359bd as *const () as usize, 0x0094_C47C, -4, 0),
+            (fc4p_0093e552 as *const () as usize, 0x0093_A897, -4, 0),
+            (fc4p_0093e55a as *const () as usize, 0x0093_A89E, -4, 0),
+            (fc4p_0093e5fa as *const () as usize, 0x0093_A89E, -0x1C, 0),
+            (fc4p_0095ba81 as *const () as usize, 0x008F_B729, -0xD8, 0),
+            (fc4p_0095ba8c as *const () as usize, 0x008F_B72E, -0xD8, 0),
+            (fc4p_00975a70 as *const () as usize, 0x0097_59CE, 4, 0),
+            (fc4p_00991e80 as *const () as usize, 0x0099_1E90, -4, 1),
+            (fc4p_009c409f as *const () as usize, 0x009C_38FD, -0x124, 2),
+            (fc4p_009c40b5 as *const () as usize, 0x008F_B72E, -0x124, 0),
+            (fc4p_009c40c0 as *const () as usize, 0x0095_BA6F, -0x4C, 0),
+            (fc4p_009c40c8 as *const () as usize, 0x009C_3EAD, -0x4C, 1),
+            (fc4p_009cc22d as *const () as usize, 0x0091_DD89, 8, 0),
+            (fc4p_009d6090 as *const () as usize, 0x0094_C47C, 4, 0),
+            (fc4p_009d6098 as *const () as usize, 0x0099_B7A3, 4, 0),
+            (fc4p_009d6608 as *const () as usize, 0x009D_6090, -4, 0),
+            (fc4p_009d6610 as *const () as usize, 0x009D_6098, -4, 0),
+            (fc4p_009dae69 as *const () as usize, 0x009D_AF24, -4, 2),
+        ] {
+            reset();
+            let fake = match count {
+                0 => fake_zero as *const () as usize,
+                1 => fake_one as *const () as usize,
+                _ => fake_two as *const () as usize,
+            };
+            let _callee = crate::testing::fake(target, fake);
+            for this in [0u32, 1, 4, 0x124, 0x1234_5678, u32::MAX] {
+                let args = [0x8765_4321, 0xFEDC_BA98];
+                assert_eq!(run(f, this, &args[..count]), [RESULT_EAX, RESULT_ECX, RESULT_EDX]);
+                assert_eq!(
+                    calls(),
+                    [VirtualCall {
+                        this: this.wrapping_add(adjustment as u32),
+                        eax: ENTRY_EAX,
+                        edx: ENTRY_EDX,
+                        arguments: args[..count].to_vec(),
+                    }]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn destructor_adapters_restore_the_table_before_forwarding_the_member() {
+        for (f, target, table, adjustment) in [
+            (fc4p_0090dc2f as *const () as usize, 0x0093_BAEF, 0x00AC_E650u32, 4),
+            (fc4p_0097569c as *const () as usize, 0x0093_0B02, 0x00AD_8CA0u32, 8),
+        ] {
+            reset();
+            let _callee = crate::testing::fake(target, fake_zero as *const () as usize);
+            let mut object = [0xA5; 32];
+            let mut expected = object;
+            expected[..4].copy_from_slice(&table.to_le_bytes());
+            let this = object.as_mut_ptr() as u32;
+            STATE.with(|s| s.borrow_mut().watch = Some((this, 32)));
+            assert_eq!(run(f, this, &[]), [RESULT_EAX, RESULT_ECX, RESULT_EDX]);
+            assert_eq!(calls(), [expected_call(this + adjustment, ENTRY_EAX, None)]);
+            assert_eq!(object, expected);
+            STATE.with(|s| assert_eq!(s.borrow().snapshots, [expected.to_vec()]));
+        }
+    }
+
+    #[test]
+    fn virtual_value_forwarder_returns_this_and_keeps_callee_ecx_and_edx() {
+        for value in [0u32, 1, 0x8000_0000, u32::MAX] {
+            reset();
+            let mut vt = [0usize; 15];
+            vt[0x38 / 4] = fake_one as *const () as usize;
+            let mut object = [vt.as_ptr() as u32, 0xAAAA_AAAA];
+            let before = object;
+            let this = object.as_mut_ptr() as u32;
+            assert_eq!(
+                run(fc4p_0090e230 as *const () as usize, this, &[value]),
+                [this, RESULT_ECX, RESULT_EDX]
+            );
+            assert_eq!(calls(), [expected_call(this, vt.as_ptr() as u32, Some(value))]);
+            assert_eq!(object, before);
+        }
+    }
+
+    #[test]
+    fn scrollbar_limits_store_before_notifications_and_reload_the_window_table() {
+        for (f, offset) in [
+            (fc4p_009c3286 as *const () as usize, 0xE0),
+            (fc4p_009c32b0 as *const () as usize, 0xE4),
+        ] {
+            for value in [0u32, 1, 0x8000_0000, u32::MAX] {
+                reset();
+                let mut first_vt = [0usize; 154];
+                let mut second_vt = [0usize; 154];
+                first_vt[0x264 / 4] = fake_zero as *const () as usize;
+                second_vt[0x170 / 4] = fake_zero as *const () as usize;
+                let mut object = [0xA5; 0x120];
+                object[..4].copy_from_slice(&(first_vt.as_ptr() as u32).to_le_bytes());
+                let mut before_second = object;
+                before_second[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+                let this = object.as_mut_ptr() as u32;
+                STATE.with(|s| {
+                    let mut s = s.borrow_mut();
+                    s.watch = Some((this, 0x120));
+                    s.mutation = Some((this, 0, second_vt.as_ptr() as u32));
+                });
+                assert_eq!(run(f, this + 0xD8, &[value]), [RESULT_EAX, RESULT_ECX, RESULT_EDX]);
+                assert_eq!(
+                    calls(),
+                    [
+                        expected_call(this, first_vt.as_ptr() as u32, None),
+                        VirtualCall {
+                            this,
+                            eax: second_vt.as_ptr() as u32,
+                            edx: RESULT_EDX,
+                            arguments: vec![]
+                        },
+                    ]
+                );
+                let mut expected = before_second;
+                expected[..4].copy_from_slice(&(second_vt.as_ptr() as u32).to_le_bytes());
+                assert_eq!(object, expected);
+                STATE.with(|s| assert_eq!(s.borrow().snapshots, [before_second.to_vec(), expected.to_vec()]));
+            }
+        }
+    }
+
+    #[test]
+    fn paired_window_values_forward_in_order_and_set_only_the_result_low_byte() {
+        reset();
+        let mut first_vt = [0usize; 9];
+        let mut second_vt = [0usize; 9];
+        first_vt[0x18 / 4] = fake_one as *const () as usize;
+        second_vt[0x20 / 4] = fake_one as *const () as usize;
+        let mut object = [0xA5; 0x80];
+        object[..4].copy_from_slice(&(first_vt.as_ptr() as u32).to_le_bytes());
+        let mut expected = object;
+        expected[..4].copy_from_slice(&(second_vt.as_ptr() as u32).to_le_bytes());
+        let this = object.as_mut_ptr() as u32;
+        STATE.with(|s| s.borrow_mut().mutation = Some((this, 0, second_vt.as_ptr() as u32)));
+        assert_eq!(
+            run(
+                fc4p_009c3f8f as *const () as usize,
+                this + 0x4C,
+                &[0xFEDC_BA98, 0x8765_4321]
+            ),
+            [(RESULT_EAX & !255) | 1, RESULT_ECX, RESULT_EDX]
+        );
+        assert_eq!(
+            calls(),
+            [
+                expected_call(this, first_vt.as_ptr() as u32, Some(0xFEDC_BA98)),
+                VirtualCall {
+                    this,
+                    eax: second_vt.as_ptr() as u32,
+                    edx: RESULT_EDX,
+                    arguments: vec![0x8765_4321]
+                },
+            ]
+        );
+        assert_eq!(object, expected);
     }
 }
