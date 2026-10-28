@@ -10,8 +10,15 @@ game_fn! {
 }
 game_fn! { fn read_uint(holder: *mut u8, id: u32, output: *mut u32) -> u64 = "C" 0x005F_D480; }
 game_fn! { fn random_uniform(random: *mut u8, count: u32) -> u64 = "thiscall" 0x0091_36B1; }
+game_fn! { fn bottom_altitude(this: *mut u8, lot: *mut u8) -> St0 = "thiscall" 0x006C_7630; }
+game_fn! { fn corner_altitudes(this: *mut u8, rect: *const i32, output: *mut f32, water: u32) -> u64 = "thiscall" 0x006C_4360; }
+game_fn! { fn pick_altitude(this: *mut u8, lot: *mut u8, bottom: f32, highest: f32, corners: *const f32) -> St0 = "thiscall" 0x006C_5360; }
+game_fn! { fn retaining_wall(lot: *mut u8, enabled: u32) -> u64 = "C" 0x005E_3070; }
+game_fn! { fn surrounding_foundations(this: *mut u8, lot: *mut u8) -> u64 = "thiscall" 0x006C_7720; }
+game_fn! { fn surrounding_walls(lot: *mut u8) -> u64 = "C" 0x005E_3960; }
 game_data! { static file_random: u8 = 0x00B4_9AF0; }
 game_data! { static world_to_cell_scale: f32 = 0x00AB_1B04; }
+game_data! { static foundation_half: f32 = 0x00A8_4D2C; }
 
 layout! {
     /// Foundation configuration object's type and optional ID vector.
@@ -306,6 +313,70 @@ port! {
     }
 }
 
+port! {
+    /// Creates a lot foundation at the lot's altitude or a selected terrain altitude. Terrain levelling
+    /// precedes creation; altitude and flags are updated even when creation fails. Optional wall refresh
+    /// uses the post-creation altitude and the highest vertex sampled before any levelling.
+    #[port(address = 0x006C_8AB0, owner = "lotdeveloper", name = "cSC4LotDeveloper::AddLotFoundation(type)")]
+    pub unsafe extern "fastcall" fn fc4p_006c8ab0(this: *mut u8, entry_edx: u32, lot: *mut u8,
+        kind: u32, use_lot_altitude: u32, level: u32, walls: u32) -> u64 {
+        unsafe {
+            let developer = LotDeveloper::from_ptr(this);
+            let mut center = [0.0f32; 3];
+            let mut rect = [0i32; 4];
+            virtual_call(lot, 0x3C, &[center.as_mut_ptr() as u32], table(lot), entry_edx, false);
+            let mut call = virtual_call(lot, 0x38, &[rect.as_mut_ptr() as u32], rect.as_ptr() as u32, table(lot), false);
+            call = virtual_call(lot, 0x5C, &[], call.eax, table(lot), false);
+            let facing = call.eax;
+            let width = F80::from_i32(rect[2].wrapping_sub(rect[0]).wrapping_add(1).wrapping_shl(4)).to_f32();
+            let depth = F80::from_i32(rect[3].wrapping_sub(rect[1]).wrapping_add(1).wrapping_shl(4)).to_f32();
+            let bottom = bottom_altitude(this, lot).to_f32();
+            call = virtual_call(this, 0x44, &[rect.as_ptr() as u32, 0, 1], rect.as_ptr() as u32, table(this), true);
+            let highest = call.st0.to_f32();
+            call.eax = (call.eax & !255) | (use_lot_altitude & 255);
+            let top = if use_lot_altitude as u8 != 0 {
+                virtual_call(lot, 0x40, &[], call.eax, table(lot), true).st0
+            } else {
+                let mut corners = [0.0f32; 4];
+                corner_altitudes(this, rect.as_ptr(), corners.as_mut_ptr(), 1);
+                pick_altitude(this, lot, bottom, highest, corners.as_ptr())
+            };
+            center[1] = top.to_f32();
+            if level as u8 != 0 {
+                if rect[2].wrapping_sub(rect[0]) > 1 && rect[3].wrapping_sub(rect[1]) > 1 {
+                    let target = terrain::subtract_float(F80::from_f32(center[1]), *foundation_half()).to_f32();
+                    vcall!(this, 0x4C => fn(*const i32, f32, u32, u32, *mut u8) -> u32,
+                        rect.as_ptr(), target, 1, 1, lot);
+                }
+                vcall!(this, 0x50 => fn(*const i32, f32, u32, *mut u8) -> u32,
+                    rect.as_ptr(), center[1], 1, lot);
+            }
+            let manager = developer.building_development();
+            let created = virtual_call(manager, 0x5C,
+                &[kind, 2, center.as_mut_ptr() as u32, width.to_bits(), depth.to_bits(), facing, bottom.to_bits()],
+                kind, table(manager), false).eax as u8;
+            call = virtual_call(lot, 0x44, &[center[1].to_bits()], center[1].to_bits(), table(lot), false);
+            call = virtual_call(lot, 0x30, &[], call.eax, table(lot), false);
+            let flags = (call.eax & !4) | 3;
+            call = virtual_call(lot, 0x34, &[flags], flags, table(lot), false);
+            call.eax = (call.eax & !255) | (walls & 255);
+            if walls as u8 != 0 {
+                let compared = F80::from_f32(center[1]).compare(F80::from_f32(highest));
+                call.eax = (call.eax & 0xFFFF_0000) | u32::from(compared.status_word());
+                if compared.less() {
+                    retaining_wall(lot, 1);
+                    surrounding_foundations(this, lot);
+                    let returned = surrounding_walls(lot);
+                    call.eax = returned as u32;
+                    call.edx = (returned >> 32) as u32;
+                }
+            }
+            call.eax = (call.eax & !255) | u32::from(created);
+            result(call)
+        }
+    }
+}
+
 pub const PORTS: &[Port] = &[
     fc4p_006c3e10::PORT,
     fc4p_006c3e70::PORT,
@@ -318,4 +389,5 @@ pub const PORTS: &[Port] = &[
     fc4p_006c4150::PORT,
     fc4p_006c5460::PORT,
     fc4p_006c54e0::PORT,
+    fc4p_006c8ab0::PORT,
 ];
