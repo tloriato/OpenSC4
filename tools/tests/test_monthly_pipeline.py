@@ -98,6 +98,45 @@ def test_credit_always_captures_all_months_for_combined_owners():
     assert '--no-early-stop' in options
 
 
+def test_combined_credit_distinguishes_unobserved_scenarios_from_failed_runs():
+    table = {'present': {'verdict': 'outside', 'owners': {'zones': {'verdict': 'exact'}}},
+             'absent': {'verdict': 'exact', 'owners': {}}}
+    summary = check.owner_summary(table, 'zones')
+    assert summary['verdict'] == 'exact'
+    assert summary['exact_scenarios'] == ['present']
+    assert summary['unobserved_scenarios'] == ['absent']
+    table['failed'] = {'verdict': 'error', 'owners': {}}
+    summary = check.owner_summary(table, 'zones')
+    assert summary['verdict'] == 'incomplete'
+    assert summary['incomplete_scenarios'] == ['failed']
+
+
+def test_exact_keys_can_come_from_combined_credit_without_each(tmp_path, monkeypatch):
+    monkeypatch.setattr(check, 'REPO', tmp_path)
+    monkeypatch.setattr(check, 'owner_covers', lambda: {'zones': ['a', 'b']})
+    monkeypatch.setattr(check, 'scenarios', lambda: {})
+    monkeypatch.setattr(check, 'select', lambda *args: ([], []))
+    dll = tmp_path / 'candidate.dll'
+    dll.write_bytes(b'candidate')
+    path = tmp_path / 'build-runs/golden/credit.json'
+    path.parent.mkdir(parents=True)
+    report = {'monthly': {'complete': True}, 'owners': {'zones': {'verdict': 'exact'}}}
+    data = {'dll_sha256': check.sha256(dll), 'keys': ['zones'],
+            'owner_verdicts': {'zones': {'verdict': 'exact'}}, 'scenarios': {'a': report}}
+    path.write_text(json.dumps(data))
+    assert check.exact_owners(dll) == []  # a short selection cannot qualify a whole cover
+    data['scenarios']['b'] = report
+    path.write_text(json.dumps(data))
+    assert check.exact_owners(dll) == ['zones']
+    data['scenarios']['b'] = {**report, 'monthly': {'complete': False}}
+    path.write_text(json.dumps(data))
+    assert check.exact_owners(dll) == []
+    dll.write_bytes(b'changed build')
+    import pytest
+    with pytest.raises(ValueError, match='no full-cover owner evidence'):
+        check.exact_owners(dll)
+
+
 def test_window_results_cannot_be_published_as_full_scenario_credit():
     import pytest
     with pytest.raises(ValueError, match='credit requires full scenarios'):

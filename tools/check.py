@@ -257,13 +257,27 @@ def sha256(path):
 
 
 def exact_owners(dll):
-    """The owners exact on every run of their cover in owner-check.tsv (which must come from this DLL), and the
-    owners they need."""
+    """Full-cover evidence from this DLL's combined credit, or the legacy each table."""
+    credit_path = REPO / 'build-runs/golden/credit.json'
+    if credit_path.is_file():
+        data = json.loads(credit_path.read_text(encoding='utf-8'))
+        if data.get('dll_sha256') == sha256(dll) and data.get('owner_verdicts'):
+            covers = owner_covers()
+            skipped = set(select('all', None, scenarios())[1])
+            eligible = []
+            for key in data['keys']:
+                needed = set(covers.get(key, [])) - skipped
+                reports = [data['scenarios'].get(name, {}) for name in needed]
+                if needed and all(r.get('monthly', {}).get('complete') and
+                                  r.get('owners', {}).get(key, {}).get('verdict') == 'exact' for r in reports):
+                    eligible.append(key)
+            return sorted({k for key in eligible for k in alone(key)})
     path = REPO / 'build-runs/golden/owner-check.tsv'
     lines = path.read_text(encoding='utf-8').splitlines() if path.is_file() else []
     found = re.search(r'sha256 ([0-9a-f]{64})', lines[0]) if lines else None
     if not found or found[1] != sha256(dll):
-        raise ValueError(f'{path} is not from this DLL; run: python tools/check.py run --dll <it> --replace each')
+        raise ValueError('no full-cover owner evidence from this DLL; run: python tools/check.py credit '
+                         '--dll <it> --replace <keys> --scenarios all (or run --replace each)')
     flags = {}
     for row in csv.DictReader(lines[1:], delimiter='\t'):
         flags.setdefault(row['key'], []).append(row['verdict'] == 'exact')
@@ -327,6 +341,19 @@ def run(args):
     return 2 if errors else 1 if failing else 0
 
 
+def owner_summary(table, key):
+    observed = {name: entry['owners'].get(key, {'verdict': 'unobserved'})
+                if entry['verdict'] != 'error' else {'verdict': 'incomplete'} for name, entry in table.items()}
+    different = {name: value['first_difference'] for name, value in observed.items()
+                 if value['verdict'] == 'different'}
+    exact = [name for name, value in observed.items() if value['verdict'] == 'exact']
+    incomplete = [name for name, value in observed.items() if value['verdict'] == 'incomplete']
+    return {'verdict': 'different' if different else 'incomplete' if incomplete else 'exact' if exact else 'unobserved',
+            'first_differences': different, 'exact_scenarios': exact, 'incomplete_scenarios': incomplete,
+            'unobserved_scenarios': [n for n, v in observed.items() if v['verdict'] == 'unobserved'],
+            'scope': 'selected scenarios where owned normalized records are observed; combined replacements'}
+
+
 def credit(args):
     if getattr(args, 'from_date', None):
         raise ValueError('credit requires full scenarios; use check.py run or qcheck.py for windows')
@@ -350,14 +377,9 @@ def credit(args):
     path = REPO / 'build-runs/golden/credit.json'
     owner_verdicts = {}
     for key in keys:
-        observed = {name: entry['owners'].get(key, {'verdict': 'unobserved'}) for name, entry in table.items()}
-        different = {name: value['first_difference'] for name, value in observed.items()
-                     if value['verdict'] == 'different'}
-        verdict = ('different' if different else 'incomplete' if any(v['verdict'] == 'incomplete' for v in observed.values())
-                   else 'exact' if observed and all(v['verdict'] == 'exact' for v in observed.values()) else 'unobserved')
-        owner_verdicts[key] = {'verdict': verdict, 'first_differences': different,
-                               'exact_scenarios': [n for n, v in observed.items() if v['verdict'] == 'exact'],
-                               'scope': 'selected scenarios; owned normalized records; combined replacements'}
+        owner_verdicts[key] = owner_summary(table, key)
+        verdict = owner_verdicts[key]['verdict']
+        different = owner_verdicts[key]['first_differences']
         print(f'owner {key}: {verdict}' + (f'; first differences {different}' if different else ''), flush=True)
     path.write_text(json.dumps({'dll': str(dll), 'dll_sha256': sha256(dll), 'keys': keys,
                                 'written': dt.datetime.now().isoformat(timespec='seconds'), 'scenarios': table,
