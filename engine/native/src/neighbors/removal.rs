@@ -26,37 +26,72 @@ unsafe extern "fastcall" fn delete_occupant(this: *mut u8, argument: *mut u32, e
         let kind = match result as u32 {
             0xC772_BF98 => {
                 argument.write_unaligned(0);
-                result = virtual_call(occupant, 0, &[0xA821_EF94, argument as u32], argument as u32, word(occupant, 0));
+                result = virtual_call(
+                    occupant,
+                    0,
+                    &[0xA821_EF94, argument as u32],
+                    argument as u32,
+                    word(occupant, 0),
+                );
                 let mut kind = 0;
                 if result as u8 != 0 {
                     for (index, (network, connection)) in [
-                        (4, 5), (11, 10), (0, 2), (6, 8), (12, 12),
-                        (2, 3), (7, 6), (8, 7), (9, 11), (1, 1),
-                    ].into_iter().enumerate() {
+                        (4, 5),
+                        (11, 10),
+                        (0, 2),
+                        (6, 8),
+                        (12, 12),
+                        (2, 3),
+                        (7, 6),
+                        (8, 7),
+                        (9, 11),
+                        (1, 1),
+                    ]
+                    .into_iter()
+                    .enumerate()
+                    {
                         let interface = argument.read_unaligned() as *mut u8;
                         let table = word(interface, 0);
-                        let (eax, edx) = if index % 2 == 0 { (result as u32, table) } else { (table, (result >> 32) as u32) };
+                        let (eax, edx) = if index % 2 == 0 {
+                            (result as u32, table)
+                        } else {
+                            (table, (result >> 32) as u32)
+                        };
                         result = virtual_call(interface, 0x58, &[network], eax, edx);
-                        if result as u8 != 0 { kind = connection; }
+                        if result as u8 != 0 {
+                            kind = connection;
+                        }
                     }
                 }
                 let interface = argument.read_unaligned() as *mut u8;
                 if !interface.is_null() {
                     result = virtual_call(interface, 8, &[], result as u32, word(interface, 0));
                 }
-                if kind == 0 { return result; }
+                if kind == 0 {
+                    return result;
+                }
                 kind
             }
             0x2890_D4DE => 4,
             _ => return result,
         };
         let mut position = [0u32; 3];
-        virtual_call(occupant, 0x20, &[position.as_mut_ptr() as u32], word(occupant, 0), (result >> 32) as u32);
+        virtual_call(
+            occupant,
+            0x20,
+            &[position.as_mut_ptr() as u32],
+            word(occupant, 0),
+            (result >> 32) as u32,
+        );
         let mut z = 0u32;
         let city = sim.city();
-        virtual_call(city, 0x17C,
+        virtual_call(
+            city,
+            0x17C,
             &[position[0], position[2], argument as u32, &mut z as *mut u32 as u32],
-            position[0], word(city, 0));
+            position[0],
+            word(city, 0),
+        );
         let x = argument.read_unaligned();
         if x == 0 {
             argument.write_unaligned(u32::MAX);
@@ -78,7 +113,9 @@ unsafe extern "fastcall" fn delete_occupant(this: *mut u8, argument: *mut u32, e
         } else {
             let city = sim.city();
             result = virtual_call(city, 0x178, &[], z, word(city, 0));
-            if z != (result as u32).wrapping_sub(1) { return pair(z, (result >> 32) as u32); }
+            if z != (result as u32).wrapping_sub(1) {
+                return pair(z, (result >> 32) as u32);
+            }
             z = z.wrapping_add(1);
         }
         let x = argument.read_unaligned();

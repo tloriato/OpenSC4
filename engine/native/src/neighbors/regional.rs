@@ -21,9 +21,13 @@ unsafe fn allocator(edx: &mut u32) -> *mut u8 {
             let result = framework();
             let framework = result as u32 as *mut u8;
             if !framework.is_null() {
-                virtual_call(framework, 0x14,
+                virtual_call(
+                    framework,
+                    0x14,
                     &[0x3AE4_BEA3, 0x3AE4_BEAB, &mut local as *mut *mut u8 as u32],
-                    framework as u32, word(framework, 0));
+                    framework as u32,
+                    word(framework, 0),
+                );
             }
             city_allocator().write(local);
             let result = release_local(&mut local, local as u32);
@@ -49,7 +53,9 @@ unsafe extern "fastcall" fn publish(this: *mut u8, args: *mut u32, entry_edx: u3
     unsafe {
         let deals = args.read_unaligned() as u8 != 0;
         let stats = args.add(1).read_unaligned() as u8 != 0;
-        if !deals && !stats { return pair(entry_eax & !0xFF, entry_edx); }
+        if !deals && !stats {
+            return pair(entry_eax & !0xFF, entry_edx);
+        }
         let sim = NeighborsSim::from_ptr(this);
         let mut edx = entry_edx;
         let service = allocator(&mut edx);
@@ -57,7 +63,13 @@ unsafe extern "fastcall" fn publish(this: *mut u8, args: *mut u32, entry_edx: u3
         let mut header = result as u32 as *mut u8;
         header.cast::<*mut u8>().write_unaligned(header);
         header.add(4).cast::<*mut u8>().write_unaligned(header);
-        let result = virtual_call(this, 0x50, &[&mut header as *mut *mut u8 as u32, 0], &mut header as *mut *mut u8 as u32, word(this, 0));
+        let result = virtual_call(
+            this,
+            0x50,
+            &[&mut header as *mut *mut u8 as u32, 0],
+            &mut header as *mut *mut u8 as u32,
+            word(this, 0),
+        );
         let manager = region_manager().read();
         let result = virtual_call(manager, 0x90, &[], result as u32, word(manager, 0));
         let current = result as u32 as *mut u8;
@@ -66,7 +78,13 @@ unsafe extern "fastcall" fn publish(this: *mut u8, args: *mut u32, entry_edx: u3
             let city = pointer(pointer(header, 4), 8);
             if !city.is_null() {
                 if deals {
-                    let result = virtual_call(city, 0x114, &[this.add(0x20) as u32], this.add(0x20) as u32, word(city, 0));
+                    let result = virtual_call(
+                        city,
+                        0x114,
+                        &[this.add(0x20) as u32],
+                        this.add(0x20) as u32,
+                        word(city, 0),
+                    );
                     edx = (result >> 32) as u32;
                 }
                 if stats {
@@ -91,7 +109,13 @@ unsafe extern "fastcall" fn publish(this: *mut u8, args: *mut u32, entry_edx: u3
         }
         let mut eax = header as u32;
         if deals {
-            let result = virtual_call(current, 0x114, &[this.add(0x20) as u32], this.add(0x20) as u32, word(current, 0));
+            let result = virtual_call(
+                current,
+                0x114,
+                &[this.add(0x20) as u32],
+                this.add(0x20) as u32,
+                word(current, 0),
+            );
             eax = result as u32;
             edx = (result >> 32) as u32;
         }
@@ -99,8 +123,12 @@ unsafe extern "fastcall" fn publish(this: *mut u8, args: *mut u32, entry_edx: u3
             let result = virtual_call(current, 0x11C, &[], eax, word(current, 0));
             edx = (result >> 32) as u32;
         }
-        if deals { sim.set_deals_dirty(0); }
-        if stats { sim.set_stats_dirty(0); }
+        if deals {
+            sim.set_deals_dirty(0);
+        }
+        if stats {
+            sim.set_stats_dirty(0);
+        }
         destroy_cities(&mut header, edx)
     }
 }

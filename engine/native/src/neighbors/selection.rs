@@ -32,9 +32,13 @@ unsafe fn empty_list(entry_edx: u32) -> (*mut u8, u32) {
             let result = framework();
             let framework = result as u32 as *mut u8;
             if !framework.is_null() {
-                virtual_call(framework, 0x14,
+                virtual_call(
+                    framework,
+                    0x14,
                     &[0x3AE4_BEA3, 0x3AE4_BEAB, &mut local as *mut *mut u8 as u32],
-                    framework as u32, word(framework, 0));
+                    framework as u32,
+                    word(framework, 0),
+                );
             }
             connection_allocator().write(local);
             let result = release_local(&mut local, local as u32);
@@ -70,19 +74,29 @@ unsafe extern "fastcall" fn suitable(this: *mut u8, args: *mut u32, entry_edx: u
         match kind {
             0x4773_FFE0..=0x4773_FFE3 => {
                 let connection_kind = if kind < 0x4773_FFE2 { 4 } else { 5 };
-                let result = virtual_call(this, 0x48,
+                let result = virtual_call(
+                    this,
+                    0x48,
                     &[connection_kind, city, &mut header as *mut *mut u8 as u32],
-                    &mut header as *mut *mut u8 as u32, word(this, 0));
+                    &mut header as *mut *mut u8 as u32,
+                    word(this, 0),
+                );
                 edx = (result >> 32) as u32;
             }
             0x4773_FFE4 | 0x4773_FFE5 => {
                 check_activity = false;
                 for connection_kind in [3, 12, 8, 2, 10] {
-                    let result = virtual_call(this, 0x48,
+                    let result = virtual_call(
+                        this,
+                        0x48,
                         &[connection_kind, city, &mut header as *mut *mut u8 as u32],
-                        &mut header as *mut *mut u8 as u32, word(this, 0));
+                        &mut header as *mut *mut u8 as u32,
+                        word(this, 0),
+                    );
                     edx = (result >> 32) as u32;
-                    if pointer(header, 0) != header { break; }
+                    if pointer(header, 0) != header {
+                        break;
+                    }
                 }
             }
             _ => {}
@@ -106,8 +120,12 @@ unsafe extern "fastcall" fn suitable(this: *mut u8, args: *mut u32, entry_edx: u
                         false
                     };
                     edx = (result >> 32) as u32;
-                    if active { found = connection; break; }
-                    let result = erase_connection(&mut header, pointer(header, 0) as u32, args.add(1), pointer(header, 0));
+                    if active {
+                        found = connection;
+                        break;
+                    }
+                    let result =
+                        erase_connection(&mut header, pointer(header, 0) as u32, args.add(1), pointer(header, 0));
                     edx = (result >> 32) as u32;
                     node = pointer(header, 0);
                     eax = header as u32;
