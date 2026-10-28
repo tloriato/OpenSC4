@@ -39,6 +39,21 @@ def test_normalization_does_not_shift_other_classes_when_one_is_added():
     assert before[0x12345678, monthly.golden_relabel.STORE_GROUP, 0] == after[0x12345678, monthly.golden_relabel.STORE_GROUP, 0]
 
 
+def test_fast_reference_search_preserves_unaligned_overlapping_and_bounded_ids():
+    import random
+    data = bytearray(random.Random(17).randbytes(20000))
+    classes = {0x12345678, 0x00010001, 0x00000001}
+    for at, oid, cls in ((3, 17, 0x12345678), (21, 0, 0x00000001),
+                         (39, 0x01000000, 0x12345678), (101, 1, 0x00010001)):
+        struct.pack_into('<II', data, at, oid, cls)
+    expected = []
+    for at in range(len(data) - 7):
+        oid, cls = struct.unpack_from('<II', data, at)
+        if cls in classes and 0 < oid < 0x01000000:
+            expected.append((at, oid, cls))
+    assert monthly.golden_relabel.refs(bytes(data), classes) == expected
+
+
 def test_calendar_and_actions_at_boundary():
     assert monthly.dates('2000-01-31', '2000-03-02') == ['2000-02-29', '2000-03-02']
     text = monthly.instrument('2000-01-31 mark OLD\n2000-02-29 funds 100\n', '2000-01-31', '2000-03-02',
