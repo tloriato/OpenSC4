@@ -80,3 +80,13 @@ game_data! { pub static simulator: *mut u8 = 0x00B4_3D5C; }
 game_data! { pub static growth_developer: *mut u8 = 0x00B4_3D68; }
 game_data! { pub static history: *mut u8 = 0x00B4_3DC0; }
 game_data! { pub static land_value_started: u8 = 0x00B4_90E0; }
+
+game_fn! {
+    /// Erases a developer-map subtree, visiting right children before the node and its left children.
+    pub fn land_value_erase_subtree(map: *mut u8, node: *mut u8) -> u32 = "thiscall" 0x006B_D9F0;
+}
+
+game_fn! {
+    /// Releases owned storage through the game's delete function; keeps its EAX result.
+    pub fn delete_storage(storage: *mut u8) -> u32 = "C" 0x0090_CF63;
+}

@@ -23,6 +23,10 @@ layout! {
     /// "Land-value native progress"). The altitude fields are the ones `SetupAltitudeEffect` (0x006BD750) reads
     /// and writes (§7.3).
     pub struct LandValueSim {
+        /// Primary, message-target and serializable interface tables restored during destruction.
+        0x00 => primary_vtable / set_primary_vtable: u32,
+        0x04 => message_vtable / set_message_vtable: u32,
+        0x08 => serializable_vtable / set_serializable_vtable: u32,
         /// Whether initialization completed.
         0x0C => initialized / set_initialized: u8,
         /// Subscribed message server.
@@ -49,6 +53,8 @@ layout! {
         0x3C => tract_iterator / set_tract_iterator: *mut u8,
         /// Slope scanning iterator.
         0x40 => slope_iterator / set_slope_iterator: *mut u8,
+        /// Owned altitude histogram storage.
+        0x50 => histogram / set_histogram: *mut u8,
         /// Altitude histogram bin shift.
         0x5C => histogram_shift / set_histogram_shift: u32,
         /// pivot (§7.3).
@@ -67,6 +73,9 @@ layout! {
         0x84 => altitude_curve / set_altitude_curve: *mut u8,
         /// Developer desirability response curve.
         0x88 => desirability_curve / set_desirability_curve: *mut u8,
+        /// Developer-map sentinel and number of ordinary nodes.
+        0x8C => developer_header / set_developer_header: *mut u8,
+        0x90 => developer_count / set_developer_count: u32,
         /// minAlt (§3).
         0x98 => min_altitude / set_min_altitude: f32,
         /// maxAlt (§3).
