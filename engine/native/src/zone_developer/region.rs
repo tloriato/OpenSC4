@@ -27,6 +27,9 @@ game_fn! { fn free(memory: *mut u8) -> u64 = "C" 0x005E_5620; }
 game_fn! { fn construct_bits(this: *mut u8, width: i32, height: i32, fill: *const u8) -> u32 = "thiscall" 0x0044_22A0; }
 game_fn! { fn destroy_bits(this: *mut u8) -> u64 = "thiscall" 0x0044_1A60; }
 game_fn! { fn cell_occupied(this: *mut u8, x: i32, z: i32) -> u32 = "thiscall" 0x0072_C050; }
+game_fn! { fn allocate_queue_node(size: u32) -> *mut u8 = "C" 0x0090_CF54; }
+game_fn! { fn free_queue_node(node: *mut u8) = "C" 0x0090_CF63; }
+game_fn! { fn destroy_queue(list: *mut *mut u8) -> u64 = "thiscall" 0x0056_50A0; }
 
 impl Region {
     /// The caller has already checked the local coordinates against the packed map's dimensions.
@@ -51,6 +54,64 @@ impl Region {
         let x = x.wrapping_sub(self.x1()) as u32;
         let z = z.wrapping_sub(self.z1()) as u32;
         x < self.width() as u32 && z < self.height() as u32 && unsafe { self.get(x, z) }
+    }
+}
+
+/// Append one coordinate to the game's circular queue, leaving unused sentinel payload bytes alone.
+unsafe fn enqueue(header: *mut u8, x: u32, z: u32) {
+    unsafe {
+        let node = allocate_queue_node(16);
+        let payload = node.wrapping_add(8).cast::<u32>();
+        if !payload.is_null() {
+            write_unaligned(payload, x);
+            write_unaligned(payload.wrapping_add(1), z);
+        }
+        let previous = read_unaligned(header.add(4).cast::<*mut u8>());
+        write_unaligned(node.cast::<*mut u8>(), header);
+        write_unaligned(node.add(4).cast::<*mut u8>(), previous);
+        write_unaligned(previous.cast::<*mut u8>(), node);
+        write_unaligned(header.add(4).cast::<*mut u8>(), node);
+    }
+}
+
+port! {
+    /// Extract the seed's four-connected component, flipping visited source bits as they are queued.
+    /// A clear seed extracts clear cells into a true background. Visit neighbours in +x, +z, -x, -z
+    /// order using the game's FIFO nodes and destructor. The seed uses local, unchecked coordinates.
+    #[port(address = 0x0072_CDA0, owner = "zonedeveloper", name = "cSC4ZoneDeveloper::ExtractConnectedCells")]
+    pub unsafe extern "stdcall" fn fc4p_0072cda0(input: *mut u8, x: u32, z: u32) -> u64 {
+        unsafe {
+            let input = Region::from_ptr(input);
+            let value = input.get(x, z);
+            input.set(x, z, !value);
+            let result = new_region(input, u8::from(!value));
+            result.set(x, z, value);
+            let header = allocate_queue_node(16);
+            write_unaligned(header.cast::<*mut u8>(), header);
+            write_unaligned(header.add(4).cast::<*mut u8>(), header);
+            enqueue(header, x, z);
+            while read_unaligned(header.cast::<*mut u8>()) != header {
+                let node = read_unaligned(header.cast::<*mut u8>());
+                let next = read_unaligned(node.cast::<*mut u8>());
+                let previous = read_unaligned(node.add(4).cast::<*mut u8>());
+                let x = read_unaligned(node.add(8).cast::<u32>());
+                let z = read_unaligned(node.add(12).cast::<u32>());
+                write_unaligned(previous.cast::<*mut u8>(), next);
+                write_unaligned(next.add(4).cast::<*mut u8>(), previous);
+                free_queue_node(node);
+                for (nx, nz) in [(x.wrapping_add(1), z), (x, z.wrapping_add(1)),
+                    (x.wrapping_sub(1), z), (x, z.wrapping_sub(1))] {
+                    if nx < input.width() as u32 && nz < input.height() as u32 && input.get(nx, nz) == value {
+                        input.set(nx, nz, !value);
+                        result.set(nx, nz, value);
+                        enqueue(header, nx, nz);
+                    }
+                }
+            }
+            let mut list = header;
+            let result_edx = (destroy_queue(&mut list) >> 32) as u32;
+            (u64::from(result_edx) << 32) | u64::from(result.as_ptr() as u32)
+        }
     }
 }
 
@@ -252,7 +313,12 @@ port! {
     }
 }
 
-pub const PORTS: &[Port] = &[fc4p_0072af30::PORT, fc4p_0072b180::PORT, fc4p_0072cb90::PORT];
+pub const PORTS: &[Port] = &[
+    fc4p_0072af30::PORT,
+    fc4p_0072b180::PORT,
+    fc4p_0072cb90::PORT,
+    fc4p_0072cda0::PORT,
+];
 
 #[cfg(test)]
 mod tests;

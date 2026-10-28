@@ -25,6 +25,9 @@ enum Call {
     Texture(u32),
     Dezone([i32; 4], Vec<(i32, i32)>, [u32; 9]),
     Destroy(u32),
+    AllocateQueue(u32),
+    FreeQueue(u32, u32),
+    DestroyQueue,
 }
 
 #[derive(Default)]
@@ -102,6 +105,39 @@ extern "C" fn free_fake(p: *mut u8) -> u64 {
         s.calls.push(Call::Free(p as usize));
     });
     0xFACE_CAFE_1234_5678
+}
+
+extern "C" fn allocate_queue_fake(size: u32) -> *mut u8 {
+    STATE.with(|s| {
+        let mut s = s.borrow_mut();
+        s.calls.push(Call::AllocateQueue(size));
+        allocate_words(&mut s, size.div_ceil(4) as usize, 0xA5A5_A5A5).cast()
+    })
+}
+
+extern "C" fn free_queue_fake(node: *mut u8) {
+    unsafe {
+        let next = read_unaligned(node.cast::<*mut u8>());
+        let previous = read_unaligned(node.add(4).cast::<*mut u8>());
+        assert_eq!(read_unaligned(previous.cast::<*mut u8>()), next);
+        assert_eq!(read_unaligned(next.add(4).cast::<*mut u8>()), previous);
+        STATE.with(|s| {
+            s.borrow_mut().calls.push(Call::FreeQueue(
+                read_unaligned(node.add(8).cast()),
+                read_unaligned(node.add(12).cast()),
+            ))
+        });
+    }
+}
+
+extern "thiscall" fn destroy_queue_fake(list: *mut *mut u8) -> u64 {
+    let header = unsafe { read_unaligned(list) };
+    assert_eq!(unsafe { read_unaligned(header.cast::<*mut u8>()) }, header);
+    assert_eq!(unsafe { read_unaligned(header.add(4).cast::<*mut u8>()) }, header);
+    assert_eq!(unsafe { read_unaligned(header.add(8).cast::<u32>()) }, 0xA5A5_A5A5);
+    assert_eq!(unsafe { read_unaligned(header.add(12).cast::<u32>()) }, 0xA5A5_A5A5);
+    STATE.with(|s| s.borrow_mut().calls.push(Call::DestroyQueue));
+    0xFEED_FACE_1234_5678
 }
 
 extern "thiscall" fn destroy_fake(this: *mut u8) -> u64 {
@@ -385,6 +421,9 @@ impl World {
                 fake(0x0044_22A0, construct_fake as *const () as usize),
                 fake(0x0044_1A60, destroy_fake as *const () as usize),
                 fake(0x0072_C050, occupied_fake as *const () as usize),
+                fake(0x0090_CF54, allocate_queue_fake as *const () as usize),
+                fake(0x0090_CF63, free_queue_fake as *const () as usize),
+                fake(0x0056_50A0, destroy_queue_fake as *const () as usize),
             ],
         }
     }
@@ -666,4 +705,88 @@ fn update_observes_source_bit_changes_made_by_lot_callbacks() {
             Call::Destroy(0x00A8_6364)
         ]
     );
+}
+
+#[test]
+fn extract_connected_cells_uses_fifo_neighbour_order_and_leaves_diagonal_cells() {
+    let _w = World::new();
+    let set = [(1, 1), (2, 1), (1, 2), (0, 1), (1, 0), (0, 0), (3, 3)];
+    let mut source = NativeRegion::new([10, 20, 13, 23], &set.map(|(x, z)| (x + 10, z + 20)));
+    let result = unsafe { fc4p_0072cda0(source.view().as_ptr(), 1, 1) };
+    assert_eq!(result >> 32, 0xFEED_FACE);
+    let r = unsafe { Region::from_ptr(result as u32 as *mut u8) };
+    assert_eq!(cells(source.view()), [(13, 23)]);
+    assert_eq!(cells(r), [(10, 20), (10, 21), (11, 20), (11, 21), (11, 22), (12, 21)]);
+    assert_eq!(
+        calls(),
+        [
+            Call::Allocate(36),
+            Call::Construct([10, 20, 13, 23], 4, 4, 0),
+            Call::AllocateQueue(16),
+            Call::AllocateQueue(16),
+            Call::FreeQueue(1, 1),
+            Call::AllocateQueue(16),
+            Call::AllocateQueue(16),
+            Call::AllocateQueue(16),
+            Call::AllocateQueue(16),
+            Call::FreeQueue(2, 1),
+            Call::FreeQueue(1, 2),
+            Call::FreeQueue(0, 1),
+            Call::AllocateQueue(16),
+            Call::FreeQueue(1, 0),
+            Call::FreeQueue(0, 0),
+            Call::DestroyQueue
+        ]
+    );
+}
+
+#[test]
+fn clear_seed_extracts_clear_component_and_preserves_true_tail_bits() {
+    let _w = World::new();
+    let mut source = NativeRegion::new([0, 0, 2, 1], &[(1, 0), (1, 1)]);
+    let result = unsafe { fc4p_0072cda0(source.view().as_ptr(), 0, 0) };
+    let r = unsafe { Region::from_ptr(result as u32 as *mut u8) };
+    assert_eq!(cells(source.view()), [(0, 0), (0, 1), (1, 0), (1, 1)]);
+    assert_eq!(cells(r), [(1, 0), (1, 1), (2, 0), (2, 1)]);
+    assert_eq!(unsafe { r.bit(0, 0).read() }, 0xFFFF_FFFC);
+    assert_eq!(
+        calls(),
+        [
+            Call::Allocate(36),
+            Call::Construct([0, 0, 2, 1], 3, 2, 1),
+            Call::AllocateQueue(16),
+            Call::AllocateQueue(16),
+            Call::FreeQueue(0, 0),
+            Call::AllocateQueue(16),
+            Call::FreeQueue(0, 1),
+            Call::DestroyQueue
+        ]
+    );
+}
+
+#[test]
+fn region_components_and_compression_match_corner_and_isolated_cell_cases() {
+    let _w = World::new();
+    let mut source = NativeRegion::new([0, 0, 4, 4], &[(0, 0), (0, 1), (4, 4)]);
+    for (x, z, bounds, expected) in [
+        (0, 0, [0, 0, 0, 1], vec![(0, 0), (0, 1)]),
+        (4, 4, [4, 4, 4, 4], vec![(4, 4)]),
+    ] {
+        let mut slot = unsafe { fc4p_0072cda0(source.view().as_ptr(), x, z) } as u32 as *mut u8;
+        unsafe { fc4p_0072af30(&mut slot) };
+        let r = unsafe { Region::from_ptr(slot) };
+        assert_eq!([r.x1(), r.z1(), r.x2(), r.z2()], bounds);
+        assert_eq!(cells(r), expected);
+    }
+    assert!(cells(source.view()).is_empty());
+}
+
+#[test]
+fn connected_component_crosses_packed_word_boundary_without_touching_other_bits() {
+    let _w = World::new();
+    let mut source = NativeRegion::new([-2, -10, -1, 24], &[(-2, 20), (-2, 21), (-2, 22), (-1, 22), (-1, -10)]);
+    let result = unsafe { fc4p_0072cda0(source.view().as_ptr(), 0, 31) };
+    let r = unsafe { Region::from_ptr(result as u32 as *mut u8) };
+    assert_eq!(cells(r), [(-2, 20), (-2, 21), (-2, 22), (-1, 22)]);
+    assert_eq!(cells(source.view()), [(-1, -10)]);
 }
