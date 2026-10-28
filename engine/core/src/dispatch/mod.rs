@@ -65,6 +65,7 @@
 //!   main-thread only. No borrow is held across a host call; host callbacks
 //!   must not call back into the manager.
 
+pub mod archive;
 mod manager;
 
 #[cfg(test)]

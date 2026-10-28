@@ -115,6 +115,7 @@
 
 mod algo;
 mod simulator;
+pub mod archive;
 mod tuning;
 mod types;
 

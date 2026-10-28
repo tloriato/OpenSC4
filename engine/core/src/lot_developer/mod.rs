@@ -136,6 +136,7 @@
 //!
 //! Host callbacks must not call back into the lot developer.
 
+pub mod archive;
 mod boundary;
 mod foundation;
 mod geometry;

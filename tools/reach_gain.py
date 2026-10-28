@@ -5,6 +5,7 @@ owners attributed through coverage-ranges.tsv / coverage-map.tsv). This tool
 never reads the analysis export, nor guesses function sizes from address gaps.
 
 python tools/reach_gain.py --owners build-runs/coverage-owners.tsv RUN.reach.tsv
+Omit RUN.reach.tsv for the baseline alone; --gaps ranks the remaining subsystems.
 """
 import argparse
 import csv
@@ -84,12 +85,18 @@ def measure(candidates, references, functions):
     def total(addresses):
         return dict(functions=len(addresses), bytes=sum(functions[va]['bytes'] for va in addresses))
 
+    gaps = {}
+    for va in functions.keys() - combined:
+        row = functions[va]
+        group = gaps.setdefault(row['subsystem'], dict(functions=0, bytes=0))
+        group['functions'] += 1
+        group['bytes'] += row['bytes']
     return dict(reference_files=len(references), denominator=total(functions), warnings=warnings,
                 baseline=total(baseline), candidates=measured,
-                gain=total(combined - baseline), combined=total(combined))
+                gain=total(combined - baseline), combined=total(combined), gaps=gaps)
 
 
-def render(report, details=True):
+def render(report, details=True, gaps=False):
     for warning in report['warnings']:
         print('reach_gain: ' + warning, file=sys.stderr)
     base, den = report['baseline'], report['denominator']
@@ -105,14 +112,19 @@ def render(report, details=True):
     gain = report['gain']
     print(f"union gain: +{gain['functions']} functions; +{gain['bytes']} bytes "
           '(overlap counted once; each candidate above is against references)')
+    if gaps:
+        print('remaining unreached game code (after candidate union):')
+        for name, group in sorted(report['gaps'].items(), key=lambda item: (-item[1]['bytes'], item[0])):
+            print(f"  {name}: {group['functions']} functions; {group['bytes']} bytes")
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('reach', nargs='+', type=Path)
+    parser.add_argument('reach', nargs='*', type=Path)
     parser.add_argument('--references', type=Path, help='golden store; default main checkout/build-runs/golden')
     parser.add_argument('--owners', type=Path, help='coverage.py --owners TSV; default main/build-runs/coverage-owners.tsv')
     parser.add_argument('--summary', action='store_true', help='omit individual function lines')
+    parser.add_argument('--gaps', action='store_true', help='rank remaining unreached subsystems by bytes')
     parser.add_argument('--json', type=Path, help='also save the complete machine-readable report')
     args = parser.parse_args(argv)
     main_root = main_checkout(ROOT)
@@ -127,7 +139,7 @@ def main(argv=None):
             raise ValueError('inventory has no game-code bytes')
         report = measure(args.reach, paths, functions)
         report.update(owners=str(owners), references=str(references))
-        render(report, not args.summary)
+        render(report, not args.summary, args.gaps)
         if args.json:
             args.json.write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     except (OSError, ValueError, KeyError, csv.Error) as exc:

@@ -131,6 +131,7 @@ mod simulator;
 #[cfg(test)]
 mod tests;
 mod tuning;
+pub mod archive;
 
 pub use simulator::{
     nearest_water_ring, pipe_cost, pipe_funding, trunc_i64, PipeFunding, PlumbingSim, PlumbingState, Producer,

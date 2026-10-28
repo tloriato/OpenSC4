@@ -175,6 +175,7 @@
 //!   the original's comparator does.
 
 mod algo;
+pub mod archive;
 mod shipped;
 mod simulator;
 #[cfg(test)]

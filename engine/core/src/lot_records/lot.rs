@@ -150,6 +150,19 @@ fn get_map_into(inp: &mut dyn InStream, m: &mut PopulationMap) -> Option<()> {
 }
 
 impl LotRecord {
+    /// Decode the persisted fields without live `Init` or configuration lookup.
+    /// Unlike `Lot::write`, `LotRecord::write` saves the configuration ID here.
+    pub fn read(&mut self, inp: &mut dyn InStream) -> bool {
+        let Some(v) = inp.get_u16() else { return false };
+        if v > LOT_RECORD_VERSION {
+            return false;
+        }
+        match self.read_fields(inp, v) {
+            Err(()) => false,
+            Ok(_) => inp.error() == 0,
+        }
+    }
+
     /// `Write` (`0x006C0080`, §3.2): version 8 always. A trip write failure
     /// (a stream error) returns false without writing field 27.
     pub fn write(&self, out: &mut dyn OutStream) -> bool {
@@ -350,14 +363,7 @@ impl SaveObject for Lot {
     /// `Read` (`0x006C35F0`, §3.4).
     fn read(&self, inp: &mut dyn InStream) -> bool {
         self.initialised.set(true);
-        let Some(v) = inp.get_u16() else { return false };
-        if v > LOT_RECORD_VERSION {
-            return false;
-        }
-        match self.rec.borrow_mut().read_fields(inp, v) {
-            Err(()) => false,
-            Ok(_) => inp.error() == 0,
-        }
+        self.rec.borrow_mut().read(inp)
     }
     fn as_any_rc(self: Rc<Self>) -> Rc<dyn Any> {
         self

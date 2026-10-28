@@ -526,6 +526,28 @@ __declspec(naked) void IntersectionInsertThunk() {
     }
 }
 
+// [choice] A new train junction's four junction indices start at zero: the original's add-junction (0x004B44F0)
+// sets a side's u16 index only when that side has a path, and the indices of the sides without one carry stack
+// contents into the network map's last table and its save (0x6A0F82B2, traffic-network.md §6.2.4). The game
+// never reads them (an empty side has no path to pick).
+constexpr uintptr_t kJunctionInsert = 0x004B459B;  // mov [esp+5Ch],ebx (ebx = 0); xor bl,bl
+const uint8_t kJunctionInsertBytes[] = {0x89, 0x5C, 0x24, 0x5C, 0x32, 0xDB};
+long g_junctionsZeroed = 0;
+
+__declspec(naked) void JunctionInsertThunk() {
+    __asm {
+        mov dword ptr [esp + 0x5C], ebx
+        mov dword ptr [esp + 0x30], ebx  // the temporary's four sides (16 bytes each from [esp+24h]): index words
+        mov dword ptr [esp + 0x40], ebx
+        mov dword ptr [esp + 0x50], ebx
+        mov dword ptr [esp + 0x60], ebx
+        lock inc g_junctionsZeroed
+        xor bl, bl
+        push 0x004B45A1  // after the two replaced instructions
+        ret
+    }
+}
+
 // ---- wall clock ---------------------------------------------------------------------------------
 uint32_t __cdecl CrtTime(uint32_t* out) {
     InterlockedIncrement(&g_timeCalls);
@@ -2331,6 +2353,11 @@ void ScheduleStartup() {
         all = false;
         Log("schedule: WARNING the intersection insert at 0x%08X not hooked: %s", static_cast<unsigned>(kIntersectionInsert), err);
     }
+    if (const char* err = PatchJump(kJunctionInsert, kJunctionInsertBytes, sizeof(kJunctionInsertBytes),
+                                    reinterpret_cast<const void*>(&JunctionInsertThunk))) {
+        all = false;
+        Log("schedule: WARNING the train junction insert at 0x%08X not hooked: %s", static_cast<unsigned>(kJunctionInsert), err);
+    }
     for (const WalkSite& w : kWalkSites) {
         const void* order = w.order != nullptr ? w.order
                             : w.thunk != nullptr ? reinterpret_cast<const void*>(&OrderedBegin)
@@ -2511,9 +2538,9 @@ void ScheduleMonthLine(int32_t julian) {
     Log("schedule: month at julian %d: time limits started %ld, read %ld (+%ld unstarted, never expire), Grow "
         "expiries %ld, other expiries %ld; "
         "time() calls %ld; clock() virtual %ld, real %ld; performance counter virtual %ld, real (other threads) %ld; "
-        "frames %ld, sleeps %ld (%ld ms); timer callbacks %ld on the main thread; stopwatches rebased %ld; transit switches zeroed %ld; intersections zeroed %ld; foreground tests %ld (all false); windows minimized %ld, again %ld; clock seeds derived %ld, kept %ld; rand() set %ld times; save references %ld in %ld save(s); address-ordered nodes walked in creation order %ld (%ld keys without a stamp, %ld gone before their turn, %ld tree steps without a walk); heap %u operations "
+        "frames %ld, sleeps %ld (%ld ms); timer callbacks %ld on the main thread; stopwatches rebased %ld; transit switches zeroed %ld; intersections zeroed %ld; train junctions zeroed %ld; foreground tests %ld (all false); windows minimized %ld, again %ld; clock seeds derived %ld, kept %ld; rand() set %ld times; save references %ld in %ld save(s); address-ordered nodes walked in creation order %ld (%ld keys without a stamp, %ld gone before their turn, %ld tree steps without a walk); heap %u operations "
         "(0x%08X), %u MB used, %u MB committed, %ld blocks freed on other threads, %ld fallbacks, %ld foreign frees",
-        julian, g_starts, g_reads, g_unstartedReads, g_growExpiries, g_otherExpiries, g_timeCalls, g_clockVirtual, g_clockReal, g_qpcVirtual, g_qpcReal, g_frames, g_sleeps, g_sleptMs, g_timerFires, g_stopwatchesRebased, g_switchesZeroed, g_intersectionsZeroed, g_backgrounds, g_minimized, g_reminimized, g_seedsDerived, g_seedsClock, g_srands,
+        julian, g_starts, g_reads, g_unstartedReads, g_growExpiries, g_otherExpiries, g_timeCalls, g_clockVirtual, g_clockReal, g_qpcVirtual, g_qpcReal, g_frames, g_sleeps, g_sleptMs, g_timerFires, g_stopwatchesRebased, g_switchesZeroed, g_intersectionsZeroed, g_junctionsZeroed, g_backgrounds, g_minimized, g_reminimized, g_seedsDerived, g_seedsClock, g_srands,
         g_refs, g_saves, g_ordered, g_unstamped, g_gone, g_treeLost, g_arena.ops, g_arena.hash, static_cast<unsigned>(g_arena.top >> 20),
         static_cast<unsigned>(g_arena.committed >> 20), g_heapLeaks, g_heapFallbacks, g_heapForeign);
     if (!g_unstampedClasses.empty()) {

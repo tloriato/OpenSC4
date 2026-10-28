@@ -66,8 +66,7 @@ pub struct SaveRecord {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LoadError {
-    /// Version >= 5 (spec: must fail), or < 4 ([choice]: rejected until a
-    /// sample save with the extra timer is available).
+    /// Version >= 5 (spec: must fail).
     UnsupportedVersion(u16),
     /// The buffer ended before the record did.
     Truncated,
@@ -106,8 +105,7 @@ impl SaveRecord {
     pub fn decode(bytes: &[u8]) -> Result<SaveRecord, LoadError> {
         let mut r = Reader { bytes, pos: 0 };
         let version = r.u16()?;
-        if version != SAVE_VERSION {
-            // Spec §8: version >= 5 must fail. [choice] versions < 4 are rejected too.
+        if version >= 5 {
             return Err(LoadError::UnsupportedVersion(version));
         }
         let in_tick = r.u8()? != 0;
@@ -122,9 +120,13 @@ impl SaveRecord {
             level_counters[l] = r.u32()?;
             level_fired[l] = r.u8()? != 0;
         }
+        if version < 4 {
+            // SPEC-GAP: simulator §8 says 11 bytes; stream-helpers §2.1 and its named fields specify 10.
+            r.take::<10>()?;
+        }
         let julian_day = r.u32()?;
         Ok(SaveRecord {
-            version,
+            version: SAVE_VERSION,
             in_tick,
             city_established,
             pause_count,
@@ -197,5 +199,24 @@ mod tests {
         let mut v5 = bytes.clone();
         v5[0] = 5;
         assert_eq!(SaveRecord::decode(&v5), Err(LoadError::UnsupportedVersion(5)));
+    }
+
+    #[test]
+    fn legacy_timer_is_discarded_and_current_output_is_stable() {
+        let mut current = vec![0; RECORD_SIZE_V4];
+        current[0] = 4;
+        let date = 2_451_600u32.to_le_bytes();
+        current[RECORD_SIZE_V4 - 4..].copy_from_slice(&date);
+        let mut legacy = current.clone();
+        legacy[0] = 3;
+        legacy.splice(RECORD_SIZE_V4 - 4..RECORD_SIZE_V4 - 4, [3, 1, 2, 3, 4, 5, 6, 7, 8, 1]);
+        let record = SaveRecord::decode(&legacy).unwrap();
+        assert_eq!(record.julian_day, 2_451_600);
+        assert_eq!(record.encode(), current);
+        assert_eq!(SaveRecord::decode(&record.encode()).unwrap(), record);
+        assert_eq!(
+            SaveRecord::decode(&legacy[..legacy.len() - 1]),
+            Err(LoadError::Truncated)
+        );
     }
 }

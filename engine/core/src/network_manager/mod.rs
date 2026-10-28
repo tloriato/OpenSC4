@@ -549,6 +549,8 @@ pub trait NetworkLotHost {
     fn resolve_ref(&self, r: &RefValue, iid: u32) -> Option<u64>;
 }
 
+pub mod archive;
+
 /// `QueryInterface` of the network manager (§1).
 pub fn manager_query_interface(iid: u32) -> bool {
     matches!(

@@ -9,6 +9,7 @@
 //! shared borrows. The caller serializes mutations; there is no interior cache.
 
 mod state;
+pub mod archive;
 pub use state::*;
 mod view;
 pub use view::*;

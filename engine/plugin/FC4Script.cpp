@@ -503,7 +503,7 @@ std::string RunBudgetWindow(cISC4City* city) {
     auto* main = reinterpret_cast<cFC4IGZWin*>(sc4->GetMainWindow()); // borrowed
     auto* shell = main ? main->GetChildWindowFromID(0x6104489A) : nullptr; // borrowed
     cISC4View3DWin* view = nullptr;
-    bool visible = false;
+    bool delivered = false;
     if (shell && shell->GetChildAs(0x9A47B417, kGZIID_cISC4View3DWin,
             reinterpret_cast<void**>(&view)) && view) {
         FC4_ACQUIRED(view, "budgetwindow city view");
@@ -515,6 +515,7 @@ std::string RunBudgetWindow(cISC4City* city) {
             cGZMessage link(0xEA5BDFBC);
             link.dwData1 = 0x4A5BDFB8;
             win->DoMessage(link); // falls through to base; result is not visibility
+            delivered = true;
             auto* panel = win->GetChildWindowFromIDRecursive(0xAA3AC001); // borrowed
             auto* taxes = win->GetChildWindowFromIDRecursive(0xAA3AC500); // borrowed
             auto* alternate = win->GetChildWindowFromIDRecursive(0xAA3AC400); // borrowed
@@ -526,13 +527,14 @@ std::string RunBudgetWindow(cISC4City* city) {
             // including a hidden duplicate tab ID. Qualify the actual selector's
             // full ancestry and area with the same check used by uicontrol.
             int x = 0, y = 0;
-            visible = ui_driver::ControlPixel(0xAA3AC500, x, y);
+            const bool visible = ui_driver::ControlPixel(0xAA3AC500, x, y);
+            Log("budgetwindow selector ready=%u (button dispatch is deferred)", visible ? 1u : 0u);
         }
         FC4_RELEASE(view);
     }
     FC4_RELEASE(sc4);
-    return visible ? "ok=1 (budget panel selector AA3AC500 eligible; advice-link entry)"
-                   : "ok=0 (budget panel selector unavailable after advice-link entry)";
+    return delivered ? "posted budget advice link (deferred; qualify with delayed uicontrol and native reach)"
+                     : "ok=0 (budget advice-link target unavailable)";
 }
 
 std::string RunEstablish(const harness::ScriptAction& a, cISC4City* city) {

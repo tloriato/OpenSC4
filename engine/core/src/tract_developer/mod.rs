@@ -131,6 +131,7 @@
 //! Host callbacks must not call back into the tract developer.
 
 mod simulator;
+pub mod archive;
 #[cfg(test)]
 mod tests;
 mod tuning;

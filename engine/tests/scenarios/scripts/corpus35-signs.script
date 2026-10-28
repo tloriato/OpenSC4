@@ -1,0 +1,32 @@
+# Funded land, then sign/label text input, query and sign demolition.
+2000-01-01 establish Tempelhof
+2000-01-01 funds 25000000
+2000-01-09 terrain 40 40 88 88 270 1
+2000-01-09 pause
+2000-01-09 uicommand 0x6a935cbd
+2000-01-09 uicommand 0x0b980581
+2000-01-09 uimouse 600 350 move
+2000-01-09 uimouse 600 350 click
+2000-01-09 uiwait 500
+2000-01-09 uitext Corpus35 sign
+2000-01-09 uikey 13
+2000-01-09 uiwait 500
+2000-01-09 uikey 27
+2000-01-09 uicommand 0x0b980587
+2000-01-09 uimouse 650 400 move
+2000-01-09 uimouse 650 400 click
+2000-01-09 uiwait 500
+2000-01-09 uitext Corpus35 label
+2000-01-09 uikey 13
+2000-01-09 uiwait 500
+2000-01-09 uikey 27
+2000-01-09 uicommand 0x6a935cf3
+2000-01-09 uimouse 600 350 click
+2000-01-09 uiwait 500
+2000-01-09 uikey 27
+2000-01-09 uicommand 0xabcdee11
+2000-01-09 uimouse 650 400 click
+2000-01-09 uikey 27
+2000-01-09 resume
+2000-01-15 save
+2000-01-15 digest

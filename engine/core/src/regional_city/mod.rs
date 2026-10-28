@@ -4,6 +4,7 @@
 //! and the ownership of live connections/deals remain behind their interfaces.
 
 mod codec;
+pub mod archive;
 mod connections;
 mod handles;
 pub use codec::{

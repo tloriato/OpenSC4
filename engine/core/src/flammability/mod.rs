@@ -101,6 +101,7 @@
 //!   size with wrapping 32-bit arithmetic.
 
 mod simulator;
+pub mod archive;
 #[cfg(test)]
 mod tests;
 

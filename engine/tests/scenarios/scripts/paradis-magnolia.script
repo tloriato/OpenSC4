@@ -1,6 +1,8 @@
 # Paradis: Magnolia. Hand-authored local patch (fits a 64-cell tile).
 # Roads=0 rail=1 streets=3 pipes=4 power=5 avenues=6; nine zone densities/types.
 # Fire/riot may pause the calendar: run them on the end date, then save/quit on a framework tick.
+2000-01-01 establish Magnolia
+2000-01-01 funds 25000000
 2000-01-03 mark paradis-magnolia: begin local build patch
 2000-01-03 speed 0
 2000-01-04 terrain 4 4 54 54 280 1

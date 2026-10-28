@@ -160,6 +160,7 @@
 //! Host callbacks must not call back into the residential simulator.
 
 mod education_health;
+pub mod archive;
 mod geometry;
 mod record;
 mod simulator;

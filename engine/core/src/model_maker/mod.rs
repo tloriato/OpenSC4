@@ -18,6 +18,7 @@ pub mod transform;
 pub use lifecycle::{LifecycleHost, INIT_MESSAGES};
 pub use terrain_hiding::{TerrainHost, TerrainOccupant};
 pub mod persistence;
+pub mod archive;
 pub use geometry::{
     fast_ceil, fast_floor, lowest_rotation, lowest_zoom, HolderMasks, LoadRectHost, LoadView, UnloadHost,
 };

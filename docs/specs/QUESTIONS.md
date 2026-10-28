@@ -385,8 +385,10 @@ generated index: the questions live one file per spec, so read only the file for
 | rz-draw | 1 | 0 | RZD2 | questions/rz-draw.md |
 | rz-sparse-matrix | 5 | 0 | SM6 | questions/rz-sparse-matrix.md |
 | rz-strings | 4 | 8 | RZS12 | questions/rz-strings.md |
+| save-records | 0 | 0 | - | questions/save-records.md |
 | sc-resources | 1 | 11 | SCR12 | questions/sc-resources.md |
 | simgrid | 2 | 1 | SG4 | questions/simgrid.md |
+| simulator | 0 | 0 | - | questions/simulator.md |
 | snapshots | 9 | 0 | SN10 | questions/snapshots.md |
 | sound-framework | 4 | 0 | SY5 | questions/sound-framework.md |
 | sound-renderer | 3 | 0 | SRN4 | questions/sound-renderer.md |

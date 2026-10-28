@@ -117,6 +117,7 @@
 //!   multi-cell queries and walks skip the duplicate check for such nodes,
 //!   and slot 44's single-cell walk has no duplicate check (OM7).
 
+pub mod archive;
 mod cells;
 mod manager;
 

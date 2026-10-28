@@ -52,6 +52,7 @@ mod node;
 mod shadow;
 mod simulator;
 mod tuning;
+pub mod archive;
 
 pub use node::{DemandNode, NodeData, NODE_RECORD_VERSION};
 pub use shadow::{ShadowGraph, ShadowModifiers};

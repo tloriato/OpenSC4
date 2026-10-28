@@ -21,7 +21,7 @@
 
 use super::identity::NetOccClass;
 use super::piece::{NetworkPiece, PieceHost};
-use super::record::{read_network_record, write_network_record, NetworkBaseRecord, Vertex};
+use super::record::{read_network_record, read_saved_network_record, write_network_record, NetworkBaseRecord, Vertex};
 use crate::stream::{InStream, OutStream};
 
 /// `GetSortValue`'s fallback for the underground base (§3.2).
@@ -194,10 +194,22 @@ pub fn write_underground_record(rec: &UndergroundRecord, out: &mut dyn OutStream
 /// tail. The live `+0x261 = 1` / `+0x262 = 0` stores are
 /// [`UndergroundPiece::apply_record`]'s.
 pub fn read_underground_record(inp: &mut dyn InStream) -> Option<UndergroundRecord> {
+    read_underground_fields(inp, false)
+}
+
+pub(super) fn read_saved_underground_record(inp: &mut dyn InStream) -> Option<UndergroundRecord> {
+    read_underground_fields(inp, true)
+}
+
+fn read_underground_fields(inp: &mut dyn InStream, saved: bool) -> Option<UndergroundRecord> {
     if inp.get_u16()? != UNDERGROUND_RECORD_VERSION {
         return None;
     }
-    let base = read_network_record(inp)?;
+    let base = if saved {
+        read_saved_network_record(inp)?
+    } else {
+        read_network_record(inp)?
+    };
     let tail = UndergroundTail::read(inp)?;
     if inp.error() != 0 {
         return None;

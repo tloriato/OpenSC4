@@ -58,12 +58,14 @@
 //!   call back into the simulator.
 
 mod industrial;
+mod record;
 mod simulator;
 
 #[cfg(test)]
 mod tests;
 
 pub use industrial::{IndustrialSim, IndustrialState};
+pub use record::CommercialRecord;
 pub use simulator::{query_interface, CommercialSim, CommercialState};
 
 use std::rc::Rc;

@@ -120,6 +120,7 @@ mod simulator;
 #[cfg(test)]
 mod tests;
 mod tuning;
+pub mod archive;
 
 pub use simulator::{AuraData, AuraSim, Hotspot, SliceStep, MAX_LOTS_PER_CALL};
 pub use tuning::{shipped_tuning, AuraTuning};

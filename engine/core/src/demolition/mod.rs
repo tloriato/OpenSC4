@@ -73,6 +73,7 @@
 //!   must not call back into the utility.
 
 mod utility;
+pub mod archive;
 
 #[cfg(test)]
 mod tests;

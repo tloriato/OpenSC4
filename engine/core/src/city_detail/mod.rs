@@ -81,6 +81,25 @@ pub const DETAIL_HIGH: u32 = 3;
 /// The record version (§4).
 pub const RECORD_VERSION: u32 = 0;
 
+/// Standalone record state (§4), independent of the live placement host.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DetailRecord {
+    pub level: u32,
+}
+
+impl DetailRecord {
+    pub fn read(r: &mut dyn InStream) -> Option<Self> {
+        if r.get_u32()? != RECORD_VERSION {
+            return None;
+        }
+        Some(Self { level: r.get_u32()? })
+    }
+
+    pub fn write(&self, w: &mut dyn OutStream) -> bool {
+        w.put_u32(RECORD_VERSION) && w.put_u32(self.level)
+    }
+}
+
 /// Occupant types (§3.2).
 pub const OCCUPANT_TYPE_FLORA: u32 = 0x7475_8926;
 pub const OCCUPANT_TYPE_PROP: u32 = 0xA823_821E;

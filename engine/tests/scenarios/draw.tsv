@@ -1,0 +1,8 @@
+name	source	region	city	script	end	sets	seconds	draw_capture	draw_capture_scenarios	draw_capture_frames	draw_capture_warmup	minimize	notes
+draw-konradshohe	berlin-konradshohe	Berlin	Konradshohe	-	2026-01-27	draw,full	60	1	1	1	30	0	Existing suite save; paused; zooms 1-5 and rotations 0,1; first frame of each camera
+draw-konradshohe-frames	berlin-konradshohe	Berlin	Konradshohe	-	2026-01-27	draw,full	170	1	1	4	30	0	Existing suite save; paused; zooms 1-5 and rotations 0,1; four consecutive frames per camera
+draw-kensington	london-kensington	London	Kensington	-	2006-03-31	draw,full	60	1	1	1	30	0	Existing suite save; paused; zooms 1-5 and rotations 0,1; first frame of each camera
+draw-kensington-frames	london-kensington	London	Kensington	-	2006-03-31	draw,full	60	1	1	4	30	0	Existing suite save; paused; zooms 1-5 and rotations 0,1; four consecutive frames per camera
+draw-tegel	berlin-tegel	Berlin	Tegel	-	2029-08-20	draw,full	60	1	1	1	30	0	Existing suite save; paused; zooms 1-5 and rotations 0,1; first frame of each camera
+draw-tegel-frames	berlin-tegel	Berlin	Tegel	-	2029-08-20	draw,full	60	1	1	4	30	0	Existing suite save; paused; zooms 1-5 and rotations 0,1; four consecutive frames per camera
+draw-ui-bevopolis	ui29-bevopolis	Maxisland	Bevopolis	-	2257-04-01	draw,full,ui	170	1	1	4	30	0	UI-heavy suite city and visible HUD; preorder UI window tree required in every frame; zooms 1-5 and rotations 0,1

@@ -601,7 +601,8 @@ def credit_evidence(path, reached):
     data = json.loads(path.read_text(encoding="utf-8"))
     by, still, missing, files, unrecorded = defaultdict(set), set(), [], [], []
     for name, entry in sorted(data["scenarios"].items()):
-        if entry["reference"] is None and "no golden baseline" in entry.get("detail", ""):
+        if (entry.get("kind") != "draw" and entry["reference"] is None
+                and "no golden baseline" in entry.get("detail", "")):
             unrecorded.append(name)  # no reference: not in the corpus (Reach comes from the references too)
             continue
         reference = path.parent / (entry["reference"] or "-") / "reach.tsv"
@@ -727,6 +728,16 @@ def load_report_data(export=None, exe=None):
     return dict(export=export, exe_sha=exe_sha, base=base, text_lo=text_lo, text_hi=text_hi,
                 inputs=inputs, att=att, owner=owner, rule=rule, rows=rows, keys=keys,
                 warnings=warnings, game=game, fun_row=fun_row, lib_b=lib_b, lib_n=lib_n)
+
+
+def replacement_code(data=None):
+    """Original entry addresses by replace key, for save and draw scenario reach selection."""
+    data = load_report_data() if data is None else data
+    code = defaultdict(set)
+    for va, _size, i, _area in data['game']:
+        for key in split_list(data['rows'][i]['replace']) if i is not None else ():
+            code[key].add(va)
+    return dict(code)
 
 
 def main():

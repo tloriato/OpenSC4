@@ -30,6 +30,7 @@ mod line_item;
 mod simulator;
 mod tax;
 mod tuning;
+pub mod archive;
 
 pub use department::Department;
 pub use department::DEPARTMENT_RECORD_VERSION;

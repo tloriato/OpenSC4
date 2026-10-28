@@ -127,6 +127,7 @@
 //! - `Release` from a count ≤ 1 calls `Shutdown`, returns 0 and marks the
 //!   object destroyed.
 
+pub mod archive;
 mod catalogue;
 mod simulator;
 #[cfg(test)]

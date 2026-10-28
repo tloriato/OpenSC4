@@ -1,6 +1,7 @@
 # Berlin: Tegel. Hand-authored local patch (fits a 64-cell tile).
 # Roads=0 rail=1 streets=3 pipes=4 power=5 avenues=6; nine zone densities/types.
 # Fire/riot may pause the calendar: run them on the end date, then save/quit on a framework tick.
+2029-08-22 funds 25000000
 2029-08-22 mark berlin-tegel: begin local build patch
 2029-08-22 speed 0
 2029-08-23 terrain 4 4 54 54 290 1

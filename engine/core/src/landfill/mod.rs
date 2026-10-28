@@ -144,6 +144,7 @@
 //!
 //! Host callbacks must not call back into the landfill developer.
 
+pub mod archive;
 mod algo;
 mod levelling;
 mod occupant;

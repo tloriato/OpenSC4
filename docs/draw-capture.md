@@ -85,3 +85,24 @@ differ through animation, cursor state, asynchronous loading or renderer work
 outside the scheduled tick. Keep such results separate from exact captures;
 use the first difference and controlled reruns to identify the source. The
 recorder deliberately does not modify `FC4Schedule.cpp` or `FC4Schedule.h`.
+
+`engine/tests/scenarios/draw.tsv` supplies paused, visible camera sweeps using
+the same start saves as `suite.tsv`. Record them with the pinned reference DLL:
+
+```text
+python tools/check.py record --scenarios draw --store <reference-store> --jobs 1
+python tools/check.py record --scenarios draw --store <reference-store> --rerun --jobs 1
+```
+
+Repeat the second command with `GOLDEN_INI_EXTRA="heap perturb = holes"` and
+`GOLDEN_INI_EXTRA="heap perturb = reverse"`. These audits retain their environment
+and first difference beside the immutable reference. Draw settings and reference
+DLL bytes participate in the input key, so a new pin requires new recordings.
+Varying originals cannot establish exact draw credit or use save envelopes.
+
+`check.py run`, `run --replace each`, and `credit` include the draw rows whose
+recorded entry counters reach the switched owners, including required owners.
+Missing draw references withhold credit. A difference reports frame, call index,
+method and argument or buffer. A draw-only `run --replace each --scenarios draw`
+writes `draw-owner-check.tsv`, preserving the save-check table for comparison;
+the usual full check writes both save and draw verdicts into `owner-check.tsv`.

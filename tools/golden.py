@@ -28,9 +28,11 @@ import uuid
 try:
     from .golden_dbpf import compare_saves, read_records
     from . import golden_envelope
+    from . import drawcheck
 except ImportError:
     from golden_dbpf import compare_saves, read_records
     import golden_envelope
+    import drawcheck
 
 REPO = Path(__file__).resolve().parents[1]
 SEED = 0x5EED1234
@@ -78,13 +80,14 @@ def schedule_code(dll):
     return match[1].decode()
 
 
-def pinned(output):
+def pinned(output, store=None):
     """(pin, staged DLL) of the reference DLL for --schedule fixed."""
-    path = Path(output) / 'golden' / PIN
+    store = Path(store) if store else Path(output) / 'golden'
+    path = store / PIN
     if not path.is_file():
         raise ValueError(f'no reference DLL pinned ({path}); run: golden.py pin --dll <dll>')
     pin = load_json(path)
-    dll = Path(output) / 'golden-inputs' / (pin['dll_sha256'] + '.dll')
+    dll = store.parent / 'golden-inputs' / (pin['dll_sha256'] + '.dll')
     if not dll.is_file() or sha256(dll) != pin['dll_sha256']:
         raise ValueError(f'pinned reference DLL missing or corrupt: {dll}')
     return pin, dll
@@ -174,12 +177,17 @@ def compare_digests(left, right):
 
 
 def compare_artifacts(expected, actual):
+    if (expected / 'draw.jsonl').exists() or (actual / 'draw.jsonl').exists():
+        difference, stats = drawcheck.compare(expected / 'draw.jsonl', actual / 'draw.jsonl')
+        return {'draw': {'difference': vars(difference) if difference else None, **vars(stats)}}
     return {'first_digest_difference': compare_digests(load_json(expected / 'digests.json'),
                                                        load_json(actual / 'digests.json')),
             'save': compare_saves(expected / 'end.sc4', actual / 'end.sc4')}
 
 
 def artifacts_exact(report):
+    if 'draw' in report:
+        return report['draw']['difference'] is None
     return report['first_digest_difference'] is None and report['save']['different_records'] == 0
 
 
@@ -194,6 +202,10 @@ def shadow_command(region, city, until, dll, script=None):
 
 def _baseline_intact(entry):
     metadata = load_json(entry / 'baseline.json')
+    if metadata['inputs'].get('settings', {}).get('draw_capture'):
+        missing = {'draw.jsonl', 'reach.tsv'} - metadata['artifacts'].keys()
+        if missing:
+            raise ValueError(f'incomplete draw reference: missing {sorted(missing)}')
     for filename, digest in metadata['artifacts'].items():
         if sha256(entry / filename) != digest:
             raise ValueError(f'corrupt golden artifact: {entry / filename}')
@@ -214,15 +226,23 @@ def cache_record(cache, key, manifest, run):
         if metadata['inputs'] != manifest:
             raise ValueError('cache key collision / input manifest differs')
         report = compare_artifacts(entry, run)
-        sample = golden_envelope.snapshot(entry, run)
+        sample = None if 'draw' in report else golden_envelope.snapshot(entry, run)
         audit_path = entry / ('repeat-' + uuid.uuid4().hex + '.json')
         write_json(audit_path, {'exact': artifacts_exact(report), 'run': str(run.resolve()),
-                                'sample': sample, 'comparison': report})
+                                'sample': sample, 'comparison': report,
+                                'ini_extra': os.environ.get('GOLDEN_INI_EXTRA', '')})
         return ('reproduced' if artifacts_exact(report) else 'nondeterministic'), report
     stage = cache / ('.pending-' + uuid.uuid4().hex)
     stage.mkdir()
     try:
-        artifacts = ['end.sc4', 'digests.json', 'verdict.json', 'summary.json', 'game.log', 'harness.txt']
+        artifacts = ['verdict.json', 'summary.json', 'game.log', 'harness.txt']
+        if manifest.get('settings', {}).get('draw_capture'):
+            drawcheck.compare(run / 'draw.jsonl', run / 'draw.jsonl')
+            if not (run / 'reach.tsv').is_file():
+                raise ValueError('draw reference requires reach.tsv')
+            artifacts.append('draw.jsonl')
+        else:
+            artifacts += ['end.sc4', 'digests.json']
         if (run / 'reach.tsv').is_file():
             artifacts.append('reach.tsv')
         for filename in artifacts:
@@ -265,7 +285,13 @@ def compare_cached(entry, run, *, rule='auto'):
     """
     if rule not in ('auto', 'exact', 'envelope'):
         raise ValueError('comparison rule must be auto, exact or envelope')
-    _baseline_intact(entry)
+    metadata = _baseline_intact(entry)
+    if metadata['inputs'].get('settings', {}).get('draw_capture'):
+        report = compare_artifacts(entry, Path(run))
+        if 'draw' not in report:
+            raise ValueError('missing draw streams')
+        report.update(comparison_rule='exact', verdict='exact' if artifacts_exact(report) else 'outside')
+        return report
     envelope = golden_envelope.build(entry)
     mode = golden_envelope.status(entry, envelope)
     exact_report = compare_artifacts(entry, run)
@@ -335,7 +361,11 @@ def prepare(args):
                 'backend': args.backend, 'autotest_end': autotest_end(args), 'window': 'minimized after load',
                 'reach': reach_supported(root) if args.backend == 'queue' else False}
     settings['queue_parallel'] = args.backend == 'queue'
-    generated = input_script(args.script, args.until)
+    if args.draw_capture:
+        settings.update(draw_capture=True, draw_capture_scenarios=1, draw_capture_frames=args.draw_frames,
+                        draw_capture_warmup=args.draw_warmup, window='visible', full_save=False,
+                        autotest_unpause=0, queue_parallel=False, timeout_seconds=args.seconds)
+    generated = '' if args.draw_capture else input_script(args.script, args.until)
     settings['effective_script_sha256'] = hashlib.sha256(generated.encode('utf-8')).hexdigest()
     files = {'exe': args.game_root / 'Apps/SimCity 4.exe', 'start.sc4': save,
              'user.cfg': args.regions_root.parent / 'SimCity 4.cfg'}
@@ -363,7 +393,7 @@ def prepare(args):
     return key, manifest, generated, files
 
 
-def _validate_log(text, until, selected, run):
+def _validate_log(text, until, selected, run, *, draw=False):
     verdicts = re.findall(r'AUTOTEST VERDICT: ([a-z-]+)[^\r\n]*', text)
     enabled = set(re.findall(r"subsystem '([^']+)': enabled", text))
     # netrules is hosted by the replacement network manager/tool, with no class
@@ -381,7 +411,7 @@ def _validate_log(text, until, selected, run):
         raise ValueError(f'not a clean plugin verdict: {verdicts}; see {run}')
     reached = re.search(rf'autotest: end date {re.escape(until)} reached at the new day {re.escape(until)}', text)
     saved = re.search(rf'script: line \d+ {re.escape(until)} save\s*-> ok=1 \(SaveCity\(full\)', text)
-    if not reached or not saved or 'GOLDEN_FULL_SAVE_COMPLETE' not in text:
+    if not draw and (not reached or not saved or 'GOLDEN_FULL_SAVE_COMPLETE' not in text):
         raise ValueError(f'window / terminal full save incomplete; see {run}')
     return verdicts[-1]
 
@@ -409,7 +439,7 @@ def run_game(args, generated, selected, dll, tag, *, allow_window_drift=False):
                    f'sim_fixed_step = {int(args.clock == "fixed")}\n'
                    f'schedule = {args.schedule}\n'
                    f'script_save_grace_ms = {SAVE_GRACE_MS}\n'
-                   f'sim_turbo_frame_ms = 250\npopup_dialogs = 0\nautotest_unpause = 2\n'
+                   f'sim_turbo_frame_ms = 250\npopup_dialogs = 0\nautotest_unpause = {0 if args.draw_capture else 2}\n'
                    f'autotest_end = {autotest_end(args)}\nautotest_seconds = {args.seconds}\nscript = {script.resolve()}\n', encoding='utf-8')
     # Diagnostics only (for example `heap trace = <dir>`): GOLDEN_INI_EXTRA lines, separated by ';',
     # are appended; a run that uses it is not a reference.
@@ -419,6 +449,11 @@ def run_game(args, generated, selected, dll, tag, *, allow_window_drift=False):
     if args.backend == 'queue' and reach_supported(args.harness_root):
         with ini.open('a', encoding='utf-8') as stream:
             stream.write('reach = 1\n')
+    if args.draw_capture:
+        with ini.open('a', encoding='utf-8') as stream:
+            stream.write(f'draw_capture = 1\ndraw_capture_scenarios = 1\ndraw_capture_frames = {args.draw_frames}\n'
+                         f'draw_capture_warmup = {args.draw_warmup}\n'
+                         f'draw_capture_export = {(work / "result/draw.jsonl").resolve()}\n')
     # Explicitly turn every known shadow/compare off, also for a queue worker
     # whose environment may contain developer overrides.
     config = (args.harness_root / 'engine/plugin/FC4Config.cpp').read_text(encoding='utf-8')
@@ -442,14 +477,28 @@ def run_game(args, generated, selected, dll, tag, *, allow_window_drift=False):
         if process.returncode:
             raise ValueError(f'game harness failed ({process.returncode}); see {work / "transport.txt"}')
     text = (result / 'game.log').read_text(encoding='utf-8-sig', errors='replace')
-    verdict = _validate_log(text, args.until, selected, result)
-    if f'script: full-save watchdog grace {SAVE_GRACE_MS} ms (script_save_grace_ms)' not in text:
+    verdict = _validate_log(text, args.until, selected, result, draw=args.draw_capture)
+    if not args.draw_capture and f'script: full-save watchdog grace {SAVE_GRACE_MS} ms (script_save_grace_ms)' not in text:
         raise ValueError(f'DLL did not acknowledge script_save_grace_ms; not cached: {result}')
     if args.clock == 'fixed' and 'sim_fixed_step ON: 64 agent deliveries/frame' not in text:
         raise ValueError(f'DLL did not acknowledge sim_fixed_step; not cached: {result}')
     if args.schedule == 'fixed' and (f'schedule: fixed (code {schedule_code(dll)},' not in text
                                      or 'schedule: WARNING' in text):
         raise ValueError(f'DLL did not apply schedule = fixed cleanly; not cached: {result}')
+    if args.draw_capture:
+        _, stats = drawcheck.compare(result / 'draw.jsonl', result / 'draw.jsonl')
+        if stats.frames != 10 * args.draw_frames:
+            raise ValueError(f'draw capture has {stats.frames} frames, expected {10 * args.draw_frames}')
+        # Like saves, a candidate can be compared without entry instrumentation.
+        # coverage.py withholds credit for an exact run missing its counters.
+        if tag != 'compare' and not (result / 'reach.tsv').is_file():
+            raise ValueError(f'missing draw reach counters; not cached: {result}')
+        write_json(result / 'verdict.json', {'verdict': verdict, 'draw_complete': True, **vars(stats)})
+        write_json(result / 'summary.json', {'wall_seconds': time.perf_counter() - start,
+                   'game': load_json(result / 'run.json'), 'replacements': selected,
+                   'dll_sha256': sha256(dll), 'source_dll': str(source_dll),
+                   'ini_extra': os.environ.get('GOLDEN_INI_EXTRA', ''), **vars(stats)})
+        return result
     digests = parse_digests(text)
     if not digests:
         raise ValueError(f'no DIGEST observations; see {result}')
@@ -515,7 +564,8 @@ def run_queued(args, dll, ini, result, work):
     queue = args.output / 'game-queue'
     queue.mkdir(parents=True, exist_ok=True)
     request = (f'label = {label}\ndll = {staged.relative_to(REPO).as_posix()}\ncity = {args.city}\n'
-               f'parallel = 1\nseconds = {args.seconds}\ntimeout = {args.seconds + 150}\nend_date = {args.until}\n')
+               f'parallel = {0 if args.draw_capture else 1}\nseconds = {args.seconds}\ntimeout = {args.seconds + 150}\n')
+    request += 'minimize = 0\n' if args.draw_capture else f'end_date = {args.until}\n'
     if region_ready:
         request += f'region = {args.region}\n'
     request += '[ini]\n' + ini.read_text(encoding='utf-8')
@@ -528,7 +578,7 @@ def run_queued(args, dll, ini, result, work):
         verdict = wait_snapshot(args, verdict_file, result, work)
     finally:
         # Preserve labelled diagnostics even when validation/export fails.
-        for suffix, name in (('.log', 'game.log'), ('.reach.tsv', 'reach.tsv')):
+        for suffix, name in (('.log', 'game.log'), ('.reach.tsv', 'reach.tsv'), ('.draw.jsonl', 'draw.jsonl')):
             source = verdict_file.with_suffix(suffix)
             if source.is_file():
                 shutil.copyfile(source, result / name)
@@ -551,7 +601,7 @@ def wait_snapshot(args, verdict_file, result, work):
     try:
         while not verdict_file.exists():
             marker = verdict_file.with_suffix('.running')
-            if process is None and marker.is_file():
+            if not args.draw_capture and process is None and marker.is_file():
                 match = re.search(r'running in slot (\d+)', marker.read_text(encoding='utf-8-sig'))
                 if match:
                     command = ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
@@ -569,6 +619,8 @@ def wait_snapshot(args, verdict_file, result, work):
         if not verdict.startswith('verdict: clean'):
             (result / 'harness.txt').write_text(verdict, encoding='utf-8')
             raise ValueError(f'queue did not finish cleanly; see {result / "harness.txt"}')
+        if args.draw_capture:
+            return verdict  # labelled stream/reach exports do not require a mutable slot save
         if process is None:
             raise ValueError('missed active slot marker; no safe save export, retry the run')
         output, _ = process.communicate(timeout=150)
@@ -583,6 +635,13 @@ def wait_snapshot(args, verdict_file, result, work):
 
 
 def print_comparison(report, args):
+    if 'draw' in report:
+        difference = report['draw']['difference']
+        if difference:
+            print('first DRAW difference: ' + draw_description(difference))
+        else:
+            print(f'DRAW: exact ({report["draw"]["frames"]} frames, {report["draw"]["calls"]} calls)')
+        return
     envelope_mode = report.get('comparison_rule') == 'observed-envelope'
     if 'verdict' in report:
         print('outcome: ' + report['verdict'])
@@ -617,6 +676,12 @@ def print_comparison(report, args):
               shadow_command(args.region, args.city, until, args.dll or args.original_dll, args.script))
 
 
+def draw_description(difference):
+    return (f'frame={difference["frame"]} call={difference["call"]} method={difference["method"]} '
+            f'field={difference["field"]} left={json.dumps(difference["left"])} '
+            f'right={json.dumps(difference["right"])}')
+
+
 def effective_replacements(clock, selected):
     return sorted(set(selected) | ({'simulator'} if clock == 'fixed' else set()))
 
@@ -648,6 +713,10 @@ def parser():
         sub.add_argument('--game-root', type=Path, default=Path(r'C:\Program Files (x86)\GOG Galaxy\Games\SimCity 4 Deluxe Edition'))
         sub.add_argument('--regions-root', type=Path, default=documents() / 'SimCity 4/Regions')
         sub.add_argument('--output', type=Path, default=REPO / 'build-runs')
+        sub.add_argument('--store', type=Path, help='reference store (default: <output>/golden); runs stay in output')
+        sub.add_argument('--draw-capture', action='store_true', help='paused visible zoom 1..5/rotation 0,1 sweep')
+        sub.add_argument('--draw-frames', type=int, default=4)
+        sub.add_argument('--draw-warmup', type=int, default=30)
         sub.add_argument('--slot', type=int, choices=range(1, 17), default=6)
         sub.add_argument('--backend', choices=('queue', 'direct'), default='queue')
         sub.add_argument('--queue-timeout', type=int, default=1800)
@@ -687,9 +756,20 @@ def main(argv=None):
         args.comparison = 'exact'
     if args.strict:
         args.comparison = 'exact'
+    args.store = args.store or args.output / 'golden'
     try:
+        if args.draw_capture:
+            if args.backend != 'queue' or args.script or args.schedule != 'fixed':
+                raise ValueError('draw capture requires queue, fixed schedule and no dated script')
+            if not 1 <= args.draw_frames <= 600 or not 1 <= args.draw_warmup <= 3600:
+                raise ValueError('draw frames must be 1..600 and warmup 1..3600')
+            extra = os.environ.get('GOLDEN_INI_EXTRA', '').strip()
+            if extra and not re.fullmatch(r'heap perturb\s*=\s*(holes|reverse)', extra):
+                raise ValueError('draw reference diagnostics allow only heap perturb = holes or reverse')
+            if extra and args.command in ('record', 'determinism') and not args.rerun:
+                raise ValueError('heap perturb audits require --rerun and an existing unperturbed reference')
         if args.schedule == 'fixed':
-            pin, reference = pinned(args.output)
+            pin, reference = pinned(args.output, args.store)
             if args.original_dll and sha256(args.original_dll) != pin['dll_sha256']:
                 raise ValueError('--schedule fixed records only with the pinned reference DLL; see `pin`')
             args.original_dll = reference
@@ -698,7 +778,9 @@ def main(argv=None):
         if args.seconds < 30 or args.seconds > 3600 or not 3 <= args.repeats <= args.max_repeats <= 50:
             raise ValueError('--seconds must be 30..3600 and 3 <= --repeats <= --max-repeats <= 50')
         key, manifest, generated, files = prepare(args)
-        entry = args.output / 'golden' / key
+        entry = args.store / key
+        if args.draw_capture and os.environ.get('GOLDEN_INI_EXTRA') and not entry.is_dir():
+            raise ValueError('record the unperturbed draw reference before heap perturb audits')
         print('key: ' + key, flush=True)
         if args.command == 'key':
             print(json.dumps(manifest, indent=2, sort_keys=True))
@@ -721,6 +803,15 @@ def main(argv=None):
                 raise ValueError(f'input changed during comparison; no verdict: {run}')
             report = compare_cached(entry, run, rule=args.comparison)
             report.update(key=key, baseline_repeatability=qualification(entry), run=str(run))
+            if args.draw_capture:
+                write_json(run / 'comparison.json', report)
+                print_comparison(report, args)
+                print('comparison: ' + str(run / 'comparison.json'))
+                # A varying original cannot establish exactness, even if this candidate matches one sample.
+                if report['baseline_repeatability'] == 'nondeterministic':
+                    print('original draw streams are nondeterministic; diagnostic comparison only')
+                    return 3
+                return 0 if artifacts_exact(report) else 1
             window = load_json(run / 'verdict.json')
             report['window_exact'] = window['window_exact']
             report['save_date'] = window['save_date']
@@ -739,6 +830,9 @@ def main(argv=None):
             return 0 if artifacts_exact(report) else 1
         if entry.exists() and args.command == 'record' and not args.rerun:
             _baseline_intact(entry)
+            if args.draw_capture:
+                print(f'cached: {entry}; repeatability: {qualification(entry)}; no game launched')
+                return 3 if qualification(entry) == 'nondeterministic' else 0
             envelope = golden_envelope.build(entry)
             mode = golden_envelope.status(entry, envelope)
             print(f'cached: {entry}; repeatability: {qualification(entry)}; sampling: {mode}; no game launched')
@@ -752,11 +846,13 @@ def main(argv=None):
             # Reject runs if a source changed underneath the slot mirror or DLL copy.
             if fingerprint(files, manifest['settings'])[0] != key:
                 raise ValueError(f'input changed during run; not cached: {run}')
-            status, report = cache_record(args.output / 'golden', key, manifest, run)
+            status, report = cache_record(args.store, key, manifest, run)
             print(f'{status}: {run}', flush=True)
             if report:
                 write_json(run / 'comparison.json', report)
                 print_comparison(report, args)
+            if args.draw_capture:
+                continue
             envelope = golden_envelope.build(entry)
             mode = golden_envelope.status(entry, envelope)
             write_json(entry / 'envelope.json', envelope)
