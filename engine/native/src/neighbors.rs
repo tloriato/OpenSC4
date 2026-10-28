@@ -30,11 +30,13 @@ layout! {
     }
 }
 
+mod accounting;
+mod lists;
 mod queries;
 mod surface;
 
-const COUNT: usize = surface::PORTS.len() + queries::PORTS.len();
-const ALL: [Port; COUNT] = crate::port::concat(&[surface::PORTS, queries::PORTS]);
+const COUNT: usize = surface::PORTS.len() + queries::PORTS.len() + accounting::PORTS.len() + lists::PORTS.len();
+const ALL: [Port; COUNT] = crate::port::concat(&[surface::PORTS, queries::PORTS, accounting::PORTS, lists::PORTS]);
 pub const PORTS: &[Port] = &ALL;
 
 /// A virtual call retaining both integer return registers. The supplied register words are those

@@ -12,6 +12,12 @@ game_fn! {
 game_fn! {
     fn copy_connections(list: *mut u8, position: u32, first: *mut u8, last: *mut u8, out: *mut u32) -> u64 = "thiscall" 0x004A_86F0;
 }
+game_fn! {
+    fn erase_connection(list: *mut u8, out: *mut u32, iterator: u32) -> u64 = "thiscall" 0x0041_C000;
+}
+game_fn! {
+    fn convert_cell(x: i32, z: i32, region_x: *mut i32, region_z: *mut i32, city: *mut *mut u8, cell_x: *mut i32, cell_z: *mut i32) -> u64 = "C" 0x006C_E920;
+}
 
 port! {
     /// Reads a connection's type and cell and dispatches the coordinate overload. The connection
@@ -134,9 +140,74 @@ unsafe extern "fastcall" fn all_connections(this: *mut u8, argument: *mut u32, l
     }
 }
 
+port! {
+    /// Removes every equal pointer, retaining the next node before erasure and reloading the match
+    /// value for every visit. Each erase stores its result in the incoming argument's stack word.
+    #[port(address = 0x006C_FD30, owner = "neighbors", name = "remove_connection_references", naked)]
+    pub unsafe extern "C" fn fc4p_006cfd30() {
+        core::arch::naked_asm!("pop eax", "push edx", "push eax", "lea edx, [esp + 8]", "jmp {}", sym remove_references);
+    }
+}
+
+unsafe extern "fastcall" fn remove_references(
+    list: *mut u8,
+    argument: *mut u32,
+    entry_edx: u32,
+    value: *mut u32,
+) -> u64 {
+    unsafe {
+        let header = pointer(list, 0);
+        let mut node = pointer(header, 0);
+        let mut edx = entry_edx;
+        while node != header {
+            let matched = value.read_unaligned() == word(node, 8);
+            let next = pointer(node, 0);
+            if matched {
+                edx = (erase_connection(list, argument, node as u32) >> 32) as u32;
+            }
+            node = next;
+        }
+        pair(header as u32, edx)
+    }
+}
+
+port! {
+    /// Converts into the neighboring city's cell before looking up that city's matching connection.
+    /// Both coordinate argument slots are the conversion helper's output destinations.
+    #[port(address = 0x006C_EDE0, owner = "neighbors", name = "cSC4NeighborsSimulator::FindConnectionOnOtherSide", naked)]
+    pub unsafe extern "C" fn fc4p_006cede0() {
+        core::arch::naked_asm!("lea edx, [esp + 4]", "jmp {}", sym other_side_of_cell);
+    }
+}
+
+unsafe extern "fastcall" fn other_side_of_cell(_this: *mut u8, argument: *mut u32, kind: u32, x: i32, z: i32) -> u64 {
+    unsafe {
+        let mut city = core::ptr::null_mut();
+        let mut rx = 0;
+        let mut rz = 0;
+        let result = convert_cell(
+            x,
+            z,
+            &mut rx,
+            &mut rz,
+            &mut city,
+            argument.add(1).cast(),
+            argument.add(2).cast(),
+        );
+        if result as u8 == 0 {
+            return pair(0, (result >> 32) as u32);
+        }
+        let x = argument.add(1).read_unaligned();
+        let z = argument.add(2).read_unaligned();
+        virtual_call(city, 0x50, &[kind, x, z], kind, word(city, 0))
+    }
+}
+
 pub const PORTS: &[Port] = &[
     fc4p_006cdfa0::PORT,
+    fc4p_006cede0::PORT,
     fc4p_006cf6b0::PORT,
     fc4p_006cf720::PORT,
+    fc4p_006cfd30::PORT,
     fc4p_006cff00::PORT,
 ];

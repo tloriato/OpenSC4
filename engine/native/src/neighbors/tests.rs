@@ -3,11 +3,13 @@
 
 //! Native-layout versions of the core's interface, connection-query, and accounting cases.
 
+use super::accounting::*;
+use super::lists::*;
 use super::queries::*;
 use super::surface::*;
 use super::*;
 use crate::abi::{call_raw, Conv, RawCall};
-use crate::testing::{fake, Object};
+use crate::testing::{fake, fake_data, Object};
 use std::cell::RefCell;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -26,12 +28,32 @@ enum Call {
     City(usize),
     Clear(usize),
     Copy(usize, u32, usize, usize),
+    Flags(usize, u32),
+    DealKind(usize),
+    Cost(usize),
+    Version(u32),
+    Count(u32),
+    Reference(usize, usize),
+    Error,
+    Erase(usize, u32),
+    Convert(i32, i32),
+    Release(usize),
+    Allocate(u32),
+    Framework,
+    Service(u32, u32),
+    ReleaseLocal(usize, usize),
 }
 
 thread_local! {
     static CALLS: RefCell<Vec<Call>> = const { RefCell::new(Vec::new()) };
     static INTERFACE_OUT: RefCell<usize> = const { RefCell::new(0) };
     static NEXT_TABLE: RefCell<usize> = const { RefCell::new(0) };
+    static CONVERSION: RefCell<(usize, u32)> = const { RefCell::new((0, 0)) };
+    // Each issued node address stays fixed when the ownership vector grows.
+    #[allow(clippy::vec_box)]
+    static ALLOCATIONS: RefCell<Vec<Box<[u32; 3]>>> = const { RefCell::new(Vec::new()) };
+    static ALLOCATOR: RefCell<usize> = const { RefCell::new(0) };
+    static CACHED_ALLOCATOR: RefCell<usize> = const { RefCell::new(0) };
 }
 
 fn record(call: Call) {
@@ -310,6 +332,604 @@ fn layout_fields_are_disjoint() {
         .collect();
     spans.sort();
     assert!(spans.windows(2).all(|w| w[0].1 <= w[1].0));
+}
+
+extern "thiscall" fn list_clear(list: *mut u8) -> u64 {
+    record(Call::Clear(list as usize));
+    unsafe {
+        let header = pointer(list, 0);
+        header.cast::<*mut u8>().write(header);
+        header.add(4).cast::<*mut u8>().write(header);
+    }
+    0x5566_7788_1234_5678
+}
+
+extern "thiscall" fn list_addref(this: *mut u8) -> u64 {
+    record(Call::AddRef(this as usize, 0));
+    0x3344_5566_AABB_CCDD
+}
+
+extern "thiscall" fn list_release(this: *mut u8) -> u64 {
+    record(Call::Release(this as usize));
+    0x7788_99AA_AABB_CCDD
+}
+
+extern "thiscall" fn allocate(_this: *mut u8, size: u32) -> u64 {
+    record(Call::Allocate(size));
+    ALLOCATIONS.with(|a| {
+        let mut node = Box::new([0u32; 3]);
+        let address = node.as_mut_ptr() as u32;
+        a.borrow_mut().push(node);
+        pair(address, 0xABCD_EF01)
+    })
+}
+
+extern "C" fn get_framework() -> *mut u8 {
+    record(Call::Framework);
+    ALLOCATOR.with(|a| *a.borrow() as *mut u8)
+}
+
+extern "thiscall" fn service(_this: *mut u8, class: u32, iid: u32, out: *mut *mut u8) -> u32 {
+    record(Call::Service(class, iid));
+    ALLOCATOR.with(|a| unsafe { out.write(*a.borrow() as *mut u8) });
+    0
+}
+
+extern "thiscall" fn release_local(this: *mut *mut u8) -> u32 {
+    let local = unsafe { this.read() } as usize;
+    let cache = CACHED_ALLOCATOR.with(|c| unsafe { *(*c.borrow() as *const usize) });
+    record(Call::ReleaseLocal(local, cache));
+    0
+}
+
+#[test]
+fn filtered_lists_clear_match_in_order_and_balance_temporary_references() {
+    let _clear_connections = fake(0x0041_1D70, list_clear as *const () as usize);
+    let _clear_deals = fake(0x0042_1660, list_clear as *const () as usize);
+    let _framework = fake(0x0087_93EC, get_framework as *const () as usize);
+    let _release_local = fake(0x0041_1870, release_local as *const () as usize);
+    let mut table = connection_table();
+    table[1] = list_addref as *const () as usize;
+    table[2] = list_release as *const () as usize;
+    // The shared test object supplies the deal-type/city slots as well as the connection slots.
+    table[0x20 / 4] = connection_kind as *const () as usize;
+    table[0x1C / 4] = connection_city as *const () as usize;
+    let mut allocator_table = [0usize; 6];
+    allocator_table[0x0C / 4] = allocate as *const () as usize;
+    allocator_table[0x14 / 4] = service as *const () as usize;
+    let mut allocator = allocator_table.as_ptr();
+    let ap = &mut allocator as *mut _ as usize;
+    ALLOCATOR.with(|a| *a.borrow_mut() = ap);
+    let mut cache = ap;
+    let _cache_connections = fake_data(0x00B2_07DC, (&mut cache as *mut usize).cast());
+    let _cache_deals = fake_data(0x00B2_0D58, (&mut cache as *mut usize).cast());
+    CACHED_ALLOCATOR.with(|a| *a.borrow_mut() = &mut cache as *mut usize as usize);
+    let mut connections = [
+        Connection {
+            table: table.as_ptr(),
+            kind: 2,
+            x: -1,
+            z: 5,
+            city: 7,
+            visited: 0,
+        },
+        Connection {
+            table: table.as_ptr(),
+            kind: 5,
+            x: -1,
+            z: 6,
+            city: 7,
+            visited: 0,
+        },
+        Connection {
+            table: table.as_ptr(),
+            kind: 2,
+            x: 64,
+            z: 5,
+            city: 8,
+            visited: 1,
+        },
+        Connection {
+            table: table.as_ptr(),
+            kind: 2,
+            x: -1,
+            z: 5,
+            city: 7,
+            visited: 1,
+        },
+    ];
+    let values: Vec<_> = connections.iter_mut().map(|c| c as *mut _ as u32).collect();
+    let mut source = List::new(&values);
+    let mut destination = List::new(&[123, 456]);
+    let mut list_header = destination.ptr();
+    let lp = &mut list_header as *mut _ as *mut u8;
+    let mut object = Object::new(0x48);
+    let p = object.ptr();
+    let sim = unsafe { NeighborsSim::from_ptr(p) };
+    sim.set_connections(source.ptr());
+    sim.set_deals(source.ptr());
+    let cases = [
+        (fc4p_006cff30 as *const () as usize, false),
+        (fc4p_006d0010 as *const () as usize, true),
+        (fc4p_006d0760 as *const () as usize, false),
+        (fc4p_006d0840 as *const () as usize, true),
+    ];
+    for (entry, with_city) in cases {
+        for lazy in [false, true] {
+            cache = if lazy { 0 } else { ap };
+            assert_eq!(cache, if lazy { 0 } else { ap });
+            let mut args = vec![2];
+            if with_city {
+                args.push(7);
+            }
+            args.push(lp as u32);
+            assert_eq!(unsafe { run(entry, p, &args, 0, 0) }, 0x7788_99AA_AABB_CCDD);
+            assert_eq!(cache, ap);
+            let mut expected = vec![Call::Clear(lp as usize)];
+            let mut matched = Vec::new();
+            for (i, &value) in values.iter().enumerate() {
+                expected.push(Call::Kind(value as usize));
+                if i == 1 {
+                    continue;
+                }
+                if with_city {
+                    expected.push(Call::City(value as usize));
+                    if i == 2 {
+                        continue;
+                    }
+                }
+                expected.push(Call::AddRef(value as usize, 0));
+                if lazy && matched.is_empty() {
+                    expected.extend([
+                        Call::Framework,
+                        Call::Service(0x3AE4_BEA3, 0x3AE4_BEAB),
+                        Call::ReleaseLocal(ap, ap),
+                    ]);
+                }
+                expected.extend([
+                    Call::Allocate(12),
+                    Call::AddRef(value as usize, 0),
+                    Call::Release(value as usize),
+                ]);
+                matched.push(value);
+            }
+            assert_eq!(take_calls(), expected);
+            let header = destination.ptr();
+            let mut node = unsafe { pointer(header, 0) };
+            let mut previous = header;
+            let mut actual = Vec::new();
+            while node != header {
+                assert_eq!(unsafe { pointer(node, 4) }, previous);
+                actual.push(unsafe { word(node, 8) });
+                previous = node;
+                node = unsafe { pointer(node, 0) };
+            }
+            assert_eq!(actual, matched);
+            assert_eq!(unsafe { pointer(header, 4) }, previous);
+            ALLOCATIONS.with(|a| a.borrow_mut().clear());
+        }
+    }
+}
+
+#[test]
+fn filtered_lists_empty_and_missing_matches_keep_original_return_words() {
+    let _clear_connections = fake(0x0041_1D70, clear as *const () as usize);
+    let _clear_deals = fake(0x0042_1660, clear as *const () as usize);
+    let mut source = List::new(&[]);
+    let mut destination = List::new(&[]);
+    let mut object = Object::new(0x48);
+    let p = object.ptr();
+    let sim = unsafe { NeighborsSim::from_ptr(p) };
+    sim.set_connections(source.ptr());
+    sim.set_deals(source.ptr());
+    for (entry, city) in [
+        (fc4p_006cff30 as *const () as usize, false),
+        (fc4p_006d0010 as *const () as usize, true),
+        (fc4p_006d0760 as *const () as usize, false),
+        (fc4p_006d0840 as *const () as usize, true),
+    ] {
+        let mut args = vec![2];
+        if city {
+            args.push(7);
+        }
+        args.push(destination.ptr() as u32);
+        assert_eq!(
+            unsafe { run(entry, p, &args, 0, 0) },
+            pair(source.ptr() as u32, 0xAABB_CCDD)
+        );
+        assert_eq!(take_calls(), [Call::Clear(destination.ptr() as usize)]);
+    }
+    let mut table = connection_table();
+    table[0x20 / 4] = connection_kind as *const () as usize;
+    table[0x1C / 4] = connection_city as *const () as usize;
+    let mut connection = Connection {
+        table: table.as_ptr(),
+        kind: 5,
+        x: 0,
+        z: 0,
+        city: 8,
+        visited: 0,
+    };
+    let cp = &mut connection as *mut _ as u32;
+    let mut source = List::new(&[cp]);
+    sim.set_connections(source.ptr());
+    sim.set_deals(source.ptr());
+    assert_eq!(
+        unsafe { fc4p_006cff30(p, 0, 2, destination.ptr()) },
+        pair(5, 0x1111_2222)
+    );
+    assert_eq!(
+        take_calls(),
+        [Call::Clear(destination.ptr() as usize), Call::Kind(cp as usize)]
+    );
+    assert_eq!(
+        unsafe { fc4p_006d0840(p, 0, 5, 7 as *mut u8, destination.ptr()) },
+        pair(8, 0x3333_4444)
+    );
+    assert_eq!(
+        take_calls(),
+        [
+            Call::Clear(destination.ptr() as usize),
+            Call::Kind(cp as usize),
+            Call::City(cp as usize)
+        ]
+    );
+}
+
+#[repr(C)]
+struct Deal {
+    table: *const usize,
+    kind: u32,
+    flags: u32,
+    cost: u64,
+}
+
+extern "thiscall" fn deal_flags(this: *mut Deal, mask: u32) -> u64 {
+    record(Call::Flags(this as usize, mask));
+    pair(
+        0xABCD_EF00 | u32::from(unsafe { (*this).flags } & mask != 0),
+        0x1111_2222,
+    )
+}
+
+extern "thiscall" fn deal_kind(this: *mut Deal) -> u64 {
+    record(Call::DealKind(this as usize));
+    pair(unsafe { (*this).kind }, 0x2222_3333)
+}
+
+extern "thiscall" fn deal_cost(this: *mut Deal) -> u64 {
+    record(Call::Cost(this as usize));
+    unsafe { (*this).cost }
+}
+
+fn deal_table() -> [usize; 40] {
+    let mut table = [0; 40];
+    table[0x20 / 4] = deal_kind as *const () as usize;
+    table[0x58 / 4] = deal_cost as *const () as usize;
+    table[0x9C / 4] = deal_flags as *const () as usize;
+    table
+}
+
+#[test]
+fn core_monthly_totals_flag_cases_and_call_order() {
+    let table = deal_table();
+    let mut deals: Vec<_> = [
+        (0x4773_FFE0, 10),
+        (0x4773_FFE2, 20),
+        (0x4773_FFE4, 40),
+        (0x4773_FFE1, 100),
+        (0x4773_FFE3, 200),
+        (0x4773_FFE5, 400),
+        (0x4773_FFE6, 900),
+    ]
+    .into_iter()
+    .map(|(kind, cost)| Deal {
+        table: table.as_ptr(),
+        kind,
+        cost,
+        flags: 2,
+    })
+    .collect();
+    let values: Vec<_> = deals.iter_mut().map(|d| d as *mut _ as u32).collect();
+    let mut list = List::new(&values);
+    let mut object = Object::new(0x48);
+    let p = object.ptr();
+    unsafe { NeighborsSim::from_ptr(p) }.set_deals(list.ptr());
+    for flag in [0, 1, 4, 8, 0x10, 0x20, 0x40, 0x80, 0x100, 0x200, 0x8000_0000] {
+        deals[0].flags = 2 | flag;
+        deals[3].flags = 2 | flag;
+        assert_eq!(deals[0].flags, 2 | flag);
+        let excluded = flag & 0x3D != 0;
+        for (entry, first, expected) in [
+            (
+                fc4p_006cf860 as *const () as usize,
+                0x4773_FFE1u32,
+                if excluded { 600 } else { 700 },
+            ),
+            (
+                fc4p_006cf8d0 as *const () as usize,
+                0x4773_FFE0,
+                if excluded { 60 } else { 70 },
+            ),
+        ] {
+            let before = unsafe { core::slice::from_raw_parts(p, 0x48) }.to_vec();
+            assert_eq!(unsafe { run(entry, p, &[], 0, 0xDEAD_BEEF) }, expected);
+            let mut expected_calls = Vec::new();
+            for (d, &address) in deals.iter().zip(&values) {
+                expected_calls.push(Call::Flags(address as usize, 0x3D));
+                if d.flags & 0x3D == 0 {
+                    expected_calls.push(Call::DealKind(address as usize));
+                    if [0, 2, 4].contains(&d.kind.wrapping_sub(first)) {
+                        expected_calls.push(Call::Cost(address as usize));
+                    }
+                }
+            }
+            assert_eq!(take_calls(), expected_calls);
+            assert_eq!(unsafe { core::slice::from_raw_parts(p, 0x48) }, before);
+        }
+    }
+}
+
+#[test]
+fn totals_wrap_all_64_bits_and_do_not_require_active() {
+    let table = deal_table();
+    let mut deals = [
+        Deal {
+            table: table.as_ptr(),
+            kind: 0x4773_FFE1,
+            cost: u64::MAX,
+            flags: 0,
+        },
+        Deal {
+            table: table.as_ptr(),
+            kind: 0x4773_FFE3,
+            cost: 0x8000_0000_0000_0002,
+            flags: 0x40,
+        },
+        Deal {
+            table: table.as_ptr(),
+            kind: 0x4773_FFE5,
+            cost: 0x8000_0000_0000_0000,
+            flags: 0x80,
+        },
+    ];
+    let values: Vec<_> = deals.iter_mut().map(|d| d as *mut _ as u32).collect();
+    let mut list = List::new(&values);
+    let mut object = Object::new(0x48);
+    let p = object.ptr();
+    let sim = unsafe { NeighborsSim::from_ptr(p) };
+    sim.set_deals(list.ptr());
+    assert_eq!(unsafe { fc4p_006cf860(p, 0) }, 1);
+    take_calls();
+    assert_eq!(unsafe { fc4p_006cf8d0(p, 0) }, 0);
+    take_calls();
+    let mut empty = List::new(&[]);
+    sim.set_deals(empty.ptr());
+    assert_eq!(unsafe { fc4p_006cf860(p, 0xDEAD_BEEF) }, 0);
+    assert_eq!(unsafe { fc4p_006cf8d0(p, 0xDEAD_BEEF) }, 0);
+    assert_eq!(take_calls(), []);
+}
+
+#[repr(C)]
+struct Stream {
+    table: *const usize,
+    bytes: Vec<u8>,
+    error: u32,
+    sim: *mut u8,
+    replacement_header: *mut u8,
+}
+
+extern "thiscall" fn version(this: *mut Stream, value: u32) -> u64 {
+    record(Call::Version(value));
+    unsafe { (*this).bytes.extend_from_slice(&(value as u16).to_le_bytes()) };
+    0x1111_2222_AAAA_BBBB
+}
+
+extern "thiscall" fn count(this: *mut Stream, value: u32) -> u64 {
+    record(Call::Count(value));
+    unsafe {
+        (*this).bytes.extend_from_slice(&value.to_le_bytes());
+        if !(*this).replacement_header.is_null() {
+            NeighborsSim::from_ptr((*this).sim).set_connections((*this).replacement_header);
+        }
+    }
+    0x2222_3333_AAAA_BBBB
+}
+
+extern "C" fn reference(stream: *mut Stream, value: u32) -> u64 {
+    record(Call::Reference(stream as usize, value as usize));
+    unsafe { (*stream).bytes.extend_from_slice(&value.to_le_bytes()) };
+    0x3333_4444_AAAA_BBBB
+}
+
+extern "thiscall" fn stream_error(this: *mut Stream) -> u64 {
+    record(Call::Error);
+    pair(unsafe { (*this).error }, 0xFACE_CAFE)
+}
+
+#[test]
+fn version_two_record_keeps_only_connections_and_ignores_intermediate_failures() {
+    let _reference = fake(0x005D_99A0, reference as *const () as usize);
+    let mut table = [0usize; 19];
+    table[0x1C / 4] = version as *const () as usize;
+    table[0x24 / 4] = count as *const () as usize;
+    table[0x48 / 4] = stream_error as *const () as usize;
+    for values in [&[][..], &[0x1111u32, 0x2222, 0x3333][..]] {
+        let mut list = List::new(values);
+        let mut object = Object::new(0x48);
+        let p = object.ptr();
+        unsafe { NeighborsSim::from_ptr(p) }.set_connections(list.ptr());
+        for error in [0, 1, 0x100, 0xABCD_EF00, 0xABCD_EF80] {
+            let mut stream = Stream {
+                table: table.as_ptr(),
+                bytes: Vec::new(),
+                error,
+                sim: p,
+                replacement_header: core::ptr::null_mut(),
+            };
+            let sp = &mut stream as *mut _ as *mut u8;
+            let before = unsafe { core::slice::from_raw_parts(p, 0x48) }.to_vec();
+            assert_eq!(
+                unsafe { fc4p_006cfb60(p.add(8), 0, sp) },
+                pair(u32::from(error as u8 == 0), 0xFACE_CAFE)
+            );
+            let mut expected = vec![2, 0];
+            expected.extend_from_slice(&(values.len() as u32).to_le_bytes());
+            for v in values {
+                expected.extend_from_slice(&v.to_le_bytes());
+            }
+            assert_eq!(stream.bytes, expected);
+            let mut expected_calls = vec![Call::Version(2), Call::Count(values.len() as u32)];
+            expected_calls.extend(values.iter().map(|&v| Call::Reference(sp as usize, v as usize)));
+            expected_calls.push(Call::Error);
+            assert_eq!(take_calls(), expected_calls);
+            assert_eq!(unsafe { core::slice::from_raw_parts(p, 0x48) }, before);
+        }
+    }
+    let mut old = List::new(&[1, 2]);
+    let mut new = List::new(&[3]);
+    let mut object = Object::new(0x48);
+    let p = object.ptr();
+    unsafe { NeighborsSim::from_ptr(p) }.set_connections(old.ptr());
+    let mut stream = Stream {
+        table: table.as_ptr(),
+        bytes: Vec::new(),
+        error: 0,
+        sim: p,
+        replacement_header: new.ptr(),
+    };
+    let sp = &mut stream as *mut _ as *mut u8;
+    assert_eq!(unsafe { fc4p_006cfb60(p.add(8), 0, sp) }, pair(1, 0xFACE_CAFE));
+    assert_eq!(
+        take_calls(),
+        [
+            Call::Version(2),
+            Call::Count(2),
+            Call::Reference(sp as usize, 3),
+            Call::Error
+        ]
+    );
+}
+
+#[repr(C)]
+struct RemovalList {
+    header: *mut u8,
+    key: *mut u32,
+    change_key: bool,
+}
+
+extern "thiscall" fn erase(this: *mut RemovalList, out: *mut u32, iterator: u32) -> u64 {
+    record(Call::Erase(this as usize, iterator));
+    unsafe {
+        let node = iterator as *mut u32;
+        let next = node.read();
+        let prev = node.add(1).read();
+        (next as *mut u32).add(1).write(prev);
+        (prev as *mut u32).write(next);
+        out.write_unaligned(next);
+        node.write(0);
+        if (*this).change_key {
+            (*this).key.write(20);
+        }
+    }
+    0xABCD_EF01_1234_5678
+}
+
+#[test]
+fn remove_all_equal_references_caches_next_but_reloads_the_key() {
+    let _erase = fake(0x0041_C000, erase as *const () as usize);
+    for change_key in [false, true] {
+        let mut list = List::new(&[10, 20, 10, 20]);
+        let mut key = 10;
+        let mut owner = RemovalList {
+            header: list.ptr(),
+            key: &mut key,
+            change_key,
+        };
+        let p = &mut owner as *mut _ as *mut u8;
+        let mut args = [&mut key as *mut u32 as u32];
+        assert_eq!(
+            unsafe { run_live(fc4p_006cfd30 as *const () as usize, p, &mut args, 0) },
+            pair(list.ptr() as u32, 0xABCD_EF01)
+        );
+        let indices: &[usize] = if change_key { &[1, 2, 4] } else { &[1, 3] };
+        let expected: Vec<_> = indices
+            .iter()
+            .map(|&i| Call::Erase(p as usize, &mut list.nodes[i] as *mut _ as u32))
+            .collect();
+        assert_eq!(take_calls(), expected);
+        let last_next = if change_key {
+            list.ptr() as u32
+        } else {
+            &mut list.nodes[4] as *mut _ as u32
+        };
+        assert_eq!(args, [last_next]);
+    }
+    let mut list = List::new(&[5, 6]);
+    let mut key = 7;
+    let mut owner = RemovalList {
+        header: list.ptr(),
+        key: &mut key,
+        change_key: false,
+    };
+    let p = &mut owner as *mut _ as *mut u8;
+    let original = &mut key as *mut u32 as u32;
+    let mut args = [original];
+    assert_eq!(
+        unsafe { run_live(fc4p_006cfd30 as *const () as usize, p, &mut args, 0xDEAD_BEEF) },
+        pair(list.ptr() as u32, 0xDEAD_BEEF)
+    );
+    assert_eq!(args, [original]);
+    assert_eq!(take_calls(), []);
+}
+
+extern "C" fn conversion(
+    x: i32,
+    z: i32,
+    rx: *mut i32,
+    rz: *mut i32,
+    city: *mut *mut u8,
+    nx: *mut i32,
+    nz: *mut i32,
+) -> u64 {
+    record(Call::Convert(x, z));
+    CONVERSION.with(|settings| {
+        let (neighbor, success) = *settings.borrow();
+        unsafe {
+            rx.write(4);
+            rz.write(3);
+            city.write(neighbor as *mut u8);
+            nx.write(-1);
+            nz.write(69);
+        }
+        pair(success, 0xDEAD_BEEF)
+    })
+}
+
+#[test]
+fn coordinate_overload_uses_the_original_coordinate_slots_on_success_and_failure() {
+    let _conversion = fake(0x006C_E920, conversion as *const () as usize);
+    let mut table = [0usize; 21];
+    table[0x50 / 4] = find as *const () as usize;
+    let mut city = Object::new(0x48);
+    let cp = city.ptr();
+    unsafe {
+        cp.cast::<usize>().write(table.as_ptr() as usize);
+        cp.add(0x40).cast::<u64>().write_unaligned(0xFACE_CAFE_1234_5678);
+    }
+    for success in [0xABCD_EF00, 0xABCD_EF01, 0xABCD_EF80] {
+        CONVERSION.with(|s| *s.borrow_mut() = (cp as usize, success));
+        let mut args = [2, 64, 5];
+        let result = unsafe { run_live(fc4p_006cede0 as *const () as usize, core::ptr::null_mut(), &mut args, 0) };
+        assert_eq!(args, [2, u32::MAX, 69]);
+        if success as u8 == 0 {
+            assert_eq!(result, pair(0, 0xDEAD_BEEF));
+            assert_eq!(take_calls(), [Call::Convert(64, 5)]);
+        } else {
+            assert_eq!(result, 0xFACE_CAFE_1234_5678);
+            assert_eq!(take_calls(), [Call::Convert(64, 5), Call::Find(cp as usize, 2, -1, 69)]);
+        }
+    }
 }
 
 /// Copies the callee's popped argument words back before any subsequent call can reuse that stack.
