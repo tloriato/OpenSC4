@@ -81,28 +81,34 @@ stored_op!(divide_into_float, "fdivr dword ptr [{operand}]");
 stored_op!(add_float, "fadd dword ptr [{operand}]");
 
 pub mod bitmap;
+pub mod ageing;
 pub mod com;
 pub mod find;
 pub mod grid;
 pub mod io;
 pub mod monthly;
+pub mod occupants;
 pub mod plants;
 pub mod powered_lots;
 
 const COUNT: usize = bitmap::PORTS.len()
+    + ageing::PORTS.len()
     + com::PORTS.len()
     + grid::PORTS.len()
     + plants::PORTS.len()
     + monthly::PORTS.len()
+    + occupants::PORTS.len()
     + io::PORTS.len()
     + find::PORTS.len()
     + powered_lots::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
     bitmap::PORTS,
+    ageing::PORTS,
     com::PORTS,
     grid::PORTS,
     plants::PORTS,
     monthly::PORTS,
+    occupants::PORTS,
     io::PORTS,
     find::PORTS,
     powered_lots::PORTS,
