@@ -22,6 +22,7 @@ layout! {
     pub struct LotDeveloper {
         0x10 => references / set_references: i32,
         0x18 => building_development / set_building_development: *mut u8,
+        0x1C => city / set_city: *mut u8,
         0x20 => demolition / set_demolition: *mut u8,
         0x24 => lot_manager / set_lot_manager: *mut u8,
         0x28 => occupant_manager / set_occupant_manager: *mut u8,
@@ -30,6 +31,7 @@ layout! {
         0x40 => vertices_x / set_vertices_x: i32,
         0x5C => force_empty / set_force_empty: u8,
         0xD4 => foundation_slope / set_foundation_slope: f32,
+        0xD8 => lot_foundation_type / set_lot_foundation_type: u32,
         0xDC => building_foundation_type / set_building_foundation_type: u32,
     }
 }
@@ -58,9 +60,10 @@ fn result(call: RawCall) -> u64 {
 pub mod foundation;
 pub mod lots;
 pub mod small;
+pub mod terrain;
 
-const ALL: [Port; foundation::PORTS.len() + lots::PORTS.len() + small::PORTS.len()] =
-    crate::port::concat(&[small::PORTS, lots::PORTS, foundation::PORTS]);
+const ALL: [Port; foundation::PORTS.len() + lots::PORTS.len() + small::PORTS.len() + terrain::PORTS.len()] =
+    crate::port::concat(&[small::PORTS, lots::PORTS, foundation::PORTS, terrain::PORTS]);
 
 /// This module's replacements.
 pub const PORTS: &[Port] = &ALL;

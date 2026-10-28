@@ -34,8 +34,8 @@ port! {
         unsafe {
             let begin = this.add(12).cast::<*mut u8>().read_unaligned();
             let end = this.add(16).cast::<*mut u8>().read_unaligned();
-            let mut allocator = core::mem::MaybeUninit::<u8>::uninit();
-            let eax = destroy_range(begin, end, allocator.as_mut_ptr());
+            let mut allocator = ((this as u32) >> 24) as u8;
+            let eax = destroy_range(begin, end, &mut allocator);
             let storage = this.add(12).cast::<*mut u8>().read_unaligned();
             if storage.is_null() { eax } else { free_vector(storage) }
         }

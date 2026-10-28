@@ -8,6 +8,18 @@ use super::*;
 game_fn! {
     fn remove_lot_foundation(this: *mut u8, lot: *mut u8) -> u64 = "thiscall" 0x006C_3F30;
 }
+game_fn! { fn read_uint(holder: *mut u8, id: u32, output: *mut u32) -> u64 = "C" 0x005F_D480; }
+game_fn! { fn random_uniform(random: *mut u8, count: u32) -> u64 = "thiscall" 0x0091_36B1; }
+game_data! { static file_random: u8 = 0x00B4_9AF0; }
+
+layout! {
+    /// Foundation configuration object's type and optional ID vector.
+    struct FoundationObject {
+        0x20 => kind / set_kind: u32,
+        0x28 => ids / set_ids: *const u32,
+        0x2C => ids_end / set_ids_end: *const u32,
+    }
+}
 
 port! {
     /// Selects building, prop or other foundation kind from the occupant type and looks up its position.
@@ -124,6 +136,64 @@ port! {
 }
 
 port! {
+    /// Uses the explicit type, then the exemplar property, then the developer's default. Width and depth
+    /// are the occupant's stored bounds subtracted on x87, depth first. The bottom altitude is -1.
+    #[port(address = 0x006C_4020, owner = "lotdeveloper", name = "cSC4LotDeveloper::AddBuildingFoundation(type)")]
+    pub unsafe extern "thiscall" fn fc4p_006c4020(this: *mut u8, building: *mut u8, kind: u32) -> u64 {
+        unsafe {
+            let developer = LotDeveloper::from_ptr(this);
+            let occupant = vcall!(building, 0x0C => fn() -> *mut u8);
+            let mut position = core::mem::MaybeUninit::<[u32; 3]>::uninit();
+            vcall!(occupant, 0x20 => fn(*mut u32) -> u32, position.as_mut_ptr().cast());
+            let occupant = vcall!(building, 0x0C => fn() -> *mut u8);
+            let mut min = core::mem::MaybeUninit::<[f32; 3]>::uninit();
+            let mut max = core::mem::MaybeUninit::<[f32; 3]>::uninit();
+            vcall!(occupant, 0x28 => fn(*mut f32, *mut f32) -> u32, min.as_mut_ptr().cast(), max.as_mut_ptr().cast());
+            let facing = vcall!(building, 0x38 => fn() -> u32);
+            let mut kind = kind;
+            if kind == 0 {
+                let occupant = vcall!(building, 0x0C => fn() -> *mut u8);
+                let holder = vcall!(occupant, 0x18 => fn() -> *mut u8);
+                read_uint(holder, 0x88FC_D877, &mut kind);
+                if kind == 0 { kind = developer.building_foundation_type(); }
+            }
+            let min = min.assume_init();
+            let max = max.assume_init();
+            let depth = terrain::subtract_float(F80::from_f32(max[2]), min[2]);
+            let bds = developer.building_development();
+            let t = table(bds);
+            let depth = depth.to_f32();
+            let width = terrain::subtract_float(F80::from_f32(max[0]), min[0]).to_f32();
+            result(virtual_call(bds, 0x5C, &[kind, 1, position.as_mut_ptr() as u32, width.to_bits(),
+                depth.to_bits(), facing, (-1.0f32).to_bits()], kind, t, false))
+        }
+    }
+}
+
+port! {
+    /// Uses the configuration's primary building foundation type, otherwise the exemplar property with
+    /// the default as its initial value. A zero result skips creation.
+    #[port(address = 0x006C_40E0, owner = "lotdeveloper", name = "cSC4LotDeveloper::AddBuildingFoundation(configuration)")]
+    pub unsafe extern "thiscall" fn fc4p_006c40e0(this: *mut u8, building: *mut u8, config: *mut u8) -> u64 {
+        unsafe {
+            let developer = LotDeveloper::from_ptr(this);
+            let mut kind = developer.building_foundation_type();
+            let primary = vcall!(config, 0x60 => fn() -> *mut u8);
+            let specified = if primary.is_null() { 0 } else { FoundationObject::from_ptr(primary).kind() };
+            let mut property_result = 0;
+            if specified != 0 { kind = specified; }
+            else {
+                let occupant = vcall!(building, 0x0C => fn() -> *mut u8);
+                let holder = vcall!(occupant, 0x18 => fn() -> *mut u8);
+                property_result = read_uint(holder, 0x88FC_D877, &mut kind);
+            }
+            if kind == 0 { return property_result & !0xFFFF_FFFF; }
+            result(virtual_call(this, 0xEC, &[building as u32, kind], kind, table(this), false))
+        }
+    }
+}
+
+port! {
     /// Removes the building foundation at the occupant's x and z position.
     #[port(address = 0x006C_4150, owner = "lotdeveloper", name = "cSC4LotDeveloper::RemoveBuildingFoundation")]
     pub unsafe extern "thiscall" fn fc4p_006c4150(this: *mut u8, occupant: *mut u8) -> u64 {
@@ -136,6 +206,60 @@ port! {
     }
 }
 
+port! {
+    /// Inserts a hidden entry-EAX word before the original arguments; the Rust body handles all selection.
+    #[port(address = 0x006C_5460, owner = "lotdeveloper", name = "cSC4LotDeveloper::AddLotFoundation(configuration)", naked)]
+    pub unsafe extern "C" fn fc4p_006c5460() {
+        core::arch::naked_asm!("xchg eax, dword ptr [esp]", "push eax", "jmp {body}", body = sym add_lot_foundation)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe extern "fastcall" fn add_lot_foundation(
+    this: *mut u8,
+    entry_edx: u32,
+    entry_eax: u32,
+    lot: *mut u8,
+    config: *mut u8,
+    use_altitude: u32,
+    level: u32,
+    walls: u32,
+) -> u64 {
+    unsafe {
+        if lot.is_null() || config.is_null() {
+            return (u64::from(entry_edx) << 32) | u64::from(entry_eax & !255);
+        }
+        let mut kind = LotDeveloper::from_ptr(this).lot_foundation_type();
+        let mut call = virtual_call(config, 0x68, &[], table(config), entry_edx, false);
+        let primary = call.eax as *mut u8;
+        if !primary.is_null() {
+            let object = FoundationObject::from_ptr(primary);
+            let count = (object.ids_end() as u32).wrapping_sub(object.ids() as u32) as i32 >> 2;
+            call.eax = count as u32;
+            if count != 0 {
+                let draw = random_uniform(file_random(), count as u32);
+                call.eax = draw as u32;
+                call.edx = (draw >> 32) as u32;
+                kind = object.ids().wrapping_add(call.eax as usize).read_unaligned();
+            } else {
+                kind = object.kind();
+            }
+        }
+        if kind == 0 {
+            call.eax &= !255;
+            return result(call);
+        }
+        result(virtual_call(
+            this,
+            0xDC,
+            &[lot as u32, kind, use_altitude, level, walls],
+            use_altitude,
+            table(this),
+            false,
+        ))
+    }
+}
+
 pub const PORTS: &[Port] = &[
     fc4p_006c3e10::PORT,
     fc4p_006c3e70::PORT,
@@ -143,5 +267,8 @@ pub const PORTS: &[Port] = &[
     fc4p_006c3f30::PORT,
     fc4p_006c3f80::PORT,
     fc4p_006c3ff0::PORT,
+    fc4p_006c4020::PORT,
+    fc4p_006c40e0::PORT,
     fc4p_006c4150::PORT,
+    fc4p_006c5460::PORT,
 ];
