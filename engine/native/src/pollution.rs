@@ -96,15 +96,31 @@ unsafe fn table(object: *mut u8) -> u32 {
 }
 
 pub mod access;
+pub mod aging;
+pub mod io;
+pub mod maintenance;
+pub mod occupants;
+pub mod release;
+pub mod recycling;
+pub mod visual;
 pub mod capacity;
 pub mod com;
+pub mod disposal;
 pub mod garbage;
 pub mod grids;
 pub mod lists;
 pub mod request;
 
 const COUNT: usize = access::PORTS.len()
+    + aging::PORTS.len()
+    + io::PORTS.len()
+    + maintenance::PORTS.len()
+    + occupants::PORTS.len()
+    + release::PORTS.len()
+    + recycling::PORTS.len()
+    + visual::PORTS.len()
     + com::PORTS.len()
+    + disposal::PORTS.len()
     + garbage::PORTS.len()
     + grids::PORTS.len()
     + request::PORTS.len()
@@ -112,7 +128,15 @@ const COUNT: usize = access::PORTS.len()
     + capacity::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
     access::PORTS,
+    aging::PORTS,
+    io::PORTS,
+    maintenance::PORTS,
+    occupants::PORTS,
+    release::PORTS,
+    recycling::PORTS,
+    visual::PORTS,
     com::PORTS,
+    disposal::PORTS,
     garbage::PORTS,
     grids::PORTS,
     request::PORTS,
