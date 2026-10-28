@@ -95,10 +95,9 @@ ones for a relaunch with an answer. Codex "Selected model is at capacity" fails 
 |---|---|---|
 | traffic-exact33 (round limit 18) | traffic | the accident timer's reset draw (traffic-simulator §4.13), then the map and statistics answers |
 | automata-exact33 (round limit 18) | automata | the native accident call boundary (automata-managers §3.4.1): the fault in seven covers |
-| network-exact33 (parked, round cap) | netmgr, netrules, nettool, netlot | restart when re-blockers37b answers NM21/NM22/NT37/NT38/NG16 |
-| disasters-exact33 (parked, round cap) | disasters, effects | restart when re-blockers37b answers DSEX33-EF01/EF02/DS01 |
-| re-blockers37a (spec) | traffic, automata specs | the partial AD6 and TE33-PATH-1 |
-| re-blockers37b (spec) | effects, disasters, network specs | the questions above |
+| network-exact33 (round limit 18) | netmgr, netrules, nettool, netlot | map iteration order (network-manager §2.2.1), then slots 10-12, tools |
+| disasters-exact33 (round limit 18) | disasters, effects | effects tick and timer (effects §§6.1-6.1.1), height maps, period-start identity |
+| re-blockers37a (spec) | automata, pathfinder specs | AD6 (Braus's post-load fault), TE33-PATH-1 |
 | advisors-exact36 | advisors, mysims | citysit landed exact |
 | growth-exact36 | residential, development, demand, zonedev, lotdev, lotcfg, exemplars | zones, commercial, propmgr landed exact |
 | services-exact36 | power, pollution, landvalue, ordinance, demolition, dispatch, … | budget 8/8, dispatch 9/10 |
