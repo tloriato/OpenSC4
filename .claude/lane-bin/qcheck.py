@@ -17,6 +17,7 @@ import itertools
 import os
 import subprocess
 import sys
+import time
 
 MAIN = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -27,18 +28,41 @@ def main():
     ap.add_argument('--replace', required=True)
     ap.add_argument('--scenarios', default='cover')
     ap.add_argument('--jobs', type=int, default=4)
+    ap.add_argument('--from', dest='from_date', nargs='?', const='auto', default='auto',
+                    help='reference snapshot date; default last matched month of the previous failure')
+    ap.add_argument('--months', type=int, default=1)
+    ap.add_argument('--full', action='store_true', help='run from the original start save')
+    ap.add_argument('--no-early-stop', action='store_true')
+    ap.add_argument('--legacy', action='store_true', help='old end-save-only references')
+    ap.add_argument('--dll', help='explicit candidate DLL (default: worktree build)')
+    ap.add_argument('--backend', choices=('queue', 'direct'), default='queue')
+    ap.add_argument('--slot', type=int, default=6)
+    ap.add_argument('--harness-root')
+    ap.add_argument('--store', help='reference store (including the coordinator pin after a repin)')
     a = ap.parse_args()
-    dll = os.path.join(a.wt, 'engine', 'build-x86', 'FreeCity4.dll')
+    dll = a.dll or os.path.join(a.wt, 'engine', 'build-x86', 'FreeCity4.dll')
     if not os.path.isfile(dll):
         print(f'qcheck: no {dll}; build first (qbuild.py --wt <WT> all)')
         return 2
     logs = os.path.join(a.wt, 'build-runs')
     os.makedirs(logs, exist_ok=True)
     log = next(p for p in (os.path.join(logs, f'qcheck-{n}.log') for n in itertools.count(1)) if not os.path.exists(p))
-    command = [sys.executable, os.path.join(MAIN, 'tools', 'check.py'), 'run', '--dll', a.wt, '--replace', a.replace,
-               '--scenarios', a.scenarios, '--jobs', str(max(1, min(a.jobs, 6)))]
+    command = [sys.executable, os.path.join(MAIN, 'tools', 'check.py'), 'run', '--dll', dll, '--replace', a.replace,
+               '--scenarios', a.scenarios, '--jobs', str(max(1, min(a.jobs, 6))),
+               '--backend', a.backend, '--slot', str(a.slot)]
+    if not a.full and not a.legacy:
+        command += ['--from', a.from_date, '--months', str(a.months)]
+    if a.no_early_stop:
+        command += ['--no-early-stop']
+    if a.legacy:
+        command += ['--legacy']
+    if a.harness_root:
+        command += ['--harness-root', a.harness_root]
+    if a.store:
+        command += ['--store', a.store]
+    started = time.perf_counter()
     p = subprocess.run(command, cwd=MAIN, capture_output=True, text=True, encoding='utf-8', errors='replace')
-    out = p.stdout + p.stderr
+    out = p.stdout + p.stderr + f'\nqcheck wall_seconds={time.perf_counter() - started:.3f}\n'
     with open(log, 'w', encoding='utf-8') as f:
         f.write(out)
     lines = out.splitlines()

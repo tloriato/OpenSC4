@@ -1,5 +1,8 @@
 # Original-game golden cache
 
+For fixed-schedule monthly record hashes, owner attribution, early stopping,
+and cached snapshot rechecks, see [Monthly checks and snapshot windows](golden-monthly.md).
+
 `tools/golden.py` is independent of `play.py` and `suite.py`. It uses only Python's
 standard library and the existing PowerShell game queue. It never writes saves
 in Documents. The exporter observes the run's unique script in the active slot
