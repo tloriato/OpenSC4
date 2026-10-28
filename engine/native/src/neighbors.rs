@@ -27,11 +27,13 @@ layout! {
         0x1C => connections / set_connections: *mut u8,
         0x20 => deals / set_deals: *mut u8,
         0x3C => deals_dirty / set_deals_dirty: u8,
+        0x3D => stats_dirty / set_stats_dirty: u8,
     }
 }
 
 mod accounting;
 mod removal;
+mod regional;
 mod selection;
 mod geometry;
 mod lists;
@@ -45,6 +47,7 @@ const COUNT: usize = surface::PORTS.len()
     + lists::PORTS.len()
     + proposal::PORTS.len()
     + removal::PORTS.len()
+    + regional::PORTS.len()
     + selection::PORTS.len()
     + geometry::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
@@ -54,6 +57,7 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     lists::PORTS,
     proposal::PORTS,
     removal::PORTS,
+    regional::PORTS,
     selection::PORTS,
     geometry::PORTS,
 ]);
