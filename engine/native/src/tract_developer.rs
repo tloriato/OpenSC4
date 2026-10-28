@@ -22,20 +22,27 @@ layout! {
     pub struct TractDeveloper {
         0x00 => vtable / set_vtable: u32,
         0x10 => references / set_references: i32,
+        0x18 => city / set_city: u32,
         0x1C => building_development / set_building_development: u32,
         0x50 => occupied_cost / set_occupied_cost: f32,
         0x54 => abandoned_cost / set_abandoned_cost: f32,
         0x58 => aggregation_cost / set_aggregation_cost: f32,
         0x5C => subdivision_cost / set_subdivision_cost: f32,
+        0x6C => kick_out / set_kick_out: u8,
         0x7C => years_between_changes / set_years_between_changes: i32,
         0x80 => developer / set_developer: u32,
         0x8C => maximum_stage / set_maximum_stage: i32,
+        0x98 => wealth / set_wealth: i32,
+        0x9C => purpose / set_purpose: i32,
         0xB4 => existing / set_existing: i32,
         0xB8 => desired / set_desired: i32,
         0xBC => desired_maximum / set_desired_maximum: i32,
         0xC8 => relaxed / set_relaxed: u8,
         0xE4 => candidates_begin / set_candidates_begin: u32,
         0xE8 => candidates_end / set_candidates_end: u32,
+        0xF8 => observed_land_value / set_observed_land_value: i32,
+        0xFC => minimum_building_capacity / set_minimum_building_capacity: i32,
+        0x100 => maximum_building_capacity / set_maximum_building_capacity: i32,
         0x118 => styles_begin / set_styles_begin: u32,
         0x11C => styles_end / set_styles_end: u32,
         0x124 => style_index / set_style_index: i32,
@@ -148,27 +155,33 @@ unsafe fn store(base: u32, offset: u32, value: u32) {
     unsafe { write_unaligned(base.wrapping_add(offset) as *mut u32, value) }
 }
 
+pub mod compatibility;
 pub mod copying;
 pub mod evaluation;
 pub mod geometry;
+pub mod networks;
 pub mod pool;
 pub mod sorting;
 pub mod suitability;
 pub mod surface;
 pub mod trees;
 
-const COUNT: usize = copying::PORTS.len()
+const COUNT: usize = compatibility::PORTS.len()
+    + copying::PORTS.len()
     + evaluation::PORTS.len()
     + geometry::PORTS.len()
+    + networks::PORTS.len()
     + pool::PORTS.len()
     + sorting::PORTS.len()
     + suitability::PORTS.len()
     + surface::PORTS.len()
     + trees::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
+    compatibility::PORTS,
     copying::PORTS,
     evaluation::PORTS,
     geometry::PORTS,
+    networks::PORTS,
     pool::PORTS,
     sorting::PORTS,
     suitability::PORTS,
