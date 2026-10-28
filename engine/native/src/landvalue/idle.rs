@@ -801,9 +801,11 @@ mod tests {
             w
         }
         fn sim(&mut self) -> LandValueSim {
+            // SAFETY: the fixture owns 0x100 bytes covering the simulator layout.
             unsafe { LandValueSim::from_ptr(self.lv.ptr()) }
         }
         fn step(&mut self) -> u32 {
+            // SAFETY: all fixture pointers and callees stay live throughout this call.
             unsafe { fc4p_006be7b0(self.lv.ptr(), 100) }
         }
     }
@@ -1251,5 +1253,67 @@ mod tests {
         assert_eq!(unsafe { *w.slope_scan.ptr() }, 2);
         let slope_scan = w.slope_scan.ptr() as usize;
         assert!(!calls().iter().any(|c| matches!(c,Call::Reset(p,_,_) if *p==slope_scan)));
+    }
+
+    #[test]
+    fn histogram_upper_bin_and_empty_span_keep_the_original_write_address() {
+        let mut w = World::new();
+        let lv = w.sim();
+        lv.set_pipeline_state(3);
+        lv.set_ignore_zoning(1);
+        lv.set_min_altitude(0.0);
+        lv.set_max_altitude(10_000.0);
+        edit(|s| {
+            s.altitudes = [10_000.0; 2];
+            s.checks_left = 1;
+        });
+        w.step();
+        assert_eq!(w.histogram[127], 1);
+
+        // Even an empty span selects the preceding word when a tract contributes.
+        let mut storage = [41i32, 0];
+        let begin = storage.as_mut_ptr().wrapping_add(1);
+        lv.set_histogram_begin(begin);
+        lv.set_histogram_end(begin);
+        edit(|s| s.checks_left = 1);
+        w.step();
+        assert_eq!(storage, [42, 0]);
+        assert_eq!(lv.pipeline_state(), 3);
+    }
+
+    #[test]
+    fn zero_and_large_histogram_shifts_follow_machine_shift_counts() {
+        for (shift, expected_mode) in [(0, i32::MIN), (32, i32::MIN), (33, 1), (u32::MAX, 1 << 30)] {
+            let mut w = World::new();
+            let lv = w.sim();
+            lv.set_pipeline_state(3);
+            lv.set_ignore_zoning(1);
+            lv.set_histogram_shift(shift);
+            lv.set_min_altitude(f32::NEG_INFINITY);
+            lv.set_max_altitude(f32::INFINITY);
+            edit(|s| s.altitudes = [0.0; 2]);
+            w.step();
+            assert_eq!(lv.mode_altitude(), F80::from_i32(expected_mode).to_f32());
+            assert_eq!(w.histogram[0], 2);
+        }
+    }
+
+    #[test]
+    fn mean_division_loads_the_integer_sum_exactly_and_preserves_control_word() {
+        let mut w = World::new();
+        let lv = w.sim();
+        lv.set_pipeline_state(3);
+        lv.set_count(3);
+        lv.set_sum(i32::MAX);
+        lv.set_min_altitude(0.0);
+        lv.set_max_altitude(100.0);
+        // SAFETY: this iterator has ended, so the state completes without taking another coordinate.
+        unsafe {
+            *w.scan.ptr() = 2;
+        }
+        let cw = crate::x87::control_word();
+        w.step();
+        assert_eq!(lv.mean_altitude(), 715_827_904.0);
+        assert_eq!(crate::x87::control_word(), cw);
     }
 }
