@@ -48,6 +48,12 @@ the requested input-and-pop/update vector, or identify an earlier
 query/input difference. No route-order rule was changed.
 
 **Partial answer 2026-10-28 (re-blockers37a):** pathfinder §4.7.1 confirms native
-strict heap comparisons and gives two equal-score fixtures and eligible ring-1 cell
-order. Missing for Jinae/Braus: original start-node/score inputs, the preceding heap
-and earlier pop/update sequence. No native scenario replay or tie-rule change is claimed.
+strict heap comparisons, ordered finite equal-g rejection and the full predecessor-side
+key. The two branches at (243,61,Bus,side1) are different keys (`0x0902F33D` versus
+`0x0502F33D`); their stated continuations first merge at (243,62), key `0x0502F33E`.
+The section now includes exact g-bit/parent fixtures for that join, the replacement
+trace's actual pop prefix, and a native snapshot/input checklist. Missing for Jinae:
+original ordered start pushes and g/f bits or an ordered heap/parent/open-state snapshot
+plus its intervening proposals/pops. Missing for Braus: the first differing native query
+and that same input/prefix evidence; its byte suffix is insufficient. No native scenario
+replay or tie-rule change is claimed. The question stays open.

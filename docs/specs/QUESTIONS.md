@@ -246,7 +246,7 @@ generated index: the questions live one file per spec, so read only the file for
 | aura | 1 | 15 | AU17 | questions/aura.md |
 | auto-game-pause | 1 | 0 | AGP2 | questions/auto-game-pause.md |
 | automata | 9 | 44 | A5, AM13, AT34 | questions/automata.md |
-| automata-managers | 5 | 1 | AD7 | questions/automata-managers.md |
+| automata-managers | 4 | 2 | AD7 | questions/automata-managers.md |
 | automata-support | 2 | 0 | AN3 | questions/automata-support.md |
 | budget | 0 | 8 | BQ9 | - |
 | budget-window | 6 | 19 | BW27 | questions/budget-window.md |
@@ -438,4 +438,4 @@ generated index: the questions live one file per spec, so read only the file for
 | win-grid | 2 | 7 | WG10 | questions/win-grid.md |
 | zone-tool | 1 | 0 | ZT2 | questions/zone-tool.md |
 | zones | 2 | 56 | ZG43, ZQ17 | questions/zones.md |
-| **total** | **627** | **1714** | | |
+| **total** | **626** | **1715** | | |

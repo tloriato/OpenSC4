@@ -33,31 +33,3 @@
   public interfaces supply the traffic counts, view rectangle and network services? The summaries in §4
   and §3.4 do not define a complete lifecycle, and slot numbers plus function addresses alone do not give
   a callable ABI. [blocked pending AD1/AD2 and this lifecycle/ABI contract; no same-owner native delegation]
-
-
-<!-- from: automata-exact33 (2026-10-28, run4 r9) -->
-- **AD6 - automata.md sections 4/10; manager PostCityInit and loaded native automata.**
-  Please publish the ordered base/traffic/watercraft manager actions on `PostCityInit`,
-  including the calls made on automata retained by Read, their argument/return ABI,
-  ownership, placement and callback/model initialization. Section 4 specifies the
-  source-count recount, but not the loaded-automaton restoration path; AD3/AT23 ask
-  for the surrounding lifecycle. Which public interfaces support that restoration
-  when the manager is replaced but the retained concrete automata remain native?
-  In qcheck-16, Braus and Jinae load all four replacement managers successfully,
-  advance, then fault during the terminal full save in original code at
-  `SimCity 4.exe+0x50D03F`, writing `0x00AA41DC`. Braus evidence:
-  `compare-20261028-063556-5c19c930/result/game.log`, lines 5292-5333;
-  Jinae: `compare-20261028-063628-746bb98f/result/game.log`, lines 6974-7006.
-  The same committed source/DLL with `--replace none` is exact on both scenarios
-  (qcheck-17, 8/9 exact overall; Stohess has an unrelated original-only record diff).
-  This does not establish the cause of the save fault. It isolates a replacement-only
-  failure while the current bridge retains loaded objects without restoring them.
-  No native owner forwarding, guessed layout, or schedule modification was used.
-
-  **Partial answer 2026-10-28 (re-blockers37a):** automata.md §4.2 now gives the
-  ordered loaded-list flag test, removal/Unplace/Shutdown/Release path, survivor virtual
-  Init ABI, source recount, view/zoom update and traffic path/model repair. The watercraft
-  handler delegates this message to base. The save address is an allocator-link write,
-  not a placement write. Still unproved: the supported boundary for the traffic-only
-  private repair, full overridden Init/Activate placement and callback effects, and the
-  operation that corrupts the allocator link in the cited run. AD6 remains open.

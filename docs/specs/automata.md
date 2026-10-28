@@ -367,7 +367,7 @@ So a cut record of a current version reads partially and returns **false**. A cu
 *[quirk]*. A replacement may fail a short record atomically (all or nothing) *[choice]*. Every case where the original
 returns false stays false. The only case that changes is a cut base-only record, which no save contains.
 
-### 4.2 PostCityInit: retained native automata (AD6, partial) *[compat]*
+### 4.2 PostCityInit: retained native automata (AD6) *[compat]*
 
 `PostCityInit` (`0x26D31EC1`) dispatches **primary manager slot 56**, not a periodic tick.
 The message target is the +0x0C view: the base message handler adjusts back to the primary
@@ -405,6 +405,15 @@ Base Read appends the acquired reference to its list directly (`0x0050FF40`–`0
 it does not invoke the usual AddAutomaton helper or duplicate that helper's callbacks.
 PostCityInit itself makes no separate AddCallback call.
 
+#### 4.2.1 Surviving objects, models and initialization
+
+The list walk is over **every entry of the base manager list**, including subclasses and
+objects also referenced by controllers, trailer chains or an aircraft-manager queue. It
+does not recreate objects from their class IDs or substitute those other lists for the
+base list. Flag `0x8000`, rather than class or trip type, decides removal. In particular,
+ordinary watercraft Init sets this flag (watercraft §3), so a loaded boat retaining it is
+removed at step 2; the watercraft Init path below applies only to a surviving entry.
+
 **What the surviving native object's Init does.** The manager calls the primary automaton
 slot, not occupant Init on an adjusted pointer. Base automaton Init first asks its +4 occupant
 view whether initialized; if false it calls primary slot 97 (no args, AL success), initializes
@@ -417,30 +426,193 @@ timer, position and heading setup is watercraft §3; it is reached through the s
 slot 3. A replacement manager retaining those native concrete objects should call that
 interface operation rather than reconstructing their internals or marking them initialized.
 
-**Traffic-only second pass.** After the entire base operation, if loaded, walk the remaining
+The concrete entry matters even when the common base is already known:
+
+| Concrete entry | Work before/around inherited Init |
+|---|---|
+| Pedestrian `0x005444F0` | If not initialized, call its slot 158, then tail-call traffic Init. |
+| Vehicle `0x0055B9B0` | If not initialized, set automata flag 8 from the global **byte** `0x00B0A0A8`, call slot 158, then traffic Init. Afterwards, if city-time slot 9 returns true or byte `0x00B2296C` is nonzero, call vehicle slot 176 `(true,false)`, even if inherited Init failed. Return the inherited AL result. |
+| Trailer `0x00555A30` | Set flag `0x10000000` true, then call vehicle Init. |
+| Aircraft base `0x004FA770` | Clear its byte `+0x1E8`, set flag `0x2000` true, then tail-call automaton Init. Airplane/heli concrete Init wraps this with its own runtime reconstruction (aircraft §§3.2, 4.1.1). |
+| Watercraft `0x0056DE40` | When not initialized, base Init, drive parameters, effects, subscriptions and runtime reset in watercraft §3; base failure does not stop those steps. |
+
+For the base model load (automaton slot 97, `0x0050E8B0`), the object, not the
+manager, owns the runtime animated-model vector. When empty, it fills absent model keys
+from the saved first key if that key is nonzero, then loads keys in vector order. Each
+successful factory output is appended as its acquired reference. A failed factory returns
+false immediately, without undoing earlier outputs. For each loaded animated model it
+gets its model-instance view, sets animated-model slot 18 `(true,0)`, positions the instance,
+sets instance slot 4 to the object's **occupant** view, sets instance slot 14 to 3, then
+passes current zoom/rotation to animated-model slot 8 (`0x0050E920`–`0x0050EA51`).
+The first instance supplies the radius: half its third-axis bounding-box extent, capped at
+binary32 32 (`0x0050E9CB`–`0x0050E9E9`; x87 subtraction/multiply, binary32 field).
+The auxiliary-model property `0xCC21420D` is processed in property order; only values
+1, 2, 3 call slot 99, with a temporary output reference released afterwards.
+Finally call automaton slot 83 with binary32 zero, then slot 106 to bind/clear its model
+processor. The returned AL is whether a main model was newly loaded, not an allocation
+token (`0x0050EA57`–`0x0050EB12`). InitEffectsList subsequently associates the first
+model with the object's effects and position/orientation (`0x0050EBB0`–`0x0050EC0C`).
+
+#### 4.2.2 Calls back into services and the replacement manager
+
+These are synchronous calls made **inside the surviving native Init**, before the
+manager's source recount or view update. The native object owns them; the manager must
+not separately consume their random draws or repeat their state transitions.
+
+* Traffic slot 105 (`0x005096B0`), gated by successful base Init, clear byte `+0x3C`
+  and absent flag `0x4000`, gets the controller manager from city slot 47. It calls that
+  manager's slot 22 with `(occupantView, &compositeVec3, &distance, &strength)` in that
+  order; all outputs are binary32, the vector has three components. The result is a
+  **borrowed controller pointer**, not a boolean or a newly allocated record. Native
+  Init takes references for its temporary and stored controller, releases a replaced
+  controller, and releases the temporary at the end. A null result is allowed. With
+  a controller, its slot 32 receives `(distance,&position)` and returns a borrowed
+  behaviour record or null. Only a non-null record consumes one RandomDoubleUniform
+  draw; record `+8` is the binary32 admission probability. A draw above it skips the
+  subsequent state reconciliation (`0x00509778`–`0x005097BE`). State-stack removal/
+  insertion then uses automaton slots 53, 55, 56 as appropriate to that record.
+* Traffic slot 134 (`0x00550B60`), gated by successful base Init, clear byte `+0x3C`
+  and absent flag `0x2000`, reconstructs the initial network path near the current
+  position. The sentinel position test precedes service access. It gets the traffic
+  network from city slot 40 and **its owning automata manager** through automaton
+  slot 174. Vehicle slot 174 tail-calls city slot 43; pedestrian slot 174 tail-calls
+  city slot 44 (`0x0055BF60`, `0x00544D90`). These are borrowed primary manager views.
+  After finding a network occupant and a non-null path-info view, it calls that
+  manager's **slot 68** (`+0x110`) with the primary automaton pointer, ret 4, and
+  consumes EAX as a **32-bit traffic type** (`0x00550C2A`–`0x00550C56`). It does not
+  QI for an extended interface and does not restrict itself to slots 0–37.
+  Slot 68 first tests automaton slot 141: false returns the manager's signed 32-bit
+  default type; true tests occupant groups `0x422F`, `0x422E`, `0x422D`, `0x422C`,
+  `0x4208`, `0x4217`, in that order, returning respectively 7, 7, 6, 6, 4, 4, else 3
+  (`0x0054D6C0`–`0x0054D770`). Ordinary vehicle's slot 141 returns false. A null
+  manager or a shorter vtable is not handled as failure. Network/path services,
+  not the automata manager, supply the borrowed path collection used next.
+
+There is **no random draw in the outer PostCityInit/list/recount/view/repair code**.
+For an uninitialized ordinary vehicle or pedestrian, slot 158 consumes exactly one
+shared `cRZRandomSuper` draw, even for equal range endpoints. Vehicle uses binary32
+range endpoints `0x00B21CF0/CF4`, pedestrian `0x00B21CE8/CEC`, promoted to binary64
+arguments. RandomDoubleRangeUniform computes `U*(upper-lower)+lower` with x87
+intermediates and stores one binary32 lateral offset at object `+0x200`
+(`0x0055B690`–`0x0055B6BA`, `0x00544620`–`0x0054464A`, `0x00913A46`–`0x00913A5B`).
+This is the shared source `0x00B21D78`, **not CRT rand()**. Each such range/uniform
+call advances RandomUint32Uniform once (`0x00913A29`–`0x00913A45`). The conditional
+controller-behaviour draw above follows the lateral-offset draw. Already initialized
+vehicle/pedestrian objects skip both. The Init call to vehicle slot 176 has second
+argument false, so it skips that slot's optional random delay (`0x0055DC02`–`0x0055DC46`).
+Further behaviour-state entry callbacks belong to the selected state's contract (§6.2).
+
+#### 4.2.3 Activation, placement and callbacks
+
+The final UpdateZoom is not an unconditional placement pass. Inactive-to-active or
+active-to-inactive invokes manager slot 5 `(bool)` with a four-byte stack slot, ret 4,
+return AL. Activate stores the active byte first, acquires the current occupant filter
+through global view-system slot 18 (output reference), then walks the base list in
+order. For each non-null A it calls **A slot 9 Show**, passing false when a filter exists
+and rejects A's occupant view, otherwise the new active byte. It releases the filter
+after the walk and returns that byte (`0x0050A6B0`–`0x0050A739`). If the saved active
+byte already agrees with UpdateZoom's decision, Activate is not called. Active entries
+still receive A slot 74 `(s32 zoom,s32 rotation)`, ret 8, in list order.
+
+Native Show sets occupant visibility with `(bool,false)` and, only if initialized,
+calls A slot 71 with the same boolean. Hiding stops object effects; showing refreshes
+them (`0x0050E390`–`0x0050E3E7`). Slot 71 ensures placement through slot 70 when
+showing an unplaced object; slot 70 inserts the **occupant view** into the occupant
+manager (global `0x00B43D0C`, slot 20 `(occupant,false)`, AL success). A failed insert
+does not set placement. Slot 71 adds each model instance to the graphics system through
+slot 28 and sets occupant flag 2 only when all required additions succeed; hiding removes
+instances through graphics slot 29 and clears that flag (`0x00507E60`–`0x005080B7`).
+Manager slot 61 is a separate guarded place operation: require occupant flag 4 and
+clear placement bit, then A slot 70 `(true)`; only if AL succeeds call A slot 71 `(true)`
+when needed. It is **not** called by the survivor branch of PostCityInit. Unplace
+(manager slot 62) calls A slot 71 false before A slot 70 false when their respective
+bits are set (`0x005073D0`–`0x00507462`).
+
+The loaded callback-target list is already restored by automaton Read (§6.1 field 13).
+The manager does not register itself as another callback or rerun AddAutomaton. Occupant
+Init sets its initialized bit before its own initialization notification/update
+(`0x005E8C90`–`0x005E8CC7`); model-instance attachment, graphics membership and effects
+are work of the native automaton, not replacement-manager container writes.
+
+#### 4.2.4 Traffic-only second pass and supported interface boundary
+
+After the entire base operation, if loaded, walk the remaining
 primary traffic-automaton pointers in list order (`0x0054F7BD`–`0x0054F88B`). For a stored
 network occupant, obtain its path-info view with network slot 49; retain the new view before
 releasing a different old view. If non-null, call path-info slot 3 with `(u32 savedPathID, 0)`
 and keep the returned borrowed path-collection pointer. Then call automaton slot 150
-(no args, AL predicate); if true obtain its model view through slot 148 (no args, EAX pointer),
+(no args, AL flag-8 predicate); if true find its **leader automaton** through slot 148
+(`FindLeader`, no args, borrowed primary automaton pointer in EAX),
 retain it before releasing a different old view. The original performs these reference swaps
 in concrete traffic-automaton fields (+0x1EC network, +0x1F0 path info, +0x1F4 path ID,
-+0x1F8 collection, +0xB0 model). These offsets are evidence, **not an authorized replacement
++0x1F8 collection, +0xB0 leader). These offsets are evidence, **not an authorized replacement
 layout or a public setter contract**. The common Init call is public; this later repair is not
-expressed as a public automaton restoration call in the traced body.
+expressed as a public automaton restoration call in the traced body. This corrects the
+earlier AD6 partial's description of `+0xB0`/slot 148 as a model. `+0xB0` is the same
+leader reference saved in §6.1 field 8; slot 150 delegates to CheckAutomataFlag(8)
+(`0x00504FA0`). There is no AddRef on the path collection. A null network leaves the
+old path fields alone; a null newly obtained path-info clears/release-swaps that view
+but leaves the collection alone. A false flag-8 predicate leaves the old leader alone.
+Equal old/new reference pointers make no reference-count calls.
 
-**Limit of the AD6 evidence.** Braus log
+**Replacement boundary.** Common public operations are `Init/Shutdown/Release` on the
+primary automaton (IID `0xA9B40F05`), and the base manager's public Activate on IID
+`0x098F9BF4`. They do not encompass the whole second pass. The native body reads private
+saved network/path state and performs those swaps itself. Existing vehicle path-setting
+slot 132 (`0x0055D5A0`) is a different operation: it also changes path progress/geometry
+and notifies downstream state; it is not the reference-only loaded repair. Thus calling
+Init alone, or substituting AddAutomaton or a path setter, does not reproduce the native
+PostCityInit contract. Conversely, an implementation retaining native traffic automata
+must supply the extended **manager slot 68** ABI above when native Init reaches it.
+The city's common-manager IID and a 38-entry interface table alone do not supply it.
+The original exposes no version-checked atomic restore service in this path. These
+facts specify the boundary; they do not authorize a private-layout adapter, direct native
+same-owner forwarding, or replacing a native object's allocator-owned containers.
+
+#### 4.2.5 Allocator preconditions and what the save fault establishes
+
+Native objects, their property holders and their owning references must retain their
+native allocation/deletion pairing across restoration. A saved reference is an interface
+reference, not permission to recreate its storage with a different heap and later call
+the native deleting destructor. In particular:
+
+* GlobalHeapAlloc adds a **four-byte header**, chooses the first power-of-two class
+  of at least `requestedSize+4` (8 through 2048 bytes, classes 0 through 8), and stores
+  the class in the high byte. Larger allocations use the CRT path with a different
+  header tag (`0x005B9FC0`–`0x005BA00B`).
+* GlobalHeapFree serializes through the native global lock, reads the **byte at
+  payload−1**, and for classes below 9 passes `payload−4` to that class's native pool;
+  other tags go to the CRT deallocator (`0x005E5620`–`0x005E5668`). There is no ownership
+  validation or recovery for a foreign/malformed header.
+* For the 8-byte class, free rounds the header pointer down to a 2048-byte block,
+  links the slot into the block's free chain at `+8`, and decrements its **u32** count
+  at `+12`. Zero tail-calls the block-unlink helper (`0x005E5A40`–`0x005E5A7E`).
+  That helper requires valid writable circular links at block `+0/+4`, rewrites both
+  neighbour links, updates the pool cursor if necessary, then calls the pool's block
+  release operation. It does not discover or rebuild missing allocator metadata
+  (`0x0090D031`–`0x0090D055`).
+
+Braus log
 `golden-runs/compare-20261028-063556-5c19c930/result/game.log:5295`–`:5333`
 reports a terminal-save fault in `0x0090D031`, an allocator node-unlink helper called via
 GlobalHeapFree and property-holder destruction. The failing write at `0x0090D03F` uses
 the first dword of the supplied node as a link and writes link+4. The logged node is
 `0x2007A800`, first-link register `0x00AA41D8`, so the attempted target is `0x00AA41DC`.
-This is invalid link state; it is not a model-position store or proof that omitted Init alone
-caused the damage. The deeper stack includes trailer Shutdown (`0x00556400`).
-Still open: the supported, version-checked boundary for the traffic-only private reference
-repair with native retained automata, the full placement/callback effects through overridden
-Init/Activate, and the operation that first corrupted this allocator node. Do not archive AD6
-or claim that the save failure is fixed from the call ordering alone.
+The previous-link register is `0x00AA41BC`. The first value, `0x00AA41D8`, is specifically
+the **cSC4Occupant vtable address**, verified in the binary; it cannot be a writable
+allocator-neighbour block. The stack returns through GlobalHeapFree, the deleting
+property-holder destructor `0x005FF250` and occupant Release `0x005E8DF0`; deeper it
+includes trailer Shutdown (`0x00556400`). Release destroys the holder only after its
+native reference count reaches zero. This proves incompatible allocator-link state at
+the eventual free, not a model-position store, an omitted random draw, or which earlier
+operation damaged/misclassified that block. The Jinae report has the same fault address
+and target (`compare-20261028-063628-746bb98f/result/game.log:6974`–`:7006`).
+
+AD6's restoration and native caller/allocator **contract** is answered here. No repaired
+DLL, successful save or causal diagnosis is claimed. To identify the first bad operation
+in either cited run still requires runtime allocation/header/reference history for the
+freed holder and its containing block, including their last valid state; the terminal
+stack alone cannot supply that history. No game was run for this answer.
 
 ## 5. The four managers
 
