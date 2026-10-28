@@ -596,6 +596,306 @@ rust_port!(0x005F_8400, fc4p_005f8400, as_prop_controller_occupant, "prop contro
     }
 );
 
+game_fn! {
+    #[allow(dead_code)]
+    fn allocate_pool_block(exponent: u32) -> *mut u8 = "C" 0x0090_D8E0;
+}
+game_fn! {
+    #[allow(dead_code)]
+    fn return_pool_block(block: *mut u8, exponent: u32) -> u32 = "C" 0x0090_D91C;
+}
+game_fn! {
+    #[allow(dead_code)]
+    fn discard_empty_pool(this: *mut u8, block: *mut u8) -> u32 = "thiscall" 0x0090_D031;
+}
+game_fn! {
+    #[allow(dead_code)]
+    fn reopen_pool(this: *mut u8, block: *mut u8) -> u32 = "thiscall" 0x0090_CFF9;
+}
+
+/// Chain slots from the highest address down. Only the link word of each slot and two header words
+/// are initialized; payload and padding bytes retain the allocator's contents.
+unsafe fn initialize_pool(r: &mut Registers, exponent: u32, last: u32, count: u32, stride: u32) {
+    unsafe {
+        invoke(r, crate::abi::target(0x0090_D8E0), &[exponent], true);
+        let block = r.eax as *mut u8;
+        r.edx = 0;
+        r.ecx = r.eax.wrapping_add(last);
+        let mut head = 0;
+        for _ in 0..count {
+            store(r.ecx as *mut u8, 0, r.edx);
+            head = r.ecx;
+            r.edx = r.ecx;
+            r.ecx = r.ecx.wrapping_sub(stride);
+        }
+        store(block, 8, head);
+        store(block, 12, 0);
+    }
+}
+
+macro_rules! pool_constructor {
+    ($address:literal, $export:ident, $body:ident, $label:literal,
+     $exponent:literal, $last:literal, $count:literal, $stride:literal) => {
+        rust_port!($address, $export, $body, $label, 0, (_this, r) {
+            unsafe { initialize_pool(r, $exponent, $last, $count, $stride); }
+        });
+    };
+}
+
+pool_constructor!(
+    0x005E_5670,
+    fc4p_005e5670,
+    initialize_eight_byte_pool,
+    "initialize eight byte pool",
+    11,
+    0x7f8,
+    254,
+    8
+);
+pool_constructor!(
+    0x005E_56D0,
+    fc4p_005e56d0,
+    initialize_32_byte_pool,
+    "initialize 32 byte pool",
+    12,
+    0xfd0,
+    127,
+    32
+);
+pool_constructor!(
+    0x005E_5730,
+    fc4p_005e5730,
+    initialize_64_byte_pool,
+    "initialize 64 byte pool",
+    13,
+    0x1f90,
+    127,
+    64
+);
+pool_constructor!(
+    0x005E_5790,
+    fc4p_005e5790,
+    initialize_128_byte_pool,
+    "initialize 128 byte pool",
+    14,
+    0x3f10,
+    127,
+    128
+);
+pool_constructor!(
+    0x005E_57D0,
+    fc4p_005e57d0,
+    initialize_256_byte_pool,
+    "initialize 256 byte pool",
+    15,
+    0x7e10,
+    127,
+    256
+);
+pool_constructor!(
+    0x005E_5830,
+    fc4p_005e5830,
+    initialize_512_byte_pool,
+    "initialize 512 byte pool",
+    16,
+    0xfc10,
+    127,
+    512
+);
+pool_constructor!(
+    0x005E_5870,
+    fc4p_005e5870,
+    initialize_1024_byte_pool,
+    "initialize 1024 byte pool",
+    16,
+    0xf810,
+    63,
+    1024
+);
+pool_constructor!(
+    0x005E_58B0,
+    fc4p_005e58b0,
+    initialize_2048_byte_pool,
+    "initialize 2048 byte pool",
+    16,
+    0xf010,
+    31,
+    2048
+);
+
+macro_rules! pool_return {
+    ($address:literal, $export:ident, $body:ident, $label:literal, $exponent:literal) => {
+        rust_port!($address, $export, $body, $label, 4, (_this, r, block: u32) {
+            r.eax = block;
+            unsafe { invoke(r, crate::abi::target(0x0090_D91C), &[block, $exponent], true); }
+        });
+    };
+}
+pool_return!(
+    0x005D_EB90,
+    fc4p_005deb90,
+    return_16k_pool_block,
+    "return 16K pool block",
+    14
+);
+pool_return!(
+    0x005E_56B0,
+    fc4p_005e56b0,
+    return_2k_pool_block,
+    "return 2K pool block",
+    11
+);
+pool_return!(
+    0x005E_5710,
+    fc4p_005e5710,
+    return_4k_pool_block,
+    "return 4K pool block",
+    12
+);
+pool_return!(
+    0x005E_5810,
+    fc4p_005e5810,
+    return_32k_pool_block,
+    "return 32K pool block",
+    15
+);
+
+/// Return one slot to its block. Count zero discards the block, and the marked full-count transition
+/// makes it available again. Null leaves EAX unchanged and clears EDX.
+unsafe fn free_pool_slot(r: &mut Registers, slot: u32, mask: u32, full: u32) {
+    r.edx = slot;
+    if slot == 0 {
+        return;
+    }
+    unsafe {
+        r.eax = slot & mask;
+        let block = r.eax as *mut u8;
+        let head = word(block, 8);
+        store(slot as *mut u8, 0, head);
+        store(block, 8, slot);
+        r.edx = word(block, 12).wrapping_sub(1);
+        store(block, 12, r.edx);
+        let target = if r.edx == 0 {
+            0x0090_D031
+        } else if r.edx == full {
+            0x0090_CFF9
+        } else {
+            return;
+        };
+        // The forwarded argument replaces the original entry's argument word before the tail call.
+        write_unaligned((r as *mut Registers).cast::<u8>().add(16).cast::<u32>(), r.eax);
+        invoke(r, crate::abi::target(target), &[r.eax], false);
+    }
+}
+macro_rules! pool_free {
+    ($address:literal, $export:ident, $body:ident, $label:literal, $mask:literal, $full:literal) => {
+        rust_port!($address, $export, $body, $label, 4, (_this, r, slot: u32) {
+            unsafe { free_pool_slot(r, slot, $mask, $full); }
+        });
+    };
+}
+pool_free!(
+    0x005E_5A40,
+    fc4p_005e5a40,
+    free_2k_pool_slot,
+    "free 2K pool slot",
+    0xffff_f800,
+    0x4000_00be
+);
+pool_free!(
+    0x005E_5A90,
+    fc4p_005e5a90,
+    free_4k_pool_slot,
+    "free 4K pool slot",
+    0xffff_f000,
+    0x4000_005f
+);
+pool_free!(
+    0x005E_5AE0,
+    fc4p_005e5ae0,
+    free_8k_pool_slot,
+    "free 8K pool slot",
+    0xffff_e000,
+    0x4000_005f
+);
+pool_free!(
+    0x005E_5B30,
+    fc4p_005e5b30,
+    free_16k_pool_slot,
+    "free 16K pool slot",
+    0xffff_c000,
+    0x4000_005f
+);
+pool_free!(
+    0x005E_5B80,
+    fc4p_005e5b80,
+    free_32k_pool_slot,
+    "free 32K pool slot",
+    0xffff_8000,
+    0x4000_005f
+);
+pool_free!(
+    0x005E_5BD0,
+    fc4p_005e5bd0,
+    free_64k_pool_slot,
+    "free 64K pool slot",
+    0xffff_0000,
+    0x4000_005f
+);
+pool_free!(
+    0x005E_5C20,
+    fc4p_005e5c20,
+    free_1024_byte_pool_slot,
+    "free 1024 byte pool slot",
+    0xffff_0000,
+    0x4000_002f
+);
+pool_free!(
+    0x005E_5C70,
+    fc4p_005e5c70,
+    free_2048_byte_pool_slot,
+    "free 2048 byte pool slot",
+    0xffff_0000,
+    0x4000_0017
+);
+
+rust_port!(0x005F_D000, fc4p_005fd000, release_short_reference, "release unsigned short reference", 0,
+    (this, r) {
+        unsafe {
+            r.eax = u32::from(read_unaligned(this.add(0x10).cast::<u16>()));
+            if r.eax > 1 {
+                r.eax -= 1;
+                write_unaligned(this.add(0x10).cast::<u16>(), r.eax as u16);
+            } else {
+                r.eax = word(this, 4);
+                r.ecx = this.wrapping_add(4) as u32;
+                virtual_call(r, 0x1fc, &[1]);
+                r.eax = 0;
+            }
+        }
+    }
+);
+macro_rules! unsigned_release {
+    ($address:literal, $export:ident, $body:ident, $label:literal, $offset:literal, $slot:literal) => {
+        rust_port!($address, $export, $body, $label, 0, (this, r) {
+            unsafe {
+                r.eax = word(this, $offset);
+                if r.eax > 1 { r.eax -= 1; store(this, $offset, r.eax); }
+                else { r.eax = word(this, 0); virtual_call(r, $slot, &[1]); r.eax = 0; }
+            }
+        });
+    };
+}
+unsigned_release!(
+    0x005F_D370,
+    fc4p_005fd370,
+    release_property_holder,
+    "release property holder",
+    4,
+    0x58
+);
+unsigned_release!(0x0062_3270, fc4p_00623270, release_window, "release window", 0x14, 0xcc);
+
 /// This module's complete replacements.
 pub const PORTS: &[Port] = &[
     fc4p_005b9d30::PORT,
@@ -618,6 +918,7 @@ pub const PORTS: &[Port] = &[
     fc4p_005dc950::PORT,
     fc4p_005dc980::PORT,
     fc4p_005deb40::PORT,
+    fc4p_005deb90::PORT,
     fc4p_005ded60::PORT,
     fc4p_005e28c0::PORT,
     fc4p_005e28f0::PORT,
@@ -628,6 +929,25 @@ pub const PORTS: &[Port] = &[
     fc4p_005e29f0::PORT,
     fc4p_005e2a10::PORT,
     fc4p_005e2a20::PORT,
+    fc4p_005e5670::PORT,
+    fc4p_005e56b0::PORT,
+    fc4p_005e56d0::PORT,
+    fc4p_005e5710::PORT,
+    fc4p_005e5730::PORT,
+    fc4p_005e5790::PORT,
+    fc4p_005e57d0::PORT,
+    fc4p_005e5810::PORT,
+    fc4p_005e5830::PORT,
+    fc4p_005e5870::PORT,
+    fc4p_005e58b0::PORT,
+    fc4p_005e5a40::PORT,
+    fc4p_005e5a90::PORT,
+    fc4p_005e5ae0::PORT,
+    fc4p_005e5b30::PORT,
+    fc4p_005e5b80::PORT,
+    fc4p_005e5bd0::PORT,
+    fc4p_005e5c20::PORT,
+    fc4p_005e5c70::PORT,
     fc4p_005ec9e0::PORT,
     fc4p_005ecaf0::PORT,
     fc4p_005ecb00::PORT,
@@ -642,10 +962,13 @@ pub const PORTS: &[Port] = &[
     fc4p_005f47f0::PORT,
     fc4p_005f8400::PORT,
     fc4p_005f8f80::PORT,
+    fc4p_005fd000::PORT,
+    fc4p_005fd370::PORT,
     fc4p_005fd720::PORT,
     fc4p_0060ce80::PORT,
     fc4p_0060fb50::PORT,
     fc4p_0060fb80::PORT,
+    fc4p_00623270::PORT,
     fc4p_0062c8e0::PORT,
     fc4p_0062c980::PORT,
     fc4p_0062c990::PORT,
@@ -656,7 +979,7 @@ pub const PORTS: &[Port] = &[
 mod tests {
     use super::*;
     use crate::testing::{fake, GameFpu};
-    use std::cell::RefCell;
+    use std::cell::{Cell, RefCell};
     const EAX: u32 = 0x1234_56ab;
     const EDX: u32 = 0x9876_5432;
     const RESULT: [u32; 3] = [0xa1b2_c3d4, 0x1020_3040, 0x5566_7788];
@@ -678,7 +1001,11 @@ mod tests {
         args: Vec<u32>,
     }
     thread_local! { static CALLS: RefCell<Vec<Call>> = const { RefCell::new(Vec::new()) }; }
-    extern "C" fn record(address: u32, r: *const Registers, args: *const u32, count: u32) {
+    thread_local! {
+        static ALLOCATED: Cell<u32> = const { Cell::new(0) };
+        static POOL_AT_CALL: RefCell<Vec<Vec<u8>>> = const { RefCell::new(Vec::new()) };
+    }
+    extern "C" fn record(address: u32, r: *const Registers, args: *const u32, count: u32) -> u32 {
         unsafe {
             CALLS.with(|calls| {
                 calls.borrow_mut().push(Call {
@@ -687,7 +1014,14 @@ mod tests {
                     args: core::slice::from_raw_parts(args, count as usize).to_vec(),
                 })
             });
+            if address == 0x0090_d031 || address == 0x0090_cff9 {
+                POOL_AT_CALL.with(|v| {
+                    v.borrow_mut()
+                        .push(core::slice::from_raw_parts(*args as *const u8, 0x40).to_vec())
+                });
+            }
         }
+        ALLOCATED.with(Cell::get)
     }
     fn calls() -> Vec<Call> {
         CALLS.with(|c| core::mem::take(&mut *c.borrow_mut()))
@@ -1071,6 +1405,213 @@ mod tests {
                 run(fc4p_005f8400, p, &[]),
                 [if p.is_null() { 0 } else { p as u32 + 12 }, p as u32, EDX]
             );
+        }
+    }
+    #[unsafe(naked)]
+    unsafe extern "C" fn pool_allocate() {
+        core::arch::naked_asm!(
+            "sub esp, 12", "mov [esp], eax", "mov [esp + 4], ecx", "mov [esp + 8], edx",
+            "lea eax, [esp + 16]", "push 1", "push eax", "lea eax, [esp + 8]",
+            "push eax", "push 0x0090d8e0", "call {record}", "add esp, 28", "ret",
+            record = sym record,
+        );
+    }
+    stub!(pool_returned, 0x0090_d91c, 2, 0);
+    stub!(pool_discarded, 0x0090_d031, 1, 4);
+    stub!(pool_reopened, 0x0090_cff9, 1, 4);
+    stub!(destruct, 0xd, 1, 4);
+
+    #[test]
+    fn every_pool_constructor_chains_slots_downward_without_touching_payloads() {
+        let _fake = fake(0x0090_d8e0, pool_allocate as *const () as usize);
+        let cases: &[(unsafe extern "C" fn(), u32, usize, usize, usize)] = &[
+            (fc4p_005e5670, 11, 0x7f8, 254, 8),
+            (fc4p_005e56d0, 12, 0xfd0, 127, 32),
+            (fc4p_005e5730, 13, 0x1f90, 127, 64),
+            (fc4p_005e5790, 14, 0x3f10, 127, 128),
+            (fc4p_005e57d0, 15, 0x7e10, 127, 256),
+            (fc4p_005e5830, 16, 0xfc10, 127, 512),
+            (fc4p_005e5870, 16, 0xf810, 63, 1024),
+            (fc4p_005e58b0, 16, 0xf010, 31, 2048),
+        ];
+        let mut storage = vec![0xa5u8; 131072];
+        let offset = (65536 - (storage.as_ptr() as usize & 65535)) & 65535;
+        let pool = &mut storage[offset..offset + 65536];
+        let p = pool.as_mut_ptr();
+        ALLOCATED.with(|a| a.set(p as u32));
+        for &(entry, exponent, last, count, stride) in cases {
+            pool.fill(0xa5);
+            let mut expected = vec![0xa5u8; 65536];
+            let mut previous = 0u32;
+            for i in 0..count {
+                let offset = last - i * stride;
+                expected[offset..offset + 4].copy_from_slice(&previous.to_le_bytes());
+                previous = p as u32 + offset as u32;
+            }
+            expected[8..12].copy_from_slice(&previous.to_le_bytes());
+            expected[12..16].fill(0);
+            assert_eq!(
+                run(entry, 0x1122_3344 as *mut u8, &[]),
+                [p as u32, previous.wrapping_sub(stride as u32), previous]
+            );
+            assert_eq!(&*pool, expected);
+            assert_eq!(
+                calls(),
+                [Call {
+                    address: 0x0090_d8e0,
+                    registers: [EAX, 0x1122_3344, EDX],
+                    args: vec![exponent]
+                }]
+            );
+        }
+    }
+
+    #[test]
+    fn pool_returns_pass_pointer_and_size_class_and_forward_all_results() {
+        let _fake = fake(0x0090_d91c, pool_returned as *const () as usize);
+        for (entry, exponent) in [
+            (fc4p_005deb90 as unsafe extern "C" fn(), 14),
+            (fc4p_005e56b0, 11),
+            (fc4p_005e5710, 12),
+            (fc4p_005e5810, 15),
+        ] {
+            for block in [0, 0x1234_5000, u32::MAX] {
+                assert_eq!(run(entry, 0x1122_3344 as *mut u8, &[block]), RESULT);
+                assert_eq!(
+                    calls(),
+                    [Call {
+                        address: 0x0090_d91c,
+                        registers: [block, 0x1122_3344, EDX],
+                        args: vec![block, exponent]
+                    }]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn pool_free_handles_null_wrapping_counts_and_both_block_transitions() {
+        let _empty = fake(0x0090_d031, pool_discarded as *const () as usize);
+        let _full = fake(0x0090_cff9, pool_reopened as *const () as usize);
+        let cases: &[(unsafe extern "C" fn(), u32)] = &[
+            (fc4p_005e5a40, 0x4000_00be),
+            (fc4p_005e5a90, 0x4000_005f),
+            (fc4p_005e5ae0, 0x4000_005f),
+            (fc4p_005e5b30, 0x4000_005f),
+            (fc4p_005e5b80, 0x4000_005f),
+            (fc4p_005e5bd0, 0x4000_005f),
+            (fc4p_005e5c20, 0x4000_002f),
+            (fc4p_005e5c70, 0x4000_0017),
+        ];
+        let mut storage = vec![0xa5u8; 131072];
+        let offset = (65536 - (storage.as_ptr() as usize & 65535)) & 65535;
+        let pool = &mut storage[offset..offset + 65536];
+        let p = pool.as_mut_ptr();
+        let slot = p as u32 + 0x20;
+        for &(entry, threshold) in cases {
+            assert_eq!(run(entry, 0x1122_3344 as *mut u8, &[0]), [EAX, 0x1122_3344, 0]);
+            assert!(calls().is_empty());
+            for count in [0u32, 1, 2, threshold, threshold + 1, u32::MAX] {
+                pool.fill(0xa5);
+                unsafe {
+                    store(p, 8, 0xdead_beef);
+                    store(p, 12, count);
+                }
+                let mut expected = pool.to_vec();
+                expected[0x20..0x24].copy_from_slice(&0xdead_beefu32.to_le_bytes());
+                expected[8..12].copy_from_slice(&slot.to_le_bytes());
+                let next = count.wrapping_sub(1);
+                expected[12..16].copy_from_slice(&next.to_le_bytes());
+                let target = if next == 0 {
+                    Some(0x0090_d031)
+                } else if next == threshold {
+                    Some(0x0090_cff9)
+                } else {
+                    None
+                };
+                let got = run(entry, 0x1122_3344 as *mut u8, &[slot]);
+                assert_eq!(
+                    got,
+                    if target.is_some() {
+                        RESULT
+                    } else {
+                        [p as u32, 0x1122_3344, next]
+                    }
+                );
+                assert_eq!(&*pool, expected);
+                let log = calls();
+                if let Some(address) = target {
+                    assert_eq!(
+                        log,
+                        [Call {
+                            address,
+                            registers: [p as u32, 0x1122_3344, next],
+                            args: vec![p as u32]
+                        }]
+                    );
+                    assert_eq!(
+                        POOL_AT_CALL.with(|v| core::mem::take(&mut *v.borrow_mut())),
+                        [expected[..0x40].to_vec()]
+                    );
+                } else {
+                    assert!(log.is_empty());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn unsigned_reference_releases_keep_high_counts_and_destroy_zero_or_one() {
+        for (entry, offset, slot, adjustment, short) in [
+            (fc4p_005fd000 as unsafe extern "C" fn(), 0x10, 0x1fc, 4, true),
+            (fc4p_005fd370, 4, 0x58, 0, false),
+            (fc4p_00623270, 0x14, 0xcc, 0, false),
+        ] {
+            let mut table = [0usize; 128];
+            table[slot / 4] = destruct as *const () as usize;
+            for count in [0u32, 1, 2, 0x7fff, 0x8000, 0xffff, 0x7fff_ffff, 0x8000_0000, u32::MAX] {
+                let mut object = [0xa5a5_a5a5u32; 32];
+                let p = object.as_mut_ptr().cast::<u8>();
+                object[adjustment / 4] = table.as_ptr() as u32;
+                unsafe {
+                    if short {
+                        write_unaligned(p.add(offset).cast::<u16>(), count as u16);
+                    } else {
+                        store(p, offset, count);
+                    }
+                }
+                let mut expected = object;
+                let effective = if short { count & 0xffff } else { count };
+                let got = run(entry, p, &[]);
+                if effective > 1 {
+                    unsafe {
+                        if short {
+                            write_unaligned(
+                                expected.as_mut_ptr().cast::<u8>().add(offset).cast::<u16>(),
+                                (effective - 1) as u16,
+                            );
+                        } else {
+                            write_unaligned(
+                                expected.as_mut_ptr().cast::<u8>().add(offset).cast::<u32>(),
+                                effective - 1,
+                            );
+                        }
+                    }
+                    assert_eq!(got, [effective - 1, p as u32, EDX]);
+                    assert!(calls().is_empty());
+                } else {
+                    assert_eq!(got, [0, RESULT[1], RESULT[2]]);
+                    assert_eq!(
+                        calls(),
+                        [Call {
+                            address: 0xd,
+                            registers: [table.as_ptr() as u32, p as u32 + adjustment as u32, EDX],
+                            args: vec![1]
+                        }]
+                    );
+                }
+                assert_eq!(object, expected);
+            }
         }
     }
 }
