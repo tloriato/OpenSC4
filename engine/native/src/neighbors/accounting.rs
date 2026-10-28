@@ -75,11 +75,10 @@ port! {
             node = pointer(header, 0);
             let mut eax = header as u32;
             while node != sim.connections() {
-                let result = write_reference(stream, pointer(node, 8));
+                write_reference(stream, pointer(node, 8));
                 // The next node and current header are read only after the reference writer returns.
                 node = pointer(node, 0);
                 eax = sim.connections() as u32;
-                let _ = result;
             }
             let result = virtual_call(stream, 0x48, &[], eax, word(stream, 0));
             pair(u32::from(result as u8 == 0), (result >> 32) as u32)

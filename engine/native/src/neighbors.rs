@@ -31,12 +31,26 @@ layout! {
 }
 
 mod accounting;
+mod geometry;
 mod lists;
+mod proposal;
 mod queries;
 mod surface;
 
-const COUNT: usize = surface::PORTS.len() + queries::PORTS.len() + accounting::PORTS.len() + lists::PORTS.len();
-const ALL: [Port; COUNT] = crate::port::concat(&[surface::PORTS, queries::PORTS, accounting::PORTS, lists::PORTS]);
+const COUNT: usize = surface::PORTS.len()
+    + queries::PORTS.len()
+    + accounting::PORTS.len()
+    + lists::PORTS.len()
+    + proposal::PORTS.len()
+    + geometry::PORTS.len();
+const ALL: [Port; COUNT] = crate::port::concat(&[
+    surface::PORTS,
+    queries::PORTS,
+    accounting::PORTS,
+    lists::PORTS,
+    proposal::PORTS,
+    geometry::PORTS,
+]);
 pub const PORTS: &[Port] = &ALL;
 
 /// A virtual call retaining both integer return registers. The supplied register words are those
@@ -64,5 +78,7 @@ unsafe fn pointer(p: *mut u8, offset: usize) -> *mut u8 {
     unsafe { word(p, offset) as *mut u8 }
 }
 
+#[cfg(test)]
+mod geometry_tests;
 #[cfg(test)]
 mod tests;

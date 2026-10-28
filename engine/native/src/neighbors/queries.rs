@@ -10,7 +10,7 @@ game_fn! {
     fn clear_connections(list: *mut u8) -> u64 = "thiscall" 0x0041_1D70;
 }
 game_fn! {
-    fn copy_connections(list: *mut u8, position: u32, first: *mut u8, last: *mut u8, out: *mut u32) -> u64 = "thiscall" 0x004A_86F0;
+    fn copy_connections(list: *mut u8, entry_edx: u32, position: u32, first: *mut u8, last: *mut u8, out: *mut u32) -> u64 = "fastcall" 0x004A_86F0;
 }
 game_fn! {
     fn erase_connection(list: *mut u8, out: *mut u32, iterator: u32) -> u64 = "thiscall" 0x0041_C000;
@@ -47,21 +47,18 @@ unsafe extern "fastcall" fn other_side_of_object(this: *mut u8, argument: *mut u
 port! {
     /// Finds the first exact type/cell match. The first argument's stack word is used as the x
     /// destination on every visit. The entry shim also retains EDX for an empty list.
+    /// Saved search values are read through the frame pointer before the cell getter can overwrite it.
     #[port(address = 0x006C_F6B0, owner = "neighbors", name = "cSC4NeighborsSimulator::FindConnection", naked)]
     pub unsafe extern "C" fn fc4p_006cf6b0() {
-        core::arch::naked_asm!("pop eax", "push edx", "push eax", "lea edx, [esp + 8]", "jmp {}", sym find_connection);
+        core::arch::naked_asm!("push edx", "lea edx, [esp + 8]", "call {}", "ret 12", sym find_connection);
     }
 }
 
-unsafe extern "fastcall" fn find_connection(
-    this: *mut u8,
-    argument: *mut u32,
-    entry_edx: u32,
-    kind: u32,
-    x: i32,
-    z: i32,
-) -> u64 {
+unsafe extern "fastcall" fn find_connection(this: *mut u8, argument: *mut u32, entry_edx: u32) -> u64 {
     unsafe {
+        let kind = argument.read_unaligned();
+        let x = argument.add(1).read_unaligned();
+        let z = argument.add(2).read_unaligned();
         let sim = NeighborsSim::from_ptr(this);
         let header = sim.connections();
         let mut node = pointer(header, 0);
@@ -78,9 +75,9 @@ unsafe extern "fastcall" fn find_connection(
             );
             let result = virtual_call(connection, 0x14, &[], word(connection, 0), (result >> 32) as u32);
             edx = (result >> 32) as u32;
-            if result as u32 == kind && argument.read_unaligned() == x as u32 {
-                edx = z as u32;
-                if cell_z == z as u32 {
+            if result as u32 == kind && argument.read_unaligned() == x {
+                edx = z;
+                if cell_z == z {
                     return pair(connection as u32, edx);
                 }
             }
@@ -136,7 +133,8 @@ unsafe extern "fastcall" fn all_connections(this: *mut u8, argument: *mut u32, l
         clear_connections(list);
         let header = NeighborsSim::from_ptr(this).connections();
         let first = pointer(header, 0);
-        copy_connections(list, word(list, 0), first, header, argument)
+        let destination = word(list, 0);
+        copy_connections(list, destination, destination, first, header, argument)
     }
 }
 
@@ -145,17 +143,13 @@ port! {
     /// value for every visit. Each erase stores its result in the incoming argument's stack word.
     #[port(address = 0x006C_FD30, owner = "neighbors", name = "remove_connection_references", naked)]
     pub unsafe extern "C" fn fc4p_006cfd30() {
-        core::arch::naked_asm!("pop eax", "push edx", "push eax", "lea edx, [esp + 8]", "jmp {}", sym remove_references);
+        core::arch::naked_asm!("push edx", "lea edx, [esp + 8]", "call {}", "ret 4", sym remove_references);
     }
 }
 
-unsafe extern "fastcall" fn remove_references(
-    list: *mut u8,
-    argument: *mut u32,
-    entry_edx: u32,
-    value: *mut u32,
-) -> u64 {
+unsafe extern "fastcall" fn remove_references(list: *mut u8, argument: *mut u32, entry_edx: u32) -> u64 {
     unsafe {
+        let value = argument.read_unaligned() as *mut u32;
         let header = pointer(list, 0);
         let mut node = pointer(header, 0);
         let mut edx = entry_edx;

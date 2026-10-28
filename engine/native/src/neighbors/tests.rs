@@ -5,15 +5,16 @@
 
 use super::accounting::*;
 use super::lists::*;
+use super::proposal::*;
 use super::queries::*;
 use super::surface::*;
 use super::*;
-use crate::abi::{call_raw, Conv, RawCall};
+use crate::abi::{Conv, RawCall};
 use crate::testing::{fake, fake_data, Object};
 use std::cell::RefCell;
 
 #[derive(Debug, PartialEq, Eq)]
-enum Call {
+pub(super) enum Call {
     AddRef(usize, usize),
     Find(usize, u32, i32, i32),
     Compare(usize, usize),
@@ -42,6 +43,19 @@ enum Call {
     Framework,
     Service(u32, u32),
     ReleaseLocal(usize, usize),
+    Construct(usize),
+    Suitable(usize, u32, u32),
+    OtherPosition(usize, i32, i32),
+    OurPosition(usize, i32, i32),
+    SetKind(usize, u32),
+    SetAmount(usize, u32),
+    CurrentCity(usize),
+    Position(usize),
+    Size(usize),
+    Width,
+    Height,
+    Region,
+    RegionalCity(i32, i32),
 }
 
 thread_local! {
@@ -54,28 +68,26 @@ thread_local! {
     static ALLOCATIONS: RefCell<Vec<Box<[u32; 3]>>> = const { RefCell::new(Vec::new()) };
     static ALLOCATOR: RefCell<usize> = const { RefCell::new(0) };
     static CACHED_ALLOCATOR: RefCell<usize> = const { RefCell::new(0) };
+    static DEAL_STORAGE: RefCell<(usize, usize)> = const { RefCell::new((0, 0)) };
+    static SUITABLE: RefCell<usize> = const { RefCell::new(0) };
 }
 
-fn record(call: Call) {
+pub(super) fn record(call: Call) {
     CALLS.with(|c| c.borrow_mut().push(call));
 }
 
-fn take_calls() -> Vec<Call> {
+pub(super) fn take_calls() -> Vec<Call> {
     CALLS.with(|c| core::mem::take(&mut *c.borrow_mut()))
 }
 
 unsafe fn run(entry: usize, this: *mut u8, args: &[u32], eax: u32, edx: u32) -> u64 {
-    let mut c = RawCall::new(Conv::Thiscall, entry, this as u32, args);
-    c.eax = eax;
-    c.edx = edx;
-    unsafe { call_raw(&mut c) };
-    pair(c.eax, c.edx)
+    let mut args = args.to_vec();
+    unsafe { checked_call(entry, this, &mut args, eax, edx, Conv::Thiscall) }
 }
 
 unsafe fn run_c(entry: usize, args: &[u32]) -> u64 {
-    let mut c = RawCall::new(Conv::Cdecl, entry, 0, args);
-    unsafe { call_raw(&mut c) };
-    pair(c.eax, c.edx)
+    let mut args = args.to_vec();
+    unsafe { checked_call(entry, core::ptr::null_mut(), &mut args, 0, 0, Conv::Cdecl) }
 }
 
 extern "thiscall" fn add_ref(this: *mut u8) -> u64 {
@@ -332,6 +344,173 @@ fn layout_fields_are_disjoint() {
         .collect();
     spans.sort();
     assert!(spans.windows(2).all(|w| w[0].1 <= w[1].0));
+}
+
+#[unsafe(naked)]
+unsafe extern "C" fn untouched_range_registers() {
+    core::arch::naked_asm!("mov eax, [esp + 12]", "ret 16");
+}
+
+#[test]
+fn all_connections_empty_range_retains_the_destination_header_in_edx() {
+    let _clear = fake(0x0041_1D70, clear as *const () as usize);
+    let _copy = fake(0x004A_86F0, untouched_range_registers as *const () as usize);
+    let mut source = List::new(&[]);
+    let mut destination = List::new(&[]);
+    let mut object = Object::new(0x48);
+    let p = object.ptr();
+    unsafe { NeighborsSim::from_ptr(p) }.set_connections(source.ptr());
+    assert_eq!(
+        unsafe {
+            run(
+                fc4p_006cff00 as *const () as usize,
+                p,
+                &[destination.ptr() as u32],
+                0,
+                0xDEAD_BEEF,
+            )
+        },
+        pair(source.ptr() as u32, destination.nodes[0][0])
+    );
+    assert_eq!(take_calls(), [Call::Clear(destination.ptr() as usize)]);
+}
+
+extern "C" fn allocate_deal(size: u32) -> *mut u8 {
+    record(Call::Allocate(size));
+    DEAL_STORAGE.with(|s| s.borrow().0 as *mut u8)
+}
+
+extern "thiscall" fn construct_deal(this: *mut u8) -> *mut u8 {
+    record(Call::Construct(this as usize));
+    DEAL_STORAGE.with(|s| s.borrow().1 as *mut u8)
+}
+
+extern "thiscall" fn suitable(this: *mut u8, kind: u32, city: u32) -> u64 {
+    record(Call::Suitable(this as usize, kind, city));
+    pair(SUITABLE.with(|s| *s.borrow() as u32), 0x1234_5678)
+}
+
+extern "thiscall" fn set_other_position(this: *mut u8, x: i32, z: i32) -> u64 {
+    record(Call::OtherPosition(this as usize, x, z));
+    0
+}
+
+extern "thiscall" fn set_our_position(this: *mut u8, x: i32, z: i32) -> u64 {
+    record(Call::OurPosition(this as usize, x, z));
+    0
+}
+
+extern "thiscall" fn set_kind(this: *mut u8, kind: u32) -> u64 {
+    record(Call::SetKind(this as usize, kind));
+    0
+}
+
+extern "thiscall" fn set_amount(this: *mut u8, amount: u32) -> u64 {
+    record(Call::SetAmount(this as usize, amount));
+    0
+}
+
+extern "thiscall" fn current_city(this: *mut u8) -> u64 {
+    record(Call::CurrentCity(this as usize));
+    pair(unsafe { word(this, 4) }, 0)
+}
+
+#[test]
+fn single_proposal_calls_constructor_before_suitability_and_sets_positions_type_and_zero_amount() {
+    let _allocate = fake(0x005E_55E0, allocate_deal as *const () as usize);
+    let _construct = fake(0x006C_F270, construct_deal as *const () as usize);
+    let mut deal_table = [0usize; 12];
+    deal_table[1] = add_ref as *const () as usize;
+    deal_table[2] = list_release as *const () as usize;
+    deal_table[0x0C / 4] = set_our_position as *const () as usize;
+    deal_table[0x14 / 4] = set_other_position as *const () as usize;
+    deal_table[0x24 / 4] = set_kind as *const () as usize;
+    deal_table[0x2C / 4] = set_amount as *const () as usize;
+    let mut deal = Object::new(0x80);
+    let dp = deal.ptr();
+    unsafe { dp.cast::<usize>().write(deal_table.as_ptr() as usize) };
+    let mut sim_table = [0usize; 24];
+    sim_table[0x5C / 4] = suitable as *const () as usize;
+    let mut sim = Object::new(0x48);
+    let p = sim.ptr();
+    unsafe { p.cast::<usize>().write(sim_table.as_ptr() as usize) };
+    let mut connection_table = connection_table();
+    connection_table[0x20 / 4] = connection_cell as *const () as usize;
+    let mut connection = Connection {
+        table: connection_table.as_ptr(),
+        kind: 5,
+        x: 4,
+        z: 3,
+        city: 0,
+        visited: 0,
+    };
+    let cp = &mut connection as *mut _ as usize;
+    let mut regional_table = [0usize; 6];
+    regional_table[0x14 / 4] = connection_cell as *const () as usize;
+    let mut regional = Connection {
+        table: regional_table.as_ptr(),
+        kind: 0,
+        x: 3,
+        z: 3,
+        city: 0,
+        visited: 0,
+    };
+    let rp = &mut regional as *mut _ as u32;
+    let mut manager_table = [0usize; 37];
+    manager_table[0x90 / 4] = current_city as *const () as usize;
+    let mut manager = [manager_table.as_ptr() as u32, rp];
+    let mp = manager.as_mut_ptr() as usize;
+    let mut manager_ptr = mp;
+    let _manager = fake_data(0x00B4_3C94, (&mut manager_ptr as *mut usize).cast());
+    for (storage, constructed, matched) in [
+        (dp as usize, dp as usize, true),
+        (dp as usize, dp as usize, false),
+        (0, 0, false),
+        (dp as usize, 0, false),
+    ] {
+        DEAL_STORAGE.with(|s| *s.borrow_mut() = (storage, constructed));
+        SUITABLE.with(|s| *s.borrow_mut() = if matched { cp } else { 0 });
+        let mut out = 0xDEAD_BEEFusize;
+        INTERFACE_OUT.with(|o| *o.borrow_mut() = &mut out as *mut usize as usize);
+        let out_address = &mut out as *mut usize as u32;
+        let mut args = [0x4773_FFE0, 7, out_address];
+        let result = unsafe { run_live(fc4p_006cf780 as *const () as usize, p, &mut args, 0) };
+        let mut expected = vec![Call::Allocate(0x80)];
+        if storage != 0 {
+            expected.push(Call::Construct(storage));
+        }
+        if constructed != 0 {
+            expected.push(Call::AddRef(dp as usize, 0xDEAD_BEEF));
+        }
+        expected.push(Call::Suitable(p as usize, 0x4773_FFE0, 7));
+        if matched {
+            assert_eq!(result, 0x7788_99AA_AABB_CC01);
+            assert_eq!(args, [3, 3, out_address]);
+            assert_eq!(out, dp as usize);
+            expected.extend([
+                Call::Cell(cp),
+                Call::OtherPosition(dp as usize, 4, 3),
+                Call::CurrentCity(mp),
+                Call::Cell(rp as usize),
+                Call::OurPosition(dp as usize, 3, 3),
+                Call::SetKind(dp as usize, 0x4773_FFE0),
+                Call::SetAmount(dp as usize, 0),
+                Call::AddRef(dp as usize, dp as usize),
+                Call::Release(dp as usize),
+            ]);
+        } else {
+            assert_eq!(args, [0x4773_FFE0, 7, out_address]);
+            assert_eq!(out, 0xDEAD_BEEF);
+            if constructed != 0 {
+                expected.push(Call::Release(dp as usize));
+                assert_eq!(result, 0x7788_99AA_AABB_CC00);
+            } else {
+                assert_eq!(result, pair(0, 0x1234_5678));
+            }
+        }
+        assert_eq!(take_calls(), expected);
+    }
+    INTERFACE_OUT.with(|o| *o.borrow_mut() = 0);
 }
 
 extern "thiscall" fn list_clear(list: *mut u8) -> u64 {
@@ -934,25 +1113,90 @@ fn coordinate_overload_uses_the_original_coordinate_slots_on_success_and_failure
 
 /// Copies the callee's popped argument words back before any subsequent call can reuse that stack.
 unsafe fn run_live(entry: usize, this: *mut u8, args: &mut [u32], edx: u32) -> u64 {
-    let mut call = RawCall::new(Conv::Thiscall, entry, this as u32, args);
-    call.edx = edx;
+    unsafe { run_live_convention(entry, this, args, edx, Conv::Thiscall) }
+}
+
+pub(super) unsafe fn run_live_c(entry: usize, args: &mut [u32]) -> u64 {
+    unsafe { run_live_convention(entry, core::ptr::null_mut(), args, 0, Conv::Cdecl) }
+}
+
+unsafe fn run_live_convention(entry: usize, this: *mut u8, args: &mut [u32], edx: u32, convention: Conv) -> u64 {
+    unsafe { checked_call(entry, this, args, 0, edx, convention) }
+}
+
+#[repr(C)]
+struct CheckedCall {
+    call: RawCall,
+    saved_registers: u32,
+}
+
+fn float_environment() -> (u16, u16, u32, u32) {
+    let (mut cw, mut mxcsr) = (0u16, 0u32);
+    let (sw, flags): (u16, u32);
     unsafe {
         core::arch::asm!(
-            "push esi",
+            "fnstcw word ptr [{cw}]", "fnstsw ax", "stmxcsr dword ptr [{mxcsr}]", "pushfd", "pop {flags:e}",
+            cw = in(reg) &mut cw, mxcsr = in(reg) &mut mxcsr,
+            flags = lateout(reg) flags, out("ax") sw,
+        );
+    }
+    (cw, sw & 0x3800, mxcsr, flags & 0x400)
+}
+
+unsafe fn checked_call(entry: usize, this: *mut u8, args: &mut [u32], eax: u32, edx: u32, convention: Conv) -> u64 {
+    let _fpu = crate::testing::GameFpu::new();
+    let sentinel = 123.25f64;
+    let mut restored = 0.0f64;
+    unsafe {
+        core::arch::asm!("fld qword ptr [{p}]", p = in(reg) &sentinel, out("st(0)") _);
+    }
+    let before = float_environment();
+    let mut call = RawCall::new(convention, entry, this as u32, args);
+    call.eax = eax;
+    call.edx = edx;
+    let mut checked = CheckedCall {
+        call,
+        saved_registers: 0,
+    };
+    unsafe {
+        core::arch::asm!(
+            "push esi", "push ebx", "push ebp",
+            "mov ebx, 0x12345678", "mov esi, 0x23456789", "mov ebp, 0x3456789a",
             "mov ecx, [edi + 20]",
             "mov eax, [edi + 16]",
             "2:", "test ecx, ecx", "jz 3f", "dec ecx", "push dword ptr [eax + ecx*4]", "jmp 2b",
             "3:", "mov eax, [edi + 4]", "mov ecx, [edi + 8]", "mov edx, [edi + 12]", "call dword ptr [edi]",
             "mov [edi + 4], eax", "mov [edi + 12], edx",
+            "xor eax, eax", "cmp ebx, 0x12345678", "sete al",
+            "xor edx, edx", "cmp esi, 0x23456789", "sete dl", "and eax, edx",
+            "xor edx, edx", "cmp ebp, 0x3456789a", "sete dl", "and eax, edx",
+            "mov [edi + {saved}], eax",
             "mov ecx, [edi + 20]", "mov edx, ecx", "shl edx, 2", "neg edx", "add edx, esp",
+            "cmp dword ptr [edi + 24], 0", "je 6f", "mov edx, esp", "6:",
             "mov esi, [edi + 16]",
             "4:", "test ecx, ecx", "jz 5f", "dec ecx", "mov eax, [edx + ecx*4]", "mov [esi + ecx*4], eax", "jmp 4b",
-            "5:", "pop esi",
-            in("edi") &mut call,
+            "5:", "cmp dword ptr [edi + 24], 0", "je 7f", "mov ecx, [edi + 20]", "shl ecx, 2", "add esp, ecx", "7:",
+            "pop ebp", "pop ebx", "pop esi",
+            saved = const core::mem::offset_of!(CheckedCall, saved_registers),
+            in("edi") &mut checked,
             clobber_abi("C"),
         );
     }
-    pair(call.eax, call.edx)
+    let after = float_environment();
+    unsafe {
+        core::arch::asm!("fstp qword ptr [{p}]", p = in(reg) &mut restored, out("st(0)") _);
+    }
+    assert_eq!(
+        after, before,
+        "floating-point environment and direction flag at {entry:08x}"
+    );
+    assert_eq!(
+        restored.to_bits(),
+        sentinel.to_bits(),
+        "existing x87 value at {entry:08x}"
+    );
+    assert_eq!(checked.saved_registers, 1, "callee-saved registers at {entry:08x}");
+    pair(checked.call.eax, checked.call.edx)
 }
 
 #[repr(C)]
