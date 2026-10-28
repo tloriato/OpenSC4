@@ -125,7 +125,8 @@ def capture(args, targets):
             # threads are stopped. Excuse only the documented clock fields,
             # and log each differing byte with both values in the hit record.
             clock_rules = []
-            emulated = dict(pending['dirty'])
+            # The emulator's own pages (GDT and its entry frame, port images) exist only in the replay.
+            emulated = {p: b for p, b in pending['dirty'].items() if p not in m.static}
             compared_actual = dict(actual)
             cp = 0x7ffe0000
             if cp in initial:
