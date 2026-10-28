@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the save-record fallback labels; registry answers still take precedence.
 
-Run python tools/gen_record_owners.py [--check]. Class identities come from
+Run python tools/gen_record_owners.py [--check] [--store build-runs/golden]. Class identities come from
 explicit Class / Class ID tables in the behaviour specs and the cited bindings
 below. Coverage patterns are applied in file order. A '-' replace cell may use
 the subsystem's sole replace key; ambiguous/no-key subsystems retain their name.
@@ -14,7 +14,8 @@ import io
 from pathlib import Path
 import re
 
-from check import REPO, registry_record_owners
+from check import REPO, record_owners, registry_record_owners
+import golden_dbpf
 
 OUTPUT = REPO / 'tools/record-owners.tsv'
 # Non-class records: save-records section 2 / foundations sections 3 and 11.
@@ -117,9 +118,26 @@ def generate():
     return stream.getvalue()
 
 
+def audit_store(store):
+    """Census reference end-save types in place, without decompressing payloads."""
+    saves = sorted(store.glob('*/end.sc4'))
+    if not saves:
+        print(f'no reference end saves: {store}')
+        return 1
+    types = {t for path in saves for t, _, _ in golden_dbpf.read_records(path, decompress=False)}
+    before = types - registry_record_owners().keys()
+    after = types - record_owners().keys()
+    print(f'reference census: {len(saves)} saves, {len(types)} record types, '
+          f'unowned {len(before)} -> {len(after)}')
+    if after:
+        print('unresolved: ' + ', '.join(f'{t:08X}' for t in sorted(after)))
+    return int(bool(after))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check', action='store_true')
+    parser.add_argument('--store', type=Path, help='also audit */end.sc4 in this reference store')
     args = parser.parse_args()
     text = generate()
     if args.check:
@@ -130,7 +148,7 @@ def main():
         with OUTPUT.open('w', encoding='utf-8', newline='') as stream:
             stream.write(text)
     print(f'record-owners.tsv: {len(text.splitlines()) - 1} record types')
-    return 0
+    return audit_store(args.store) if args.store else 0
 
 
 if __name__ == '__main__':

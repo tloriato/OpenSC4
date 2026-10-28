@@ -1,4 +1,6 @@
 """Every reference-save record should give a lane a useful ownership lead."""
+import contextlib
+import io
 import json
 from pathlib import Path
 import struct
@@ -66,6 +68,19 @@ class RecordOwnersTests(unittest.TestCase):
                            (tgi, compressed)])
             self.assertEqual(golden_dbpf.read_records(path, decompress=False), {tgi: compressed})
             self.assertEqual(golden_dbpf.read_records(path), {tgi: b'abcd'})
+
+    def test_census_reports_and_rejects_an_unknown_record_type(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Path(directory)
+            entry = store / 'reference'
+            entry.mkdir()
+            package(entry / 'end.sc4', [((0x4C0DD224, 0x299B2D1B, 0), b'known'),
+                                         ((0xDEADBEEF, 0x299B2D1B, 0), b'unknown')])
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                self.assertEqual(generator.audit_store(store), 1)
+            self.assertIn('1 saves, 2 record types', output.getvalue())
+            self.assertIn('unresolved: DEADBEEF', output.getvalue())
 
     def test_every_type_in_current_reference_end_saves_resolves(self):
         store = golden.main_checkout(check.REPO) / 'build-runs/golden'
