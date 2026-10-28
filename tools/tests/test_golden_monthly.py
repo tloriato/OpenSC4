@@ -27,6 +27,18 @@ def test_normalization_keeps_content_sharing_and_class_but_not_object_ids():
     assert monthly.normalized_records(a) != monthly.normalized_records(b)
 
 
+def test_normalization_does_not_shift_other_classes_when_one_is_added():
+    a = objects([1, 2])
+    b = dict(a)
+    index = (monthly.golden_relabel.INDEX, monthly.golden_relabel.STORE_GROUP, 0)
+    b[index] = struct.pack('<IIIIII', 0, 2, 0, 0x87654321, 0, 0x12345678)
+    b[0x87654321, monthly.golden_relabel.STORE_GROUP, 0] = struct.pack('<III', 13, 0, 5) + b'x'
+    b[1, 0, 0] = struct.pack('<II', 5, 0x87654321)
+    before, after = monthly.normalized_records(a), monthly.normalized_records(b)
+    assert before[99, 0, 0] == after[99, 0, 0]
+    assert before[0x12345678, monthly.golden_relabel.STORE_GROUP, 0] == after[0x12345678, monthly.golden_relabel.STORE_GROUP, 0]
+
+
 def test_calendar_and_actions_at_boundary():
     assert monthly.dates('2000-01-31', '2000-03-02') == ['2000-02-29', '2000-03-02']
     text = monthly.instrument('2000-01-31 mark OLD\n2000-02-29 funds 100\n', '2000-01-31', '2000-03-02')

@@ -6,6 +6,7 @@ copying/hashing, and fails closed on missed dates. No live file is a baseline.
 """
 import calendar
 import argparse
+from contextlib import contextmanager
 import ctypes
 import datetime as dt
 import hashlib
@@ -25,7 +26,7 @@ except ImportError:
     import golden_relabel
 
 SCHEMA = 1
-NORMALIZER = 'class-reference-traversal-v1'
+NORMALIZER = 'class-reference-traversal-v2'
 ENTRY_BUDGET = 96 * 1024 * 1024
 STORE_BUDGET = 18 * 1024 ** 3
 
@@ -87,11 +88,12 @@ def normalized_records(records):
     classes = golden_relabel.classes_of(records)
     parsed = {k: golden_relabel.entries(v) for k, v in records.items()
               if golden_relabel.store(k[0], k[1])}
-    labels, queue = {}, []
+    labels, queue, counts = {}, [], {}
 
     def label(cls, oid):
         if (cls, oid) not in labels:
-            labels[cls, oid] = len(labels) + 1
+            counts[cls] = counts.get(cls, 0) + 1
+            labels[cls, oid] = counts[cls]
             queue.append((cls, oid))
         return labels[cls, oid]
 
@@ -186,6 +188,41 @@ def publish_snapshots(run, stage, available=STORE_BUDGET):
         for day in chosen:
             shutil.copyfile(source / (day + '.sc4'), Path(stage) / 'months' / (day + '.sc4'))
     return chosen
+
+
+@contextmanager
+def store_lock(cache):
+    """Serialize publication/accounting; OS locks release even after a crash."""
+    cache = Path(cache)
+    cache.mkdir(parents=True, exist_ok=True)
+    with (cache / '.snapshot.lock').open('a+b') as stream:
+        if stream.tell() == 0:
+            stream.write(b'0')
+            stream.flush()
+        if os.name == 'nt':
+            import msvcrt
+            deadline = time.monotonic() + 120
+            while True:
+                try:
+                    stream.seek(0)
+                    msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError:
+                    if time.monotonic() >= deadline:
+                        raise ValueError('timed out waiting to publish monthly snapshots')
+                    time.sleep(0.1)
+            try:
+                yield
+            finally:
+                stream.seek(0)
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(stream, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(stream, fcntl.LOCK_UN)
 
 
 class GameProcess:

@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import check
 import golden
+import golden_envelope
 import golden_monthly as monthly
 
 
@@ -77,3 +78,21 @@ def test_credit_always_captures_all_months_for_combined_owners():
     options = check.run_options(argparse.Namespace(command='credit'))
     assert '--monthly' in options
     assert '--no-early-stop' in options
+
+
+def test_envelope_verifies_monthly_snapshots_and_rejects_path_traversal(tmp_path):
+    import hashlib
+    import pytest
+    snapshot = tmp_path / 'months/2010-05-31.sc4'
+    snapshot.parent.mkdir()
+    snapshot.write_bytes(b'saved city')
+    digest = hashlib.sha256(snapshot.read_bytes()).hexdigest()
+    metadata = tmp_path / 'baseline.json'
+    metadata.write_text(json.dumps({'artifacts': {'months/2010-05-31.sc4': digest}}))
+    assert golden_envelope.sample_paths(tmp_path) == [tmp_path]
+    snapshot.write_bytes(b'corrupted city')
+    with pytest.raises(ValueError, match='corrupt golden sample artifact'):
+        golden_envelope.sample_paths(tmp_path)
+    metadata.write_text(json.dumps({'artifacts': {'months/../baseline.json': digest}}))
+    with pytest.raises(ValueError, match='corrupt golden sample artifact'):
+        golden_envelope.sample_paths(tmp_path)

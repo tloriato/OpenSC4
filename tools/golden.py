@@ -223,6 +223,13 @@ def _baseline_intact(entry):
 
 
 def cache_record(cache, key, manifest, run):
+    if (Path(run) / 'monthly.json').is_file():
+        with golden_monthly.store_lock(cache):
+            return _cache_record(cache, key, manifest, run)
+    return _cache_record(cache, key, manifest, run)
+
+
+def _cache_record(cache, key, manifest, run):
     """Publish immutable baseline artifacts. Atomic directory rename wins races.
 
     Return (status, comparison). Repeated different results are never overwritten.
@@ -263,14 +270,14 @@ def cache_record(cache, key, manifest, run):
             except PermissionError:
                 # A scanner can hold a just-written file open for a moment (WinError 5); retry.
                 if entry.exists():
-                    return cache_record(cache, key, manifest, run)
+                    return _cache_record(cache, key, manifest, run)
                 if attempt == 19:
                     raise
                 time.sleep(0.5)
             except OSError:
                 if not entry.exists():
                     raise
-                return cache_record(cache, key, manifest, run)
+                return _cache_record(cache, key, manifest, run)
     finally:
         if stage.exists():
             shutil.rmtree(stage)
