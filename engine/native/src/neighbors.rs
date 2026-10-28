@@ -35,8 +35,10 @@ mod accounting;
 mod cities;
 mod deletion;
 mod geometry;
+mod graph;
 mod lists;
 mod proposal;
+mod proposition;
 mod queries;
 mod regional;
 mod removal;
@@ -46,6 +48,8 @@ mod terrain;
 
 const COUNT: usize = surface::PORTS.len()
     + deletion::PORTS.len()
+    + graph::PORTS.len()
+    + proposition::PORTS.len()
     + cities::PORTS.len()
     + queries::PORTS.len()
     + accounting::PORTS.len()
@@ -58,6 +62,8 @@ const COUNT: usize = surface::PORTS.len()
     + terrain::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
     deletion::PORTS,
+    graph::PORTS,
+    proposition::PORTS,
     surface::PORTS,
     cities::PORTS,
     queries::PORTS,

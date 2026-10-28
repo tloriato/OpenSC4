@@ -143,14 +143,8 @@ unsafe extern "fastcall" fn delete_connection(
         if result as u8 != 0 {
             result = virtual_call(connection, 4, &[], result as u32, word(connection, 0));
             let mut reference = connection;
-            erase_connection(this.add(0x1C), (result >> 32) as u32, &mut reference);
-            result = virtual_call(
-                connection,
-                8,
-                &[],
-                &mut reference as *mut *mut u8 as u32,
-                word(connection, 0),
-            );
+            result = erase_connection(this.add(0x1C), (result >> 32) as u32, &mut reference);
+            result = virtual_call(connection, 8, &[], result as u32, word(connection, 0));
         }
         let result = clear_occupants(&mut header, (result >> 32) as u32);
         edx = (result >> 32) as u32;
