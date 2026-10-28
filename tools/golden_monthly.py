@@ -279,7 +279,9 @@ class Watcher:
 
     def write(self):
         path = self.result / 'monthly.json'
-        path.write_text(json.dumps(self.data, sort_keys=True, separators=(',', ':')), encoding='utf-8')
+        temporary = path.with_suffix('.tmp')
+        temporary.write_text(json.dumps(self.data, sort_keys=True, separators=(',', ':')), encoding='utf-8')
+        temporary.replace(path)
 
     def close(self):
         if self.process:

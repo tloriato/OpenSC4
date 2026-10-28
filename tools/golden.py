@@ -186,7 +186,9 @@ def compare_artifacts(expected, actual):
         if not monthly['complete']:
             first = monthly['first_difference']
             report['first_digest_difference'] = None
-            report['save'] = {'different_records': len(first['records']), 'records': first['records']}
+            total = len(load_json(actual / 'monthly.json')['months'][first['date']]['records'])
+            report['save'] = {'exact_records': total - len(first['records']),
+                              'different_records': len(first['records']), 'records': first['records']}
         else:
             a = golden_monthly.normalized_records(read_records(expected / 'end.sc4'))
             b = golden_monthly.normalized_records(read_records(actual / 'end.sc4'))
@@ -194,6 +196,7 @@ def compare_artifacts(expected, actual):
                        for k in sorted(a.keys() | b.keys()) if a.get(k) != b.get(k)]
             report['save']['records'] = changed
             report['save']['different_records'] = len(changed)
+            report['save']['exact_records'] = sum(a[k] == b[k] for k in a.keys() & b.keys())
     return report
 
 
@@ -294,7 +297,8 @@ def compare_cached(entry, run, *, rule='auto'):
     mode = golden_envelope.status(entry, envelope)
     exact_report = compare_artifacts(entry, run)
     is_exact = artifacts_exact(exact_report)
-    use_exact = rule == 'exact' or not envelope['stats']['varying_count'] or is_exact
+    use_exact = ('monthly' in exact_report or rule == 'exact'
+                 or not envelope['stats']['varying_count'] or is_exact)
     report = (exact_report if use_exact
               else golden_envelope.compare(envelope, run))
     report.update(comparison_rule='exact' if use_exact else 'observed-envelope',
@@ -714,12 +718,20 @@ def print_comparison(report, args):
     label = 'within envelope' if envelope_mode else 'exact'
     print(f'save records: {save["exact_records"]} {label}, {save["different_records"]} different')
     for record in save['records'][:20]:
-        print(f'  {record["tgi"]}: {record["status"]}, {record["expected_size"]} -> {record["actual_size"]} bytes; '
-              f'first byte {record.get("first_byte", "-")}')
+        detail = (f', {record["expected_size"]} -> {record["actual_size"]} bytes; '
+                  f'first byte {record.get("first_byte", "-")}' if 'expected_size' in record else '')
+        print(f'  {record["tgi"]}: {record["status"]}' + detail)
         for field, value in record.get('fields', {}).items():
             print(f'    {field}: {value["expected"]!r} -> {value["actual"]!r}')
     if save['different_records'] > 20:
         print('  remaining records are in comparison.json')
+    if 'monthly' in report:
+        monthly = report['monthly']
+        first_month = monthly['first_difference']
+        print('monthly: ' + (f'first difference {first_month["date"]}; '
+                            f'last matched {monthly["last_matching_month"]}' if first_month else 'exact'))
+        if not monthly['complete']:
+            print('monthly: stopped at first difference; later owners incomplete')
     outside = report.get('first_outside')
     if outside and 'record' in outside:
         record = outside['record']
@@ -862,7 +874,10 @@ def main(argv=None):
             if 'monthly' in report:
                 report['full_reference'] = full_entry.name
                 report['window_from'] = getattr(args, 'checkpoint_start', None) if args.from_date else None
-                write_json(comparison_history(full_entry, selected), report['monthly'])
+                # A successful short re-check must not erase the full-run anchor:
+                # the next invocation should re-check the same failing window.
+                if entry == full_entry:
+                    write_json(comparison_history(full_entry, selected), report['monthly'])
             window = load_json(run / 'verdict.json')
             report['window_exact'] = window['window_exact']
             report['save_date'] = window['save_date']
