@@ -1,0 +1,4 @@
+address	name	owner	verdict	captures	variants	skipped	scenarios	dll_sha256
+006bd540	cSC4LandValueSimulator::TractIsZoned	cSC4LandValueSimulator	DIFFERENT	1	0	0	berlin-spandau	90aa88b52ec3cfb8543587c293a01da7692c38ce0670e47cfedc359bcc6ca9db
+006bd810	cSC4LandValueSimulator::LookupAltitudeEffect	cSC4LandValueSimulator	DIFFERENT	1	0	0	berlin-spandau	90aa88b52ec3cfb8543587c293a01da7692c38ce0670e47cfedc359bcc6ca9db
+009eef04	_ftol2	lib:crt-stl	EXACT	96	1000	0	berlin-spandau,berlin-tegel,london-fulham	90aa88b52ec3cfb8543587c293a01da7692c38ce0670e47cfedc359bcc6ca9db
