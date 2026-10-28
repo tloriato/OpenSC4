@@ -302,3 +302,16 @@
   fixtures with explicit environment/hash inputs, not private city snapshots
   or an authorization to fit other native totals. The older occupied-cell NT36
   above is a separate filing and keeps its answer.
+
+<!-- from: network-exact33 R11 (engine lane, 2026-10-28) -->
+- **NT38 - underground refit's solved-cell order and missing depth-property defaults (§§2, 11):**
+  Please specify the solved-cell set's hash, buckets, insertion/rehash and iteration order used by
+  step 4, including a colliding-cell example. Also specify the four underground properties' defaults
+  and whether ReloadNetworkSpecificInfo uses the pipe/subway instances listed in network-geometry
+  §2.4. The replacement now seeds the geometry from the refit inputs, with the specified ranges and
+  depth target, and invokes the live tool instead of its old no-op callback. It preserves first-input
+  order where the hash contract is absent, uses that per-type exemplar table, and keeps zero for absent
+  depth/cover values. These are explicit implementation gaps, not inferred native map parameters;
+  no qcheck difference has yet been attributed to either choice.
+
+**ANSWERED 2026-10-28 (re-blockers37b):** DIFFERS — network-tools.md §§2, 11.2 specifies Init's pipe/subway exemplar selection, retain-on-missing reads with no constructor-provided first-use numeric default, solved-set B=193 construction, retained capacity on clear, explicit pre-insert resizing, full-u32 identity hash, collision/rehash/traversal order and derived collision examples. No run difference is attributed to these choices.

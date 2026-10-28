@@ -123,7 +123,7 @@ type (`ReloadNetworkSpecificInfo`, `0x00657980`).
 A tool must be `Init`ed before use and `Shutdown` after. The network manager's shared tools (`GetNetworkTool(type,
 false)`) and private ones (`true`) behave the same (network-manager.md §7.1).
 
-**Missing underground properties (NT38, partial).** `ReloadNetworkSpecificInfo` (`00657980`) uses its
+**Underground property selection and missing properties (NT38).** `ReloadNetworkSpecificInfo` (`00657980`) uses its
 single u32 argument **directly as the exemplar instance** in key `(6534284A,084344E0,argument)`; it does not
 convert a network type to an instance internally. On resource lookup failure it writes none of the four
 destination fields. On success it reads the property holder, then attempts properties in this order:
@@ -135,11 +135,21 @@ missing property retains the previous field, rather than setting it to zero. The
 `00657FD0` initializes its flag/lists but does not initialize these four fields. This establishes reload
 retention, not a deterministic first-use value for a missing property.
 
-**Partial answer 2026-10-28 (re-blockers37b):** NT38 remains open for the caller's exact per-type instance
-selection/initialization before reload, any further initialization of these four fields, and the solved-cell
-set's own hash/bucket/rehash/iteration contract with a collision example. Neither zero defaults nor borrowing
-another set's constructor parameters is authorized by this evidence. Step 4 of §11 continues to require the
-actual solved-set order, not first-input order.
+The caller is base `Init`: after selecting its network-type info and performing any first-time global rule
+reload, it indexes the u32 table at `00AA8428` by tool type `+35C`, and calls virtual slot 79 (`+13C`) with
+that table value (`006269CE–00626A24`). For pipe type 4 the instance is **095117DB** (table `00AA8438`);
+for subway type 7 it is **0A367CA7** (`00AA8444`), matching network-geometry.md §2.4. The pipe and subway
+vtable slots at `00AA9AE4`/`00AAA6FC` both select `00657980`. Underground `Init` first sets its `+368`
+guard, calls base `Init`, then returns true (`00657770–00657788`). Repeated guarded Init does not reload.
+Pipe/subway constructors call the underground constructor with type 4/7 and only replace vtables and clear
+their additional flag `+390` (`00648EC0–00648EE1`, `00653D60–00653D81`). Neither that chain nor Init writes
+defaults into `+36C/+370/+374/+378` before reload. The manager factory allocates raw `0x398`-byte storage and
+immediately calls those constructors (`0061098F–006109CA`, allocator `005E55E0`, `005B9FC0–005BA009`).
+Consequently there is **no deterministic numeric first-use default** for a missing property: these fields
+are uninitialized by the object, and on a later reload the previous bits survive. A zero-filled replacement
+field is an implementation policy for an incomplete exemplar, not a value supplied by the native reload.
+For a deterministic missing-property fixture, supply prior field values and verify that absent reads retain
+them, including the byte at `+374`. The solved-set order used by step 4 is specified in §11.2.
 
 ### 2.1 Public result observation (NT27)
 
@@ -1211,6 +1221,36 @@ So, after a terrain edit:
 - A pipe or subway is re-dug to follow the new ground at `depth` below it.
 - If that cannot be smoothed, a piece is kept where it is when the new ground still covers it by at least `margin`.
 - Otherwise the piece is **destroyed**, and it is not rebuilt.
+
+### 11.2 Solved-set order (NT38) *[compat]*
+
+The set used by **successful smoothing's step 4** is the tool's u32-key set at `+A4`, not the input
+by-value cell set or the `+98` solved vector. Its constructor explicitly requests **100** buckets
+through `00829BC0`, hence B=193 initially (`0062C66C–0062C686`). Its key is the world-cache cell key
+`(z << 16) + x` (network-geometry.md §2.1); hash and equality use the entire unsigned 32-bit key. Bucket
+selection is `key % B`. A node has next/key at `+0/+4`. A missing key is prepended to the bucket, with
+count incremented; a duplicate retains its existing node and position (`00624DD0–00624E5E`).
+
+The refit clears all set nodes/count but **retains the bucket allocation and B** (`00658905`, clear
+`008EBA60–008EBAB3`). Thus a previously enlarged shared tool does not necessarily start this call at 193.
+For each changed occupant, in input-list order, the refit first requests resize for `setCount+1`, then
+inserts its key (`00658B40–00658B5C`). The request precedes duplicate detection: at count B, even a duplicate
+can cause a resize. Resize uses `004F0940`: if the request exceeds B, choose the first prime at least the
+request from network-manager.md §2.2.1's full table, and grow only if that prime exceeds B. Visit old
+buckets in ascending order, repeatedly remove the old head and prepend to `key % newB`.
+
+After smoothing succeeds, start at the first nonempty bucket, visit its chain head-to-tail, then scan
+later buckets in ascending order. The refit applies its find/height-update/list-transfer work in that
+order (`00658CC0–00658D0F`, `00658DDA–00658E1E`; begin `004B0390–004B03DD`). Keep all earlier insertions
+made by the solve; do not rebuild the set from a sorted or first-input-order vector for this traversal.
+The failed-smoothing branch instead walks the solved **vector** (§11.1 step 5), not this hash iteration.
+
+For a fresh B=193 set with no further solve insertions, keys 2 then 195 (cells `(2,0)` and `(195,0)`)
+collide in bucket 2 and step 4 visits **195,2**. Reinserting 2 keeps that order. A resize fixture using
+input keys `0…191,389,778` is the same 193→389 head-rehash example as network-manager.md §2.2.1:
+the final set order is **778,389,0,1,2,3,…191**, not input-list order. These are derived ordering fixtures;
+they make no claim about a recorded city's smoothing result. The hash and property-loading operations
+specified for NT38 consume no CRT `rand()` draws.
 
 ---
 

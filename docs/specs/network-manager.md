@@ -127,11 +127,17 @@ chain first. A hit returns the existing value slot without moving its node or re
 bucket and increments count. Thus overwriting a saved key does not make it newest in its bucket.
 
 Resize occurs only if the requested new count exceeds B. It selects the first prime not below that count
-from the table at `00A829B0`, beginning `53,97,193,389,769,1543,3079,6151`, and does nothing unless that prime
+from the table at `00A829B0` below, and does nothing unless that prime
 exceeds the old B (`00710DD0–00710E2A`). Rehash visits old buckets in ascending order, repeatedly removes
 their head node and prepends it to `key % newB` (`00710E51–00710E8B`). The old insertion order therefore
 cannot reproduce all later orders. Component-11 Write follows each chain head-to-tail, then scans later
 buckets in ascending order (`0060D72A–0060D765`); the lots and potholes use this order separately.
+
+The complete ascending prime table (`00A829B0…00A82A1C`) is:
+`53, 97, 193, 389, 769, 1543, 3079, 6151, 12289, 24593, 49157, 98317, 196613, 393241, 786433, 1572869,
+3145739, 6291469, 12582917, 25165843, 50331653, 100663319, 201326611, 402653189, 805306457, 1610612741,
+3221225473, 4294967291`. A request beyond the last entry selects the last entry; it does not generate a new
+prime (`0079FA90`, caller's end-of-table fallback at `004F0984–004F0994`).
 
 Read inserts both kinds through this **ordinary `operator[]`**, then assigns the acquired lot/prop pointer
 (`0060DB67`, `0060DBBB`); it does not restore a serialized bucket layout or append to collision tails.
