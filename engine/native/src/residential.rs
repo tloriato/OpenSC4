@@ -51,6 +51,7 @@ pub mod curves;
 pub mod grid;
 pub mod interface;
 pub mod monthly;
+pub mod occupant;
 pub mod population;
 pub mod proximity;
 pub mod query;
@@ -75,6 +76,7 @@ const COUNT: usize = interface::PORTS.len()
     + coverage::PORTS.len()
     + collections::PORTS.len()
     + monthly::PORTS.len()
+    + occupant::PORTS.len()
     + curves::PORTS.len()
     + tuning::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
@@ -92,6 +94,7 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     coverage::PORTS,
     collections::PORTS,
     monthly::PORTS,
+    occupant::PORTS,
     curves::PORTS,
     tuning::PORTS,
 ]);
