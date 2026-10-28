@@ -134,3 +134,49 @@ def test_rust_cache_falls_back_to_the_compiler_when_sccache_is_unreachable(tmp_p
     bad = subprocess.run([sys.executable, rust_cache.__file__, sys.executable, "-c", "raise SystemExit(1)"],
                          env=dict(os.environ, FC4_SCCACHE=sys.executable), capture_output=True, text=True)
     assert bad.returncode != 0
+
+
+@pytest.mark.parametrize("gate_passed", [True, False])
+def test_queued_cache_proof_is_scoped_to_its_own_passing_ctest(tmp_path, monkeypatch, gate_passed):
+    import cache_probe
+    import qbuild
+
+    alive = tmp_path / "build-runs/build-queue-worker.alive"
+    alive.parent.mkdir()
+    alive.touch()
+    monkeypatch.setattr(fc4verify, "main_root", lambda root: tmp_path)
+    proof = {"cache": {}, "unsafe_stale_success": True, "mapped_header_rebuilt_object_and_test": True}
+
+    def queued(root, steps):
+        assert steps == ["build", "ctest"]
+        log = tmp_path / "engine/build-x86/Testing/Temporary/LastTest.log"
+        log.parent.mkdir(parents=True)
+        log.write_text('1/2 Testing: compiler_cache_dependency_regression\n' + json.dumps(proof) +
+                       '\nTest Passed.\n2/2 Testing: cargo_test\nTest Failed.\n', encoding="utf-8")
+        return gate_passed
+
+    monkeypatch.setattr(qbuild, "queued_fc4verify", queued)
+    assert cache_probe.queued_probe(tmp_path) == proof
+
+
+@pytest.mark.parametrize("name,status", [
+    ("compiler_cache_dependency_regression", "Failed"), ("unrelated_test", "Passed")])
+def test_queued_cache_proof_rejects_failed_or_unrelated_tests(tmp_path, monkeypatch, name, status):
+    import cache_probe
+    import qbuild
+
+    alive = tmp_path / "build-runs/build-queue-worker.alive"
+    alive.parent.mkdir()
+    alive.touch()
+    monkeypatch.setattr(fc4verify, "main_root", lambda root: tmp_path)
+
+    def queued(root, steps):
+        log = tmp_path / "engine/build-x86/Testing/Temporary/LastTest.log"
+        log.parent.mkdir(parents=True)
+        log.write_text(f'1/2 Testing: {name}\n' + json.dumps({"cache": {},
+                       "mapped_header_rebuilt_object_and_test": True}) + f'\nTest {status}.\n', encoding="utf-8")
+        return True
+
+    monkeypatch.setattr(qbuild, "queued_fc4verify", queued)
+    with pytest.raises(AssertionError, match="no passing compiler cache regression"):
+        cache_probe.queued_probe(tmp_path)

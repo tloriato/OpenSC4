@@ -4,15 +4,15 @@
   python tools/check.py record [--scenarios SEL] [--jobs 12]
       the pinned reference DLL's result for each selected scenario that has none (tools/golden.py record)
   python tools/check.py run --dll <worktree or DLL> --replace <keys> [--scenarios SEL] [--jobs 12] [--no-bisect]
-      each scenario with those owners switched on: exact, or the first differing delivery, day, record and
-      owner; on a difference with several owners, each owner alone, to name the ones that differ
+      each scenario with those owners switched on: exact, or the first differing month, records and owners;
+      --legacy retains delivery/digest hints and the per-owner bisect
   python tools/check.py run --dll <worktree or DLL> --replace each [--jobs 12]
       every owner alone on each scenario of its cover; per owner, how many are exact; the table is written to
       build-runs/golden/owner-check.tsv
   python tools/check.py credit --dll <worktree or DLL> --replace <keys or exact> [--jobs 12]
       every scenario (all) with those owners switched on together, written to build-runs/golden/credit.json, the
       input of Exact-replaced in tools/coverage.py; `exact` is the owners exact on their whole cover in
-      owner-check.tsv (written with the same DLL) and the owners they need
+      combined monthly credit or owner-check.tsv (written with the same DLL), plus the owners they need
 
 SEL is `cover` (the default: for each owner, the scenarios of its greedy reach cover in
 build-runs/golden/owner-scenarios.tsv, written by `tools/coverage.py --owner-scenarios`), `all`, a set from
@@ -124,6 +124,18 @@ def select(text, keys, rows):
 
 
 def golden(command, row, *extra):
+    if row.get('kind') == 'draw':
+        # Draw sweeps have no dated save timeline. Keep save/window controls out
+        # while preserving the main draw runner's controls and pin checks.
+        filtered, skip = [], False
+        for word in extra:
+            if skip:
+                skip = False
+            elif word in ('--from', '--months'):
+                skip = True
+            elif word not in ('--monthly', '--no-early-stop'):
+                filtered.append(word)
+        extra = tuple(filtered)
     args = [sys.executable, str(GOLDEN), command, '--schedule', 'fixed', '--seconds', str(SECONDS),
             '--region', row['region'], '--city', row['city'], '--until', row['end'], '--store', str(STORE)]
     if row.get('kind') == 'draw':
@@ -148,7 +160,7 @@ def record(args):
     failed = 0
 
     def one(name):
-        code, out = golden('record', rows[name], *(['--rerun'] if args.rerun else []))
+        code, out = golden('record', rows[name], *run_options(args), *(['--rerun'] if args.rerun else []))
         state = ('error: ' + (re.findall(r'golden: (.*)', out) or [out.strip()[-200:]])[-1] if code else
                  'cached' if re.search(r'^cached:', out, re.M) else 'recorded')
         if rows[name].get('kind') == 'draw':
@@ -210,8 +222,20 @@ def first_delivery(reference_log, candidate_log, replaced):
     return None
 
 
-def compare(row, dll, keys):
-    code, out = golden('compare', row, '--dll', str(dll), '--replace', ','.join(keys) or 'simulator')
+def run_options(args):
+    flags = [] if getattr(args, 'legacy', False) else ['--monthly']
+    if getattr(args, 'no_early_stop', False) or getattr(args, 'command', '') == 'credit':
+        flags += ['--no-early-stop']
+    if getattr(args, 'from_date', None):
+        flags += ['--from', args.from_date, '--months', str(args.months)]
+    if getattr(args, 'harness_root', None):
+        flags += ['--harness-root', str(args.harness_root)]
+    flags += ['--backend', getattr(args, 'backend', 'queue'), '--slot', str(getattr(args, 'slot', 6))]
+    return flags
+
+
+def compare(row, dll, keys, options=()):
+    code, out = golden('compare', row, '--dll', str(dll), '--replace', ','.join(keys) or 'simulator', *options)
     path = re.search(r'^comparison: (.+)$', out, re.M)
     if code not in (0, 1, 3) or not path:
         error = {'verdict': 'error', 'error': (re.findall(r'golden: (.*)', out) or [out.strip()[-300:]])[-1]}
@@ -223,16 +247,58 @@ def compare(row, dll, keys):
     report = json.loads(Path(path[1]).read_text(encoding='utf-8'))
     if code == 3:
         report['verdict'] = 'nondeterministic'
+    if 'monthly' in report:
+        attribute_owners(report, keys, record_owners())
     return report
+
+
+def attribute_owners(report, keys, owners):
+    """Observed record ownership, not a claim that a differing owner caused a cascade."""
+    monthly = report['monthly']
+    first = {}
+    for month in monthly['differences']:
+        for record in month['records']:
+            owner, cls = owners.get(int(record['tgi'].split('/')[0], 16), ('unowned', '-'))
+            record.update(owner=owner, cls=cls)
+            first.setdefault(owner, {'date': month['date'], 'records': []})
+            if first[owner]['date'] == month['date']:
+                first[owner]['records'].append(record['tgi'])
+    # Read the candidate hash inventory to distinguish "no record" from exact.
+    inventory = Path(report['run']) / 'monthly.json'
+    observed = set()
+    if inventory.is_file():
+        data = json.loads(inventory.read_text(encoding='utf-8'))
+        observed = {owners.get(int(tgi.split('/')[0], 16), ('unowned', '-'))[0]
+                    for month in data['months'].values() for tgi in month['records']}
+    report['owners'] = {key: {
+        'verdict': 'different' if key in first else 'incomplete' if not monthly['complete'] else
+                   'exact' if key in observed else 'unobserved',
+        'first_difference': first.get(key), 'basis': 'owned normalized save records; combined replacements'}
+        for key in keys}
+    report['record_owner_first_differences'] = first
 
 
 def describe(name, report, owners, reference, replaced):
     if report['verdict'] == 'error':
         return f'{name}: ERROR {report["error"]}'
     if report['verdict'] == 'exact':
-        return f'{name}: exact'
+        return f'{name}: exact' + (f'; run {report["run"]}' if report.get('run') else '')
     parts = [f'{name}: {report["verdict"]}']
-    if 'draw' in report:
+    if 'monthly' in report:
+        monthly = report['monthly']
+        first = monthly['first_difference']
+        if first:
+            details = []
+            for record in first['records']:
+                owner, cls = owners.get(int(record['tgi'].split('/')[0], 16), ('unowned', '-'))
+                details.append(f'{record["tgi"]} ({owner}, {cls})')
+            parts.append(f'first month {first["date"]}, records: ' + ', '.join(details))
+            parts.append(f'last matched {monthly["last_matching_month"]}')
+        if not monthly['complete']:
+            parts.append('stopped at first differing month; later owners incomplete')
+        parts.append(f'run {report["run"]}')
+        return '; '.join(parts)
+    elif 'draw' in report:
         difference = report['draw']['difference']
         parts.append('first DRAW ' + golden_api.draw_description(difference) if difference else
                      'candidate matches one sample; original draw streams vary')
@@ -275,13 +341,34 @@ def sha256(path):
 
 
 def exact_owners(dll):
-    """The owners exact on every run of their cover in owner-check.tsv (which must come from this DLL), and the
-    owners they need."""
+    """Full-cover evidence from this DLL's combined credit, or the legacy each table."""
+    credit_path = STORE / 'credit.json'
+    if credit_path.is_file():
+        data = json.loads(credit_path.read_text(encoding='utf-8'))
+        if (data.get('dll_sha256') == sha256(dll) and data.get('owner_verdicts') and
+                any(r.get('monthly') for r in data.get('scenarios', {}).values())):
+            covers = owner_covers()
+            skipped = set(select('all', None, scenarios())[1])
+            references = draw_references(scenarios())
+            eligible = []
+            for key in data['keys']:
+                needed = set(covers.get(key, [])) - skipped
+                reports = [data['scenarios'].get(name, {}) for name in needed]
+                draws = draw_names(alone(key), references)
+                draw_exact = all(data['scenarios'].get(n, {}).get('verdict') == 'exact' and
+                                 data['scenarios'][n].get('reference') == references[n]['reference'] and
+                                 references[n]['reference'] is not None for n in draws)
+                if needed and draw_exact and all((r.get('monthly') or {}).get('complete') and
+                                                r.get('owners', {}).get(key, {}).get('verdict') == 'exact'
+                                                for r in reports):
+                    eligible.append(key)
+            return sorted({k for key in eligible if set(alone(key)) <= set(eligible) for k in alone(key)})
     path = STORE / 'owner-check.tsv'
     lines = path.read_text(encoding='utf-8').splitlines() if path.is_file() else []
     found = re.search(r'sha256 ([0-9a-f]{64})', lines[0]) if lines else None
     if not found or found[1] != sha256(dll):
-        raise ValueError(f'{path} is not from this DLL; run: python tools/check.py run --dll <it> --replace each')
+        raise ValueError('no full-cover owner evidence from this DLL; run: python tools/check.py credit '
+                         '--dll <it> --replace <keys> --scenarios all (or run --replace each)')
     flags, checked = {}, {}
     for row in csv.DictReader(lines[1:], delimiter='\t'):
         flags.setdefault(row['key'], []).append(row['verdict'] == 'exact')
@@ -294,6 +381,9 @@ def exact_owners(dll):
 
 
 def run_each(args, rows, dll):
+    if getattr(args, 'from_date', None):
+        print('each: owner qualification uses full scenarios; ignoring --from', flush=True)
+        args = argparse.Namespace(**{**vars(args), 'from_date': None})
     covers = owner_covers()
     skipped = set(select('all', None, rows)[1])
     references = draw_references(rows)
@@ -310,7 +400,7 @@ def run_each(args, rows, dll):
     print(f'{len(jobs)} runs: {len(keys)} owners, each alone on its save cover and draw reach', flush=True)
     owners = record_owners()
     with ThreadPoolExecutor(args.jobs) as pool:
-        reports = list(pool.map(lambda job: compare(rows[job[1]], dll, alone(job[0])), jobs))
+        reports = list(pool.map(lambda job: compare(rows[job[1]], dll, alone(job[0]), run_options(args)), jobs))
     table, exact = [], {}
     for (key, name), report in zip(jobs, reports):
         line = describe(f'{key} on {name}', report, owners, STORE / report.get('key', '-'), True)
@@ -336,51 +426,80 @@ def run(args):
     if args.replace == 'each':
         return run_each(args, rows, dll)
     names, lua = select(args.scenarios, keys, rows)
-    names = sorted(set(names) | draw_names(keys, draw_references(rows)))
+    # A snapshot window has no draw timeline, and the direct backend cannot
+    # capture draws. Keep explicitly selected rows, but do not add unrelated
+    # draw sweeps to these focused save rechecks. Full queue checks still add
+    # every required draw, and owner qualification verifies that coverage.
+    if not getattr(args, 'from_date', None) and args.backend != 'direct':
+        names = sorted(set(names) | draw_names(keys, draw_references(rows)))
     print(f'{len(names)} scenarios, owners {", ".join(keys) or "none"}' +
           (f'; not run (Lua or clockless): {", ".join(lua)}' if lua else ''), flush=True)
     owners = record_owners()
     with ThreadPoolExecutor(args.jobs) as pool:
-        reports = dict(zip(names, pool.map(lambda n: compare(rows[n], dll, keys), names)))
+        reports = dict(zip(names, pool.map(lambda n: compare(rows[n], dll, keys, run_options(args)), names)))
     for name in names:
         entry = STORE / reports[name].get('key', '-')
         print(describe(name, reports[name], owners, entry, bool(keys)), flush=True)
     failing = [n for n in names if reports[n]['verdict'] != 'exact']
     errors = [n for n in failing if reports[n]['verdict'] == 'error']
     print(f'exact: {len(names) - len(failing)} of {len(names)}')
-    if failing and len(keys) > 1 and not args.no_bisect:
+    if failing and len(keys) > 1 and not args.no_bisect and not all('monthly' in reports[n] for n in failing):
         culprits = [n for n in failing if n not in errors][:2] or failing[:1]
         print(f'each owner alone on {", ".join(culprits)}:', flush=True)
         jobs = [(n, k) for n in culprits for k in keys]
         with ThreadPoolExecutor(args.jobs) as pool:
-            results = list(pool.map(lambda job: compare(rows[job[0]], dll, alone(job[1])), jobs))
+            results = list(pool.map(lambda job: compare(rows[job[0]], dll, alone(job[1]), run_options(args)), jobs))
         for (name, key), report in zip(jobs, results):
             print(f'  {key} on {name}: {report["verdict"]}' + (f' ({report["error"]})' if 'error' in report else ''))
     return 2 if errors else 1 if failing else 0
 
 
+def owner_summary(table, key):
+    observed = {name: entry['owners'].get(key, {'verdict': 'unobserved'})
+                if entry['verdict'] != 'error' else {'verdict': 'incomplete'} for name, entry in table.items()}
+    different = {name: value['first_difference'] for name, value in observed.items()
+                 if value['verdict'] == 'different'}
+    exact = [name for name, value in observed.items() if value['verdict'] == 'exact']
+    incomplete = [name for name, value in observed.items() if value['verdict'] == 'incomplete']
+    return {'verdict': 'different' if different else 'incomplete' if incomplete else 'exact' if exact else 'unobserved',
+            'first_differences': different, 'exact_scenarios': exact, 'incomplete_scenarios': incomplete,
+            'unobserved_scenarios': [n for n, v in observed.items() if v['verdict'] == 'unobserved'],
+            'scope': 'selected scenarios where owned normalized records are observed; combined replacements'}
+
+
 def credit(args):
+    if getattr(args, 'from_date', None):
+        raise ValueError('credit requires full scenarios; use check.py run or qcheck.py for windows')
     rows = scenarios()
     dll = args.dll / 'engine/build-x86/FreeCity4.dll' if args.dll.is_dir() else args.dll
     keys = (exact_owners(dll) if args.replace == 'exact' else
             sorted(set(filter(None, re.split(r'[,\s]+', args.replace)))))
-    names, _ = select('all', None, rows)
-    references = draw_references(rows)
-    names = sorted({n for n in names if rows[n].get('kind') != 'draw'} | draw_names(keys, references))
+    names, _ = select(args.scenarios, None, rows)
+    if args.scenarios == 'all':
+        references = draw_references(rows)
+        names = sorted({n for n in names if rows[n].get('kind') != 'draw'} | draw_names(keys, references))
     print(f'{len(names)} scenarios, owners {", ".join(keys)}', flush=True)
     owners = record_owners()
     with ThreadPoolExecutor(args.jobs) as pool:
-        reports = dict(zip(names, pool.map(lambda n: compare(rows[n], dll, keys), names)))
+        reports = dict(zip(names, pool.map(lambda n: compare(rows[n], dll, keys, run_options(args)), names)))
     table = {}
     for name in names:
         report = reports[name]
         line = describe(name, report, owners, STORE / report.get('key', '-'), True)
         print(line, flush=True)
         table[name] = {'verdict': report['verdict'], 'reference': report.get('key'), 'run': report.get('run'),
-                       'detail': line.split(': ', 1)[1], 'kind': rows[name].get('kind', 'save')}
+                       'detail': line.split(': ', 1)[1], 'owners': report.get('owners', {}),
+                       'monthly': report.get('monthly'), 'kind': rows[name].get('kind', 'save')}
     path = STORE / 'credit.json'
+    owner_verdicts = {}
+    for key in keys:
+        owner_verdicts[key] = owner_summary(table, key)
+        verdict = owner_verdicts[key]['verdict']
+        different = owner_verdicts[key]['first_differences']
+        print(f'owner {key}: {verdict}' + (f'; first differences {different}' if different else ''), flush=True)
     path.write_text(json.dumps({'dll': str(dll), 'dll_sha256': sha256(dll), 'keys': keys,
-                                'written': dt.datetime.now().isoformat(timespec='seconds'), 'scenarios': table},
+                                'written': dt.datetime.now().isoformat(timespec='seconds'), 'scenarios': table,
+                                'owner_verdicts': owner_verdicts},
                                indent=1), encoding='utf-8')
     exact = sum(entry['verdict'] == 'exact' for entry in table.values())
     print(f'exact: {exact} of {len(names)}; written to {path} (tools/coverage.py reads it)')
@@ -398,12 +517,20 @@ def main(argv=None):
         sub.add_argument('--dll', type=Path, required=True)
         sub.add_argument('--replace', required=True)
     chk.add_argument('--no-bisect', action='store_true')
+    cre.add_argument('--scenarios', default='all')
     chk.add_argument('--keys', help='with --replace each, measure only these keys (comma separated)')
     rec.add_argument('--rerun', action='store_true', help='independently audit existing references')
     for sub in (rec, chk):
         sub.add_argument('--scenarios', default='cover')
     for sub in (rec, chk, cre):
         sub.add_argument('--jobs', type=int, default=12)
+        sub.add_argument('--legacy', action='store_true', help='end-save-only references (before monthly re-record)')
+        sub.add_argument('--no-early-stop', action='store_true')
+        sub.add_argument('--from', dest='from_date', nargs='?', const='auto')
+        sub.add_argument('--months', type=int, default=1)
+        sub.add_argument('--backend', choices=('queue', 'direct'), default='queue')
+        sub.add_argument('--slot', type=int, default=6)
+        sub.add_argument('--harness-root', type=Path)
         sub.add_argument('--store', type=Path, default=REPO / 'build-runs/golden')
     args = p.parse_args(argv)
     STORE = args.store.resolve()

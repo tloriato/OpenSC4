@@ -1,6 +1,6 @@
 # Optional read-only fixture input for isolated game runs. Never stages into Documents.
 function Resolve-HarnessCityFixture([string]$Ini, [int]$Slot, [string]$City, [string]$FixtureRoot) {
-    $pattern = '(?im)^[ \t]*fixture_city[ \t]*=[ \t]*([^\r\n]*)$'
+    $pattern = '(?im)^[ \t]*fixture_city[ \t]*=[ \t]*([^\r\n]*)\r?$'
     $fixtureMatches = [regex]::Matches($Ini, $pattern)
     if ($fixtureMatches.Count -eq 0) { return [pscustomobject]@{ Ini = $Ini; Source = '' } }
     if ($fixtureMatches.Count -ne 1) { throw 'fixture_city must appear exactly once' }
@@ -67,7 +67,7 @@ function Resolve-HarnessSuiteState([string]$Ini, [int]$Slot, [string]$MainRoot) 
     $result = @{ Ini = $Ini; Source = ''; Export = '' }
     $mainFull = [IO.Path]::GetFullPath($MainRoot).TrimEnd('\')
     foreach ($key in @('prepared_city', 'export_city')) {
-        $pattern = '(?im)^[ \t]*' + $key + '[ \t]*=[ \t]*([^\r\n]*)$'
+        $pattern = '(?im)^[ \t]*' + $key + '[ \t]*=[ \t]*([^\r\n]*)\r?$'
         $found = [regex]::Matches($Ini, $pattern)
         if ($found.Count -eq 0) { continue }
         if ($Slot -le 0 -or $found.Count -ne 1) { throw "$key requires an isolated slot and one declaration" }

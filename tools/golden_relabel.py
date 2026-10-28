@@ -10,6 +10,8 @@ the save's classes (foundations 2.7, 3.3).
     python tools/golden_relabel.py REFERENCE.sc4 CANDIDATE.sc4
 """
 import collections
+import functools
+import re
 import struct
 import sys
 
@@ -41,15 +43,27 @@ def entries(data):
     return out if at == len(data) else None
 
 
+@functools.lru_cache(maxsize=8)
+def _reference_pattern(classes):
+    return re.compile(b'|'.join(re.escape(struct.pack('<I', cls)) for cls in sorted(classes)))
+
+
 def refs(data, classes):
     """(offset, id, class) of every plausible reference in data."""
     out = []
-    for i in range(0, len(data) - 7):
-        cls = int.from_bytes(data[i + 4:i + 8], 'little')
-        if cls in classes:
-            oid = int.from_bytes(data[i:i + 4], 'little')
-            if 0 < oid < 0x01000000:
-                out.append((i, oid, cls))
+    if not classes:
+        return out
+    pattern = _reference_pattern(frozenset(classes))
+    at = 4
+    while True:
+        match = pattern.search(data, at)
+        if match is None:
+            break
+        i = match.start() - 4
+        oid, cls = struct.unpack_from('<II', data, i)
+        if 0 < oid < 0x01000000:
+            out.append((i, oid, cls))
+        at = match.start() + 1  # retain overlapping, unaligned matches
     return out
 
 
