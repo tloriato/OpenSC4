@@ -143,6 +143,13 @@ slot!(set_business_unit, unit);
 slot!(set_growth_type, kind);
 slot!(set_configuration, config);
 slot!(set_empty_texture, lot);
+slot!(area_lots, list, x0, z0, x1, z1, flags);
+slot!(neighbor_lots, rect, list, flags);
+slot!(business_unit);
+slot!(unit_flags);
+slot!(test_unit_flags, mask);
+slot!(habitation_state);
+slot!(building_occupant);
 
 unsafe extern "C" fn operation_allocate(bytes: u32) -> u32 {
     run(core::ptr::null_mut(), "operation_allocate", &[bytes]) as u32
@@ -158,6 +165,10 @@ unsafe extern "C" fn clear_traffic(lot: u32) -> u64 {
 }
 unsafe extern "thiscall" fn surrounding_direct(this: *mut u8, lot: u32) -> u64 {
     run(this, "surrounding_direct", &[lot])
+}
+
+unsafe extern "thiscall" fn clear_list(list: *mut *mut u8) -> u64 {
+    run(core::ptr::null_mut(), "clear_list", &[unsafe { list.read_unaligned() } as u32])
 }
 
 struct Mock {
@@ -189,6 +200,7 @@ macro_rules! mock {
 }
 
 mod operations;
+mod anchor;
 
 #[test]
 fn record_initializers_retain_every_padding_byte() {
@@ -867,6 +879,10 @@ float_slot!(water_float, water_body, 1, index);
 float_slot!(vertex_float, vertex_body, 3, x, z, water);
 float_slot!(area_slope_float, area_slope_body, 2, rect, water);
 float_slot!(curve_float, curve_body, 1, input);
+float_slot!(lowest_area_float, lowest_area_body, 3, rect, lowest, water);
+float_slot!(lot_altitude_float, lot_altitude_body, 0);
+
+mod foundation_bottom;
 slot!(bounding_rect, rect);
 slot!(coverage, occupant, rect);
 

@@ -6,6 +6,8 @@
 use super::*;
 
 game_fn! { fn curve_output(curve: *mut u8, input: f32) -> St0 = "thiscall" 0x005F_4250; }
+game_fn! { fn allocate_lot_node(size: u32) -> *mut u8 = "C" 0x0090_CF54; }
+game_fn! { fn free_lot_node(node: *mut u8) -> u64 = "C" 0x0090_CF63; }
 game_data! { static slope_scale: f32 = 0x00AB_1B04; }
 game_data! { static coverage_inset: f32 = 0x00A8_80D8; }
 game_data! { static level_sentinel: f32 = 0x00AB_1B00; }
@@ -424,6 +426,60 @@ port! {
     }
 }
 
+float_port!(
+    0x006C_7630,
+    fc4p_006c7630,
+    "cSC4LotDeveloper::GetLotFoundationBottomAltitude",
+    foundation_bottom,
+    4
+);
+
+unsafe extern "fastcall" fn foundation_bottom(this: *mut u8, stack: *mut u32, output: *mut FloatReturn) {
+    unsafe {
+        use super::maintenance::OccupantNode;
+        let lot = stack.add(1).read_unaligned() as *mut u8;
+        let mut rect = [0u32; 4];
+        virtual_call(lot, 0x38, &[rect.as_mut_ptr() as u32], table(lot), (*output).edx, false);
+        let mut call = virtual_call(this, 0x44, &[rect.as_ptr() as u32, 1, 1], rect.as_ptr() as u32, table(this), true);
+        let mut lowest = call.st0.to_f32();
+        let allocation = allocate_lot_node(12);
+        OccupantNode::from_ptr(allocation).set_next(allocation);
+        OccupantNode::from_ptr(allocation).set_previous(allocation);
+        let mut head = allocation;
+        let manager = LotDeveloper::from_ptr(this).lot_manager();
+        let queried = vcall!(manager, 0x24 => fn(*mut u8, *mut *mut u8, u32) -> u32, lot, &mut head, 15);
+        if queried != 0 {
+            let mut current = OccupantNode::from_ptr(head).next();
+            while current != head {
+                let neighbor = OccupantNode::from_ptr(current).occupant();
+                if vcall!(neighbor, 0x30 => fn() -> u32) as u8 & 3 != 0 {
+                    let altitude = vcall_st0!(neighbor, 0x40);
+                    let compared = F80::from_f32(lowest).compare(altitude);
+                    if !compared.less() && !compared.equal() && !compared.unordered() {
+                        lowest = altitude.to_f32();
+                    }
+                }
+                current = OccupantNode::from_ptr(current).next();
+            }
+        }
+        let mut current = OccupantNode::from_ptr(head).next();
+        while current != head {
+            let node = OccupantNode::from_ptr(current);
+            let neighbor = node.occupant();
+            let next = node.next();
+            if !neighbor.is_null() { vcall!(neighbor, 8 => fn() -> u32); }
+            free_lot_node(current);
+            current = next;
+        }
+        OccupantNode::from_ptr(head).set_next(head);
+        OccupantNode::from_ptr(head).set_previous(head);
+        let returned = free_lot_node(head);
+        call.eax = returned as u32;
+        call.edx = (returned >> 32) as u32;
+        finish(output, call, F80::from_f32(lowest));
+    }
+}
+
 pub const PORTS: &[Port] = &[
     fc4p_006c4310::PORT,
     fc4p_006c4360::PORT,
@@ -436,4 +492,5 @@ pub const PORTS: &[Port] = &[
     fc4p_006c5f20::PORT,
     fc4p_006c5f50::PORT,
     fc4p_006c5f80::PORT,
+    fc4p_006c7630::PORT,
 ];

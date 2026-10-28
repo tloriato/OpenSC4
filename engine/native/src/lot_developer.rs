@@ -72,6 +72,7 @@ fn result(call: RawCall) -> u64 {
 }
 
 pub mod checks;
+pub mod containers;
 pub mod foundation;
 pub mod io;
 pub mod lots;
@@ -92,7 +93,9 @@ const ALL: [Port;
         + operations::PORTS.len()
         + props::PORTS.len()
         + queue::PORTS.len()
-        + checks::PORTS.len()] = crate::port::concat(&[
+        + checks::PORTS.len()
+        + containers::PORTS.len()] = crate::port::concat(&[
+    containers::PORTS,
     small::PORTS,
     lots::PORTS,
     foundation::PORTS,

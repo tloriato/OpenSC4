@@ -91,9 +91,12 @@ unsafe extern "thiscall" fn error(this: *mut Stream) -> u64 {
 fn table() -> Vec<usize> {
     let mut table = vec![0; 0x4C / 4];
     for (offset, function) in [
-        (0x1C, version as *const () as usize), (0x20, vertices as *const () as usize),
-        (0x30, float_bits as *const () as usize), (0x24, count as *const () as usize),
-        (0x14, byte as *const () as usize), (0x48, error as *const () as usize),
+        (0x1C, version as *const () as usize),
+        (0x20, vertices as *const () as usize),
+        (0x30, float_bits as *const () as usize),
+        (0x24, count as *const () as usize),
+        (0x14, byte as *const () as usize),
+        (0x48, error as *const () as usize),
     ] {
         table[offset / 4] = function;
     }
@@ -102,7 +105,12 @@ fn table() -> Vec<usize> {
 
 fn iterator(block: &mut [u32; 32], map: &mut [*mut u32; 2], index: usize) -> QueueIterator {
     let first = block.as_mut_ptr();
-    QueueIterator { current: first.wrapping_add(index), first, last: first.wrapping_add(32), node: map.as_mut_ptr() }
+    QueueIterator {
+        current: first.wrapping_add(index),
+        first,
+        last: first.wrapping_add(32),
+        node: map.as_mut_ptr(),
+    }
 }
 
 #[test]
@@ -122,12 +130,34 @@ fn empty_save_matches_core_version_one_record_and_uses_only_final_error_byte() {
         developer.set_night_begin(empty);
         developer.set_night_end(empty);
         developer.set_night_cursor(empty);
-        let mut stream = Stream { vtable: table.as_ptr(), bytes: vec![], calls: vec![], developer: this, mutate: false, error };
+        let mut stream = Stream {
+            vtable: table.as_ptr(),
+            bytes: vec![],
+            calls: vec![],
+            developer: this,
+            mutate: false,
+            error,
+        };
         let returned = unsafe { fc4p_006c66f0(this.add(8), 0x5566_7788, (&mut stream as *mut Stream).cast()) };
         assert_eq!(returned, 0xDEAD_BEEF_0000_0000 | u64::from(error as u8 == 0));
-        assert_eq!(stream.bytes, [1, 0, 65, 0, 0, 0, 0, 0, 128, 68, 0, 0, 128, 68, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        assert_eq!(stream.calls, [Call::Version(1), Call::Vertices(65), Call::FloatBits(1024f32.to_bits()),
-            Call::FloatBits(1024f32.to_bits()), Call::Count(0), Call::Count(0), Call::Byte(0), Call::Boolean(0), Call::Error]);
+        assert_eq!(
+            stream.bytes,
+            [1, 0, 65, 0, 0, 0, 0, 0, 128, 68, 0, 0, 128, 68, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        );
+        assert_eq!(
+            stream.calls,
+            [
+                Call::Version(1),
+                Call::Vertices(65),
+                Call::FloatBits(1024f32.to_bits()),
+                Call::FloatBits(1024f32.to_bits()),
+                Call::Count(0),
+                Call::Count(0),
+                Call::Byte(0),
+                Call::Boolean(0),
+                Call::Error
+            ]
+        );
     }
 }
 
@@ -155,13 +185,35 @@ fn save_crosses_blocks_snapshots_reference_range_and_rereads_cursor_geometry() {
     developer.set_night_begin(begin);
     developer.set_night_end(end);
     developer.set_night_cursor(end);
-    let mut stream = Stream { vtable: table.as_ptr(), bytes: vec![], calls: vec![], developer: this, mutate: true, error: 0 };
+    let mut stream = Stream {
+        vtable: table.as_ptr(),
+        bytes: vec![],
+        calls: vec![],
+        developer: this,
+        mutate: true,
+        error: 0,
+    };
     unsafe { fc4p_006c66f0(this.add(8), 0, (&mut stream as *mut Stream).cast()) };
-    assert_eq!(stream.calls, [Call::Version(1), Call::Vertices((-7i32) as u32), Call::FloatBits(0xFFC1_2345),
-        Call::FloatBits(0x8000_0000), Call::Count(2), Call::Reference(0x1234), Call::Reference(0x5678),
-        Call::Count(1), Call::Byte(0xFE), Call::Boolean(0x80), Call::Error]);
+    assert_eq!(
+        stream.calls,
+        [
+            Call::Version(1),
+            Call::Vertices((-7i32) as u32),
+            Call::FloatBits(0xFFC1_2345),
+            Call::FloatBits(0x8000_0000),
+            Call::Count(2),
+            Call::Reference(0x1234),
+            Call::Reference(0x5678),
+            Call::Count(1),
+            Call::Byte(0xFE),
+            Call::Boolean(0x80),
+            Call::Error
+        ]
+    );
     assert_eq!(stream.bytes.len(), 40);
-    assert_eq!(&stream.bytes[14..34], &[2, 0, 0, 0, 0x34, 0x12, 0, 0, 0xA9, 0xA3, 0xDD, 0x87,
-        0x78, 0x56, 0, 0, 0xA9, 0xA3, 0xDD, 0x87]);
+    assert_eq!(
+        &stream.bytes[14..34],
+        &[2, 0, 0, 0, 0x34, 0x12, 0, 0, 0xA9, 0xA3, 0xDD, 0x87, 0x78, 0x56, 0, 0, 0xA9, 0xA3, 0xDD, 0x87]
+    );
     assert_eq!(&stream.bytes[34..], &[1, 0, 0, 0, 0xFE, 1]);
 }
