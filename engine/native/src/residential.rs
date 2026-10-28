@@ -44,13 +44,57 @@ layout! {
     }
 }
 
+pub mod civic;
+pub mod collections;
+pub mod coverage;
+pub mod curves;
+pub mod grid;
 pub mod interface;
+pub mod monthly;
+pub mod population;
 pub mod proximity;
+pub mod query;
 pub mod quotient;
+pub mod save;
+pub mod served;
 pub mod service;
+pub mod strike;
+pub mod tuning;
 
-const COUNT: usize = interface::PORTS.len() + proximity::PORTS.len() + quotient::PORTS.len() + service::PORTS.len();
-const ALL: [Port; COUNT] = crate::port::concat(&[interface::PORTS, proximity::PORTS, quotient::PORTS, service::PORTS]);
+const COUNT: usize = interface::PORTS.len()
+    + proximity::PORTS.len()
+    + quotient::PORTS.len()
+    + service::PORTS.len()
+    + civic::PORTS.len()
+    + strike::PORTS.len()
+    + query::PORTS.len()
+    + population::PORTS.len()
+    + save::PORTS.len()
+    + grid::PORTS.len()
+    + served::PORTS.len()
+    + coverage::PORTS.len()
+    + collections::PORTS.len()
+    + monthly::PORTS.len()
+    + curves::PORTS.len()
+    + tuning::PORTS.len();
+const ALL: [Port; COUNT] = crate::port::concat(&[
+    interface::PORTS,
+    proximity::PORTS,
+    quotient::PORTS,
+    service::PORTS,
+    civic::PORTS,
+    strike::PORTS,
+    query::PORTS,
+    population::PORTS,
+    save::PORTS,
+    grid::PORTS,
+    served::PORTS,
+    coverage::PORTS,
+    collections::PORTS,
+    monthly::PORTS,
+    curves::PORTS,
+    tuning::PORTS,
+]);
 
 /// This module's replacements.
 pub const PORTS: &[Port] = &ALL;

@@ -11,7 +11,7 @@
 // copy of the license along with this program (see LICENSE at the repository
 // root); if not, see <https://www.gnu.org/licenses/>.
 
-//! The demand simulator's interfaces, demand map and jobs lookup.
+//! Native demand interfaces, census, tax, connection relief and regional population updates.
 
 use crate::abi::{call_raw, vslot, Conv, RawCall};
 use crate::port::Port;
@@ -25,14 +25,27 @@ layout! {
         0x20 => current_census_count / set_current_census_count: u32,
         0x28 => previous_census / set_previous_census: *mut u8,
         0x2C => previous_census_count / set_previous_census_count: u32,
+        0x34 => city / set_city: *mut u8,
         0x3C => building_development / set_building_development: *mut u8,
+        0x44 => neighbors / set_neighbors: *mut u8,
+        0x48 => ordinances / set_ordinances: *mut u8,
         0x50 => nodes / set_nodes: *mut u8,
         0x54 => node_count / set_node_count: u32,
+        0x98 => previous_cities / set_previous_cities: *mut u8,
+        0x9C => export_cities / set_export_cities: *mut u8,
         0xA0 => commercial_bonus / set_commercial_bonus: u32,
         0xA4 => industrial_bonus / set_industrial_bonus: u32,
         0xA8 => commercial_relief / set_commercial_relief: u32,
         0xAC => industrial_relief / set_industrial_relief: u32,
         0xB0 => neutral_tax_curve / set_neutral_tax_curve: *mut u8,
+        0xB4 => tax_curve / set_tax_curve: *mut u8,
+        0xB8 => tax_penalty_days / set_tax_penalty_days: u32,
+        0xBC => network_relief / set_network_relief: *mut f32,
+        0xC8 => airport_commercial / set_airport_commercial: f32,
+        0xCC => seaport_industrial / set_seaport_industrial: f32,
+        0xD0 => relief_per_trip / set_relief_per_trip: f32,
+        0xD4 => airport_industrial / set_airport_industrial: f32,
+        0xD8 => seaport_commercial / set_seaport_commercial: f32,
     }
 }
 
@@ -113,12 +126,18 @@ unsafe fn successor(node: *mut u8) -> *mut u8 {
 
 mod capacity;
 mod census;
+mod connections;
 mod effects;
+mod extrapolate;
 mod interface;
 mod io;
 mod jobs;
 mod links;
+mod modifiers;
+mod occupant;
+mod population;
 mod queries;
+mod regional;
 mod scan;
 mod sort;
 mod tree;
@@ -128,24 +147,36 @@ mod test_support;
 
 const COUNT: usize = capacity::PORTS.len()
     + census::PORTS.len()
+    + connections::PORTS.len()
     + effects::PORTS.len()
+    + extrapolate::PORTS.len()
     + interface::PORTS.len()
     + io::PORTS.len()
     + jobs::PORTS.len()
     + links::PORTS.len()
+    + modifiers::PORTS.len()
+    + occupant::PORTS.len()
+    + population::PORTS.len()
     + queries::PORTS.len()
+    + regional::PORTS.len()
     + scan::PORTS.len()
     + sort::PORTS.len()
     + tree::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
     capacity::PORTS,
     census::PORTS,
+    connections::PORTS,
     effects::PORTS,
+    extrapolate::PORTS,
     interface::PORTS,
     io::PORTS,
     jobs::PORTS,
     links::PORTS,
+    modifiers::PORTS,
+    occupant::PORTS,
+    population::PORTS,
     queries::PORTS,
+    regional::PORTS,
     scan::PORTS,
     sort::PORTS,
     tree::PORTS,

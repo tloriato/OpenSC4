@@ -22,13 +22,41 @@ layout! {
     pub struct TractDeveloper {
         0x00 => vtable / set_vtable: u32,
         0x10 => references / set_references: i32,
+        0x18 => city / set_city: u32,
+        0x1C => building_development / set_building_development: u32,
+        0x20 => land_value / set_land_value: u32,
+        0x28 => lot_developer / set_lot_developer: u32,
+        0x2C => lot_manager / set_lot_manager: u32,
+        0x30 => plumbing / set_plumbing: u32,
+        0x34 => power / set_power: u32,
+        0x38 => traffic / set_traffic: u32,
+        0x3C => zone_manager / set_zone_manager: u32,
+        0x50 => occupied_cost / set_occupied_cost: f32,
+        0x54 => abandoned_cost / set_abandoned_cost: f32,
+        0x58 => aggregation_cost / set_aggregation_cost: f32,
+        0x5C => subdivision_cost / set_subdivision_cost: f32,
+        0x60 => occupancy_variation / set_occupancy_variation: f32,
+        0x64 => minimum_vacancy / set_minimum_vacancy: f32,
+        0x68 => maximum_vacancy / set_maximum_vacancy: f32,
+        0x6C => kick_out / set_kick_out: u8,
         0x7C => years_between_changes / set_years_between_changes: i32,
         0x80 => developer / set_developer: u32,
         0x8C => maximum_stage / set_maximum_stage: i32,
+        0x98 => wealth / set_wealth: i32,
+        0x9C => purpose / set_purpose: i32,
         0xB4 => existing / set_existing: i32,
         0xB8 => desired / set_desired: i32,
         0xBC => desired_maximum / set_desired_maximum: i32,
+        0xC0 => built / set_built: i32,
         0xC8 => relaxed / set_relaxed: u8,
+        0xE4 => candidates_begin / set_candidates_begin: u32,
+        0xE8 => candidates_end / set_candidates_end: u32,
+        0xF0 => chosen_configuration / set_chosen_configuration: u32,
+        0xF8 => observed_land_value / set_observed_land_value: i32,
+        0xFC => minimum_building_capacity / set_minimum_building_capacity: i32,
+        0x100 => maximum_building_capacity / set_maximum_building_capacity: i32,
+        0x10C => suitability_header / set_suitability_header: u32,
+        0x110 => suitability_count / set_suitability_count: u32,
         0x118 => styles_begin / set_styles_begin: u32,
         0x11C => styles_end / set_styles_end: u32,
         0x124 => style_index / set_style_index: i32,
@@ -48,11 +76,23 @@ layout! {
         0x10 => facing / set_facing: i32,
         0x14 => width / set_width: u8,
         0x15 => depth / set_depth: u8,
+        0x18 => lot_header / set_lot_header: u32,
+        0x1C => lot_count / set_lot_count: u32,
+        0x24 => occupied / set_occupied: i32,
+        0x28 => abandoned / set_abandoned: i32,
+        0x2C => stage / set_stage: i32,
+        0x30 => wealth / set_wealth: i32,
         0x34 => score / set_score: f32,
         0x38 => min_x / set_min_x: i32,
         0x3C => min_z / set_min_z: i32,
         0x40 => max_x / set_max_x: i32,
         0x44 => max_z / set_max_z: i32,
+        0x6C => access_flag / set_access_flag: u8,
+        0x70 => street_counts / set_street_counts: u32,
+        0x7C => road_counts / set_road_counts: u32,
+        0x88 => avenue_counts / set_avenue_counts: u32,
+        0x94 => rail_counts / set_rail_counts: u32,
+        0xA0 => corner / set_corner: u8,
     }
 }
 
@@ -135,22 +175,49 @@ unsafe fn store(base: u32, offset: u32, value: u32) {
     unsafe { write_unaligned(base.wrapping_add(offset) as *mut u32, value) }
 }
 
+pub mod cache;
+pub mod compatibility;
+pub mod configuration;
 pub mod copying;
+pub mod evaluation;
 pub mod geometry;
+pub mod growth;
+pub mod networks;
+pub mod pool;
+pub mod population;
+pub mod removal;
 pub mod sorting;
 pub mod suitability;
 pub mod surface;
 pub mod trees;
 
-const COUNT: usize = copying::PORTS.len()
+const COUNT: usize = compatibility::PORTS.len()
+    + cache::PORTS.len()
+    + configuration::PORTS.len()
+    + copying::PORTS.len()
+    + evaluation::PORTS.len()
     + geometry::PORTS.len()
+    + growth::PORTS.len()
+    + networks::PORTS.len()
+    + pool::PORTS.len()
+    + population::PORTS.len()
+    + removal::PORTS.len()
     + sorting::PORTS.len()
     + suitability::PORTS.len()
     + surface::PORTS.len()
     + trees::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
+    compatibility::PORTS,
+    cache::PORTS,
+    configuration::PORTS,
     copying::PORTS,
+    evaluation::PORTS,
     geometry::PORTS,
+    growth::PORTS,
+    networks::PORTS,
+    pool::PORTS,
+    population::PORTS,
+    removal::PORTS,
     sorting::PORTS,
     suitability::PORTS,
     surface::PORTS,
@@ -184,5 +251,45 @@ mod testing {
     pub fn snapshot(p: *mut u8, n: usize) -> Vec<u8> {
         // SAFETY: the test owns at least n bytes at p.
         unsafe { std::slice::from_raw_parts(p, n).to_vec() }
+    }
+
+    #[repr(C, align(16))]
+    struct FpuState([u8; 512]);
+
+    /// Keep an existing x87 value live during a test and check the stack and machine modes on exit.
+    pub struct PreserveMachine(FpuState);
+
+    impl PreserveMachine {
+        pub fn new() -> Self {
+            let mut before = FpuState([0; 512]);
+            // SAFETY: one masked x87 load; FXSAVE writes a 16-byte-aligned 512-byte buffer.
+            unsafe {
+                core::arch::asm!("fld1", "fxsave [{p}]", p = in(reg) &mut before, out("st(0)") _);
+            }
+            Self(before)
+        }
+    }
+
+    impl Drop for PreserveMachine {
+        fn drop(&mut self) {
+            let mut after = FpuState([0; 512]);
+            let mut sentinel = 0u64;
+            let flags: u32;
+            // SAFETY: snapshot into aligned storage and pop the one value installed by new.
+            unsafe {
+                core::arch::asm!(
+                    "fxsave [{p}]", "fstp qword ptr [{sentinel}]", "pushfd", "pop {flags}",
+                    p = in(reg) &mut after, sentinel = in(reg) &mut sentinel, flags = out(reg) flags,
+                    out("st(0)") _,
+                );
+            }
+            assert_eq!(sentinel, 1.0f64.to_bits());
+            assert_eq!(&self.0 .0[..2], &after.0[..2], "control word");
+            assert_eq!(self.0 .0[4], after.0[4], "stack tag");
+            assert_eq!(self.0 .0[3] & 0x38, after.0[3] & 0x38, "stack top");
+            assert_eq!(&self.0 .0[24..28], &after.0[24..28], "MXCSR");
+            assert_eq!(&self.0 .0[32..42], &after.0[32..42], "existing x87 value");
+            assert_eq!(flags & (1 << 10), 0, "direction flag");
+        }
     }
 }
