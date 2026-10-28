@@ -400,7 +400,7 @@ The preserved **replacement-only** trace is available at
 `.claude/worktrees/traffic-exact33/build-runs/r9-jinae-corner.txt` in the main checkout.
 Lines 35–39 pop South `0x0D02F43C` before West `0x0E02F33B`; lines 54–65 pop their
 distinct (243,60) successors in that same branch order; lines 82–92 pop
-`0x0902F33D` before `0x0502F33D`, and both attempt (243,62). Line 96 later pops the
+`0x0902F33D` before `0x0502F33D`, and both attempt (243,62). Line 97 later pops the
 shared key with the South branch as parent. ADD records are **attempts**, not proof of
 successful insertion/update. This is consistent with the original's equal-g rule, but
 is not evidence that the original used the same preceding heap or network inputs.
