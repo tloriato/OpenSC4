@@ -184,6 +184,7 @@ fn dimensions_zone_and_stage_rejections_use_original_counter_rows() {
 #[test]
 fn slope_sources_stores_boundaries_and_nan_behave_like_x87() {
     let _fpu = GameFpu::new();
+    let _machine = crate::tract_developer::testing::PreserveMachine::new();
     for (slope, minimum, maximum, expected) in [(-0.1, 0.0, 1.0, 10), (1.1, 0.0, 1.0, 10),
         (0.0, 0.0, 1.0, 27), (1.0, 0.0, 1.0, 27), (f64::NAN, 0.0, 1.0, 27), (0.5, f64::NAN, f64::NAN, 27),
         (1.0 + 1.0e-8, 0.0, 1.0, 27)] {

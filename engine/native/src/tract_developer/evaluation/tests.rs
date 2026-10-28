@@ -283,6 +283,7 @@ fn aggregation_sums_in_tree_order_and_keeps_maximum_stage_and_signed_wealth() {
 #[test]
 fn scoring_weights_and_lot_costs_match_core_cases() {
     let _fpu = GameFpu::new();
+    let _machine = crate::tract_developer::testing::PreserveMachine::new();
     for (zone, expected) in [
         (1, [218.0f32, 262.0, 277.0, 273.0]),
         (2, [0.0, 44.0, 59.0, 55.0]),

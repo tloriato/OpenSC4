@@ -308,6 +308,7 @@ fn zero_tract_seed_is_forwarded_to_game_constructor_and_population_is_repeatable
 #[test]
 fn core_seeded_three_lot_case_and_cleanup_order() {
     let _fpu = GameFpu::new();
+    let _machine = crate::tract_developer::testing::PreserveMachine::new();
     let mut w = World::new(3);
     w.lots[1][4] = 25;
     w.lots[2][4] = 7;

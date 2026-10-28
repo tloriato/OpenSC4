@@ -189,9 +189,9 @@ register_port! {
         invoke(r, Conv::Thiscall, crate::abi::target(0x006B_DF10), &[4, r.edx]);
         for offset in [0x7C, 0x88] {
             zero = 0;
-            r.eax = &mut zero as *mut u32 as u32;
-            if offset == 0x88 { r.ecx = r.eax; }
-            let value = r.eax;
+            let value = &mut zero as *mut u32 as u32;
+            if offset == 0x7C { r.eax = value; }
+            else { r.ecx = value; }
             r.ecx = this.wrapping_add(offset);
             invoke(r, Conv::Thiscall, crate::abi::target(0x006B_DF10), &[4, value]);
         }
