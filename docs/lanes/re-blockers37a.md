@@ -1,6 +1,6 @@
 | Lane | Agent/worktree | State at stop | Next steps |
 |---|---|---|---|
-| re-blockers37a: traffic and automata blocker specs (RE/docs) | Codex; re-blockers37a; detached HEAD, reserved branch re-blockers37a | continue; six answered, two partial; commits 6390b0b4b, 35e265661, 51aca609d, e26948e5e; docs gate passed; cargo/clippy/ctest n/a; game n/a; ABI unchanged; budget guard blocked queue write | 1. Finish ready queue using actual HEAD. 2. Implement six published contracts; retain AD6 and TE33-PATH-1 as partial. |
+| re-blockers37a: traffic and automata blocker specs (RE/docs) | Codex; re-blockers37a; detached HEAD, reserved branch re-blockers37a | ready; six answered, two partial; substantive commits 6390b0b4b, 35e265661, 51aca609d; docs gate passed; cargo/clippy/ctest n/a; game n/a; ABI unchanged | 1. Implement six published contracts. 2. Resolve remaining AD6 restoration boundary and TE33-PATH-1 scenario inputs. |
 
 Answered 2026-10-28:
 - TE33-ACCIDENT-1: traffic-simulator §§4.13.1–4.13.2, §9.1; whole-second clock, deadline zero, strict expiry, conditional CRT reset draw and per-entry generator draws.
@@ -12,13 +12,9 @@ Answered 2026-10-28:
 Partial, left open:
 - AD6: automata §4.2; ordered survivor Init/removal, recount, view/zoom and traffic reference repair proved. Missing supported private-repair boundary, complete overridden placement/callback effects and first allocator corruption.
 - TE33-PATH-1: pathfinder §4.7.1; strict heap comparisons, two synthetic fixtures and ring-cell order proved. Missing original start-node/score inputs, preceding heap and earlier pop/update sequence for Jinae/Braus.
-Validation: final cumulative git diff --check passed; questions.py index regenerated.
+Validation: cumulative git diff --check passed; questions.py index regenerated without changes on resume.
 Read-only evidence: export, decomp and cited Braus save-fault log; no game runs, REA calls or engine reads.
 Earlier whitespace gate failures were corrected before this finish; they are not reported as passing checks.
 No ABI exports or proposed ABI rows; no engine/tools edits. Six original question entries archived with section pointers.
 
-## Handoff
-Goal: publish blocker contracts, archive complete answers, and enqueue ready; substantive spec work is complete.
-Done: 6390b0b4b accidents/AD5; 35e265661 AD6 partial; 51aca609d maps/statistics/ferries and PATH partial; e26948e5e finish record and whitespace correction.
-Next: read actual HEAD and create build-runs/merge-queue/re-blockers37a.json with lane/branch re-blockers37a, that full tip, kind docs, abi false, game_runs [], state ready; then return ready. The guard rejected the queue creation, so no queue exists.
-Facts: final cumulative diff --check passed and questions index regenerated; worktree was clean. No game run or code gate is needed. Six answered/two partial details above remain the intended final scope.
+Round 2: resumed the committed handoff, verified the question index and documentation gate, and completed the ready queue entry using actual HEAD. No additional RE conclusions were inferred.
