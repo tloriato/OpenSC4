@@ -365,6 +365,37 @@ extern "C" __declspec(dllexport) intptr_t __cdecl FC4TestSeam(uint32_t op, void*
             std::memcpy(b, mask.data(), mask.size());
             return static_cast<intptr_t>(mask.size());
         }
+        case kFC4SeamDemolitionQueryLifetime: {
+            if (!a || !b) return -1;
+            auto* occupant = static_cast<cIGZUnknown*>(a);
+            auto* counts = static_cast<uint32_t*>(b);
+            fc4::DemolitionHostContext ctx;
+            auto hold = [&ctx, occupant] {
+                FC4_ADDREF(occupant);
+                ctx.held.emplace_back(occupant, [](void* p) {
+                    FC4_RELEASE(static_cast<cIGZUnknown*>(p));
+                });
+            };
+            {
+                fc4::DemolitionHostCall outer(ctx);
+                // Reenter once while releasing the first query batch.
+                FC4_ADDREF(occupant);
+                ctx.held.emplace_back(occupant, [&](void* p) {
+                    fc4::DemolitionHostCall reentrant(ctx);
+                    hold();
+                    FC4_RELEASE(static_cast<cIGZUnknown*>(p));
+                });
+                {
+                    fc4::DemolitionHostCall inner(ctx);
+                    hold();
+                }
+                counts[0] = static_cast<uint32_t>(ctx.held.size());
+                counts[1] = ctx.callDepth;
+            }
+            counts[2] = static_cast<uint32_t>(ctx.held.size());
+            counts[3] = ctx.callDepth;
+            return 0;
+        }
         default:
             return 0;
     }

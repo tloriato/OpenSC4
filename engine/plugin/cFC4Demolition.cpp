@@ -153,6 +153,7 @@ bool cFC4Demolition::DemolishRegion(bool doIt, SC4CellRegion<int32_t> const& reg
                                     uint32_t flags, bool dezone, cISC4OccupantFilter* filter, int64_t* cost,
                                     intptr_t demolished, cISC4Occupant* clicked, long x, long y) {
     if (core_ == nullptr) return false;
+    fc4::DemolitionHostCall call(ctx_);
     fc4_zone_region r{};
     std::vector<uint8_t> mask;
     if (!fc4::DemolitionRegionToC(region, r, mask)) return false;
@@ -165,6 +166,7 @@ bool cFC4Demolition::DemolishRegion(bool doIt, SC4CellRegion<int32_t> const& reg
 bool cFC4Demolition::DemolishLots(bool doIt, SC4List<cISC4Lot*> const& lots, int32_t privilege, uint32_t flags,
                                   bool dezone, cISC4OccupantFilter* filter, int64_t* cost, intptr_t demolished) {
     if (core_ == nullptr) return false;
+    fc4::DemolitionHostCall call(ctx_);
     // §4.5: an empty list returns true at once and writes nothing; null
     // entries are skipped [choice].
     std::vector<uint64_t> toks;
@@ -177,6 +179,7 @@ bool cFC4Demolition::DemolishLots(bool doIt, SC4List<cISC4Lot*> const& lots, int
 bool cFC4Demolition::DemolishOccupant(bool doIt, cISC4Occupant* occ, int32_t privilege, uint32_t flags,
                                       int64_t* cost, bool effects, SC4List<cISC4Occupant*>* orphans) {
     if (core_ == nullptr) return false;
+    fc4::DemolitionHostCall call(ctx_);
     return fc4_demolition_demolish_occupant(core_, doIt, fc4::TokenOf(occ), static_cast<uint32_t>(privilege),
                                             flags, effects, fc4::TokenOf(orphans), cost);
 }
@@ -186,6 +189,7 @@ int32_t cFC4Demolition::ModifyTerrainHeight(bool doIt, bool perVertex, int32_t x
     // [abi-ret] slot 9 returns the differing vertex count in EAX; `cost` is
     // never written (demolition.md §4.7, DM2).
     if (core_ == nullptr) return 0;
+    fc4::DemolitionHostCall call(ctx_);
     return fc4_demolition_modify_terrain_height(core_, doIt, perVertex, x0, z0, x1, z1, h, fc4::TokenOf(exempt),
                                                 reason);
 }
@@ -200,6 +204,7 @@ void cFC4Demolition::DoDemolishGroupEffect(uint32_t, int32_t, int32_t, SC4Rect<i
 
 bool cFC4Demolition::DoMessage(cIGZMessage2* pMessage) {
     if (core_ == nullptr || pMessage == nullptr) return true;
+    fc4::DemolitionHostCall call(ctx_);
     const uint32_t type = pMessage->GetType();
     uint32_t d1 = 0, d2 = 0;
     uint64_t lot = 0;

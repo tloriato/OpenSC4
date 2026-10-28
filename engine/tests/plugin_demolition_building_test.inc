@@ -122,6 +122,14 @@ void DemolitionBuildingInterfaceChecks(FC4TestSeamFn seam) {
         for (auto* value : list) CHECK(value == nullptr);
     }
     CHECK(queried.refs == 1 && queried.acquisitions == 1 && queried.releases == 1);
+    // Inner calls must keep the outer call's query references alive. A last
+    // Release may reenter the host; both batches must be drained on return.
+    Occupant held{occupantVt.slots.data()};
+    uint32_t counts[4] = {};
+    CHECK(seam(kFC4SeamDemolitionQueryLifetime, &held, counts) == 0);
+    CHECK(counts[0] == 2 && counts[1] == 1);
+    CHECK(counts[2] == 0 && counts[3] == 0);
+    CHECK(held.refs == 1 && held.acquisitions == 3 && held.releases == 3);
 }
 
 void DemolitionPreDemolishChecks(FC4TestSeamFn seam) {

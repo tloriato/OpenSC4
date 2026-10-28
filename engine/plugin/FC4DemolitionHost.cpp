@@ -291,7 +291,11 @@ void DemolitionSendPreDemolish(cIGZMessageServer2* server, cISC4Occupant* occupa
 
 void DemolitionHostReleaseHeld(DemolitionHostContext* ctx) {
     if (ctx == nullptr) return;
-    for (auto& l : ctx->held) {
+    // A last Release can reenter demolition. Its new query lists belong to
+    // that call, not to the batch being drained here.
+    std::vector<std::shared_ptr<void>> held;
+    held.swap(ctx->held);
+    for (auto& l : held) {
         // Each held list's occupants carry one reference from the query
         // (OM §8.1 step 7); ReleaseOccupantList (slot 48) drops them.
         auto* list = static_cast<SC4List<cISC4Occupant*>*>(l.get());
@@ -299,7 +303,6 @@ void DemolitionHostReleaseHeld(DemolitionHostContext* ctx) {
         cISC4OccupantManager* om = OMgr(ctx->city);
         if (om != nullptr) om->ReleaseOccupantList(*list);  // slot 48 [abi-ret] eax-or-void
     }
-    ctx->held.clear();
 }
 
 void DemolitionHostReleaseAll(DemolitionHostContext* ctx) {
