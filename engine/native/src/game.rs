@@ -55,6 +55,11 @@ game_fn! {
 }
 
 game_fn! {
+    /// Releases an allocation through the game's heap.
+    pub fn heap_free(allocation: *mut u8) = "C" 0x005E_5620;
+}
+
+game_fn! {
     /// `cSC4ResponseCurve::GetOutputValue(x)`: the curve's output at `x` (foundations §4), returned in ST0.
     pub fn response_curve_output(curve: *mut u8, x: f32) -> St0 = "thiscall" 0x005F_4250;
 }
@@ -140,6 +145,11 @@ game_fn! {
 }
 
 game_fn! {
+    /// Destroys the land value simulator's owned containers.
+    pub fn land_value_destroy(this: *mut u8) = "thiscall" 0x006B_DD10;
+}
+
+game_fn! {
     /// Resize the altitude histogram, filling new elements from the supplied value.
     pub fn histogram_resize(this: *mut u8, count: u32, value: *const u32) -> u32 = "thiscall" 0x006B_DF10;
 }
@@ -177,6 +187,16 @@ game_fn! {
 game_fn! {
     /// Releases owned storage through the game's delete function; keeps its EAX result.
     pub fn delete_storage(storage: *mut u8) -> u32 = "C" 0x0090_CF63;
+}
+
+game_fn! {
+    /// Allocates storage for a standard message through the game's allocator.
+    pub fn message_allocate(size: u32) -> *mut u8 = "C" 0x0091_33DA;
+}
+
+game_fn! {
+    /// Constructs a standard message and returns its primary interface.
+    pub fn message_construct(this: *mut u8) -> *mut u8 = "thiscall" 0x0091_34D6;
 }
 
 game_data! { pub static grid_u8_serial_vtable: u8 = 0x00A8_78A4; }

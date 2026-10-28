@@ -29,12 +29,15 @@ layout! {
         0x08 => serializable_vtable / set_serializable_vtable: u32,
         /// Whether initialization completed.
         0x0C => initialized / set_initialized: u8,
+        /// Shared signed reference count.
+        0x10 => reference_count / set_reference_count: i32,
         /// Subscribed message server.
         0x14 => message_server / set_message_server: *mut u8,
         /// Retained city interface.
         0x18 => city / set_city: *mut u8,
         /// Terrain height service.
         0x1C => terrain / set_terrain: *mut u8,
+        /// Message server used to post cycle notifications.
         /// The zone manager (`cISC4ZoneManager*`), taken in `Init`.
         0x20 => zone_manager / set_zone_manager: *mut u8,
         /// The intrinsic land value grid (`cISC4SimGrid<uint8>*`), the first grid `Init` creates (§2).
@@ -65,6 +68,7 @@ layout! {
         0x54 => histogram_end / set_histogram_end: *mut i32,
         /// Altitude bin shift.
         0x5C => histogram_shift / set_histogram_shift: u32,
+        /// Total land value grid, queried in cell coordinates.
         /// pivot (§7.3).
         0x60 => pivot / set_pivot: f32,
         /// lowRange (§7.3).
@@ -75,7 +79,7 @@ layout! {
         0x6C => top_index / set_top_index: i32,
         /// Current developer map node.
         0x70 => developer_cursor / set_developer_cursor: *mut u8,
-        /// The saved average land value byte.
+        /// Average land value from the last completed pass (saved).
         0x74 => average / set_average: u8,
         /// meanAlt (§3).
         0x78 => mean_altitude / set_mean_altitude: f32,
@@ -83,6 +87,10 @@ layout! {
         0x7C => tract_size / set_tract_size: u8,
         /// Base value for land.
         0x7D => base_value / set_base_value: u8,
+        /// meanAlt (§3).
+        /// Unsigned low/medium and medium/high wealth thresholds.
+        0x7F => low_wealth_boundary / set_low_wealth_boundary: u8,
+        0x80 => high_wealth_boundary / set_high_wealth_boundary: u8,
         /// Water bonus at its source.
         0x81 => water_near / set_water_near: u8,
         /// Water effect radius.
