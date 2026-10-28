@@ -56,4 +56,17 @@ void PowerLineConnectionChecks(FC4TestSeamFn seam) {
     CHECK(seam(kFC4SeamPowerLineConnections, &line, pair) == 0);
     CHECK(pair[0] == 0 && pair[1] == 0 && line.calls == 3 && line.refs == 1);
 }
+// power §10.1 distinguishes full-EAX predicates from the AL-only slots 32-34.
+void PowerQueryAbiChecks(FC4TestSeamFn seam) {
+    auto* power = reinterpret_cast<cIGZUnknown*>(seam(kFC4SeamPowerCreate, nullptr, nullptr));
+    CHECK(power != nullptr);
+    if (power == nullptr) return;
+    for (uint32_t slot : {19u, 37u, 38u}) {
+        const fc4test::SlotCall result = fc4test::CallSlot(power, slot, {0u, 0u});
+        CHECK(result.eax == 0u && result.espDelta == 0 && result.x87Pushed == 0);
+    }
+    const fc4test::SlotCall result = fc4test::CallSlot(power, 31u, {0u});
+    CHECK(result.eax == 0u && result.espDelta == 0 && result.x87Pushed == 0);
+    CHECK(power->Release() == 0u);
+}
 }  // namespace

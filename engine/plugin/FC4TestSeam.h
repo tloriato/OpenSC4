@@ -359,6 +359,9 @@ constexpr uint32_t kFC4SeamDemolitionRegionMask = 0xD3000005;
 // a = borrowed unknown; b = uint32_t[4], nested query-reference lifetime probe.
 constexpr uint32_t kFC4SeamDemolitionQueryLifetime = 0xD3000006;
 
+// Creates an uninitialized power simulator with one reference for raw-slot ABI tests.
+constexpr uint32_t kFC4SeamPowerCreate = 0x50570002;
+
 using FC4TestSeamFn = intptr_t(__cdecl*)(uint32_t op, void* a, void* b);
 
 namespace fc4 {

@@ -1029,7 +1029,8 @@ class cISC4Occupant;
 // cISC4PowerSimulator (IID 0xE9E7BFF5), 52 slots in compiled order (power
 // §10.1). Implemented by cFC4PowerSimulator. SDK errors fixed: the overloads
 // are in compiled order with unique names (16 = (x, z), 17 = (); 23 = (type),
-// 24 = ()); 32-34 return bool in AL; 40 returns its argument's address; 45/46
+// 24 = ()); 19/31/37/38 return full EAX 0/1, 32-34 return bool in AL;
+// 40 returns its argument's address; 45/46
 // return an SC4Percentage through a hidden pointer (pop 8, EAX = the pointer).
 class cFC4ISC4PowerSimulator : public cIGZUnknown {
 public:
@@ -1050,7 +1051,7 @@ public:
     virtual int32_t GetMonthlyConsumptionTotal() = 0;                                       // 17  ()
     // 18: the game writes the address of its raw vector<vector<int16>> (power §11.2).
     virtual void GetMonthlyConsumptionMapPtr(void*& map) = 0;                               // 18
-    virtual bool GetSupplyValue(int32_t x, int32_t z) = 0;                                  // 19
+    virtual uint32_t GetSupplyValue(int32_t x, int32_t z) = 0;                              // 19  full EAX 0/1
     virtual void GetSupplyValueMapPtr(cISC4SimGrid<uint8_t>*& grid) = 0;                    // 20
     virtual int32_t GetUnpoweredConsumerCount() = 0;                                        // 21
     virtual int32_t GetPoweredConsumerCount() = 0;                                          // 22
@@ -1065,15 +1066,15 @@ public:
     virtual int32_t GetDistressedPowerPlantCount() = 0;                                     // 29
     virtual void FindPowerPlants(cISC4Occupant** lowestFunded, SC4Percentage& funding, cISC4Occupant** mostWorn,
                                  int32_t& wearPercent) = 0;                                 // 30
-    virtual bool IsOccupantPowered(cISC4Occupant* occupant) = 0;                            // 31
+    virtual uint32_t IsOccupantPowered(cISC4Occupant* occupant) = 0;                        // 31  full EAX 0/1
     virtual bool GetOccupantPowerConsumed(cISC4Occupant* occupant, uint32_t& consumed) = 0;  // 32  (SDK: void)
     virtual bool GetOccupantPowerProduced(cISC4Occupant* occupant, uint32_t& produced,
                                           uint32_t& used) = 0;                              // 33  (SDK: void)
     virtual bool GetOccupantMaxPowerProduced(cISC4Occupant* occupant, uint32_t& maxProduced) = 0;  // 34  (SDK: void)
     virtual cISC4SimGrid<uint8_t>* GetPoweredGridConst() const = 0;                         // 35  GetPoweredGrid() const
     virtual cISC4SimGrid<uint8_t>* GetPoweredGrid() = 0;                                    // 36
-    virtual bool IsPowered(int32_t x, int32_t z) = 0;                                       // 37
-    virtual bool IsWired(int32_t x, int32_t z) = 0;                                         // 38
+    virtual uint32_t IsPowered(int32_t x, int32_t z) = 0;                                   // 37  full EAX 0/1
+    virtual uint32_t IsWired(int32_t x, int32_t z) = 0;                                     // 38  full EAX 0/1
     virtual bool IsOnStrike() = 0;                                                          // 39
     virtual SC4Percentage* GetChanceOfStrike(SC4Percentage& chance) = 0;                    // 40  (SDK: void)
     virtual bool BeginStrike() = 0;                                                         // 41

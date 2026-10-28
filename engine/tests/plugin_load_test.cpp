@@ -13221,6 +13221,7 @@ int main(int argc, char** argv) {
             DemolitionBuildingInterfaceChecks(seam);
             MySimsActiveOwnershipChecks(seam);
             PowerLineConnectionChecks(seam);
+            PowerQueryAbiChecks(seam);
             DemolitionFilterChecks(seam);
             DemolitionPreDemolishChecks(seam);
             DemolitionRegionMaskChecks(seam);

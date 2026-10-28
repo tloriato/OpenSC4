@@ -396,6 +396,11 @@ extern "C" __declspec(dllexport) intptr_t __cdecl FC4TestSeam(uint32_t op, void*
             counts[3] = ctx.callDepth;
             return 0;
         }
+        case kFC4SeamPowerCreate: {
+            cIGZUnknown* power = CreatePowerSimulator();
+            power->AddRef();
+            return reinterpret_cast<intptr_t>(power);
+        }
         default:
             return 0;
     }
