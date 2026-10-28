@@ -118,6 +118,8 @@
 
 <!-- from: network-exact33 R5 (engine lane, 2026-10-28) -->
 - **NT37 - slot 59 UpdateOccupantHighlights, validation and demolition cost:** sections 5.1/6/8
+  **Partial answer 2026-10-28 (re-blockers37b):** §8.0 specifies outer ordered cell enumeration, the helper's
+  inputs/output writes and n/n−1 result. Helper eligibility/cost/ref order and subclass overrides remain.
   name this pass and its cost but do not specify its candidate enumeration, demolition eligibility,
   valid-prefix reduction, or cost accumulation. Please supply those rules and the interface calls
   that observe their inputs, including the surface versus underground overrides. The plugin's
@@ -132,6 +134,9 @@
 
 <!-- from: network-exact33 R11 (engine lane, 2026-10-28) -->
 - **NT38 - underground refit's solved-cell order and missing depth-property defaults (§§2, 11):**
+  **Partial answer 2026-10-28 (re-blockers37b):** §2 specifies reload's direct exemplar-instance argument,
+  float/byte widths, property-read order and retain-on-missing behavior. Caller per-type selection/first-use
+  initialization and solved-set hash/bucket/rehash/iteration with a collision example remain.
   Please specify the solved-cell set's hash, buckets, insertion/rehash and iteration order used by
   step 4, including a colliding-cell example. Also specify the four underground properties' defaults
   and whether ReloadNetworkSpecificInfo uses the pipe/subway instances listed in network-geometry

@@ -123,6 +123,24 @@ type (`ReloadNetworkSpecificInfo`, `0x00657980`).
 A tool must be `Init`ed before use and `Shutdown` after. The network manager's shared tools (`GetNetworkTool(type,
 false)`) and private ones (`true`) behave the same (network-manager.md §7.1).
 
+**Missing underground properties (NT38, partial).** `ReloadNetworkSpecificInfo` (`00657980`) uses its
+single u32 argument **directly as the exemplar instance** in key `(6534284A,084344E0,argument)`; it does not
+convert a network type to an instance internally. On resource lookup failure it writes none of the four
+destination fields. On success it reads the property holder, then attempts properties in this order:
+`A96E5641` → float32 `+36C`, `496E564C` → float32 `+370`, `096E5653` → float32 `+378`, `496E5A36` → byte
+`+374` (`006579CC–00657A0F`). The last uses the byte property helper `005FD390`, not the float helper.
+All four Boolean read results are ignored. The float helper `005FD4F0` leaves the destination untouched
+when the property is absent (`005FD501–005FD520`); this reload supplies **no numeric fallback**, so a
+missing property retains the previous field, rather than setting it to zero. The underground constructor
+`00657FD0` initializes its flag/lists but does not initialize these four fields. This establishes reload
+retention, not a deterministic first-use value for a missing property.
+
+**Partial answer 2026-10-28 (re-blockers37b):** NT38 remains open for the caller's exact per-type instance
+selection/initialization before reload, any further initialization of these four fields, and the solved-cell
+set's own hash/bucket/rehash/iteration contract with a collision example. Neither zero defaults nor borrowing
+another set's constructor parameters is authorized by this evidence. Step 4 of §11 continues to require the
+actual solved-set order, not first-input order.
+
 ### 2.1 Public result observation (NT27)
 
 After synchronous slot 7 returns, and before another draw, `Reset` or `Shutdown`, slots 23/25/26/27 expose the
@@ -483,6 +501,30 @@ city edge makes **no** neighbour connection *[compat]*.
 ---
 
 ## 8. Cost and the budget
+
+### 8.0 Highlight pass boundary (NT37, partial) *[compat]*
+
+**Partial answer 2026-10-28 (re-blockers37b).** Base slot 59 `UpdateOccupantHighlights` (`006299A0`) does
+not itself reject a series of occupants one at a time. With valid-step count `+78` zero it calls virtual
+slot 17 (`+44`, clear highlights) and returns integer zero (`006299A6–006299BD`). Otherwise it makes an
+ordered vector of candidate **cells**: walk valid dragged steps in step order, skip steps whose kind is
+3, walk their inclusive cell-index intervals in increasing order, and append a cell only if `GetCellInfo`
+returns null or record byte `+56` is zero. Then walk the extra 20-byte cell records at tool `+F0…+F4` in
+vector order and apply the same test/append. There is no de-duplication in this outer candidate-vector pass
+(`00629A00–00629BA5`).
+
+The pass destroys its previous region at `+210`, makes a fresh temporary result set, and calls
+`ComputeDemolitionRegionForPlacementCells` (`0061F7C0`) with `(candidateCells, &regionAt210, &costAt220,
+&temporarySet, toolFilterAt364)` (`00629C53`). It then replaces its stored set at `+214/+218` with the
+temporary set, disposing of the old contents. Let n be slot 59's input integer. The result is **n** if
+the helper returns true, otherwise **n−1**, with no per-cell truncation in this wrapper
+(`00629C7D–00629C90`). This does not establish which validation pass refused the question's first road.
+
+Still required to close NT37: the demolition helper's candidate expansion and eligibility, acquisition and
+release order, per-occupant demolition-cost arithmetic, and the surface/underground virtual overrides.
+The outer filter is the tool's layer OR filter; preserving n and omitting the helper's cost/region writes
+does not implement this boundary. The inspected wrapper has no CRT `rand()`; no claim is made here about
+unresolved helper/subclass paths. The cited native/core failures remain unexplained by this partial answer.
 
 ### 8.1 GetCostOfSolution (slot 20, `0x00625640`, returns int)
 

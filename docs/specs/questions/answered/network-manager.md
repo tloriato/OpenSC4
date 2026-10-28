@@ -222,3 +222,17 @@ readings has been checked in game. The current choice is in brackets.
   the latter starts with an exact netmgr load sample. This blocks that distinct census-only case, not a
   claim that the avenue fix has passed it. All comparison checks remain enabled.~~
   **ANSWERED 2026-10-26 (re-nm30):** DIFFERS — §8.5 NM19 specifies transient forced configuration and lot locks, their absence from component 11, the post-object-creation re-read, and a no-selection-draw forced/locked worked case. Remaining NM19-A requires the first event/direct-entry trace with those inputs, avenue queries and generator state; the later census and failed fresh attempts do not identify the first message or prove a new draw path.
+
+- **NM22 - manager lookup slots 10/11/12: typed ABI and ownership (§§7.5, 7.9):**
+  Please specify the three argument types/order and result channel for `FindPipeOccupant` and
+  `FindPipeConnectionOccupant`, including the lookup filters, coordinates, failure/output behavior
+  and reference ownership. Section 7.5 currently only forwards their names to static pipe-tool
+  helpers; network-tools does not define those helpers. ABI interfaces.tsv gives pop 12 and
+  `eax-or-void`, but no argument meaning. For `GetAllIntersectionPieces` (slot 12, pop 16), §7.9
+  defines the flood but leaves the four argument types/order, output container and acquired-entry
+  ownership unspecified. Please supply those interface facts and one worked lookup/flood example.
+  Current implementation retains zero-return stubs with SPEC-GAP comments. This is an implementation
+  blocker, not an attribution of an observed rand/save difference: R12's new-pin qcheck is pending
+  reference recording. The specified station/water/subway predicates have been implemented separately.
+
+**ANSWERED 2026-10-28 (re-blockers37b):** DIFFERS — network-manager.md §7.9.1 specifies typed manager slots 10/11/12, last-QI pipe selection, output ownership and depth-first pointer-list flood.

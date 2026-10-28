@@ -6,6 +6,9 @@
 <!-- from: automata-actions29 (2026-10-26) -->
 <!-- from: network-exact33 (2026-10-28) -->
 - **NM21 - exact iteration order of lots, potholes and configuration groups (sections 2.2, 3.2, 4.2):**
+  **Partial answer 2026-10-28 (re-blockers37b):** §2.2.1 proves the two saved maps' u16 identity hash,
+  collision prepend/overwrite, prime resize and rehash traversal, serialized iteration and ordinary Read
+  insertion. Initial bucket requests, configuration-group map rules and an actual resize/save fixture remain.
   Please specify each map's hash function, initial bucket count, resize trigger/prime selection, collision
   insertion and overwrite order, rehash traversal, and whether Read uses ordinary insertion. Section 8.5
   gives these rules for `pending`, but does not establish that the three maps use the same parameters.
@@ -28,14 +31,3 @@
   native hash/bucket contract is still missing, so no implementation parameters were inferred.
 
 <!-- from: network-exact33 R12 (2026-10-28) -->
-- **NM22 - manager lookup slots 10/11/12: typed ABI and ownership (§§7.5, 7.9):**
-  Please specify the three argument types/order and result channel for `FindPipeOccupant` and
-  `FindPipeConnectionOccupant`, including the lookup filters, coordinates, failure/output behavior
-  and reference ownership. Section 7.5 currently only forwards their names to static pipe-tool
-  helpers; network-tools does not define those helpers. ABI interfaces.tsv gives pop 12 and
-  `eax-or-void`, but no argument meaning. For `GetAllIntersectionPieces` (slot 12, pop 16), §7.9
-  defines the flood but leaves the four argument types/order, output container and acquired-entry
-  ownership unspecified. Please supply those interface facts and one worked lookup/flood example.
-  Current implementation retains zero-return stubs with SPEC-GAP comments. This is an implementation
-  blocker, not an attribution of an observed rand/save difference: R12's new-pin qcheck is pending
-  reference recording. The specified station/water/subway predicates have been implemented separately.

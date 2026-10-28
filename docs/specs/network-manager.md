@@ -112,6 +112,35 @@ remapping", "Shadow edge remapping" and "UK path remapping". Those tables only f
 
 The cell **key** is `(x & 0xFF) << 8 | z` (u16). `X` and `Z` are the city's cell counts (city slots 93 and 94).
 
+#### 2.2.1 Saved-map iteration evidence (NM21, partial) *[compat]*
+
+**Partial answer 2026-10-28 (re-blockers37b).** The following applies to both the `lots` and `potholes`
+u16-key maps; it is proved from their shared instantiated functions, not borrowed from `pending`.
+Their hash is the **zero-extended u16 key itself**, bucket `key % B`; collision equality compares exactly
+16 bits (`0060DA58–0060DA80`). A node has next/key/value at `+0/+4/+8`. `operator[]` searches the existing
+chain first. A hit returns the existing value slot without moving its node or resizing. A miss calls
+`find_or_insert` (`00712120`), first requesting resize for `count+1`, then prepends the new node to its
+bucket and increments count. Thus overwriting a saved key does not make it newest in its bucket.
+
+Resize occurs only if the requested new count exceeds B. It selects the first prime not below that count
+from the table at `00A829B0`, beginning `53,97,193,389,769,1543,3079,6151`, and does nothing unless that prime
+exceeds the old B (`00710DD0–00710E2A`). Rehash visits old buckets in ascending order, repeatedly removes
+their head node and prepends it to `key % newB` (`00710E51–00710E8B`). The old insertion order therefore
+cannot reproduce all later orders. Component-11 Write follows each chain head-to-tail, then scans later
+buckets in ascending order (`0060D72A–0060D765`); the lots and potholes use this order separately.
+
+Read inserts both kinds through this **ordinary `operator[]`**, then assigns the acquired lot/prop pointer
+(`0060DB67`, `0060DBBB`); it does not restore a serialized bucket layout or append to collision tails.
+For example, **given B=193**, keys 2 then 195 collide, producing chain `[195,2]`; reassigning key 2 keeps
+that order. A later resize to 389 separates these two into buckets 2 and 195. Reading serialized keys
+195 then 2 into an empty B=193 map produces `[2,195]`, rather than preserving that collision order.
+
+Still required before NM21 is closed: prove each manager map's initial bucket request and constructor,
+the complete u32 configuration-group map insertion/resize/iteration path, and a worked actual component-11
+save spanning its native resize. In particular **193 above is a conditional example, not yet a proved
+initial B for either saved map**. Existing first-loaded configuration order is not established as native
+map order by this partial answer. No CRT `rand()` occurs in the map operations proved here.
+
 ### 2.3 Network lot (cSC4NetworkLot, vtable `0x00AA78E0`, IID `0x89A5BA66`)
 
 A 24-byte reference-counted object.
@@ -744,6 +773,64 @@ A connection node carries `0x200000`, so the traffic graph, the network lots and
 A recursive flood over the 4-neighbours inside the city from the start piece's cell. It collects every network
 occupant (filter `0x1F4F`; a null occupant manager argument means the global one) that has flag `0x100000` and
 `IsPartOfTheSameStructure(start)` (slot 66). The result is the set of cells of one intersection or complex piece.
+
+#### 7.9.1 Typed lookup and flood ABI (NM22) *[compat]*
+
+Manager slots 10 and 11 (`00610550`, `00610570`) are thiscall, pop **12**, Boolean result in **AL**:
+`FindPipeOccupant(int32 x, int32 z, cISC4PipeOccupant** out)` and
+`FindPipeConnectionOccupant(int32 x, int32 z, cISC4PipeConnectionOccupant** out)`. The manager receiver is
+unused; each forwards the three arguments unchanged to the caller-cleaned static pipe-tool helper
+`00648F70` or `00649080`. Coordinates are standard city **cells**, not world-position floats.
+
+The helper builds a local occupant list, queries global occupant-manager slot 40 (`+0xA0`) with
+`(outList, &cell, &cell, nullFilter, FFFFFFFF)`, and **then** writes `*out=null`. The cell is the pair of the
+two input int32 arguments. Slot 40's coordinate clamping, strict overlap, list order and acquired references
+are occupant-manager.md §8.2; this helper adds no bounds or layer gate. For each returned occupant, in list
+order, QI for **`49C05B9F`** (pipe) or **`EA0A5ACF`** (pipe connection). On success release any previously
+selected interface, replace `*out` with the newly acquired interface, and set the Boolean result true.
+Release each query-list occupant whether or not its QI succeeded, and free the list nodes afterward.
+Consequently the **last successful QI wins**; there is no early return and no separate flag/type test
+(`00649020–00649068`, corresponding connection-helper sequence at `00649080+0xB0`). On no match the result
+is false and output null. The incoming value of `*out` is overwritten without being released; the caller
+must pass an output slot whose previous ownership it already handled. A successful output owns **one QI
+reference**, which the caller releases. The helper does not return an occupant pointer in EAX.
+
+Manager slot 12 is thiscall, pop **16**, Boolean AL (normally true), with arguments in this order:
+
+| Argument | Type / meaning |
+|---|---|
+| 1 | `cISC4NetworkOccupant* start`, required |
+| 2 | caller-owned `ilist<cISC4Occupant*>* out`, required; append to existing contents |
+| 3 | `cISC4OccupantManager* queryManager`, null selects global occupant manager |
+| 4 | `cISC4NetworkOccupant* structureOrigin`, null selects `start` |
+
+The list is the native sentinel doubly linked list of occupant pointers (node next/previous/value at
+`+0/+4/+8`), not a cell set, vector or returned-list pointer. First allocate/retain an OR network filter
+with mask `1F4F`, get start's `AsOccupant` (network slot 48 / `+0xC0`), and scan the existing output for
+that exact pointer. If already present, return true without extending the flood. Otherwise recurse
+(`00612780–0061281E`, helper `00612300`). Each recursion:
+
+1. AddRef its network interface once, append its borrowed `AsOccupant` to output, and obtain its cell
+   with network slot 59 (`+0xEC`). That reference is the output entry's ownership, through the shared
+   occupant/network count. The seed is included without testing `100000` or comparing it with origin.
+2. Visit neighbours **west, north, east, south**: `(-1,0),(0,-1),(1,0),(0,1)` (tables `00AA7A18/00AA7A28`).
+   Reject coordinates outside unsigned city width/height, then call query-manager slot 32
+   `GetFirstOccupantByStandardCityCell(&occupant,x,z,filter)`.
+3. On a hit, QI that first occupant for network IID `A821EF94`; require its network flag `100000`;
+   skip if its `AsOccupant` pointer is already in output; then call its slot 66 (`+0x108`)
+   `IsPartOfTheSameStructure(structureOrigin)`. Only on true recurse immediately, before the next neighbour.
+   A non-network first hit does not cause a second spatial search. Release both local query and QI
+   references after this branch, including after recursion (`006123B6–00612464`).
+4. Retain the output entries; return true. The outer operation releases the filter. The caller releases
+   **one occupant reference per newly appended entry** and owns the list storage. Neither input manager
+   nor structureOrigin is transferred or independently retained by the outer operation.
+
+Example: with an initially empty output and seed A at (5,5), qualifying B west at (4,5) and C north of B
+at (4,4), traversal appends **A,B,C** before considering A's north neighbour. A repeated call with A and
+that same list appends nothing. A pipe lookup whose list order is P,Q,R and only P/R accept the pipe IID
+returns R with one owned reference, after releasing P's selected reference and all three list acquisitions.
+These lookups/floods draw no CRT `rand()`. Allocation failure in the outer flood returns true without a
+new flood; it is not an empty-success guarantee for pre-existing output contents.
 
 ### 7.10 Retrofit (`0x00612820`, at PostCityInit)
 
