@@ -167,8 +167,9 @@ port! {
                         if cost != previous {
                             let item = vcall!(budget, 0xE4 => fn(*mut u32) -> *mut u8, key.as_mut_ptr());
                             if !item.is_null() {
+                                let previous = (u64::from(key[4]) | (u64::from(key[5]) << 32)) as i64;
                                 vcall!(item, 0x34 => fn(i64), cost.wrapping_sub(previous));
-                                vcall!(budget, 0xD4 => fn(*mut u8, u32, i64), holder, key[7], cost);
+                                vcall!(budget, 0xD4 => fn(*mut u8, u32, i64), holder, key[6], cost);
                             }
                         }
                     }

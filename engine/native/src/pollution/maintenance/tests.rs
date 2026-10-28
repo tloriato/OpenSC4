@@ -175,14 +175,14 @@ extern "thiscall" fn key(_this: *mut u8, holder: *mut u8, id: u32, key: *mut u32
         }
         unsafe {
             key.add(4).cast::<i64>().write_unaligned(s.previous);
-            key.add(7).write(42);
+            key.add(6).write(42);
         }
         1
     })
 }
 extern "thiscall" fn item(this: *mut Budget, key: *mut u32) -> *mut u8 {
     log(Call::Item);
-    assert_eq!(unsafe { key.add(7).read_unaligned() }, 42);
+    assert_eq!(unsafe { key.add(6).read_unaligned() }, 42);
     STATE.with(|s| {
         if s.borrow().has_item {
             unsafe { (*this).item }
