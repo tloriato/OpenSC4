@@ -18,6 +18,20 @@ use crate::abi::{call_raw, vslot, Conv, RawCall};
 use crate::game;
 use crate::port::Port;
 
+/// Transfers the mean-altitude word, supplying EAX and EDX as well as the stack argument. A stream may
+/// leave EDX alone when it cannot transfer the value, and the final error getter may replace only DL.
+unsafe fn transfer_mean(stream: *mut u8, word: u32) -> u64 {
+    let args = [word];
+    // SAFETY: the live stream's mean-altitude slot takes one word (bits for writing, address for reading).
+    let mut call = RawCall::new(Conv::Thiscall, unsafe { vslot(stream, 0x30) }, stream as u32, &args);
+    call.eax = word;
+    // SAFETY: the stream starts with its vtable pointer.
+    call.edx = unsafe { core::ptr::read_unaligned(stream.cast::<u32>()) };
+    // SAFETY: the stream's thiscall word transfer.
+    unsafe { call_raw(&mut call) };
+    (u64::from(call.edx) << 32) | u64::from(call.eax)
+}
+
 /// Calls the error slot with the register values left by the preceding stream operation. Its EDX is
 /// returned alongside the normalized success value in EAX.
 unsafe fn finish(stream: *mut u8, eax: u32, edx: u32) -> u64 {
@@ -48,8 +62,8 @@ port! {
             vcall!(stream, 0x14 => fn(u32) -> u32, (stream as u32 & !0xFF) | dirty);
             vcall!(stream, 0x14 => fn(u32) -> u32, u32::from(lv.average()));
             let mean = core::ptr::read_unaligned(this.add(0x70).cast::<u32>());
-            let result = vcall!(stream, 0x30 => fn(u32) -> u32, mean);
-            finish(stream, result, core::ptr::read_unaligned(stream.cast::<u32>()))
+            let result = transfer_mean(stream, mean);
+            finish(stream, result as u32, core::ptr::read_unaligned(stream.cast::<u32>()))
         }
     }
 }
@@ -58,16 +72,22 @@ port! {
     /// Restores version 1 through deferred grid-reference reads and direct byte/word destinations. Dirty
     /// is normalized, while the pipeline and all other fields stay as they are. A rejected version keeps
     /// the version reader's EDX and upper EAX bytes; a completed read keeps the error getter's EDX.
+    /// The hidden EDX parameter uses fastcall to receive that register without changing thiscall's ECX,
+    /// stack argument, or four-byte callee pop.
     #[port(address = 0x006B_D950, owner = "landvalue", name = "cSC4LandValueSimulator::Read")]
-    pub unsafe extern "thiscall" fn fc4p_006bd950(this: *mut u8, stream: *mut u8) -> u64 {
+    pub unsafe extern "fastcall" fn fc4p_006bd950(this: *mut u8, entry_edx: u32, stream: *mut u8) -> u64 {
         // SAFETY: the game's serializable interface and live input stream. Destinations are the original
         // fields, so a reference read's effects are visible to every subsequent call.
         unsafe {
             let lv = LandValueSim::from_ptr(this.sub(8));
             let mut version = this as u32;
-            let result = vcall!(stream, 0x1C => fn(*mut u16) -> u64, (&mut version as *mut u32).cast());
+            let args = [&mut version as *mut u32 as u32];
+            let mut call = RawCall::new(Conv::Thiscall, vslot(stream, 0x1C), stream as u32, &args);
+            call.eax = core::ptr::read_unaligned(stream.cast::<u32>());
+            call.edx = entry_edx;
+            call_raw(&mut call);
             if version as u16 != 1 {
-                return result & !0xFF;
+                return (u64::from(call.edx) << 32) | u64::from(call.eax & !0xFF);
             }
             game::read_serializable(stream, 0xC9BD_939A, this.add(0x1C).cast(), 0);
             game::read_serializable(stream, 0xC9BD_939A, this.add(0x20).cast(), 0);
@@ -76,7 +96,7 @@ port! {
             vcall!(stream, 0x14 => fn(*mut u8) -> u32, &mut dirty);
             lv.set_dirty(u8::from(dirty != 0));
             vcall!(stream, 0x14 => fn(*mut u8) -> u32, this.add(0x6C));
-            let result = vcall!(stream, 0x30 => fn(*mut u32) -> u64, this.add(0x70).cast());
+            let result = transfer_mean(stream, this.add(0x70) as u32);
             finish(stream, core::ptr::read_unaligned(stream.cast::<u32>()), (result >> 32) as u32)
         }
     }
@@ -499,6 +519,70 @@ mod tests {
             assert!(reader.sim().total_grid().is_null());
             assert!(reader.sim().slope_grid().is_null());
             assert_eq!(&reader.bytes()[0x78..0x7C], &bits.to_le_bytes());
+        }
+    }
+
+    #[unsafe(naked)]
+    unsafe extern "thiscall" fn unchanged_edx_word(_this: *mut u8, _word: u32) -> u64 {
+        core::arch::naked_asm!("mov eax, 0xAABBCCDD", "ret 4");
+    }
+
+    #[unsafe(naked)]
+    unsafe extern "thiscall" fn partial_edx_error(_this: *mut u8) -> u64 {
+        core::arch::naked_asm!("mov dl, 0x5A", "xor eax, eax", "ret");
+    }
+
+    #[test]
+    fn rejected_version_retains_entry_edx_when_the_reader_leaves_it_alone() {
+        let mut w = World::new(Some(&[]));
+        w._vtable[0x1C / 4] = unchanged_edx_word as *const () as usize;
+        let before = w.bytes();
+        let args = [&mut *w.stream as *mut Stream as u32];
+        // SAFETY: the allocated simulator and fake input stream.
+        let mut call = RawCall::new(
+            Conv::Thiscall,
+            fc4p_006bd950 as *const () as usize,
+            unsafe { w.lv.ptr().add(8) } as u32,
+            &args,
+        );
+        call.edx = 0x5566_7788;
+        unsafe { call_raw(&mut call) };
+        assert_eq!((call.eax, call.edx), (0xAABB_CC00, 0x5566_7788));
+        assert_eq!(w.bytes(), before);
+    }
+
+    #[test]
+    fn mean_and_error_calls_keep_partially_written_edx() {
+        for reading in [false, true] {
+            let mut w = World::new(reading.then_some(&RECORD));
+            w.set_saved_fields(0, 9);
+            w._vtable[0x30 / 4] = unchanged_edx_word as *const () as usize;
+            w._vtable[0x48 / 4] = partial_edx_error as *const () as usize;
+            let expected_edx = (w._vtable.as_ptr() as u32 & !0xFF) | 0x5A;
+            assert_eq!(w.run(reading), (1, expected_edx));
+        }
+    }
+
+    #[test]
+    fn io_keeps_the_x87_stack_control_word_and_mxcsr() {
+        #[repr(C, align(16))]
+        struct FpuState([u8; 512]);
+        for reading in [false, true] {
+            let mut w = World::new(reading.then_some(&RECORD));
+            w.set_saved_fields(0, 9);
+            let mut before = FpuState([0; 512]);
+            let mut after = FpuState([0; 512]);
+            // SAFETY: one free x87 slot, aligned 512-byte destinations, and the pushed value is popped
+            // before any assertion. The stream fakes only transfer integer words.
+            unsafe {
+                core::arch::asm!("fld1", "fxsave [{p}]", p = in(reg) &mut before,
+                    out("st(0)") _, options(nostack));
+                w.run(reading);
+                core::arch::asm!("fxsave [{p}]", "fstp st(0)", p = in(reg) &mut after,
+                    out("st(0)") _, options(nostack));
+            }
+            // The first 160 bytes contain the x87 environment, MXCSR, and the eight x87 registers.
+            assert_eq!(before.0[..160], after.0[..160]);
         }
     }
 }
