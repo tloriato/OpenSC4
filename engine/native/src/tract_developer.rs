@@ -11,11 +11,156 @@
 // copy of the license along with this program (see LICENSE at the repository
 // root); if not, see <https://www.gnu.org/licenses/>.
 
-//! `cSC4TractDeveloper`, converted one function at a time. Its game functions and globals are declared in this file.
+//! `cSC4TractDeveloper`: methods and the shared container helpers used by growth attempts.
 
-#[allow(unused_imports)]
-use crate::x87::F80;
+use crate::abi::{Conv, RawCall};
 use crate::port::Port;
+use core::ptr::{read_unaligned, write_unaligned};
+
+layout! {
+    /// Primary tract-developer interface. Message and persistence interfaces are at +4 and +8.
+    pub struct TractDeveloper {
+        0x00 => vtable / set_vtable: u32,
+        0x10 => references / set_references: i32,
+        0x7C => years_between_changes / set_years_between_changes: i32,
+        0x118 => styles_begin / set_styles_begin: u32,
+        0x11C => styles_end / set_styles_end: u32,
+        0x124 => style_index / set_style_index: i32,
+        0x128 => years_since_change / set_years_since_change: i32,
+        0x12C => single_style / set_single_style: u8,
+    }
+}
+
+layout! {
+    /// A growth candidate. Bytes +0x16..+0x17 and +0xA1..+0xA3 are padding.
+    pub struct Candidate {
+        0x00 => kind / set_kind: i32,
+        0x04 => lot / set_lot: *mut u8,
+        0x08 => x / set_x: i32,
+        0x0C => z / set_z: i32,
+        0x10 => facing / set_facing: i32,
+        0x14 => width / set_width: u8,
+        0x15 => depth / set_depth: u8,
+        0x34 => score / set_score: f32,
+        0x38 => min_x / set_min_x: i32,
+        0x3C => min_z / set_min_z: i32,
+        0x40 => max_x / set_max_x: i32,
+        0x44 => max_z / set_max_z: i32,
+    }
+}
+
+layout! {
+    /// Links common to the tree nodes and their header.
+    struct Node {
+        0x04 => parent / set_parent: u32,
+        0x08 => left / set_left: u32,
+        0x0C => right / set_right: u32,
+    }
+}
+
+/// Saved volatile registers followed by the original return address and stack arguments.
+/// The entry adapter changes only the register save area; arguments retain their original addresses.
+#[repr(C)]
+struct Entry<const N: usize> {
+    edx: u32,
+    ecx: u32,
+    eax: u32,
+    return_address: u32,
+    args: [u32; N],
+}
+
+macro_rules! register_port {
+    ($(#[doc = $doc:literal])* $address:literal, $export:ident, $body:ident, $words:literal, $pop:literal, $name:literal, |$r:ident| $logic:block) => {
+        port! {
+            $(#[doc = $doc])*
+            #[port(address = $address, owner = "tractdeveloper", name = $name, naked)]
+            pub unsafe extern "C" fn $export() {
+                core::arch::naked_asm!(
+                    "push eax", "push ecx", "push edx", "push esp", "call {body}",
+                    "pop edx", "pop ecx", "pop eax", "ret {pop}",
+                    body = sym $body, pop = const $pop,
+                );
+            }
+        }
+        unsafe extern "stdcall" fn $body(entry: *mut Entry<$words>) {
+            // SAFETY: the entry adapter supplies the saved registers and original stack arguments.
+            unsafe {
+                let $r = &mut *entry;
+                $logic
+            }
+        }
+    };
+}
+
+/// Make a call while retaining all three volatile register outputs. Some helpers leave a register
+/// partly unchanged, so both the inputs and outputs are explicit.
+unsafe fn invoke<const N: usize>(r: &mut Entry<N>, conv: Conv, target: usize, args: &[u32]) {
+    let mut c = RawCall::new(conv, target, r.ecx, args);
+    c.eax = r.eax;
+    c.edx = r.edx;
+    // SAFETY: each caller supplies the original target, register inputs and stack words. EDI holds
+    // the call record across the callee; EBX, ESI, EDI and EBP are preserved by the game's conventions.
+    unsafe {
+        core::arch::asm!(
+            "mov ecx, [edi + 20]", "mov eax, [edi + 16]",
+            "2:", "test ecx, ecx", "jz 3f", "dec ecx",
+            "push dword ptr [eax + ecx*4]", "jmp 2b",
+            "3:", "mov eax, [edi + 4]", "mov ecx, [edi + 8]", "mov edx, [edi + 12]",
+            "call dword ptr [edi]",
+            "mov [edi + 4], eax", "mov [edi + 8], ecx", "mov [edi + 12], edx",
+            "cmp dword ptr [edi + 24], 0", "je 4f",
+            "mov ecx, [edi + 20]", "lea esp, [esp + ecx*4]", "4:",
+            in("edi") &mut c, clobber_abi("C"),
+        );
+    }
+    r.eax = c.eax;
+    r.ecx = c.ecx;
+    r.edx = c.edx;
+}
+
+unsafe fn word(base: u32, offset: u32) -> u32 {
+    // SAFETY: the enclosing port supplies the live object's field.
+    unsafe { read_unaligned(base.wrapping_add(offset) as *const u32) }
+}
+
+unsafe fn store(base: u32, offset: u32, value: u32) {
+    // SAFETY: the enclosing port supplies the live object's writable field.
+    unsafe { write_unaligned(base.wrapping_add(offset) as *mut u32, value) }
+}
+
+pub mod geometry;
+pub mod surface;
+pub mod trees;
+
+const COUNT: usize = geometry::PORTS.len() + surface::PORTS.len() + trees::PORTS.len();
+const ALL: [Port; COUNT] = crate::port::concat(&[geometry::PORTS, surface::PORTS, trees::PORTS]);
 
 /// This module's replacements.
-pub const PORTS: &[Port] = &[];
+pub const PORTS: &[Port] = &ALL;
+
+#[cfg(test)]
+mod testing {
+    use super::*;
+
+    pub const EAX: u32 = 0x1234_5678;
+    pub const ECX: u32 = 0xABCD_EF01;
+    pub const EDX: u32 = 0x9876_5432;
+
+    pub fn run(address: u32, conv: Conv, this: u32, args: &[u32]) -> (u32, u32, u32) {
+        let mut r = Entry {
+            eax: EAX,
+            ecx: this,
+            edx: EDX,
+            return_address: 0,
+            args: [],
+        };
+        // SAFETY: each test supplies objects and arguments matching the selected port.
+        unsafe { invoke(&mut r, conv, crate::abi::target(address), args) };
+        (r.eax, r.ecx, r.edx)
+    }
+
+    pub fn snapshot(p: *mut u8, n: usize) -> Vec<u8> {
+        // SAFETY: the test owns at least n bytes at p.
+        unsafe { std::slice::from_raw_parts(p, n).to_vec() }
+    }
+}
