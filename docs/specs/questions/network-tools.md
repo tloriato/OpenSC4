@@ -116,20 +116,6 @@
   rule missing? [literal pivot rule implemented; PL-G1 spacing vector tested with previous=6,
   fresh previous=0 remains endpoint-only; no guessed intermediate pivot]
 
-<!-- from: network-exact33 R5 (engine lane, 2026-10-28) -->
-- **NT37 - slot 59 UpdateOccupantHighlights, validation and demolition cost:** sections 5.1/6/8
-  **Partial answer 2026-10-28 (re-blockers37b):** §8.0 specifies outer ordered cell enumeration, the helper's
-  inputs/output writes and n/n−1 result. Helper eligibility/cost/ref order and subclass overrides remain.
-  name this pass and its cost but do not specify its candidate enumeration, demolition eligibility,
-  valid-prefix reduction, or cost accumulation. Please supply those rules and the interface calls
-  that observe their inputs, including the surface versus underground overrides. The plugin's
-  current host preserves the input valid count and has no demolition-cost observation.
-  Original-tool diagnostic `network-exact33-nettool-shadow-r5-1` is clean/ref_warnings=0. On
-  gen27-konradshohe-s1-default's first road, 2026-01-30 (57,80)-(25,80), native reports
-  ok=0/failure=1/valid=0/cost=0, replay 1/0/33/330, with identical 33 dragged cells. The next
-  street succeeds on both sides but costs 4031 versus 168. The Boolean failure does not identify
-  the refusing pass; these observations do not establish that slot 59 caused the first refusal.
-  Log: build-runs/game-results/network-exact33-nettool-shadow-r5-1.log in this lane worktree.
-  [retain the existing pass until specified; do not infer a rejection rule from failure=1]
+<!-- NT37 answered in §§8.0–8.0.1; moved to answered/network-tools.md (2026-10-28). -->
 
 <!-- NT38 answered in §§2, 11.2; moved to answered/network-tools.md (2026-10-28). -->

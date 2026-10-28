@@ -512,9 +512,9 @@ city edge makes **no** neighbour connection *[compat]*.
 
 ## 8. Cost and the budget
 
-### 8.0 Highlight pass boundary (NT37, partial) *[compat]*
+### 8.0 Highlight pass boundary (NT37) *[compat]*
 
-**Partial answer 2026-10-28 (re-blockers37b).** Base slot 59 `UpdateOccupantHighlights` (`006299A0`) does
+Base slot 59 `UpdateOccupantHighlights` (`006299A0`) does
 not itself reject a series of occupants one at a time. With valid-step count `+78` zero it calls virtual
 slot 17 (`+44`, clear highlights) and returns integer zero (`006299A6–006299BD`). Otherwise it makes an
 ordered vector of candidate **cells**: walk valid dragged steps in step order, skip steps whose kind is
@@ -530,11 +530,75 @@ temporary set, disposing of the old contents. Let n be slot 59's input integer. 
 the helper returns true, otherwise **n−1**, with no per-cell truncation in this wrapper
 (`00629C7D–00629C90`). This does not establish which validation pass refused the question's first road.
 
-Still required to close NT37: the demolition helper's candidate expansion and eligibility, acquisition and
-release order, per-occupant demolition-cost arithmetic, and the surface/underground virtual overrides.
 The outer filter is the tool's layer OR filter; preserving n and omitting the helper's cost/region writes
-does not implement this boundary. The inspected wrapper has no CRT `rand()`; no claim is made here about
-unresolved helper/subclass paths. The cited native/core failures remain unexplained by this partial answer.
+does not implement this boundary. The helper is specified below. Surface tools use this base operation;
+the power-line vtable also points to `006299A0` (`00AAA01C`). Pipe and subway slot 59 instead points to
+`00648F30`, which returns its signed 32-bit input unchanged and performs **no region, cost, filter or
+occupant work** (`00648F30–00648F36`, vtable entries `00AA9A94`, `00AAA6AC`). Neither those overrides nor
+the base wrapper/helper and preview-demolition path specified here consume CRT `rand()` draws. This
+contract does not attribute the question's first road refusal or later street-price difference to slot 59.
+
+#### 8.0.1 Placement demolition-region helper *[compat]*
+
+`ComputeDemolitionRegionForPlacementCells` (`0061F7C0`) takes the candidate cell vector, a region output
+pointer, an **int64** cost output, an occupant-set output and the borrowed layer filter, in that order.
+It performs these operations; region bounds and cell arithmetic are signed 32-bit integers:
+
+1. Obtain the city's lot manager (city slot 33). Start minimum x/z at `INT_MAX` and maximum x/z at zero.
+   Walk the candidate vector **in its existing order, including duplicates**. Enlarge the bounds for each
+   candidate using `(x,z)` and exclusive `(x+1,z+1)`. Call lot-manager slot 6 `GetLot(x,z,false)` for each
+   candidate. If a lot exists, read its inclusive bounding rectangle through lot slot 14, increment its
+   maximum x/z by one, enlarge the union bounds, and append that converted rectangle to a temporary
+   vector. Do not deduplicate repeated lots/rectangles. These are borrowed lot lookups; the helper takes
+   no additional lot reference (`0061F817–0061F980`). Candidates with no lot enlarge the allocation bounds
+   but append **no** rectangle to the marking vector.
+2. If there are no candidates, return true **without writing any outputs**. Otherwise allocate a fresh
+   caller-owned region if minimum x is at most maximum x. Store the union's exclusive maxima as the
+   region's inclusive maxima and allocate `maxX-minX+1` by `maxZ-minZ+1` cleared cells: this retains an
+   extra unmarked maximum row/column (`0061F9A6–0061F9F9`). The base wrapper has already freed its old
+   region and set `+210` to null (`00629BB0–00629C05`); it owns and later frees this new region.
+3. Walk the appended rectangles in vector order. For each, visit x ascending (outer), then z ascending
+   (inner), excluding the converted maxima. Read zone-manager slot 12 `GetZoneType(x,z)`. Zone zero
+   skips the remaining work for that cell. For every nonzero zone, call occupant-manager slot 32
+   `FirstOccupantInCell(&o,x,z,layerFilter)` (§10 and network-geometry.md §8.1). If it returns false,
+   set this region cell's bit and OR `1 << (zone & 31)` into a u32 zone mask. A true result leaves the
+   cell unmarked. Release any nonnull returned occupant immediately, on either Boolean result, before
+   advancing z. Overlapping rectangles repeat these calls; mask OR is idempotent
+   (`0061FA30–0061FAFB`). The layer filter only gates **region membership** here.
+4. If the accumulated zone mask intersects **0xFC00** (marked zone codes 10–15), return false after
+   freeing the temporary rectangles. Keep the allocated region; leave cost and the occupant-set output
+   untouched (`0061FB05–0061FB24`). Thus this refusal is before per-occupant demolition eligibility or
+   pricing. Otherwise write **both 32-bit halves** of cost to zero and construct/AddRef a temporary
+   `cSC4DemolishByNetworksOccupantFilter` (`0061FB25–0061FB64`). Its inclusion test QIs the candidate
+   occupant for **IID A9764C8C** and accepts exactly when that QI returns false; it releases any nonnull
+   acquired interface before returning (`0061F590–0061F5C7`). Preserve the numeric IID despite the
+   filter's name; do not replace this test with a class/group guess or the earlier layer filter.
+5. Call the city's demolition service, slot 6, with
+   `DemolishRegion(false, region, 1, 0x2001, false, temporaryFilter, costOut, occupantSetOut, null, 0, 0)`
+   (`0061FB67–0061FB87`). Release the temporary filter, free the temporary rectangle vector, and return
+   that call's Boolean result. The resulting region and occupant-set references belong to the caller;
+   they are not freed with the temporary filter. Base slot 59 replaces/disposes its previous stored
+   occupant set with this output even when the result is false.
+
+**Eligibility, price and references belong to the demolition service**, not to a second loop in this
+helper. Apply [demolition.md](demolition.md) §§4.2–4.4 with the exact arguments above: privilege 1 uses
+removal level 2; flag `2000` disables the demolition filter's view gate but not the independently fetched
+view-filter checks on empty lots. Discover cells x-then-z, deduplicate lot/occupant candidates as specified
+there, and evaluate occupants in native pointer-address set order. Call `DemolishOccupant(false, …,
+1,0x2001,&c,true,orphans)` for each candidate; add **int64 c only on a true result**, and insert that
+occupant into the caller's set with its own acquired reference. A false occupant verdict does not itself
+change the region result. Add the specified destroyed-lot per-tile charge, then write the final int64
+total. The per-kind price sources and arithmetic are demolition.md §4.3; do not charge a generic cell
+fee, round these prices through float, perform real removals, or start demolition effects here. Demolition
+releases its temporary candidate/list references and clears its filter references as in §4.4. The helper
+does not charge a budget; `GetCostOfSolution` later consumes the stored price (§8.1).
+
+**Derived fixtures.** A repeated candidate on an inclusive 2×2 lot appends the same rectangle twice and
+performs eight zone checks; if all four cells have zone 1 and no occupant passing the layer filter, the
+region still marks only four cells and preview demolition prices each admitted occupant once. If any
+marked cell instead has zone 11, the helper returns false before demolition, retaining the region and the
+previous cost. For n=5 that gives slot 59 result 4; with pipe/subway's override the result remains 5 and
+no helper call occurs. These are contract fixtures, not reproductions of the question's observed drag.
 
 ### 8.1 GetCostOfSolution (slot 20, `0x00625640`, returns int)
 
@@ -1246,10 +1310,13 @@ made by the solve; do not rebuild the set from a sorted or first-input-order vec
 The failed-smoothing branch instead walks the solved **vector** (§11.1 step 5), not this hash iteration.
 
 For a fresh B=193 set with no further solve insertions, keys 2 then 195 (cells `(2,0)` and `(195,0)`)
-collide in bucket 2 and step 4 visits **195,2**. Reinserting 2 keeps that order. A resize fixture using
-input keys `0…191,389,778` is the same 193→389 head-rehash example as network-manager.md §2.2.1:
-the final set order is **778,389,0,1,2,3,…191**, not input-list order. These are derived ordering fixtures;
-they make no claim about a recorded city's smoothing result. The hash and property-loading operations
+collide in bucket 2 and step 4 visits **195,2**. Reinserting 2 keeps that order. For an admitted-coordinate
+resize fixture, insert keys `0…191`, then 65536 (cell `(0,1)`). At count 193, bucket 109 contains
+`[65536,109]`. Insert 65537 (cell `(1,1)`), growing B to 389 before insertion: rehash places 65536 in
+new bucket 184 before visiting old bucket 184's key 184, which prepends there; the new key 65537 prepends
+to bucket 185. With no additional solve insertions, the final order is
+**0…183,184,65536,65537,185,186…191**. These are derived ordering fixtures; they make no claim about a
+recorded city's smoothing result. The hash and property-loading operations
 specified for NT38 consume no CRT `rand()` draws.
 
 ---

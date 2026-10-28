@@ -315,3 +315,19 @@
   no qcheck difference has yet been attributed to either choice.
 
 **ANSWERED 2026-10-28 (re-blockers37b):** DIFFERS — network-tools.md §§2, 11.2 specifies Init's pipe/subway exemplar selection, retain-on-missing reads with no constructor-provided first-use numeric default, solved-set B=193 construction, retained capacity on clear, explicit pre-insert resizing, full-u32 identity hash, collision/rehash/traversal order and derived collision examples. No run difference is attributed to these choices.
+
+<!-- from: network-exact33 R5 (engine lane, 2026-10-28) -->
+- **NT37 - slot 59 UpdateOccupantHighlights, validation and demolition cost:** sections 5.1/6/8
+  name this pass and its cost but do not specify its candidate enumeration, demolition eligibility,
+  valid-prefix reduction, or cost accumulation. Please supply those rules and the interface calls
+  that observe their inputs, including the surface versus underground overrides. The plugin's
+  current host preserves the input valid count and has no demolition-cost observation.
+  Original-tool diagnostic `network-exact33-nettool-shadow-r5-1` is clean/ref_warnings=0. On
+  gen27-konradshohe-s1-default's first road, 2026-01-30 (57,80)-(25,80), native reports
+  ok=0/failure=1/valid=0/cost=0, replay 1/0/33/330, with identical 33 dragged cells. The next
+  street succeeds on both sides but costs 4031 versus 168. The Boolean failure does not identify
+  the refusing pass; these observations do not establish that slot 59 caused the first refusal.
+  Log: build-runs/game-results/network-exact33-nettool-shadow-r5-1.log in this lane worktree.
+  [retain the existing pass until specified; do not infer a rejection rule from failure=1]
+
+**ANSWERED 2026-10-28 (re-blockers37b):** DIFFERS — network-tools.md §§8.0–8.0.1 specifies ordered cell/lot-region expansion, layer-filter membership checks and releases, forbidden-zone refusal, retained/cleared output rules, the typed preview-demolition call and its eligibility/int64-price/reference ownership via demolition.md §§4.2–4.4, n/n−1 return and underground no-work overrides. Derived fixtures distinguish region refusal from demolition pricing; no observed refusal/price difference is attributed to this pass.
