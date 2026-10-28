@@ -27,6 +27,14 @@ layout! {
         0x20 => zone_manager / set_zone_manager: *mut u8,
         /// The intrinsic land value grid (`cISC4SimGrid<uint8>*`), the first grid `Init` creates (§2).
         0x24 => intrinsic_grid / set_intrinsic_grid: *mut u8,
+        /// The total land value grid, saved after the intrinsic grid.
+        0x28 => total_grid / set_total_grid: *mut u8,
+        /// The slope grid, saved after the total grid.
+        0x30 => slope_grid / set_slope_grid: *mut u8,
+        /// Nonzero when a new land value pass is needed.
+        0x34 => dirty / set_dirty: u8,
+        /// The current pass state; 9 means finished.
+        0x38 => pipeline_state / set_pipeline_state: i32,
         /// pivot (§7.3).
         0x60 => pivot / set_pivot: f32,
         /// lowRange (§7.3).
@@ -35,6 +43,8 @@ layout! {
         0x68 => high_range / set_high_range: f32,
         /// topIndex (§7.3).
         0x6C => top_index / set_top_index: i32,
+        /// The saved average land value byte.
+        0x74 => average / set_average: u8,
         /// meanAlt (§3).
         0x78 => mean_altitude / set_mean_altitude: f32,
         /// The altitude curve (`cSC4ResponseCurve*`, tuning `0x47E2C320`).
