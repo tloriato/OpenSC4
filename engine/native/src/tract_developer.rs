@@ -22,6 +22,11 @@ layout! {
     pub struct TractDeveloper {
         0x00 => vtable / set_vtable: u32,
         0x10 => references / set_references: i32,
+        0x1C => building_development / set_building_development: u32,
+        0x50 => occupied_cost / set_occupied_cost: f32,
+        0x54 => abandoned_cost / set_abandoned_cost: f32,
+        0x58 => aggregation_cost / set_aggregation_cost: f32,
+        0x5C => subdivision_cost / set_subdivision_cost: f32,
         0x7C => years_between_changes / set_years_between_changes: i32,
         0x80 => developer / set_developer: u32,
         0x8C => maximum_stage / set_maximum_stage: i32,
@@ -29,6 +34,8 @@ layout! {
         0xB8 => desired / set_desired: i32,
         0xBC => desired_maximum / set_desired_maximum: i32,
         0xC8 => relaxed / set_relaxed: u8,
+        0xE4 => candidates_begin / set_candidates_begin: u32,
+        0xE8 => candidates_end / set_candidates_end: u32,
         0x118 => styles_begin / set_styles_begin: u32,
         0x11C => styles_end / set_styles_end: u32,
         0x124 => style_index / set_style_index: i32,
@@ -48,6 +55,12 @@ layout! {
         0x10 => facing / set_facing: i32,
         0x14 => width / set_width: u8,
         0x15 => depth / set_depth: u8,
+        0x18 => lot_header / set_lot_header: u32,
+        0x1C => lot_count / set_lot_count: u32,
+        0x24 => occupied / set_occupied: i32,
+        0x28 => abandoned / set_abandoned: i32,
+        0x2C => stage / set_stage: i32,
+        0x30 => wealth / set_wealth: i32,
         0x34 => score / set_score: f32,
         0x38 => min_x / set_min_x: i32,
         0x3C => min_z / set_min_z: i32,
@@ -136,6 +149,7 @@ unsafe fn store(base: u32, offset: u32, value: u32) {
 }
 
 pub mod copying;
+pub mod evaluation;
 pub mod geometry;
 pub mod pool;
 pub mod sorting;
@@ -144,6 +158,7 @@ pub mod surface;
 pub mod trees;
 
 const COUNT: usize = copying::PORTS.len()
+    + evaluation::PORTS.len()
     + geometry::PORTS.len()
     + pool::PORTS.len()
     + sorting::PORTS.len()
@@ -152,6 +167,7 @@ const COUNT: usize = copying::PORTS.len()
     + trees::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
     copying::PORTS,
+    evaluation::PORTS,
     geometry::PORTS,
     pool::PORTS,
     sorting::PORTS,
