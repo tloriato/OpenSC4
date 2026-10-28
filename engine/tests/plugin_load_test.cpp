@@ -13221,6 +13221,7 @@ int main(int argc, char** argv) {
             DemolitionBuildingInterfaceChecks(seam);
             MySimsActiveOwnershipChecks(seam);
             PowerLineConnectionChecks(seam);
+            DemolitionFilterChecks(seam);
 
             // The always-on guard: the reference as PreAppInit takes it, a
             // quiet tick, then a 53-bit main thread is reported once.

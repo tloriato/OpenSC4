@@ -370,7 +370,7 @@ void DemolitionHostReleaseAll(DemolitionHostContext* ctx);
 // DemolitionHostReleaseAll. `DemolitionDefaultFilterIncludes` and
 // `DemolitionRealisticFilterIncludes` are the §4.2 step 1 verdicts.
 bool DemolitionDefaultFilterIncludes(cISC4Occupant* o);
-bool DemolitionRealisticFilterIncludes(cISC4Occupant* o);
+bool DemolitionRealisticFilterIncludes(cISC4Occupant* o, cISC4City* city = nullptr);
 
 // Visits query-owned references, then releases and clears each list value so
 // the SDK list destructor only frees nodes (one release per query reference).

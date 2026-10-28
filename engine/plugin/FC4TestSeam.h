@@ -347,6 +347,9 @@ constexpr uint32_t kFC4SeamGZFrameworkCreate = 0x475A0001;
 // a = borrowed power-line unknown, b = uint64_t[2]; 1 for two non-null poles.
 constexpr uint32_t kFC4SeamPowerLineConnections = 0x50570001;
 
+// a = borrowed occupant, b = borrowed city; bits 0/1 = default/realistic inclusion.
+constexpr uint32_t kFC4SeamDemolitionFilters = 0xD3000003;
+
 using FC4TestSeamFn = intptr_t(__cdecl*)(uint32_t op, void* a, void* b);
 
 namespace fc4 {

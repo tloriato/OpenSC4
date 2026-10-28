@@ -348,6 +348,10 @@ extern "C" __declspec(dllexport) intptr_t __cdecl FC4TestSeam(uint32_t op, void*
                                                static_cast<cIGZMessageServer2*>(b));
         case kFC4SeamPowerLineConnections:
             return PowerTestLineConnections(static_cast<cIGZUnknown*>(a), static_cast<uint64_t*>(b));
+        case kFC4SeamDemolitionFilters:
+            return (fc4::DemolitionDefaultFilterIncludes(static_cast<cISC4Occupant*>(a)) ? 1 : 0) |
+                   (fc4::DemolitionRealisticFilterIncludes(static_cast<cISC4Occupant*>(a),
+                                                           static_cast<cISC4City*>(b)) ? 2 : 0);
         default:
             return 0;
     }

@@ -175,19 +175,14 @@ bool InManager(cISC4Occupant* o) { return o != nullptr && o->IsFlagSet(1); }  //
 // The shared occupant filters (§4.2 step 1). The game's own
 // cSC4DefaultOccupantFilter / cSC4RealisticOccupantFilter have no getter, so
 // the verdicts are the spec's literal reading here.
-bool ExposesRealismIface(cISC4Occupant* o) {
+bool ExposesInterface(cISC4Occupant* o, uint32_t iid) {
     if (o == nullptr) return false;
     void* p = nullptr;
-    if (o->QueryInterface(kRealismIfaceA, &p) && p != nullptr) {
-        o->Release();  // the QI above took a reference
-        return true;
-    }
-    p = nullptr;
-    if (o->QueryInterface(kRealismIfaceB, &p) && p != nullptr) {
-        o->Release();
-        return true;
-    }
-    return false;
+    if (!o->QueryInterface(iid, &p) || p == nullptr) return false;
+    auto* queried = static_cast<cIGZUnknown*>(p);
+    FC4_ACQUIRED(queried, "QueryInterface");
+    FC4_RELEASE(queried);
+    return true;
 }
 
 bool IsDefaultFilterGroup(cISC4Occupant* o) {
@@ -197,11 +192,20 @@ bool IsDefaultFilterGroup(cISC4Occupant* o) {
     return false;
 }
 
-// [question DQ1] The "base-texture occupant on an empty lot" and "prop that is
-// not a real prop" half of the realistic filter (§4.2 step 1) has no slot in
-// docs/abi; only the group test is applied here.
-bool RealisticRejects(cISC4Occupant* o) {
-    return o != nullptr && o->IsOccupantGroup(kRealisticExtraGroup);
+// occupant-manager.md §13.2.3: all three realistic-filter flags start clear.
+bool RealisticRejects(cISC4Occupant* o, cISC4City* city) {
+    if (o->IsOccupantGroup(kRealisticExtraGroup)) return true;
+    if (o->GetType() == 0x497F6D9D && ExposesInterface(o, 0x097F6D98) && city != nullptr) {
+        cS3DVector3 position;
+        o->GetPosition(&position);
+        int x = 0, z = 0;
+        city->PositionToCell(position.fX, position.fZ, x, z);
+        cISC4LotManager* manager = city->GetLotManager();
+        cISC4Lot* lot = manager ? AsGame(manager)->GetLot(x, z, false) : nullptr;
+        if (lot != nullptr && static_cast<uint32_t>(AsGame(lot)->GetState()) == 1) return true;
+    }
+    return o->GetType() == kTypeProp &&
+           (ExposesInterface(o, 0x4B44FBE2) || ExposesInterface(o, 0x2B3B7D86));
 }
 
 }  // namespace
@@ -210,12 +214,18 @@ bool RealisticRejects(cISC4Occupant* o) {
 
 bool DemolitionDefaultFilterIncludes(cISC4Occupant* o) {
     if (o == nullptr) return false;
-    return !ExposesRealismIface(o) && !IsDefaultFilterGroup(o);
+    if (ExposesInterface(o, kRealismIfaceA) || ExposesInterface(o, kRealismIfaceB) || IsDefaultFilterGroup(o)) {
+        return false;
+    }
+    // occupant-manager.md §13.2.3: these are holder properties, not IIDs.
+    const cISCPropertyHolder* holder = o->AsPropertyHolder();
+    if (props::Has(holder, 0x49512A09) || props::Has(holder, 0x8A15F1BD)) return false;
+    std::vector<uint32_t> hidden;
+    return !props::GetU32s(holder, 0xCAA45670, hidden) || hidden.empty() || hidden[0] == 0;
 }
 
-bool DemolitionRealisticFilterIncludes(cISC4Occupant* o) {
-    if (!DemolitionDefaultFilterIncludes(o)) return true;  // only a rejection over the default counts
-    return !RealisticRejects(o);
+bool DemolitionRealisticFilterIncludes(cISC4Occupant* o, cISC4City* city) {
+    return DemolitionDefaultFilterIncludes(o) && !RealisticRejects(o, city);
 }
 
 void DemolitionVisitOccupants(SC4List<cISC4Occupant*>& list, fc4_token_callback cb, void* ctx) {
@@ -389,8 +399,8 @@ bool DefaultFilterIncludes(void*, uint64_t occupant) {
     return DemolitionDefaultFilterIncludes(Occ(occupant));
 }
 
-bool RealisticFilterIncludes(void*, uint64_t occupant) {
-    return DemolitionRealisticFilterIncludes(Occ(occupant));
+bool RealisticFilterIncludes(void* u, uint64_t occupant) {
+    return DemolitionRealisticFilterIncludes(Occ(occupant), City(u));
 }
 
 // -- occupants --
