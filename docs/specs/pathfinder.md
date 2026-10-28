@@ -374,12 +374,89 @@ travel-type 0…8 and side 0…3 loops within each cell. Start costs and coordin
 do not identify which of these nodes exist: connection nibbles and network-info records
 are necessary inputs.
 
-Still missing for a native input-and-pop replay: the eligible start nodes and their stored
-score bits, the complete heap before the reported expansion, and earlier insert/update/pop
-operations from the original search. The filed temporary trace observes the replacement
-only. The Braus route bytes likewise do not establish its first search divergence or any
-step-cost rounding error. No native full-search trace was obtained in this lane, and neither
-route case is answered by the two fixtures. TE33-PATH-1 stays open.
+**What actually merges (additional code/trace check, 2026-10-28).** Equal cell/type/side
+does **not** suffice for an equal-g update. AddTripNode uses the predecessor's byte
+entry side in the key (`0x006D8FC7`–`0x006D8FE7`); the node key is u32, its type/side
+fields are bytes, its decoded x/z fields are 16-bit, its g/f fields binary32, and its
+recorded heap position is u32. The two branches have these identities when the reported
+three Bus step costs all have bits `0x3CAAF6A7`:
+
+| Branch | Cell | Entry side | Predecessor entry side | Key | g bits |
+|---|---|---|---|---|---|
+| South first | (244,60) | 1 | 3 | `0x0D02F43C` | `0x3CAAF6A7` |
+| West first | (243,59) | 2 | 3 | `0x0E02F33B` | `0x3CAAF6A7` |
+| South then West | (243,60) | 2 | 1 | `0x0602F33C` | `0x3D2AF6A7` |
+| West then South | (243,60) | 1 | 2 | `0x0902F33C` | `0x3D2AF6A7` |
+| South branch at (243,61) | (243,61) | 1 | 2 | `0x0902F33D` | `0x3D8038FD` |
+| West branch at (243,61) | (243,61) | 1 | 1 | `0x0502F33D` | `0x3D8038FD` |
+
+The last two are **different search nodes**, despite their equal visible tuple and g.
+On their next South move, both address **`0x0502F33E`, (243,62,Bus,side1,pSide1)**.
+For the costs above, each proposes g bits `0x3DAAF6A7`. This is the first shared key
+on these two stated continuations, not (243,61). Earlier cross-links/other branches can
+still affect either continuation.
+
+The preserved **replacement-only** trace is available at
+`.claude/worktrees/traffic-exact33/build-runs/r9-jinae-corner.txt` in the main checkout.
+Lines 35–39 pop South `0x0D02F43C` before West `0x0E02F33B`; lines 54–65 pop their
+distinct (243,60) successors in that same branch order; lines 82–92 pop
+`0x0902F33D` before `0x0502F33D`, and both attempt (243,62). Line 96 later pops the
+shared key with the South branch as parent. ADD records are **attempts**, not proof of
+successful insertion/update. This is consistent with the original's equal-g rule, but
+is not evidence that the original used the same preceding heap or network inputs.
+
+**Conformance fixture for the join, independently of the city.** Begin with no node
+`J=0x0502F33E`. Supply the two distinct (243,61) predecessor nodes from the table,
+each g bits `0x3D8038FD`; H at J is zero, w is binary32 0.09, Bus enabled, budget large
+enough, no other proposals to J. Process one predecessor's South move, step cost bits
+`0x3CAAF6A7`, then the other's. The required result is:
+
+| Proposal order | First action at J | Second action at J | Final parent |
+|---|---|---|---|
+| `0x0902F33D`, then `0x0502F33D` | create, g=f `0x3DAAF6A7`, Push once | ignore; no heap Update | `0x0902F33D` (South branch) |
+| `0x0502F33D`, then `0x0902F33D` | create, g=f `0x3DAAF6A7`, Push once | ignore; no heap Update | `0x0502F33D` (West branch) |
+
+The second equal proposal is also ignored if J has already been closed. This follows
+from the **stored** candidate g and the ordered comparisons at `0x006D9070`–`0x006D9091`;
+finite equal g does not replace a parent, reopen a closed node, or consult its key as
+a tie-breaker. Candidate g is added with x87 and stored binary32 before either compare
+(`0x006D9007`–`0x006D9013`). Accepted proposals store the parent and g, evaluate H, multiply
+by the binary32 weight, add g, store binary32 f, then call heap Update or Push according
+to the prior open byte (`0x006D9093`–`0x006D90DF`). Keep the 24-bit operation rounding
+of §4.19; equal decimal printouts alone do not establish equality of those stored bits.
+Heap Update uses only the recorded position and strict f comparison, with no key or
+parent comparison (`0x006D6460`–`0x006D64AB`). There is no rand() draw anywhere in this
+decision (§4.20). The pathfinder owns the heap/parents; the simulator supplies network,
+traffic-volume and destination data.
+
+**Inputs still required to turn these fixtures into the requested native replay.** Either
+of the following would determine the native decision; the final route bytes do not:
+
+1. An original snapshot immediately before the competing proposals: the **ordered heap
+   array**, each entry's u32 key and stored g/f bits, parent key, open/closed bytes and
+   recorded heap position, including repeated entries; plus the intervening successful
+   inserts/updates/pops and ordered edge proposals through the first shared key. A set
+   of heap members or the two equal Bus scores alone is insufficient.
+2. Inputs sufficient to regenerate that snapshot from the start: the original call's
+   flags, destination filter, density, both type masks, nine starting-cost bit patterns,
+   maximum length, weight and rectangles; city bounds, lot-start classification and
+   origin-ring limit; original legal-subtype/start-edge/turn tables; the start-ring
+   network records and side connection nibbles; and all network/switch/volume/cost/H
+   data consulted on the expansion prefix (§§4.4, 4.6, 4.8–4.11). Record each actual
+   start **push**, in order, with key/g/f bits, including repeated-key pushes from
+   clamped rings or ferry arrivals. A resumed call also needs its retained search state
+   and any intervening heuristic-weight adjustment. Keep the native x87 control word
+   with numeric observations.
+
+No original snapshot or original insertion/pop prefix is present in the cited trace,
+which logs the copy only. Its initial zero-score pops are not a native start-insertion
+vector. The allowed mask and ring-cell order do not recover connection nibbles or
+which sides pass the start filters. Thus code proves **strict heap ordering followed
+by first accepted equal-g parent at the same full key**; it does not prove the native
+West pop or the first differing original input for Jinae. The Braus delivery has no
+cost/pop trace and other differing trips: first identify its original query/inputs,
+then use the same snapshot requirements. No zero-cost-loop, rounding or heap defect
+is established by its route-byte suffix. TE33-PATH-1 remains partial; no game was run.
 
 ### 4.8 Main loop
 
