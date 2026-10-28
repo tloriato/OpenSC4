@@ -23,6 +23,8 @@ layout! {
     /// "Land-value native progress"). The altitude fields are the ones `SetupAltitudeEffect` (0x006BD750) reads
     /// and writes (§7.3).
     pub struct LandValueSim {
+        /// The terrain service (`cISTETerrain*`), taken in `Init`.
+        0x1C => terrain / set_terrain: *mut u8,
         /// The zone manager (`cISC4ZoneManager*`), taken in `Init`.
         0x20 => zone_manager / set_zone_manager: *mut u8,
         /// The intrinsic land value grid (`cISC4SimGrid<uint8>*`), the first grid `Init` creates (§2).
