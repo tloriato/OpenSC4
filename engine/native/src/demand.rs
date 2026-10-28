@@ -32,6 +32,7 @@ layout! {
         0xA4 => industrial_bonus / set_industrial_bonus: u32,
         0xA8 => commercial_relief / set_commercial_relief: u32,
         0xAC => industrial_relief / set_industrial_relief: u32,
+        0xB0 => neutral_tax_curve / set_neutral_tax_curve: *mut u8,
     }
 }
 
@@ -115,6 +116,7 @@ mod census;
 mod interface;
 mod io;
 mod jobs;
+mod queries;
 mod sort;
 mod tree;
 
@@ -126,6 +128,7 @@ const COUNT: usize = capacity::PORTS.len()
     + interface::PORTS.len()
     + io::PORTS.len()
     + jobs::PORTS.len()
+    + queries::PORTS.len()
     + sort::PORTS.len()
     + tree::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
@@ -134,6 +137,7 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     interface::PORTS,
     io::PORTS,
     jobs::PORTS,
+    queries::PORTS,
     sort::PORTS,
     tree::PORTS,
 ]);
