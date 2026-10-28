@@ -31,6 +31,7 @@ layout! {
 }
 
 mod accounting;
+mod removal;
 mod geometry;
 mod lists;
 mod proposal;
@@ -42,6 +43,7 @@ const COUNT: usize = surface::PORTS.len()
     + accounting::PORTS.len()
     + lists::PORTS.len()
     + proposal::PORTS.len()
+    + removal::PORTS.len()
     + geometry::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
     surface::PORTS,
@@ -49,6 +51,7 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     accounting::PORTS,
     lists::PORTS,
     proposal::PORTS,
+    removal::PORTS,
     geometry::PORTS,
 ]);
 pub const PORTS: &[Port] = &ALL;
