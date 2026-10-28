@@ -45,9 +45,12 @@ layout! {
 }
 
 pub mod civic;
+pub mod collections;
 pub mod coverage;
+pub mod curves;
 pub mod grid;
 pub mod interface;
+pub mod monthly;
 pub mod population;
 pub mod proximity;
 pub mod query;
@@ -56,6 +59,7 @@ pub mod save;
 pub mod served;
 pub mod service;
 pub mod strike;
+pub mod tuning;
 
 const COUNT: usize = interface::PORTS.len()
     + proximity::PORTS.len()
@@ -68,7 +72,11 @@ const COUNT: usize = interface::PORTS.len()
     + save::PORTS.len()
     + grid::PORTS.len()
     + served::PORTS.len()
-    + coverage::PORTS.len();
+    + coverage::PORTS.len()
+    + collections::PORTS.len()
+    + monthly::PORTS.len()
+    + curves::PORTS.len()
+    + tuning::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
     interface::PORTS,
     proximity::PORTS,
@@ -82,6 +90,10 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     grid::PORTS,
     served::PORTS,
     coverage::PORTS,
+    collections::PORTS,
+    monthly::PORTS,
+    curves::PORTS,
+    tuning::PORTS,
 ]);
 
 /// This module's replacements.
