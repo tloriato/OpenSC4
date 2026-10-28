@@ -905,9 +905,13 @@ def main(argv=None):
             if not 1 <= args.draw_frames <= 600 or not 1 <= args.draw_warmup <= 3600:
                 raise ValueError('draw frames must be 1..600 and warmup 1..3600')
             extra = os.environ.get('GOLDEN_INI_EXTRA', '').strip()
-            if extra and not re.fullmatch(r'heap perturb\s*=\s*(holes|reverse)', extra):
-                raise ValueError('draw reference diagnostics allow only heap perturb = holes or reverse')
-            if extra and args.command in ('record', 'determinism') and not args.rerun:
+            # Native functions are compared against the reference recorded without them.
+            native = re.fullmatch(r'\[native\](;\s*(functions|dll)\s*=[^;]+)+;?', extra)
+            if native and args.command != 'compare':
+                raise ValueError('draw references are recorded without native functions; [native] is for compare')
+            if extra and not native and not re.fullmatch(r'heap perturb\s*=\s*(holes|reverse)', extra):
+                raise ValueError('draw reference diagnostics allow only heap perturb = holes or reverse, or [native]')
+            if extra and not native and args.command in ('record', 'determinism') and not args.rerun:
                 raise ValueError('heap perturb audits require --rerun and an existing unperturbed reference')
         if args.schedule == 'fixed':
             pin, reference = pinned(args.output, args.store)
