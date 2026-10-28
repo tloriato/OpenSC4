@@ -484,7 +484,7 @@ mod tests {
             let mut before = unsafe { core::slice::from_raw_parts(self.memory.ptr(), 0xBC).to_vec() };
             let mut call = Probe::new(fc4p_006a5cb0 as *const (), self.memory.ptr(), [initial, 77, 88]);
             unsafe {
-                call.run();
+                call.checked_run(4);
             }
             assert_eq!((call.eax, call.edx), (0xAABB_CCDD, 0x7654_3210));
             before[0x98..0x9C].copy_from_slice(&self.new.head().to_le_bytes());

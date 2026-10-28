@@ -186,7 +186,7 @@ mod tests {
                 let before = unsafe { core::slice::from_raw_parts(sim.as_ptr(), 0xB4).to_vec() };
                 let mut call = Probe::new(fc4p_006a5f80 as *const (), sim.as_ptr(), [output_ptr, 77, 88]);
                 unsafe {
-                    call.run();
+                    call.checked_run(4);
                 }
                 assert_eq!(call.after, [12, 77, 88]);
                 assert_eq!(call.eax, source.header() as u32);
@@ -233,7 +233,7 @@ mod tests {
         let args = [output.as_mut_ptr() as u32, 77, 88];
         let mut call = Probe::new(fc4p_006a5f80 as *const (), sim.as_ptr(), args);
         unsafe {
-            call.run();
+            call.checked_run(4);
         }
         assert_eq!(call.after, args);
         assert_eq!((call.eax, call.edx), (source.header() as u32, 0x5566_7788));

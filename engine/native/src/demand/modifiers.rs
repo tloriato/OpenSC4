@@ -6,7 +6,6 @@
 use super::queries::{add_float, divide_float, multiply_float};
 use super::*;
 use crate::x87::F80;
-use core::mem::MaybeUninit;
 
 game_data! { static application: *mut u8 = 0x00B4_3C94; }
 game_data! { static history: *mut u8 = 0x00B4_3DC0; }
@@ -39,62 +38,96 @@ port! {
     /// national economy modifier in that order. Clamp neutral tax below 0.1, keeping unordered values.
     /// Multiply the scaled maximum tax by a shared reciprocal, storing it after the first division.
     /// Commercial offices and industry receive their respective simulator bonuses.
-    #[port(address = 0x006A_6070, owner = "demand", name = "cSC4DemandSimulator::UpdateTaxAndEconomyModifiers")]
-    pub unsafe extern "thiscall" fn fc4p_006a6070(this: *mut u8) -> u64 {
-        // SAFETY: the simulator holds live service, curve and node objects with the original interfaces.
-        unsafe {
-            let sim = DemandSim::from_ptr(this);
-            let nation = vcall!(read_unaligned(application()), 0x88 => fn() -> *mut u8);
-            let history = read_unaligned(history());
-            let neutral_raw = vcall_st0!(this, 0x28);
-            let mut neutral = neutral_raw.to_f32();
-            if neutral_raw.compare(F80::from_f32(read_unaligned(tenth()))).less() {
-                neutral = f32::from_bits(0x3DCC_CCCD);
-            }
-            let today = vcall!(read_unaligned(simulator()), 0x1C => fn() -> *mut u8);
-            let day = vcall!(today, 0x68 => fn() -> u32).wrapping_sub(sim.tax_penalty_days());
-            let mut date = MaybeUninit::<[u32; 4]>::uninit();
-            let date = date.as_mut_ptr().cast::<u8>();
-            date_new(date, day);
-            let mut average = MaybeUninit::<f32>::uninit();
-            let mut maximum = MaybeUninit::<f32>::uninit();
-            let mut minimum = MaybeUninit::<f32>::uninit();
-            let mut reciprocal = 0.0f32;
-            for (i, kind) in TYPES.into_iter().enumerate() {
-                // Outputs are reused even when a later history query reports no data.
-                vcall!(history, 0x1C => fn(u32, *mut u8, *mut u8, *mut f32, *mut f32, *mut f32),
-                    0xAABA_AA9Fu32 + i as u32, date.add(8), today, average.as_mut_ptr(), maximum.as_mut_ptr(), minimum.as_mut_ptr());
-                let scaled = multiply_float(F80::from_f32(maximum.assume_init()), read_unaligned(tenth()));
-                let recip = if i == 0 {
-                    let value = divide_float(F80::from_f32(read_unaligned(one())), neutral);
-                    reciprocal = value.to_f32();
-                    value
-                } else {
-                    F80::from_f32(reciprocal)
-                };
-                let ratio = (recip * scaled).to_f32();
-                let tax = curve_output(sim.tax_curve(), ratio).to_f32();
-                let key = kind + 0x20000;
-                let object = read_unaligned(map_value(this.add(0x50), &key));
-                let factor = vcall_st0!(sim.ordinances(), 0x64, 0x2A65_0000u32 + kind, 0u32);
-                let modifier = add_float(subtract_float(factor, read_unaligned(one())), tax).to_f32();
-                vcall!(object, 0x64 => fn(u32), modifier.to_bits());
-                // The first six types retain the economy slot before asking the nation for its value.
-                let saved_slot = if i < 6 { vslot(object, 0x5C) } else { 0 };
-                let economy = vcall_st0!(nation, 0x40, kind);
-                let economy = if i >= 8 {
-                    add_float(economy, f32::from_bits(sim.industrial_bonus()))
-                } else if i >= 6 {
-                    add_float(economy, f32::from_bits(sim.commercial_bonus()))
-                } else {
-                    economy
-                }.to_f32();
-                let target = if i < 6 { saved_slot } else { vslot(object, 0x5C) };
-                let set = core::mem::transmute::<usize, unsafe extern "thiscall" fn(*mut u8, u32)>(target);
-                set(object, economy.to_bits());
-            }
-            date_drop(date)
+    /// Keep the history output slots at their original stack addresses: a query can leave them untouched.
+    #[port(address = 0x006A_6070, owner = "demand", name = "cSC4DemandSimulator::UpdateTaxAndEconomyModifiers", naked)]
+    pub unsafe extern "C" fn fc4p_006a6070() {
+        core::arch::naked_asm!(
+            "sub esp, 0x40", "mov edx, esp", "call {body}", "add esp, 0x40", "ret",
+            body = sym update,
+        )
+    }
+}
+
+unsafe extern "fastcall" fn update(this: *mut u8, frame: *mut u8) -> u64 {
+    // SAFETY: the simulator holds live service, curve and node objects with the original interfaces.
+    unsafe {
+        let sim = DemandSim::from_ptr(this);
+        let nation = vcall!(read_unaligned(application()), 0x88 => fn() -> *mut u8);
+        let history = read_unaligned(history());
+        let neutral_raw = vcall_st0!(this, 0x28);
+        write_unaligned(frame.add(0x14).cast::<f32>(), neutral_raw.to_f32());
+        if neutral_raw.compare(F80::from_f32(read_unaligned(tenth()))).less() {
+            write_unaligned(frame.add(0x14).cast::<u32>(), 0x3DCC_CCCD);
         }
+        let today = vcall!(read_unaligned(simulator()), 0x1C => fn() -> *mut u8);
+        write_unaligned(frame.add(0x20).cast::<*mut u8>(), today);
+        let day = vcall!(today, 0x68 => fn() -> u32).wrapping_sub(sim.tax_penalty_days());
+        let date = frame.add(0x30);
+        date_new(date, day);
+        for (i, kind) in TYPES.into_iter().enumerate() {
+            // Outputs are reused even when a later history query reports no data.
+            vcall!(history, 0x1C => fn(u32, *mut u8, *mut u8, *mut f32, *mut f32, *mut f32),
+                    0xAABA_AA9Fu32 + i as u32, date.add(8), if i == 0 { today } else { read_unaligned(frame.add(0x20).cast()) },
+                    frame.add(0x1C).cast(), frame.add(0x10).cast(), frame.add(0x18).cast());
+            let scaled = multiply_float(
+                F80::from_f32(read_unaligned(frame.add(0x10).cast())),
+                read_unaligned(tenth()),
+            );
+            let recip = if i == 0 {
+                let value = divide_float(
+                    F80::from_f32(read_unaligned(one())),
+                    read_unaligned(frame.add(0x14).cast()),
+                );
+                write_unaligned(frame.add(0x14).cast::<f32>(), value.to_f32());
+                value
+            } else {
+                F80::from_f32(read_unaligned(frame.add(0x14).cast()))
+            };
+            let ratio = (recip * scaled).to_f32();
+            let tax = curve_output(sim.tax_curve(), ratio).to_f32();
+            let (tax_offset, key_offset) = if i == 0 {
+                (0x28, 0x24)
+            } else if i < 6 {
+                (0x24, 0x28)
+            } else if i == 6 {
+                (0x2C, 0x28)
+            } else {
+                (0x28, 0x2C)
+            };
+            write_unaligned(frame.add(tax_offset).cast::<f32>(), tax);
+            write_unaligned(frame.add(key_offset).cast::<u32>(), kind + 0x20000);
+            let object = read_unaligned(map_value(this.add(0x50), frame.add(key_offset).cast()));
+            if i < 6 {
+                write_unaligned(frame.add(key_offset).cast::<*mut u8>(), object);
+            } else if i < 11 {
+                write_unaligned(frame.add(0x24).cast::<*mut u8>(), object);
+            }
+            let factor = vcall_st0!(sim.ordinances(), 0x64, 0x2A65_0000u32 + kind, 0u32);
+            let modifier = add_float(
+                subtract_float(factor, read_unaligned(one())),
+                read_unaligned(frame.add(tax_offset).cast()),
+            )
+            .to_f32();
+            vcall!(object, 0x64 => fn(u32), modifier.to_bits());
+            // The first six types retain the economy slot before asking the nation for its value.
+            let saved_slot = if i < 6 { vslot(object, 0x5C) } else { 0 };
+            let economy = vcall_st0!(nation, 0x40, kind);
+            let economy = if i >= 8 {
+                add_float(economy, f32::from_bits(sim.industrial_bonus()))
+            } else if i >= 6 {
+                add_float(economy, f32::from_bits(sim.commercial_bonus()))
+            } else {
+                economy
+            }
+            .to_f32();
+            let target = if i < 6 { saved_slot } else { vslot(object, 0x5C) };
+            if i >= 6 {
+                write_unaligned(frame.add(0x2C).cast::<f32>(), economy);
+            }
+            let set = core::mem::transmute::<usize, unsafe extern "thiscall" fn(*mut u8, u32)>(target);
+            set(object, economy.to_bits());
+        }
+        date_drop(date)
     }
 }
 
@@ -386,10 +419,63 @@ mod tests {
             }
         }
         fn run(&mut self) {
+            self.run_at(fc4p_006a6070 as *const ());
+        }
+        fn run_at(&mut self, target: *const ()) {
             let before = unsafe { core::slice::from_raw_parts(self.sim.ptr(), 0xBC).to_vec() };
-            assert_eq!(unsafe { fc4p_006a6070(self.sim.ptr()) }, 0x1234_5678_9988_7766);
+            let mut call = crate::demand::test_support::Probe::new(target, self.sim.ptr(), [0; 3]);
+            unsafe {
+                call.checked_run(0);
+            }
+            assert_eq!((call.eax, call.edx), (0x9988_7766, 0x1234_5678));
             assert_eq!(unsafe { core::slice::from_raw_parts(self.sim.ptr(), 0xBC) }, before);
         }
+    }
+
+    #[unsafe(naked)]
+    unsafe extern "thiscall" fn seed_history(_p: *mut u8) {
+        core::arch::naked_asm!(
+            "mov dword ptr [esp - 0x30], 0x44000000", "jmp {target}", target = sym fc4p_006a6070,
+        )
+    }
+
+    #[test]
+    fn an_untouched_first_history_maximum_keeps_the_original_stack_bytes() {
+        let _fpu = GameFpu::new();
+        let mut f = Fixture::new(9.0);
+        STATE.with(|s| s.borrow_mut().maxima = [None; 12]);
+        f.run_at(seed_history as *const ());
+        STATE.with(|s| {
+            assert_eq!(
+                s.borrow()
+                    .calls
+                    .iter()
+                    .filter_map(|c| if let Call::Curve(bits) = c { Some(*bits) } else { None })
+                    .collect::<Vec<_>>(),
+                [0x40B6_0B61; 12]
+            )
+        });
+    }
+
+    #[test]
+    fn the_first_ratio_keeps_the_reciprocal_before_its_float_store_rounds_it() {
+        let _fpu = GameFpu::new();
+        crate::x87::set_control_word(0x037F);
+        let mut f = Fixture::new(3.0);
+        STATE.with(|s| s.borrow_mut().maxima = [Some(7.0); 12]);
+        f.run();
+        let mut expected = [0x3E6E_EEF0; 12];
+        expected[0] = 0x3E6E_EEEF;
+        STATE.with(|s| {
+            assert_eq!(
+                s.borrow()
+                    .calls
+                    .iter()
+                    .filter_map(|c| if let Call::Curve(bits) = c { Some(*bits) } else { None })
+                    .collect::<Vec<_>>(),
+                expected
+            )
+        });
     }
 
     #[test]

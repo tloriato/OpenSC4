@@ -332,7 +332,7 @@ mod tests {
                 [self.city.as_mut_ptr() as u32, dev, amount.to_bits()],
             );
             unsafe {
-                call.run();
+                call.checked_run(12);
             }
             assert_eq!(unsafe { core::slice::from_raw_parts(self.sim.ptr(), 0xB4) }, before);
             assert_eq!((call.eax, call.edx), (0x7654_3210, 0xDEAD_BEEF));
@@ -468,7 +468,7 @@ mod tests {
                 let args = [0xDEAD_BEEF, dev, 0x7F80_0001];
                 let mut call = Probe::new(target, core::ptr::null_mut(), args);
                 unsafe {
-                    call.run();
+                    call.checked_run(12);
                 }
                 assert_eq!(call.after, args);
                 assert_eq!(call.edx, 0x5566_7788);

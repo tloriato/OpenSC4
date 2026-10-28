@@ -106,7 +106,7 @@ mod tests {
         let args = [0xABC, &old as *const f32 as u32, &new as *const f32 as u32];
         let mut call = Probe::new(fc4p_006a6c90 as *const (), 0x1234usize as *mut u8, args);
         unsafe {
-            call.run();
+            call.checked_run(12);
         }
         assert_eq!(call.after, args);
         assert_eq!((call.eax, call.edx), (0x1122_3344, 0xAABB_CCDD));
@@ -137,7 +137,7 @@ mod tests {
                 [42, &old as *const f32 as u32, &new as *const f32 as u32],
             );
             unsafe {
-                call.run();
+                call.checked_run(12);
             }
             STATE.with(|s| assert_eq!(s.borrow().calls.len(), if changed { 2 } else { 0 }));
             if !changed {
