@@ -21,6 +21,25 @@ layout! {
     }
 }
 
+macro_rules! stored_op {
+    ($name:ident, $instruction:literal) => {
+        fn $name(value: F80, operand: f32) -> F80 {
+            let input = value.to_bytes();
+            let mut output = [0u8; 10];
+            // SAFETY: both operands are live; one x87 register is pushed and popped.
+            unsafe {
+                core::arch::asm!("fld tbyte ptr [{input}]", $instruction, "fstp tbyte ptr [{output}]",
+                    input = in(reg) &input, operand = in(reg) &operand,
+                    output = in(reg) &mut output, out("st(0)") _);
+            }
+            F80::from_bytes(output)
+        }
+    };
+}
+stored_op!(add_float, "fadd dword ptr [{operand}]");
+stored_op!(multiply_float, "fmul dword ptr [{operand}]");
+stored_op!(divide_float, "fdiv dword ptr [{operand}]");
+
 unsafe fn allocate() -> *mut u8 {
     // SAFETY: the original allocator service and its acquisition interfaces.
     unsafe {
@@ -93,10 +112,10 @@ port! {
                 let occupant = ListNode::from_ptr(node).occupant();
                 let holder = vcall!(occupant, 0x18 => fn() -> *mut u8);
                 if property_float(holder, 0x68ED_1736, &mut population_served) as u8 != 0 {
-                    served = (F80::from_f32(population_served) + F80::from_f32(served)).to_f32();
+                    served = add_float(F80::from_f32(population_served), served).to_f32();
                     let mut capacity = 0.0;
                     if vcall!(this, 0xDC => fn(*mut u8,*mut f32) -> u32, occupant, &mut capacity) as u8 != 0 {
-                        weighted = (F80::from_f32(capacity) * F80::from_f32(population_served) + F80::from_f32(weighted)).to_f32();
+                        weighted = add_float(multiply_float(F80::from_f32(capacity), population_served), weighted).to_f32();
                     }
                 }
                 node = ListNode::from_ptr(node).next();
@@ -109,7 +128,7 @@ port! {
                 let denominator = if F80::from_f32(served).compare(F80::from_f32(population)).less() {
                     population
                 } else { served };
-                sim.set_effect((F80::from_f32(weighted) / F80::from_f32(denominator)).to_f32());
+                sim.set_effect(divide_float(F80::from_f32(weighted), denominator).to_f32());
             }
             destroy_list(&mut head);
         }

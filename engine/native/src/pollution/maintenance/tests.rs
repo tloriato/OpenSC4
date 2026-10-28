@@ -34,6 +34,7 @@ struct State {
     storage: u32,
     has_key: bool,
     has_item: bool,
+    item_previous: Option<i64>,
     previous: i64,
     cost: Option<i64>,
 }
@@ -50,6 +51,7 @@ impl Default for State {
             storage: 0x1234,
             has_key: true,
             has_item: true,
+            item_previous: None,
             previous: 200,
             cost: Some(600),
         }
@@ -184,6 +186,9 @@ extern "thiscall" fn item(this: *mut Budget, key: *mut u32) -> *mut u8 {
     log(Call::Item);
     assert_eq!(unsafe { key.add(6).read_unaligned() }, 42);
     STATE.with(|s| {
+        if let Some(previous) = s.borrow().item_previous {
+            unsafe { key.add(4).cast::<i64>().write_unaligned(previous) };
+        }
         if s.borrow().has_item {
             unsafe { (*this).item }
         } else {
@@ -479,6 +484,24 @@ fn budgets_book_only_changed_costs_and_use_wrapping_signed_differences() {
         }
         assert_eq!(calls(), expected);
     }
+    STATE.with(|s| {
+        let mut s = s.borrow_mut();
+        s.cost = Some(600);
+        s.previous = 200;
+        s.item_previous = Some(700);
+    });
+    unsafe { fc4p_006e4100(w.sim.ptr(), &mut head) };
+    assert_eq!(
+        calls(),
+        [
+            Call::Holder,
+            Call::Cost(occupant),
+            Call::Key(holder, 0xCA58_EDC7),
+            Call::Item,
+            Call::Charge(-100),
+            Call::Remember(holder, 42, 600),
+        ]
+    );
     sentinel[0] = sentinel.as_ptr() as usize;
     unsafe { fc4p_006e4100(w.sim.ptr(), &mut head) };
     assert_eq!(sentinel[0], sentinel.as_ptr() as usize);

@@ -215,7 +215,7 @@ fn landfill_limits_use_bias_product_signed_room_and_supply() {
 }
 
 #[test]
-fn nonpositive_and_nan_offers_write_nothing_and_export_return_stays_extended() {
+fn nonpositive_and_nan_offers_write_nothing_and_landfill_reloads_the_saved_total() {
     let _fpu = GameFpu::new();
     let mut w = World::new();
     let (mut inc, mut energy) = (0x1234, 0x5678);
@@ -226,7 +226,7 @@ fn nonpositive_and_nan_offers_write_nothing_and_export_return_stays_extended() {
         assert_eq!((inc, energy), (0x1234, 0x5678));
         assert_eq!(calls(), []);
     }
-    // With only export room, the exact integer load survives until the function returns.
+    // Export retains the exact integer load until the landfill path reloads the saved total.
     w.view().set_export_capacity(16_777_217);
     inc = 0;
     energy = 0;
@@ -234,4 +234,32 @@ fn nonpositive_and_nan_offers_write_nothing_and_export_return_stays_extended() {
     // The landfill path reloads the saved single-precision total.
     assert_eq!(w.run(33_554_432.0, &mut inc, &mut energy).to_f64(), 16_777_216.0);
     assert_eq!(w.view().exported(), 16_777_216);
+}
+
+#[test]
+fn return_wrapper_preserves_the_float_environment_and_an_existing_x87_value() {
+    let _fpu = GameFpu::new();
+    let mut w = World::new();
+    let (mut inc, mut energy) = (0, 10);
+    let sentinel = 123.25f64;
+    let (mut before_mxcsr, mut after_mxcsr) = (0u32, 0u32);
+    // SAFETY: the sentinel stays below the port's own return value on the x87 stack.
+    unsafe {
+        core::arch::asm!("stmxcsr [{mxcsr}]", "fld qword ptr [{value}]",
+            mxcsr = in(reg) &mut before_mxcsr, value = in(reg) &sentinel, out("st(0)") _);
+    }
+    let before_top = crate::x87::status_word() & 0x3800;
+    let result = w.run(5.5, &mut inc, &mut energy);
+    let after_top = crate::x87::status_word() & 0x3800;
+    let mut restored = 0.0f64;
+    // SAFETY: the port's return value was popped by call_raw; only the sentinel remains.
+    unsafe {
+        core::arch::asm!("fstp qword ptr [{value}]", "stmxcsr [{mxcsr}]",
+            value = in(reg) &mut restored, mxcsr = in(reg) &mut after_mxcsr, out("st(0)") _);
+    }
+    assert_eq!(result.to_f32(), 5.5);
+    assert_eq!(before_top, after_top);
+    assert_eq!(restored.to_bits(), sentinel.to_bits());
+    assert_eq!(before_mxcsr, after_mxcsr);
+    assert_eq!(crate::x87::control_word(), crate::x87::GAME_CONTROL_WORD);
 }

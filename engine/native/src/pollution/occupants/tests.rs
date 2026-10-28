@@ -352,7 +352,10 @@ impl World {
         *w.budget_pointer = w.budget.as_mut_ptr().cast();
         let sim = unsafe { ChangedView::from_ptr(w.sim.ptr()) };
         sim.set_city(*w.city_pointer);
-        sim.set_sources(core::array::from_fn(|i| (&mut *w.grids[i] as *mut Grid).cast()));
+        sim.set_air((&mut *w.grids[0] as *mut Grid).cast());
+        sim.set_water((&mut *w.grids[1] as *mut Grid).cast());
+        sim.set_garbage((&mut *w.grids[2] as *mut Grid).cast());
+        sim.set_radiation((&mut *w.grids[3] as *mut Grid).cast());
         let end = w.sentinel.as_mut_ptr() as u32;
         *w.sentinel = [end, end, 0];
         sim.set_recycling(end as *mut u8);

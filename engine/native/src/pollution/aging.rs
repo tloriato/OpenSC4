@@ -15,6 +15,8 @@ layout! {
     /// Aging inputs in the primary pollution simulator.
     struct AgingView {
         0xD8 => department / set_department: *mut u8,
+        0xDC => funding_curve / set_funding_curve: [u32; 4],
+        0xEC => usage_curve / set_usage_curve: [u32; 4],
         0xFC => recycling_count / set_recycling_count: u32,
         0x158 => recycled / set_recycled: f64,
     }

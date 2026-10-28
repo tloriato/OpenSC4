@@ -18,8 +18,13 @@ layout! {
     /// Occupant-change fields in the primary simulator.
     struct ChangedView {
         0x18 => city / set_city: *mut u8,
-        0x40 => sources / set_sources: [*mut u8; 4],
+        0x40 => air / set_air: *mut u8,
+        0x44 => water / set_water: *mut u8,
         0x48 => garbage / set_garbage: *mut u8,
+        0x4C => radiation / set_radiation: *mut u8,
+        0x68 => treatment / set_treatment: *mut u8,
+        0x6C => incinerators / set_incinerators: *mut u8,
+        0x70 => energy / set_energy: *mut u8,
         0x74 => recycling / set_recycling: *mut u8,
         0xFC => recycling_count / set_recycling_count: u32,
         0x130 => energy_capacity / set_energy_capacity: i32,
