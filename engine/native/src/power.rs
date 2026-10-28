@@ -19,17 +19,23 @@ use crate::x87::F80;
 layout! {
     /// Offsets from the primary power simulator interface.
     pub struct PowerSim {
+        0x00 => primary_vtable / set_primary_vtable: *const usize,
         0x10 => references / set_references: i32,
         0x18 => city / set_city: *mut u8,
         0x20 => department / set_department: *mut u8,
         0x2C => zones / set_zones: *mut u8,
+        0x38 => ring_index / set_ring_index: i32,
+        0x3C => production / set_production: i32,
         0x60 => monthly_demand / set_monthly_demand: u32,
         0x78 => infrastructure_cost / set_infrastructure_cost: u64,
+        0x90 => usage_ring / set_usage_ring: [i32; 120],
+        0x298 => plant_header / set_plant_header: *mut u8,
         0x29C => poles_begin / set_poles_begin: *mut *mut u8,
         0x2A0 => poles_end / set_poles_end: *mut *mut u8,
         0x2B0 => radius / set_radius: u32,
         0x2C8 => wire / set_wire: *mut u32,
         0x2D4 => powered / set_powered: *mut u32,
+        0x378 => funding_curve / set_funding_curve: [u32; 4],
     }
 }
 

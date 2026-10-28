@@ -125,7 +125,7 @@ port! {
     /// Read an object's cell position, then clamp both signed coordinates to the global city's bounds.
     /// A null object leaves both destinations alone.
     #[port(address = 0x006E_B280, owner = "power", name = "ClampObjectCell")]
-    pub unsafe extern "C" fn fc4p_006eb280(object: *mut u8, x: *mut i32, z: *mut i32) {
+    pub unsafe extern "stdcall" fn fc4p_006eb280(object: *mut u8, x: *mut i32, z: *mut i32) {
         unsafe {
             if object.is_null() { return; }
             let xmax = vcall!(*global_city(), 0x174 => fn() -> i32).wrapping_sub(1);

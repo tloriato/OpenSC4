@@ -124,6 +124,7 @@ unsafe extern "C" fn any_body(args: *mut u32) -> u32 {
         let mut first = base.wrapping_add(r.x0 as i32) >> 5;
         let mut last = base.wrapping_add(r.x1 as i32) >> 5;
         let left = u32::MAX.wrapping_shl(r.x0);
+        args.sub(2).write(left);
         let right = 2u32.wrapping_shl(r.x1).wrapping_sub(1);
         let stride = width >> 5;
         let mut row = r.z0;
@@ -165,7 +166,7 @@ unsafe extern "C" fn any_body(args: *mut u32) -> u32 {
     }
 }
 port! {
-    /// Test any inclusive rectangle bit. Preserve entry ECX and the original upper EAX loop result.
+    /// Test any inclusive rectangle bit. Return the left-edge mask in ECX and retain the original upper EAX loop result.
     #[port(address = 0x0060_4350, owner = "power", name = "Bit1_RectTestAny", naked)]
     pub unsafe extern "C" fn fc4p_00604350() {
         core::arch::naked_asm!(
@@ -235,7 +236,179 @@ port! {
     }
 }
 
+game_fn! {
+    fn horizontal(bits:*mut u32, mask:*mut u32, width:i32, lo:*mut i32, hi:*mut i32) -> u32 = "C" 0x0060_3E50;
+}
+game_fn! {
+    fn vertical(bits:*mut u32, mask:*mut u32, width:i32, lo:*mut i32, hi:*mut i32) -> u32 = "C" 0x0060_3FD0;
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn change(
+    bits: *mut u32,
+    mask: *mut u32,
+    index: i32,
+    old: u32,
+    expanded: u32,
+    row: i32,
+    lo: *mut i32,
+    hi: *mut i32,
+) -> bool {
+    unsafe {
+        let difference = (expanded & load(mask, index)) ^ old;
+        if difference == 0 {
+            return false;
+        }
+        if row < lo.read_unaligned() {
+            lo.write_unaligned(row);
+        }
+        if row >= hi.read_unaligned() {
+            hi.write_unaligned(row.wrapping_add(1));
+        }
+        store(bits, index, old | difference);
+        true
+    }
+}
+
+unsafe extern "C" fn horizontal_body(args: *mut u32) -> u32 {
+    unsafe {
+        let bits = args.read() as *mut u32;
+        let mask = args.add(1).read() as *mut u32;
+        let width = args.add(2).read() as i32;
+        let lo = args.add(3).read() as *mut i32;
+        let hi = args.add(4).read() as *mut i32;
+        let mut row = lo.read_unaligned();
+        let end = hi.read_unaligned();
+        let mut index = (width >> 5).wrapping_mul(row);
+        lo.write_unaligned(width);
+        hi.write_unaligned(0);
+        args.add(2).write(row as u32);
+        let mut changed = false;
+        while row < end {
+            let mut old = load(bits, index);
+            let mut next = load(bits, index.wrapping_add(1));
+            let expanded = ((next << 30) | old) << 1 | (old >> 1) | old;
+            changed |= change(bits, mask, index, old, expanded, row, lo, hi);
+            index = index.wrapping_add(1);
+            if width.wrapping_sub(96) >= 0 {
+                let count = (width.wrapping_sub(64) as u32) >> 5;
+                for _ in 0..count {
+                    let previous = old;
+                    old = next;
+                    next = load(bits, index.wrapping_add(1));
+                    let expanded = (((previous >> 30) | old) >> 1) | (old << 1) | old | (next << 31);
+                    changed |= change(bits, mask, index, old, expanded, row, lo, hi);
+                    index = index.wrapping_add(1);
+                }
+            }
+            let expanded = (((old >> 30) | next) >> 1) | (next << 1) | next;
+            changed |= change(bits, mask, index, next, expanded, row, lo, hi);
+            index = index.wrapping_add(1);
+            row = row.wrapping_add(1);
+            args.add(2).write(row as u32);
+        }
+        u32::from(changed)
+    }
+}
+port! {
+    /// One horizontal growth pass, retaining pre-pass neighboring words and reporting a half-open changed band.
+    /// Reset the band to width/zero first and use the width argument word as the current row.
+    #[port(address = 0x0060_3E50, owner = "power", name = "Bit1_GrowHorizontal", naked)]
+    pub unsafe extern "C" fn fc4p_00603e50() {
+        core::arch::naked_asm!("lea eax, [esp + 4]", "push eax", "call {body}", "add esp, 4", "ret", body=sym horizontal_body);
+    }
+}
+port! {
+    /// One vertical pass, processing whole word columns and keeping old row words across updates.
+    /// The supplied row interval is half open; an interval shorter than two rows still visits two.
+    #[port(address = 0x0060_3FD0, owner = "power", name = "Bit1_GrowVertical")]
+    pub unsafe extern "C" fn fc4p_00603fd0(bits:*mut u32, mask:*mut u32, width:i32, lo:*mut i32, hi:*mut i32) -> u32 {
+        unsafe {
+            let end=hi.read_unaligned().wrapping_sub(1);
+            let start=lo.read_unaligned();
+            lo.write_unaligned(width);
+            hi.write_unaligned(0);
+            if width <= 0 { return 0; }
+            let stride=width>>5;
+            let base=stride.wrapping_mul(start);
+            let mut x=0i32;
+            let mut changed=false;
+            loop {
+                let mut index=base.wrapping_add(x/32);
+                let mut old=load(bits,index);
+                let mut next=load(bits,index.wrapping_add(stride));
+                changed |= change(bits,mask,index,old,old|next,start,lo,hi);
+                index=index.wrapping_add(stride);
+                let mut row=start.wrapping_add(1);
+                while row < end {
+                    let previous=old;
+                    old=next;
+                    next=load(bits,index.wrapping_add(stride));
+                    changed |= change(bits,mask,index,old,previous|old|next,row,lo,hi);
+                    index=index.wrapping_add(stride);
+                    row=row.wrapping_add(1);
+                }
+                changed |= change(bits,mask,index,next,next|old,row,lo,hi);
+                x=x.wrapping_add(32);
+                if x >= width { break; }
+            }
+            u32::from(changed)
+        }
+    }
+}
+
+unsafe extern "C" fn grow_body(args: *mut u32) -> i32 {
+    unsafe {
+        let bits = args.read() as *mut u32;
+        let mask = args.add(1).read() as *mut u32;
+        let width = args.add(2).read() as i32;
+        let budget = args.add(3).read() as i32;
+        let lo = args.add(4).read() as *mut i32;
+        let hi = args.add(5).read() as *mut i32;
+        let mut hmin = lo.read_unaligned();
+        let mut hmax = hi.read_unaligned();
+        let mut vmin = if hmin > 0 { hmin.wrapping_sub(1) } else { hmin };
+        let mut vmax = if hmax < width.wrapping_sub(1) {
+            hmax.wrapping_add(1)
+        } else {
+            hmax
+        };
+        let mut iterations = 0i32;
+        let mut changed = true;
+        args.add(2).write(0);
+        while iterations < budget && changed {
+            if hmin < lo.read_unaligned() {
+                lo.write_unaligned(hmin);
+            }
+            if hmax > hi.read_unaligned() {
+                hi.write_unaligned(hmax);
+            }
+            let h = horizontal(bits, mask, width, &mut hmin, &mut hmax);
+            let v = vertical(bits, mask, width, &mut vmin, &mut vmax);
+            hmin = hmin.min(vmin);
+            hmax = hmax.max(vmax);
+            vmin = if hmin > 0 { hmin.wrapping_sub(1) } else { hmin };
+            vmax = if hmax < width { hmax.wrapping_add(1) } else { hmax };
+            changed = h as u8 != 0 || v as u8 != 0;
+            iterations = iterations.wrapping_add(1);
+            args.add(2).write(iterations as u32);
+        }
+        iterations
+    }
+}
+port! {
+    /// Alternate horizontal and vertical passes, merging their bands before widening the next vertical band.
+    /// Publish changed bounds at the start of each iteration. The width argument becomes the iteration count.
+    #[port(address = 0x0060_4570, owner = "power", name = "Bit1_SelectionGrow", naked)]
+    pub unsafe extern "C" fn fc4p_00604570() {
+        core::arch::naked_asm!("lea eax, [esp + 4]", "push eax", "call {body}", "add esp, 4", "ret", body=sym grow_body);
+    }
+}
+
 pub const PORTS: &[Port] = &[
+    fc4p_00603e50::PORT,
+    fc4p_00603fd0::PORT,
+    fc4p_00604570::PORT,
     fc4p_00604180::PORT,
     fc4p_00604260::PORT,
     fc4p_00604350::PORT,

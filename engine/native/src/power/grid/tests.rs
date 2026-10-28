@@ -602,3 +602,16 @@ fn occupant_query_supplies_edx_when_virtual_methods_leave_it_alone() {
         ((vt.as_ptr() as u64) << 32) | 1
     );
 }
+
+#[test]
+fn clamp_cell_uses_stdcall_and_pops_all_three_argument_words() {
+    use crate::abi::{call_raw, Conv, RawCall};
+    let (mut x, mut z) = (123i32, 456i32);
+    let args = [0, &mut x as *mut i32 as u32, &mut z as *mut i32 as u32];
+    let mut call = RawCall::new(Conv::Stdcall, fc4p_006eb280 as *const () as usize, 0x1234, &args);
+    unsafe {
+        call_raw(&mut call);
+    }
+    assert_eq!((x, z), (123, 456));
+    assert!(calls().is_empty());
+}
