@@ -15,12 +15,24 @@
 
 use crate::abi::{call_raw, vslot, Conv, RawCall};
 use crate::port::Port;
+use crate::x87::F80;
 use core::mem::MaybeUninit;
 use core::ptr::{read_unaligned, write_unaligned};
 
 // Some helpers leave a callee's EDX visible, including when that callee changes only a byte.
 fn registers(eax: u32, edx: u32) -> u64 {
     (u64::from(edx) << 32) | u64::from(eax)
+}
+
+fn unsigned_remainder(value: u32, divisor: u32) -> u32 {
+    let remainder: u32;
+    // SAFETY: unsigned division with a zero high half. A zero divisor raises the processor's divide
+    // exception, as it does in the game's bucket iterator, rather than entering a Rust panic path.
+    unsafe {
+        core::arch::asm!("xor edx, edx", "div {divisor:e}", divisor = in(reg) divisor,
+            inout("eax") value => _, out("edx") remainder, options(nomem, nostack));
+    }
+    remainder
 }
 
 unsafe fn word(object: *mut u8, offset: usize) -> u32 {
@@ -69,8 +81,139 @@ game_fn! { fn begin_pointer_set(this: *mut u8, out: *mut u32) -> u64 = "thiscall
 game_fn! { #[allow(dead_code)] fn destroy_pointer_set(this: *mut u8) -> u64 = "thiscall" 0x008E_BA60; }
 game_fn! { fn reset_object_collection(this: *mut u8, count: u32) = "thiscall" 0x0080_38D0; }
 game_fn! { fn insert_triple(this: *mut u8, position: u32, value: *mut u8, out: *mut u32, count: u32, stride: u32) -> u32 = "thiscall" 0x0050_C3B0; }
+game_fn! { #[allow(dead_code)] fn move_bytes(destination: u32, source: u32, size: u32) -> u64 = "C" 0x009E_EB70; }
+game_fn! { #[allow(dead_code)] fn retain_primary_interface(this: *mut u8) -> u32 = "thiscall" 0x008A_E800; }
+game_fn! { #[allow(dead_code)] fn release_primary_interface(this: *mut u8) -> u32 = "thiscall" 0x0051_B1C0; }
+game_fn! { #[allow(dead_code)] fn retain_advisor_primary(this: *mut u8) -> u32 = "thiscall" 0x0069_5330; }
+game_fn! { #[allow(dead_code)] fn delete_bus_primary(this: *mut u8, flags: u32) -> *mut u8 = "thiscall" 0x0052_4410; }
 
 game_data! { static source_building_service: *mut u8 = 0x00B4_3D28; }
+game_data! { static positive_speed_threshold: f32 = 0x00A8_1054; }
+game_data! { static interval_numerator: f32 = 0x00A8_1228; }
+game_data! { static interval_scale: f32 = 0x00A9_7D74; }
+
+port! {
+    /// Removes matching objects from the current stack and pointer vector, releases the selected
+    /// object after clearing its field, and returns one in AL with the remaining EAX bytes intact.
+    #[port(address = 0x0050_B290, owner = "shared", name = "RemoveObjectReferences", naked)]
+    pub unsafe extern "C" fn fc4p_0050b290() {
+        // Supply both caller-saved inputs without adding words to the original interface.
+        core::arch::naked_asm!("push [esp + 4]", "push eax", "call {body}", "ret 4", body = sym remove_object_references);
+    }
+}
+
+unsafe extern "fastcall" fn remove_object_references(
+    this: *mut u8,
+    entry_edx: u32,
+    entry_eax: u32,
+    object: *mut u8,
+) -> u64 {
+    // SAFETY: the game's owner, stack accessors, pointer vector and retained object.
+    unsafe {
+        if object.is_null() {
+            return registers((entry_eax & !0xFF) | 1, entry_edx);
+        }
+        let mut result = virtual_call(this, 0xE0, word(this, 0), entry_edx, &[]);
+        while result as u32 != 0 && word(result as u32 as *mut u8, 8) == object as u32 {
+            result = virtual_call(this, 0xD4, result as u32, word(this, 0), &[]);
+            result = virtual_call(this, 0xE0, word(this, 0), (result >> 32) as u32, &[]);
+        }
+        let mut cursor = word(this, 0xB4);
+        let mut next = cursor.wrapping_add(4);
+        while cursor != word(this, 0xB8) {
+            let entry = word(cursor as *mut u8, 0);
+            if word(entry as *mut u8, 8) == object as u32 {
+                virtual_call(object, 8, entry, word(object, 0), &[]);
+                let end = word(this, 0xB8);
+                if next != end {
+                    invoke(
+                        Conv::Cdecl,
+                        crate::abi::target(0x009E_EB70),
+                        object,
+                        end.wrapping_sub(next),
+                        0,
+                        &[cursor, next, end.wrapping_sub(next)],
+                    );
+                }
+                let end = word(this, 0xB8).wrapping_sub(4);
+                store(this, 0xB8, end);
+                result = invoke(
+                    Conv::Cdecl,
+                    crate::abi::target(0x005E_5620),
+                    object,
+                    entry,
+                    end,
+                    &[entry],
+                );
+            } else {
+                cursor = cursor.wrapping_add(4);
+                next = next.wrapping_add(4);
+            }
+        }
+        let selected = word(this, 0x98);
+        result = registers(selected, (result >> 32) as u32);
+        if selected == object as u32 {
+            store(this, 0x98, 0);
+            result = virtual_call(object, 8, selected, word(object, 0), &[]);
+        }
+        (result & !0xFF) | 1
+    }
+}
+
+/// Compares a register value to the stored threshold while retaining the original one-value x87
+/// stack depth in AX. The compared value is popped only after saving the status word.
+fn speed_status(speed: F80, threshold: f32) -> u16 {
+    let speed = speed.to_bytes();
+    let status: u16;
+    // SAFETY: the local operands cover their values; one value is pushed and popped.
+    unsafe {
+        core::arch::asm!("fld tbyte ptr [{speed}]", "fcom dword ptr [{threshold}]", "fnstsw ax", "fstp st(0)",
+            speed = in(reg) speed.as_ptr(), threshold = in(reg) &threshold, out("ax") status, out("st(0)") _);
+    }
+    status
+}
+
+fn scale_interval(value: F80, scale: f32) -> f32 {
+    let value = value.to_bytes();
+    let mut output = 0.0f32;
+    // SAFETY: the local operands cover their values; FMUL uses the stored operand before rounding.
+    unsafe {
+        core::arch::asm!("fld tbyte ptr [{value}]", "fmul dword ptr [{scale}]", "fstp dword ptr [{output}]",
+            value = in(reg) value.as_ptr(), scale = in(reg) &scale, output = in(reg) &mut output, out("st(0)") _);
+    }
+    output
+}
+
+port! {
+    /// Uses a positive speed to calculate numerator / speed * scale, otherwise 0.1. Sends the stored
+    /// interval to +0x8C, rounds that slot's ST0 result to f32, and sends it to +0x90 through the same
+    /// saved vtable. Both float results retain x87 precision until the original store points.
+    #[port(address = 0x0054_DA50, owner = "shared", name = "UpdateSpeedInterval")]
+    pub unsafe extern "fastcall" fn fc4p_0054da50(this: *mut u8, entry_edx: u32) -> u64 {
+        // SAFETY: the original object's float-returning slots and the game's stored float constants.
+        unsafe {
+            let mut call = RawCall::new(Conv::Thiscall, vslot(this, 0x1F4), this as u32, &[]);
+            call.eax = word(this, 0);
+            call.edx = entry_edx;
+            call.take_st0 = 1;
+            call_raw(&mut call);
+            let status = speed_status(call.st0, positive_speed_threshold().read());
+            let interval = if status & 0x4100 == 0 {
+                scale_interval(F80::from_f32(interval_numerator().read()) / call.st0, interval_scale().read())
+            } else { f32::from_bits(0x3DCC_CCCD) };
+            let table = word(this, 0) as *mut u8;
+            let args = [interval.to_bits()];
+            let mut transform = RawCall::new(Conv::Thiscall, word(table, 0x8C) as usize, this as u32, &args);
+            transform.eax = (call.eax & 0xFFFF_0000) | u32::from(status);
+            transform.edx = call.edx;
+            transform.take_st0 = 1;
+            call_raw(&mut transform);
+            let output = transform.st0.to_f32();
+            invoke(Conv::Thiscall, word(table, 0x90) as usize, this,
+                transform.eax, transform.edx, &[output.to_bits()])
+        }
+    }
+}
 
 port! {
     /// Copies a twelve-byte-element vector into newly allocated storage. ECX and EDX both retain the
@@ -138,7 +281,7 @@ port! {
                 } else {
                     let begin = word(table, 4);
                     let count = (word(table, 8).wrapping_sub(begin) as i32 >> 2) as u32;
-                    let mut bucket = word(node as *mut u8, 4) % count;
+                    let mut bucket = unsigned_remainder(word(node as *mut u8, 4), count);
                     let count_after = (word(table, 8).wrapping_sub(begin) as i32 >> 2) as u32;
                     node = 0;
                     loop {
@@ -425,8 +568,7 @@ extern "C" fn thunk_target(address: u32) -> usize {
 }
 
 macro_rules! adjust_interface {
-    ($export:ident, $address:literal, $offset:literal, $target:literal, $declaration:ident, $name:literal) => {
-        game_fn! { #[allow(dead_code)] fn $declaration(this: *mut u8) = "thiscall" $target; }
+    ($export:ident, $address:literal, $offset:literal, $target:literal, $name:literal) => {
         port! {
             /// Adjusts the interface pointer and forwards the caller's registers and stack arguments.
             #[port(address = $address, owner = "shared", name = $name, naked)]
@@ -448,20 +590,12 @@ macro_rules! adjust_interface {
     };
 }
 
-adjust_interface!(
-    fc4p_005183b0,
-    0x0051_83B0,
-    4,
-    0x008A_E800,
-    retain_primary_interface,
-    "AddRefPrimaryFromSecondary"
-);
+adjust_interface!(fc4p_005183b0, 0x0051_83B0, 4, 0x008A_E800, "AddRefPrimaryFromSecondary");
 adjust_interface!(
     fc4p_0051b3c0,
     0x0051_B3C0,
     8,
     0x0051_B1C0,
-    release_primary_interface,
     "ReleasePrimaryFromThirdInterface"
 );
 adjust_interface!(
@@ -469,7 +603,6 @@ adjust_interface!(
     0x0052_00D0,
     4,
     0x0069_5330,
-    retain_primary_from_second,
     "AddRefPrimaryFromSecondInterface"
 );
 adjust_interface!(
@@ -477,7 +610,6 @@ adjust_interface!(
     0x0052_00F0,
     8,
     0x0069_5330,
-    retain_primary_from_third,
     "AddRefPrimaryFromThirdInterface"
 );
 adjust_interface!(
@@ -485,7 +617,6 @@ adjust_interface!(
     0x0052_0110,
     12,
     0x0069_5330,
-    retain_primary_from_fourth,
     "AddRefPrimaryFromFourthInterface"
 );
 adjust_interface!(
@@ -493,7 +624,6 @@ adjust_interface!(
     0x0052_43E0,
     12,
     0x0052_4410,
-    delete_bus_primary,
     "DeletePrimaryFromFourthInterface"
 );
 
@@ -655,6 +785,7 @@ port! {
 
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
+    fc4p_0050b290::PORT,
     fc4p_0050b540::PORT,
     fc4p_0050bcb0::PORT,
     fc4p_0050be30::PORT,
@@ -681,12 +812,331 @@ pub const PORTS: &[Port] = &[
     fc4p_0053cce0::PORT,
     fc4p_0053ce00::PORT,
     fc4p_0054d690::PORT,
+    fc4p_0054da50::PORT,
     fc4p_0054ec60::PORT,
     fc4p_0054ed10::PORT,
 ];
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn bucket_remainders_use_unsigned_operands_with_a_zero_high_half() {
+        for (value, divisor, expected) in [
+            (0u32, 1u32, 0u32),
+            (u32::MAX, 5, 0),
+            (0x8000_0000, 3, 2),
+            (u32::MAX, 0x8000_0001, 0x7FFF_FFFE),
+            (0xFFFF_FFF0, 16, 0),
+        ] {
+            assert_eq!(unsigned_remainder(value, divisor), expected);
+        }
+    }
+
+    #[unsafe(naked)]
+    unsafe extern "C" fn speed_with_registers() {
+        core::arch::naked_asm!(
+            "mov eax, 0xabcd1234",
+            "mov edx, 0x76543210",
+            "fld qword ptr [ecx + 8]",
+            "ret"
+        );
+    }
+    #[unsafe(naked)]
+    unsafe extern "C" fn transform_preserving_registers() {
+        core::arch::naked_asm!("fld1", "ret 4");
+    }
+    #[unsafe(naked)]
+    unsafe extern "C" fn set_preserving_registers() {
+        core::arch::naked_asm!("ret 4");
+    }
+
+    fn float_environment() -> (u16, u16, u32, u32) {
+        let (mut cw, mut mxcsr) = (0u16, 0u32);
+        let (sw, flags): (u16, u32);
+        // SAFETY: writable local operands and a balanced flags push/pop.
+        unsafe {
+            core::arch::asm!("fnstcw word ptr [{cw}]", "fnstsw ax", "stmxcsr dword ptr [{mxcsr}]", "pushfd", "pop {flags:e}",
+                cw = in(reg) &mut cw, mxcsr = in(reg) &mut mxcsr, out("ax") sw, flags = lateout(reg) flags);
+        }
+        (cw, sw & 0x3800, mxcsr, flags & 0x400)
+    }
+
+    #[test]
+    fn speed_interval_keeps_callee_register_residue_and_the_callers_float_environment() {
+        let _fpu = crate::testing::GameFpu::new();
+        let (mut threshold, mut numerator, mut scale) = (0.0f32, 1.0f32, 1.0f32);
+        let _threshold = crate::testing::fake_data(0x00A8_1054, (&mut threshold as *mut f32).cast());
+        let _numerator = crate::testing::fake_data(0x00A8_1228, (&mut numerator as *mut f32).cast());
+        let _scale = crate::testing::fake_data(0x00A9_7D74, (&mut scale as *mut f32).cast());
+        let mut table = [0usize; 0x1F8 / 4];
+        table[0x1F4 / 4] = speed_with_registers as *const () as usize;
+        table[0x8C / 4] = transform_preserving_registers as *const () as usize;
+        table[0x90 / 4] = set_preserving_registers as *const () as usize;
+        // Use the speed's C-layout offset explicitly in the fixture for the naked getter above.
+        let mut object = [table.as_ptr() as u32, 0, 0, 0];
+        let p = object.as_mut_ptr().cast::<u8>();
+        let sentinel = 123.25f64;
+        let mut restored = 0.0f64;
+        // SAFETY: there is room on the x87 stack; pop this sentinel before asserting.
+        unsafe {
+            core::arch::asm!("fld qword ptr [{p}]", p = in(reg) &sentinel, out("st(0)") _);
+        }
+        let before = float_environment();
+        let mut outcomes = vec![];
+        for (speed, condition) in [(2.0f64, 0), (0.0, 0x4000), (-1.0, 0x100), (f64::NAN, 0x4500)] {
+            unsafe { p.add(8).cast::<f64>().write_unaligned(speed) };
+            let result = run(fc4p_0054da50 as *const (), p, &[], 0, 0);
+            outcomes.push((result, condition, float_environment()));
+        }
+        // SAFETY: the sentinel remains on the stack through all port calls and is popped here.
+        unsafe {
+            core::arch::asm!("fstp qword ptr [{p}]", p = in(reg) &mut restored, out("st(0)") _);
+        }
+        for (result, condition, environment) in outcomes {
+            assert_eq!(result as u32 & 0xFFFF_0000, 0xABCD_0000);
+            assert_eq!(result as u32 & 0x4500, condition);
+            assert_eq!(result >> 32, 0x7654_3210);
+            assert_eq!(environment, before);
+        }
+        assert_eq!(restored.to_bits(), sentinel.to_bits());
+    }
+
+    extern "thiscall" fn release_selected(this: *mut u8) -> u64 {
+        let selected = FOUND.with(|owner| unsafe { word(*owner.borrow() as *mut u8, 0x98) });
+        log(8, this, &[selected]);
+        RESULT
+    }
+
+    #[test]
+    fn selected_object_is_cleared_before_its_release_callback() {
+        let mut owner_table = [0usize; 0xE4 / 4];
+        owner_table[0xE0 / 4] = stack_top as *const () as usize;
+        let retained_table = [0usize, 0, release_selected as *const () as usize];
+        let mut retained = [retained_table.as_ptr() as usize];
+        let object = retained.as_mut_ptr().cast::<u8>();
+        let mut owner = Object::new(0xC0);
+        let p = owner.ptr();
+        unsafe {
+            store(p, 0, owner_table.as_ptr() as u32);
+            store(p, 0x98, object as u32);
+        }
+        FOUND.with(|owner| *owner.borrow_mut() = p as u32);
+        assert_eq!(
+            run(fc4p_0050b290 as *const (), p, &[object as u32], 0, 0),
+            (RESULT & !0xFF) | 1
+        );
+        assert_eq!(
+            calls(),
+            [Call(0xE0, p as usize, vec![]), Call(8, object as usize, vec![0])]
+        );
+    }
+
+    extern "C" fn memmove(destination: u32, source: u32, size: u32) -> u64 {
+        log(0x009E_EB70, destination as *mut u8, &[source, size]);
+        // SAFETY: the vector fixture owns the overlapping ranges passed by the port.
+        unsafe { core::ptr::copy(source as *const u8, destination as *mut u8, size as usize) };
+        registers(destination, 0xDEAD_BEEF)
+    }
+    extern "thiscall" fn stack_top(this: *mut u8) -> u64 {
+        log(0xE0, this, &[]);
+        // SAFETY: the fixture keeps its current top pointer at +0x20.
+        registers(unsafe { word(this, 0x20) }, 0x1234_5678)
+    }
+    extern "thiscall" fn stack_pop(this: *mut u8) -> u64 {
+        log(0xD4, this, &[]);
+        // SAFETY: the fixture links its current top to the next top through its first word.
+        unsafe { store(this, 0x20, word(word(this, 0x20) as *mut u8, 0)) };
+        RESULT
+    }
+
+    #[test]
+    fn null_object_removal_preserves_upper_eax_and_edx_without_calls() {
+        for eax in [0, 0x1234_5678, u32::MAX] {
+            assert_eq!(
+                run(
+                    fc4p_0050b290 as *const (),
+                    core::ptr::null_mut(),
+                    &[0],
+                    eax,
+                    0xAABB_CCDD
+                ),
+                registers((eax & !0xFF) | 1, 0xAABB_CCDD)
+            );
+        }
+        assert!(calls().is_empty());
+    }
+
+    #[test]
+    fn object_removal_pops_matching_tops_and_compacts_repeated_vector_matches() {
+        let _free = fake(0x005E_5620, free as *const () as usize);
+        let _move = fake(0x009E_EB70, memmove as *const () as usize);
+        let mut table = [0usize; 0xE4 / 4];
+        table[0xE0 / 4] = stack_top as *const () as usize;
+        table[0xD4 / 4] = stack_pop as *const () as usize;
+        let retained_table = [0usize, 0, release as *const () as usize];
+        let mut retained = [retained_table.as_ptr() as usize];
+        let object = retained.as_mut_ptr().cast::<u8>();
+        let mut unmatching_top = [0u32, 0, 0x4321];
+        let mut second_top = [unmatching_top.as_mut_ptr() as u32, 0, object as u32];
+        let mut first_top = [second_top.as_mut_ptr() as u32, 0, object as u32];
+        let mut matching = [0u32, 0, object as u32];
+        let mut unmatching = [0u32, 0, 0x4321];
+        let (a, b) = (matching.as_mut_ptr() as u32, unmatching.as_mut_ptr() as u32);
+        let mut data = [a, a, b, a];
+        let begin = data.as_mut_ptr() as u32;
+        let mut owner = Object::new(0xC0);
+        let p = owner.ptr();
+        unsafe {
+            store(p, 0, table.as_ptr() as u32);
+            store(p, 0x20, first_top.as_mut_ptr() as u32);
+            store(p, 0x98, object as u32);
+            store(p, 0xB4, begin);
+            store(p, 0xB8, begin + 16);
+        }
+        assert_eq!(
+            run(fc4p_0050b290 as *const (), p, &[object as u32], 0, 0),
+            (RESULT & !0xFF) | 1
+        );
+        assert_eq!(data, [b, a, a, a]);
+        assert_eq!(
+            unsafe { (word(p, 0x98), word(p, 0xB8), word(p, 0x20)) },
+            (0, begin + 4, unmatching_top.as_mut_ptr() as u32)
+        );
+        assert_eq!(
+            calls(),
+            [
+                Call(0xE0, p as usize, vec![]),
+                Call(0xD4, p as usize, vec![]),
+                Call(0xE0, p as usize, vec![]),
+                Call(0xD4, p as usize, vec![]),
+                Call(0xE0, p as usize, vec![]),
+                Call(8, object as usize, vec![]),
+                Call(0x009E_EB70, begin as usize, vec![begin + 4, 12]),
+                Call(0x005E_5620, a as usize, vec![]),
+                Call(8, object as usize, vec![]),
+                Call(0x009E_EB70, begin as usize, vec![begin + 4, 8]),
+                Call(0x005E_5620, a as usize, vec![]),
+                Call(8, object as usize, vec![]),
+                Call(0x005E_5620, a as usize, vec![]),
+                Call(8, object as usize, vec![])
+            ]
+        );
+    }
+
+    #[test]
+    fn absent_object_removal_returns_selected_pointer_upper_bytes_and_top_edx() {
+        let mut table = [0usize; 0xE4 / 4];
+        table[0xE0 / 4] = stack_top as *const () as usize;
+        let mut owner = Object::new(0xC0);
+        let p = owner.ptr();
+        unsafe {
+            store(p, 0, table.as_ptr() as u32);
+            store(p, 0x98, 0x1122_33FE);
+        }
+        let before = bytes(p, 0xC0);
+        assert_eq!(
+            run(fc4p_0050b290 as *const (), p, &[0x4567], 0, 0),
+            registers(0x1122_3301, 0x1234_5678)
+        );
+        assert_eq!(calls(), [Call(0xE0, p as usize, vec![])]);
+        assert_eq!(bytes(p, 0xC0), before);
+    }
+
+    #[repr(C)]
+    struct SpeedObject {
+        table: *const usize,
+        speed: f64,
+    }
+    extern "thiscall" fn speed(this: *mut SpeedObject) -> f64 {
+        log(0x1F4, this.cast(), &[]);
+        // SAFETY: the test's speed object.
+        unsafe { (*this).speed }
+    }
+    extern "thiscall" fn transform_interval(this: *mut u8, value: f32) -> f64 {
+        log(0x8C, this, &[value.to_bits()]);
+        0.333_333_333_333_333_3
+    }
+    extern "thiscall" fn set_interval(this: *mut u8, value: f32) -> u64 {
+        log(0x90, this, &[value.to_bits()]);
+        RESULT
+    }
+    extern "thiscall" fn wrong_set_interval(this: *mut u8, value: f32) -> u64 {
+        log(0x190, this, &[value.to_bits()]);
+        0
+    }
+
+    #[test]
+    fn speed_interval_covers_unordered_nonpositive_infinite_and_unrounded_speeds_and_saved_vtable() {
+        let _fpu = crate::testing::GameFpu::new();
+        let (mut threshold, mut numerator, mut scale) = (0.0f32, 1.0f32, 1.0f32);
+        let _threshold = crate::testing::fake_data(0x00A8_1054, (&mut threshold as *mut f32).cast());
+        let _numerator = crate::testing::fake_data(0x00A8_1228, (&mut numerator as *mut f32).cast());
+        let _scale = crate::testing::fake_data(0x00A9_7D74, (&mut scale as *mut f32).cast());
+        let mut table = [0usize; 0x1F8 / 4];
+        table[0x1F4 / 4] = speed as *const () as usize;
+        table[0x8C / 4] = transform_interval as *const () as usize;
+        table[0x90 / 4] = set_interval as *const () as usize;
+        let mut replacement = table;
+        replacement[0x90 / 4] = wrong_set_interval as *const () as usize;
+        let mut object = SpeedObject {
+            table: table.as_ptr(),
+            speed: 0.0,
+        };
+        let p = (&mut object as *mut SpeedObject).cast::<u8>();
+        for (value, expected) in [
+            (2.0, 0.5f32),
+            (1.0, 1.0),
+            (0.0, 0.1),
+            (-0.0, 0.1),
+            (-2.0, 0.1),
+            (f64::NAN, 0.1),
+            (f64::INFINITY, 0.0),
+            (f64::NEG_INFINITY, 0.1),
+            (f64::from(f32::from_bits(1)), f32::INFINITY),
+        ] {
+            object.speed = value;
+            let before = bytes(p, core::mem::size_of::<SpeedObject>());
+            assert_eq!(run(fc4p_0054da50 as *const (), p, &[], 0, 0), RESULT);
+            assert_eq!(
+                calls(),
+                [
+                    Call(0x1F4, p as usize, vec![]),
+                    Call(0x8C, p as usize, vec![expected.to_bits()]),
+                    Call(0x90, p as usize, vec![0x3EAA_AAAB])
+                ]
+            );
+            assert_eq!(bytes(p, core::mem::size_of::<SpeedObject>()), before);
+        }
+        threshold = 1.0;
+        object.speed = 1.000_000_000_1;
+        assert_eq!(run(fc4p_0054da50 as *const (), p, &[], 0, 0), RESULT);
+        assert_eq!(
+            calls(),
+            [
+                Call(0x1F4, p as usize, vec![]),
+                Call(0x8C, p as usize, vec![1.0f32.to_bits()]),
+                Call(0x90, p as usize, vec![0x3EAA_AAAB])
+            ]
+        );
+        assert_eq!(threshold, 1.0);
+        numerator = 3.0;
+        scale = 2.0;
+        threshold = 0.0;
+        object.speed = 4.0;
+        mutation(0x8C, p, 0, replacement.as_ptr() as u32);
+        assert_eq!(run(fc4p_0054da50 as *const (), p, &[], 0, 0), RESULT);
+        assert_eq!(
+            calls(),
+            [
+                Call(0x1F4, p as usize, vec![]),
+                Call(0x8C, p as usize, vec![1.5f32.to_bits()]),
+                Call(0x90, p as usize, vec![0x3EAA_AAAB])
+            ]
+        );
+        assert_eq!(object.table, replacement.as_ptr());
+        assert_eq!((numerator, scale, threshold), (3.0, 2.0, 0.0));
+    }
+
     use super::*;
     use crate::testing::{fake, Object};
     use std::cell::RefCell;
@@ -1657,11 +2107,11 @@ mod tests {
         nodes[0][1] = a;
         nodes[1][1] = b;
         // Null is a valid bucket-zero member and is skipped during Release.
-        for index in 0..3 {
-            let key = nodes[index][1];
+        for node in &mut nodes {
+            let key = node[1];
             let bucket = key as usize % buckets.len();
-            nodes[index][0] = buckets[bucket];
-            buckets[bucket] = nodes[index].as_mut_ptr() as u32;
+            node[0] = buckets[bucket];
+            buckets[bucket] = node.as_mut_ptr() as u32;
         }
         let mut set = [0u32, buckets.as_mut_ptr() as u32, buckets.as_mut_ptr() as u32 + 20, 0];
         let p = set.as_mut_ptr().cast::<u8>();
