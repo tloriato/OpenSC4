@@ -469,21 +469,20 @@ fn allocator_is_acquired_on_a_cold_start_and_after_a_release_clears_the_global()
 #[test]
 fn expense_uses_signed_wrapping_64_bit_units_and_the_games_truncation() {
     let mut w = World::new(&[], &[]);
-    for (a, b, c, rate) in [
-        (1000, 4000, 0, 0.005f32),
-        (i64::MAX, 1, 0, 1.0),
-        (i64::MAX - 2, 4, 3, 0.5),
-        (-100, 0, 0, 0.019),
-        (16_777_217, 0, 0, 1.0),
-        (0, 0, 0, f32::NAN),
-        (1, 0, 0, f32::INFINITY),
+    for (a, b, c, rate, expected) in [
+        (1000, 4000, 0, 0.005f32, 25),
+        (i64::MAX, 1, 0, 1.0, i64::MIN),
+        (i64::MAX - 2, 4, 3, 0.5, -4_611_686_018_427_387_904),
+        (-100, 0, 0, 0.019, -1),
+        (16_777_217, 0, 0, 1.0, 16_777_216),
+        (0, 0, 0, f32::NAN, i64::MIN),
+        (1, 0, 0, f32::INFINITY, i64::MIN),
     ] {
         let month = w.month();
         month.set_incinerated(a);
         month.set_energy(b);
         month.set_landfilled(c);
         month.set_cost_per_unit(rate);
-        let expected = multiply_float(F80::from_i64(b.wrapping_add(c).wrapping_add(a)), rate).ftol();
         assert_eq!(w.run(), RESULT);
         assert_eq!(month.cost(), expected);
         assert!(take().contains(&Call::Charge(expected)));
