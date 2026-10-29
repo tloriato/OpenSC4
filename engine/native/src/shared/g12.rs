@@ -1073,8 +1073,906 @@ port! {
     }
 }
 
+// These helpers retain the original volatile registers, including partial-byte results.
+register_port!(
+    0x0090b2f6,
+    fc4p_0090b2f6,
+    send_default_message,
+    "SendDefaultMessage",
+    12,
+    |r| {
+        // SAFETY: the matching message uses this object's five-word dispatch slot.
+        unsafe {
+            r.eax = 0x856D_DBAC;
+            if r.argument(0) == r.eax {
+                r.edx = word(r.ecx, 0x14);
+                let args = [r.eax, r.argument(1), r.argument(2), r.edx, 0];
+                r.virtual_call(r.ecx, 0x10, &args);
+            } else {
+                r.eax &= !255;
+            }
+        }
+    }
+);
+
+register_port!(
+    0x0090cff9,
+    fc4p_0090cff9,
+    move_node_to_front,
+    "MoveNodeToFront",
+    4,
+    |r| {
+        // SAFETY: the node and list links are accessible, including when the node is already first.
+        unsafe {
+            let list = r.ecx;
+            r.eax = r.argument(0);
+            put_word(r.eax, 0xC, word(r.eax, 0xC).wrapping_add(0xC000_0000));
+            r.edx = word(r.eax, 4);
+            let next = word(r.eax, 0);
+            put_word(r.edx, 0, next);
+            put_word(next, 4, r.edx);
+            if word(list, 8) == r.eax {
+                if r.edx == r.eax {
+                    r.edx = 0;
+                }
+                put_word(list, 8, r.edx);
+            }
+            r.ecx = word(list, 4);
+            r.edx = word(r.ecx, 4);
+            put_word(r.eax, 0, r.ecx);
+            put_word(r.eax, 4, r.edx);
+            put_word(r.ecx, 4, r.eax);
+            put_word(r.edx, 0, r.eax);
+        }
+    }
+);
+
+register_port!(
+    0x0090d031,
+    fc4p_0090d031,
+    unlink_and_release_node,
+    "UnlinkAndReleaseNode",
+    4,
+    |r| {
+        // SAFETY: the circular links and the list's release slot belong to the supplied live objects.
+        unsafe {
+            r.edx = r.argument(0);
+            r.eax = word(r.edx, 4);
+            if r.edx != r.eax {
+                let next = word(r.edx, 0);
+                put_word(next, 4, r.eax);
+                put_word(r.eax, 0, next);
+                if word(r.ecx, 4) == r.edx {
+                    put_word(r.ecx, 4, r.eax);
+                }
+                r.eax = word(r.ecx, 0);
+                r.virtual_call(r.ecx, 0xC, &[r.edx]);
+            }
+        }
+    }
+);
+
+register_port!(
+    0x009133ab,
+    fc4p_009133ab,
+    release_three_services,
+    "ReleaseThreeServices",
+    0,
+    |r| {
+        // SAFETY: each nonnull field owns an interface with a no-argument release slot.
+        unsafe {
+            let object = r.ecx;
+            put_word(object, 0, 0x00AC_EC00);
+            for offset in [0x28, 0x24, 0x20] {
+                r.ecx = word(object, offset);
+                if r.ecx != 0 {
+                    r.eax = word(r.ecx, 0);
+                    r.virtual_call(r.ecx, 8, &[]);
+                }
+            }
+        }
+    }
+);
+
+register_port!(
+    0x00940627,
+    fc4p_00940627,
+    copy_retained_interface,
+    "CopyRetainedInterface",
+    4,
+    |r| {
+        // SAFETY: the destination and source expose a table word and one interface field.
+        unsafe {
+            let object = r.ecx;
+            r.eax = r.argument(0);
+            put_word(object, 0, 0x00AD_43D8);
+            r.ecx = word(r.eax, 4);
+            put_word(object, 4, r.ecx);
+            if r.ecx != 0 {
+                r.eax = word(r.ecx, 0);
+                r.virtual_call(r.ecx, 4, &[]);
+            }
+            r.eax = object;
+        }
+    }
+);
+
+register_port!(
+    0x00940db5,
+    fc4p_00940db5,
+    assign_matching_type,
+    "AssignMatchingType",
+    4,
+    |r| {
+        // SAFETY: both nonnull objects provide a type getter and a four-byte value at +4.
+        unsafe {
+            let object = r.ecx;
+            let source = r.argument(0);
+            let mut matches = false;
+            if source != 0 {
+                r.eax = word(source, 0);
+                r.virtual_call(source, 0x10, &[]);
+                let source_type = r.eax;
+                r.eax = word(object, 0);
+                r.virtual_call(object, 0x10, &[]);
+                matches = r.eax == source_type;
+            }
+            if matches {
+                r.eax = word(source, 4);
+                put_word(object, 4, r.eax);
+                r.eax = (r.eax & !255) | 1;
+            } else {
+                r.eax &= !255;
+            }
+        }
+    }
+);
+
+register_port!(
+    0x009446e4,
+    fc4p_009446e4,
+    release_owned_buffer,
+    "ReleaseOwnedBuffer",
+    0,
+    |r| {
+        // SAFETY: the buffer's owner provides deallocation and release methods.
+        unsafe {
+            let object = r.ecx;
+            r.ecx = word(object, 0x10);
+            let buffer = word(object, 0);
+            r.eax = word(r.ecx, 0);
+            r.virtual_call(r.ecx, 0x10, &[buffer]);
+            r.ecx = word(object, 0x10);
+            for offset in [8, 4, 0] {
+                put_word(object, offset, 0);
+            }
+            r.eax = word(r.ecx, 0);
+            r.virtual_call(r.ecx, 8, &[]);
+            put_word(object, 0x10, 0);
+        }
+    }
+);
+
+register_port!(
+    0x0094909a,
+    fc4p_0094909a,
+    replace_retained_interface,
+    "ReplaceRetainedInterface",
+    4,
+    |r| {
+        // SAFETY: each nonnull pointer has the original AddRef and Release slots.
+        unsafe {
+            let object = r.ecx;
+            let old = word(object, 0);
+            let new = r.argument(0);
+            if new != old {
+                if new != 0 {
+                    r.eax = word(new, 0);
+                    r.virtual_call(new, 4, &[]);
+                }
+                put_word(object, 0, new);
+                if old != 0 {
+                    r.eax = word(old, 0);
+                    r.virtual_call(old, 8, &[]);
+                }
+            }
+            r.eax = object;
+        }
+    }
+);
+
+register_port!(
+    0x0096e78b,
+    fc4p_0096e78b,
+    copy_five_word_record,
+    "CopyFiveWordRecord",
+    4,
+    |r| {
+        // SAFETY: source and destination cover the original sequential word accesses.
+        unsafe {
+            r.eax = r.ecx;
+            r.ecx = r.argument(0);
+            let flags: u32;
+            core::arch::asm!("pushfd", "pop {flags}", flags = out(reg) flags, options(preserves_flags));
+            let stride = if flags & 0x400 == 0 { 4u32 } else { 0u32.wrapping_sub(4) };
+            for i in 0u32..3 {
+                let offset = i.wrapping_mul(stride) as usize;
+                put_word(r.eax, offset, word(r.ecx, offset));
+            }
+            r.edx = word(r.ecx, 0xC);
+            put_word(r.eax, 0xC, r.edx);
+            r.ecx = word(r.ecx, 0x10);
+            put_word(r.eax, 0x10, r.ecx);
+        }
+    }
+);
+
+register_port!(0x0096edf7, fc4p_0096edf7, swap_three_words, "SwapThreeWords", 4, |r| {
+    // SAFETY: both three-word regions are accessible; overlapping accesses stay ordered.
+    unsafe {
+        r.eax = r.argument(0);
+        for offset in [0, 4, 8] {
+            if offset == 0 {
+                r.edx = word(r.ecx, offset);
+            }
+            let source = word(r.eax, offset);
+            if offset != 0 {
+                r.edx = word(r.ecx, offset);
+            }
+            put_word(r.ecx, offset, source);
+            put_word(r.eax, offset, r.edx);
+        }
+    }
+});
+
+register_port!(
+    0x0098129c,
+    fc4p_0098129c,
+    find_unsigned_tree_key,
+    "FindUnsignedTreeKey",
+    4,
+    |r| {
+        // SAFETY: the tree header and nonnull links have parent, child and key words at +4/+8/+C/+10.
+        unsafe {
+            r.edx = word(r.ecx, 0);
+            r.ecx = word(r.edx, 4);
+            let key = r.argument(0);
+            r.eax = r.edx;
+            if r.ecx != 0 {
+                let wanted = word(key, 0);
+                loop {
+                    if word(r.ecx, 0x10) >= wanted {
+                        r.eax = r.ecx;
+                        r.ecx = word(r.ecx, 8);
+                    } else {
+                        r.ecx = word(r.ecx, 0xC);
+                    }
+                    if r.ecx == 0 {
+                        break;
+                    }
+                }
+            }
+            if r.eax != r.edx {
+                r.ecx = word(key, 0);
+                if r.ecx < word(r.eax, 0x10) {
+                    r.eax = r.edx;
+                }
+            }
+        }
+    }
+);
+
+register_port!(
+    0x00a6d999,
+    fc4p_00a6d999,
+    accumulate_big_endian_bytes,
+    "AccumulateBigEndianBytes",
+    0,
+    |r| {
+        // SAFETY: the input contains the requested number of bytes. Longer inputs wrap to the last four bytes.
+        unsafe {
+            r.edx = r.argument(1);
+            r.ecx = r.argument(0);
+            r.eax = 0;
+            while r.edx != 0 {
+                let byte = (r.ecx as *const u8).read();
+                r.eax = r.eax.wrapping_shl(8).wrapping_add(u32::from(byte));
+                r.ecx = r.ecx.wrapping_add(1);
+                r.edx = r.edx.wrapping_sub(1);
+            }
+        }
+    }
+);
+
+impl Registers {
+    /// Call a declared game entry while retaining all three volatile return registers.
+    unsafe fn direct_call(&mut self, address: u32, args: &[u32], caller_pops: bool) {
+        #[repr(C)]
+        struct Call {
+            target: usize,
+            eax: u32,
+            ecx: u32,
+            edx: u32,
+            args: *const u32,
+            count: u32,
+            caller_pops: u32,
+        }
+        let mut call = Call {
+            target: crate::abi::target(address),
+            eax: self.eax,
+            ecx: self.ecx,
+            edx: self.edx,
+            args: args.as_ptr(),
+            count: args.len() as u32,
+            caller_pops: u32::from(caller_pops),
+        };
+        // SAFETY: the enclosing port declares the entry and supplies its exact convention and words.
+        unsafe {
+            core::arch::asm!(
+                "mov ecx, [edi + 20]", "mov eax, [edi + 16]",
+                "2:", "test ecx, ecx", "jz 3f", "dec ecx", "push dword ptr [eax + ecx*4]", "jmp 2b",
+                "3:", "mov eax, [edi + 4]", "mov ecx, [edi + 8]", "mov edx, [edi + 12]",
+                "call dword ptr [edi]", "mov [edi + 4], eax", "mov [edi + 8], ecx", "mov [edi + 12], edx",
+                "cmp dword ptr [edi + 24], 0", "je 4f", "mov ecx, [edi + 20]", "lea esp, [esp + ecx*4]", "4:",
+                in("edi") &mut call, clobber_abi("C"),
+            );
+        }
+        self.eax = call.eax;
+        self.ecx = call.ecx;
+        self.edx = call.edx;
+    }
+}
+
+game_fn! { #[allow(dead_code)] fn destroy_hanging_list(this: *mut u8) -> u32 = "thiscall" 0x0090_86B7; }
+game_fn! { #[allow(dead_code)] fn destroy_text_container(this: *mut u8) -> u32 = "thiscall" 0x0090_DC2F; }
+game_fn! { #[allow(dead_code)] fn free_scalar(pointer: *mut u8) -> u32 = "C" 0x005E_5620; }
+game_fn! { #[allow(dead_code)] fn destroy_value_holder(this: *mut u8) -> u32 = "thiscall" 0x0094_002A; }
+game_fn! { #[allow(dead_code)] fn destroy_adjusted_object(this: *mut u8) -> u32 = "thiscall" 0x0090_D964; }
+game_fn! { #[allow(dead_code)] fn destroy_text_field(this: *mut u8) -> u32 = "thiscall" 0x0041_4250; }
+game_fn! { #[allow(dead_code)] fn allocate_array(bytes: u32) -> u32 = "C" 0x0090_CF54; }
+game_fn! { #[allow(dead_code)] fn free_array(pointer: *mut u8) -> u32 = "C" 0x0090_CF63; }
+game_fn! { #[allow(dead_code)] fn initialize_bounds_base(this: *mut u8) -> u32 = "thiscall" 0x009A_B992; }
+game_fn! { #[allow(dead_code)] fn initialize_node_member(this: *mut u8, source: u32) -> u32 = "thiscall" 0x0097_BF85; }
+game_fn! { #[allow(dead_code)] fn set_fill_word(this: *mut u8, value: u32) -> u32 = "thiscall" 0x0099_BF1F; }
+game_fn! { #[allow(dead_code)] fn erase_tree_branch(this: *mut u8, node: u32) -> u32 = "thiscall" 0x009A_84A0; }
+game_fn! { #[allow(dead_code)] fn clear_tree(this: *mut u8) -> u32 = "thiscall" 0x009A_8947; }
+game_fn! { #[allow(dead_code)] fn destroy_list_member(this: *mut u8) -> u32 = "thiscall" 0x0096_EDBC; }
+game_fn! { #[allow(dead_code)] fn destroy_string_member(this: *mut u8) -> u32 = "thiscall" 0x0056_50A0; }
+game_fn! { #[allow(dead_code)] fn destroy_vector_range(begin: u32, end: u32) -> u32 = "C" 0x0098_1543; }
+game_fn! { #[allow(dead_code)] fn next_hash_bucket(this: *mut u8) -> u32 = "thiscall" 0x0097_C1EA; }
+game_fn! { #[allow(dead_code)] fn lookup_hash_node(this: *mut u8, key: u32) -> u32 = "thiscall" 0x0097_C049; }
+game_fn! { #[allow(dead_code)] fn reserve_hash_entry(this: *mut u8, count: u32) -> u32 = "thiscall" 0x0096_F614; }
+game_fn! { #[allow(dead_code)] fn insert_hash_entry(this: *mut u8, output: u32, value: u32) -> u32 = "thiscall" 0x0096_F209; }
+game_fn! { #[allow(dead_code)] fn grow_pointer_storage(this: *mut u8, count: u32, zero: u32) -> u32 = "thiscall" 0x0097_3C0E; }
+game_data! { static string_holder_count: u32 = 0x00B6_33B8; }
+
+/// Destroy the original subobject, optionally release its allocation, and return the primary pointer.
+unsafe fn deleting_destructor(r: &mut Registers, target: u32, adjustment: u32, null_adjustment: bool, pop_ecx: bool) {
+    // SAFETY: each entry supplies its destructor and the same scalar deletion flag word.
+    unsafe {
+        let object = r.ecx;
+        let flags = r.argument(0);
+        r.ecx = if null_adjustment && object == 0 {
+            0
+        } else {
+            object.wrapping_add(adjustment)
+        };
+        r.direct_call(target, &[], false);
+        if flags & 1 != 0 {
+            r.direct_call(0x005E_5620, &[object], true);
+            if pop_ecx {
+                r.ecx = object;
+            }
+        }
+        r.eax = object;
+    }
+}
+
+register_port!(
+    0x00908902,
+    fc4p_00908902,
+    delete_hanging_indent,
+    "DeleteHangingIndent",
+    4,
+    |r| {
+        // SAFETY: this entry owns the hanging-indent destructor and its scalar allocation.
+        unsafe {
+            deleting_destructor(r, 0x0090_86B7, 0, false, true);
+        }
+    }
+);
+register_port!(
+    0x0090ddd5,
+    fc4p_0090ddd5,
+    delete_text_container,
+    "DeleteTextContainer",
+    4,
+    |r| {
+        // SAFETY: the text container's destructor is declared by its tail adapter above.
+        unsafe {
+            deleting_destructor(r, 0x0090_DC2F, 0, false, true);
+        }
+    }
+);
+register_port!(
+    0x0094065e,
+    fc4p_0094065e,
+    delete_value_holder,
+    "DeleteValueHolder",
+    4,
+    |r| {
+        // SAFETY: the value holder and allocation belong to this deleting destructor.
+        unsafe {
+            deleting_destructor(r, 0x0094_002A, 0, false, true);
+        }
+    }
+);
+register_port!(
+    0x00940bc5,
+    fc4p_00940bc5,
+    delete_interface_base,
+    "DeleteInterfaceBase",
+    4,
+    |r| {
+        // SAFETY: the table word belongs to this interface base, even when no deletion is requested.
+        unsafe {
+            let object = r.ecx;
+            put_word(object, 0, 0x00AD_251C);
+            if r.argument(0) & 1 != 0 {
+                r.direct_call(0x005E_5620, &[object], true);
+                r.ecx = object;
+            }
+            r.eax = object;
+        }
+    }
+);
+register_port!(
+    0x00991e90,
+    fc4p_00991e90,
+    delete_offset_interface,
+    "DeleteOffsetInterface",
+    4,
+    |r| {
+        // SAFETY: the primary pointer has a nullable subobject at +4.
+        unsafe {
+            deleting_destructor(r, 0x0090_D964, 4, true, false);
+        }
+    }
+);
+register_port!(
+    0x009be9af,
+    fc4p_009be9af,
+    delete_text_owner,
+    "DeleteTextOwner",
+    4,
+    |r| {
+        // SAFETY: this owner destroys its text member at +0x14 before scalar deletion.
+        unsafe {
+            deleting_destructor(r, 0x0041_4250, 0x14, false, true);
+        }
+    }
+);
+
+unsafe fn allocate_elements(r: &mut Registers, element_size: u32) {
+    // SAFETY: the game's allocator takes a wrapping byte count and the caller checks for zero elements.
+    unsafe {
+        r.eax = r.argument(0);
+        if r.eax != 0 {
+            r.eax = r.eax.wrapping_mul(element_size);
+            let bytes = r.eax;
+            r.direct_call(0x0090_CF54, &[bytes], true);
+            r.ecx = bytes;
+        } else {
+            r.eax = 0;
+        }
+    }
+}
+register_port!(
+    0x009b3537,
+    fc4p_009b3537,
+    allocate_forty_byte_elements,
+    "AllocateFortyByteElements",
+    8,
+    |r| {
+        // SAFETY: the allocator receives exactly the original count times forty.
+        unsafe {
+            allocate_elements(r, 40);
+        }
+    }
+);
+register_port!(
+    0x009db998,
+    fc4p_009db998,
+    allocate_word_elements,
+    "AllocateWordElements",
+    4,
+    |r| {
+        // SAFETY: the allocator receives exactly the original count times four.
+        unsafe {
+            allocate_elements(r, 4);
+        }
+    }
+);
+register_port!(
+    0x009abb63,
+    fc4p_009abb63,
+    initialize_empty_bounds,
+    "InitializeEmptyBounds",
+    0,
+    |r| {
+        // SAFETY: the object provides its base constructor and the original bounds fields.
+        unsafe {
+            let object = r.ecx;
+            r.direct_call(0x009A_B992, &[], false);
+            put_word(object, 0xC, 0);
+            r.eax = 0x7FFF_FFFF;
+            r.ecx = 0x8000_0001;
+            put_word(object, 0x14, r.eax);
+            put_word(object, 0x1C, r.eax);
+            put_word(object, 0x10, r.ecx);
+            put_word(object, 0x18, r.ecx);
+            (object as *mut u8).add(0x20).write(0);
+            r.eax = object;
+        }
+    }
+);
+register_port!(
+    0x009db1a1,
+    fc4p_009db1a1,
+    initialize_tagged_member,
+    "InitializeTaggedMember",
+    8,
+    |r| {
+        // SAFETY: the first word and member constructor belong to this live object.
+        unsafe {
+            let object = r.ecx;
+            r.eax = r.argument(0);
+            put_word(object, 0, r.eax);
+            r.ecx = object.wrapping_add(4);
+            r.direct_call(0x0097_BF85, &[r.argument(1)], false);
+            r.eax = object;
+        }
+    }
+);
+register_port!(
+    0x009bc8b8,
+    fc4p_009bc8b8,
+    set_fill_and_refresh,
+    "SetFillAndRefresh",
+    4,
+    |r| {
+        // SAFETY: the window exposes its fill setter, flag byte and refresh slot.
+        unsafe {
+            let object = r.ecx;
+            r.direct_call(0x0099_BF1F, &[r.argument(0)], false);
+            if (object as *const u8).add(0x128).read() & 0x20 != 0 {
+                r.eax = word(object, 0);
+                r.virtual_call(object, 0x170, &[]);
+            }
+        }
+    }
+);
+register_port!(0x009a84a0, fc4p_009a84a0, erase_tree_nodes, "EraseTreeNodes", 4, |r| {
+    // SAFETY: each branch node has children at +8/+C and is released through the game allocator.
+    unsafe {
+        let object = r.ecx;
+        let mut node = r.argument(0);
+        while node != 0 {
+            r.ecx = object;
+            r.direct_call(0x009A_84A0, &[word(node, 0xC)], false);
+            let left = word(node, 8);
+            r.direct_call(0x0090_CF63, &[node], true);
+            r.ecx = node;
+            node = left;
+        }
+    }
+});
+register_port!(
+    0x009a8947,
+    fc4p_009a8947,
+    clear_unsigned_tree,
+    "ClearUnsignedTree",
+    0,
+    |r| {
+        // SAFETY: the header and count belong to the tree; callbacks can replace the header pointer.
+        unsafe {
+            let object = r.ecx;
+            if word(object, 4) != 0 {
+                r.eax = word(object, 0);
+                r.direct_call(0x009A_84A0, &[word(r.eax, 4)], false);
+                r.eax = word(object, 0);
+                put_word(r.eax, 8, r.eax);
+                r.eax = word(object, 0);
+                put_word(r.eax, 4, 0);
+                r.eax = word(object, 0);
+                put_word(r.eax, 0xC, r.eax);
+                put_word(object, 4, 0);
+            }
+        }
+    }
+);
+register_port!(
+    0x009a9427,
+    fc4p_009a9427,
+    destroy_unsigned_tree,
+    "DestroyUnsignedTree",
+    0,
+    |r| {
+        // SAFETY: clear the tree before releasing its nonnull header allocation.
+        unsafe {
+            let object = r.ecx;
+            r.direct_call(0x009A_8947, &[], false);
+            let header = word(object, 0);
+            if header != 0 {
+                r.direct_call(0x0090_CF63, &[header], true);
+                r.ecx = header;
+            }
+        }
+    }
+);
+register_port!(
+    0x009a841f,
+    fc4p_009a841f,
+    clear_circular_list,
+    "ClearCircularList",
+    0,
+    |r| {
+        // SAFETY: the list ends at its header; links are read before each allocation is released.
+        unsafe {
+            let object = r.ecx;
+            r.eax = word(object, 0);
+            let mut node = word(r.eax, 0);
+            if node != r.eax {
+                loop {
+                    r.eax = node;
+                    node = word(node, 0);
+                    let released = r.eax;
+                    r.direct_call(0x0090_CF63, &[released], true);
+                    let finished = node == word(object, 0);
+                    r.ecx = released;
+                    if finished {
+                        break;
+                    }
+                }
+            }
+            r.eax = word(object, 0);
+            put_word(r.eax, 0, r.eax);
+            let header = word(object, 0);
+            put_word(header, 4, header);
+        }
+    }
+);
+register_port!(
+    0x00945f24,
+    fc4p_00945f24,
+    destroy_two_members,
+    "DestroyTwoMembers",
+    0,
+    |r| {
+        // SAFETY: the object's list and text members have these original destructor entries.
+        unsafe {
+            let object = r.ecx;
+            r.ecx = object.wrapping_add(0x64);
+            r.direct_call(0x0096_EDBC, &[], false);
+            r.ecx = object.wrapping_add(0xC);
+            r.direct_call(0x0041_4250, &[], false);
+        }
+    }
+);
+register_port!(
+    0x00943a0e,
+    fc4p_00943a0e,
+    destroy_counted_strings,
+    "DestroyCountedStrings",
+    0,
+    |r| {
+        // SAFETY: restore the table and decrease the game counter before destroying the two strings.
+        unsafe {
+            let object = r.ecx;
+            put_word(object, 0, 0x00AD_4648);
+            let count = string_holder_count();
+            count.write_unaligned(count.read_unaligned().wrapping_sub(1));
+            r.ecx = object.wrapping_add(0xC);
+            r.direct_call(0x0056_50A0, &[], false);
+            r.ecx = object.wrapping_add(8);
+            r.direct_call(0x0056_50A0, &[], false);
+        }
+    }
+);
+register_port!(
+    0x0093de49,
+    fc4p_0093de49,
+    destroy_word_vector,
+    "DestroyWordVector",
+    0,
+    |r| {
+        // SAFETY: the two range words and storage pointer belong to the vector.
+        unsafe {
+            let object = r.ecx;
+            let end = word(object, 4);
+            let begin = word(object, 0);
+            r.direct_call(0x0098_1543, &[begin, end], true);
+            let storage = word(object, 0);
+            r.ecx = end;
+            if storage != 0 {
+                r.direct_call(0x0090_CF63, &[storage], true);
+                r.ecx = storage;
+            }
+        }
+    }
+);
+register_port!(
+    0x0096f5b7,
+    fc4p_0096f5b7,
+    advance_hash_iterator,
+    "AdvanceHashIterator",
+    0,
+    |r| {
+        // SAFETY: the iterator points at a node whose first word is the next link.
+        unsafe {
+            let object = r.ecx;
+            r.eax = word(word(object, 0), 0);
+            if r.eax == 0 {
+                r.direct_call(0x0097_C1EA, &[], false);
+            }
+            put_word(object, 0, r.eax);
+            r.eax = object;
+        }
+    }
+);
+register_port!(
+    0x0096f290,
+    fc4p_0096f290,
+    find_hash_iterator,
+    "FindHashIterator",
+    8,
+    |r| {
+        // SAFETY: the lookup result and container are written in order to the caller's two-word output.
+        unsafe {
+            let object = r.ecx;
+            r.direct_call(0x0097_C049, &[r.argument(1)], false);
+            r.ecx = r.argument(0);
+            put_word(r.ecx, 0, r.eax);
+            put_word(r.ecx, 4, object);
+            r.eax = r.ecx;
+        }
+    }
+);
+register_port!(
+    0x0097005c,
+    fc4p_0097005c,
+    reserve_and_insert_hash_entry,
+    "ReserveAndInsertHashEntry",
+    8,
+    |r| {
+        // SAFETY: the container's reserve and insertion entries receive the original count and arguments.
+        unsafe {
+            let object = r.ecx;
+            r.eax = word(object, 0x10).wrapping_add(1);
+            r.direct_call(0x0096_F614, &[r.eax], false);
+            r.ecx = object;
+            r.direct_call(0x0096_F209, &[r.argument(0), r.argument(1)], false);
+            r.eax = r.argument(0);
+        }
+    }
+);
+register_port!(
+    0x00982d95,
+    fc4p_00982d95,
+    ensure_pointer_capacity,
+    "EnsurePointerCapacity",
+    4,
+    |r| {
+        // SAFETY: the container's geometry and grow entry use wrapping unsigned capacity comparisons.
+        unsafe {
+            r.eax = ((word(r.ecx, 0x1C).wrapping_sub(word(r.ecx, 0x20)) as i32) >> 2) as u32;
+            r.edx = word(r.ecx, 0x24).wrapping_sub(r.eax);
+            r.eax = r.argument(0);
+            if r.eax.wrapping_add(1) > r.edx {
+                r.direct_call(0x0097_3C0E, &[r.eax, 0], false);
+            }
+        }
+    }
+);
+register_port!(
+    0x009756f6,
+    fc4p_009756f6,
+    release_locked_reference,
+    "ReleaseLockedReference",
+    0,
+    |r| {
+        // SAFETY: the embedded lock and primary cleanup slot are the original object's interfaces.
+        unsafe {
+            let object = r.ecx;
+            let lock = object.wrapping_add(8);
+            r.eax = word(lock, 0);
+            r.virtual_call(lock, 4, &[]);
+            r.eax = word(object, 4);
+            r.ecx = lock;
+            let remaining = if r.eax > 1 {
+                r.eax = r.eax.wrapping_sub(1);
+                put_word(object, 4, r.eax);
+                r.eax
+            } else {
+                0
+            };
+            r.eax = word(lock, 0);
+            r.virtual_call(lock, 8, &[]);
+            if remaining == 0 {
+                r.eax = word(object, 0);
+                r.virtual_call(object, 0x7C, &[]);
+            }
+            r.eax = remaining;
+        }
+    }
+);
+register_port!(
+    0x0096df8d,
+    fc4p_0096df8d,
+    stop_and_free_work_buffer,
+    "StopAndFreeWorkBuffer",
+    0,
+    |r| {
+        // SAFETY: the state bytes, embedded stream and buffer pointer belong to the active object.
+        unsafe {
+            let object = r.ecx;
+            if (object as *const u8).add(0x14).read() != 0 {
+                let needs_stop = (object as *const u8).add(0x1C).read() & 3 != 0;
+                (object as *mut u8).add(0x14).write(0);
+                if needs_stop {
+                    r.ecx = object.wrapping_add(4);
+                    r.eax = word(r.ecx, 0);
+                    r.virtual_call(r.ecx, 0x20, &[]);
+                }
+                let buffer = word(object, 0x1C4);
+                r.direct_call(0x005E_5620, &[buffer], true);
+                put_word(object, 0x1C4, 0);
+                r.ecx = buffer;
+            }
+            r.eax = (r.eax & !255) | 1;
+        }
+    }
+);
+
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
+    fc4p_00908902::PORT,
+    fc4p_0090b2f6::PORT,
+    fc4p_0090cff9::PORT,
+    fc4p_0090d031::PORT,
+    fc4p_0090ddd5::PORT,
+    fc4p_009133ab::PORT,
+    fc4p_0093de49::PORT,
+    fc4p_00940627::PORT,
+    fc4p_0094065e::PORT,
+    fc4p_00940bc5::PORT,
+    fc4p_00940db5::PORT,
+    fc4p_00943a0e::PORT,
+    fc4p_009446e4::PORT,
+    fc4p_00945f24::PORT,
+    fc4p_0094909a::PORT,
+    fc4p_0096df8d::PORT,
+    fc4p_0096e78b::PORT,
+    fc4p_0096edf7::PORT,
+    fc4p_0096f290::PORT,
+    fc4p_0096f5b7::PORT,
+    fc4p_0097005c::PORT,
+    fc4p_009756f6::PORT,
+    fc4p_0098129c::PORT,
+    fc4p_00982d95::PORT,
+    fc4p_00991e90::PORT,
+    fc4p_009a841f::PORT,
+    fc4p_009a84a0::PORT,
+    fc4p_009a8947::PORT,
+    fc4p_009a9427::PORT,
+    fc4p_009abb63::PORT,
+    fc4p_009b3537::PORT,
+    fc4p_009bc8b8::PORT,
+    fc4p_009be9af::PORT,
+    fc4p_009db1a1::PORT,
+    fc4p_009db998::PORT,
+    fc4p_00a6d999::PORT,
+
     fc4p_008fe5ac::PORT,
     fc4p_009086ac::PORT,
     fc4p_0090dc2f::PORT,
@@ -1183,6 +2081,7 @@ mod tests {
     #[derive(Default)]
     struct State {
         calls: Vec<VirtualCall>,
+        direct_targets: Vec<u32>,
         watch: Option<(u32, usize)>,
         snapshots: Vec<Vec<u8>>,
         mutation: Option<(u32, usize, u32)>,
@@ -2083,4 +2982,1232 @@ mod tests {
         );
         assert_eq!(object, expected);
     }
+    unsafe extern "thiscall" fn observe_five(frame: *mut Registers) {
+        // SAFETY: the fake entry supplies five stack words.
+        unsafe { observe(frame, 5) };
+    }
+    #[unsafe(naked)]
+    unsafe extern "C" fn fake_five() {
+        core::arch::naked_asm!(
+            "push edx", "push ecx", "push eax", "mov ecx, esp", "call {}", "add esp, 12",
+            "mov eax, 0xa1b2c3d4", "mov ecx, 0x4321abcd", "mov edx, 0xd4c3b2a1", "ret 20",
+            sym observe_five,
+        );
+    }
+    #[unsafe(naked)]
+    unsafe extern "C" fn fake_other_type() {
+        core::arch::naked_asm!(
+            "push edx", "push ecx", "push eax", "mov ecx, esp", "call {}", "add esp, 12",
+            "mov eax, 0xa1b2c3d5", "mov ecx, 0x4321abcd", "mov edx, 0xd4c3b2a1", "ret",
+            sym observe_zero,
+        );
+    }
+
+    #[test]
+    fn default_message_dispatch_checks_the_full_id_and_forwards_five_words() {
+        reset();
+        let mut vt = [0usize; 5];
+        vt[4] = fake_five as *const () as usize;
+        let mut object = [vt.as_ptr() as u32, 1, 2, 3, 4, 0xFEDC_BA98];
+        let before = object;
+        let this = object.as_mut_ptr() as u32;
+        for id in [0u32, 0x856D_DBAC, 0x856D_DBAD, 0x856D_DB00, u32::MAX] {
+            let got = run(
+                fc4p_0090b2f6 as *const () as usize,
+                this,
+                &[id, 0xABCD_1234, 0x8765_4321],
+            );
+            if id == 0x856D_DBAC {
+                assert_eq!(got, [RESULT_EAX, RESULT_ECX, RESULT_EDX]);
+                assert_eq!(
+                    calls(),
+                    [VirtualCall {
+                        this,
+                        eax: id,
+                        edx: before[5],
+                        arguments: vec![id, 0xABCD_1234, 0x8765_4321, before[5], 0]
+                    }]
+                );
+            } else {
+                assert_eq!(got, [0x856D_DB00, this, ENTRY_EDX]);
+                assert!(calls().is_empty());
+            }
+            assert_eq!(object, before);
+        }
+    }
+
+    #[test]
+    fn moving_list_nodes_preserves_rings_and_updates_active_links() {
+        for n in 1..=4usize {
+            for moving in 0..n {
+                for active in 0..=n {
+                    let mut nodes = [[0u32; 4]; 4];
+                    let ptrs: [u32; 4] = core::array::from_fn(|i| nodes[i].as_mut_ptr() as u32);
+                    for i in 0..n {
+                        nodes[i] = [ptrs[(i + 1) % n], ptrs[(i + n - 1) % n], 0xABCD_1234, 0x8000_0001];
+                    }
+                    let mut list = [
+                        0x1111_1111,
+                        ptrs[0],
+                        if active == n { 0 } else { ptrs[active] },
+                        0x2222_2222,
+                    ];
+                    let this = list.as_mut_ptr() as u32;
+                    let mut expected = nodes;
+                    let mut order: Vec<usize> = (0..n).filter(|i| *i != moving).collect();
+                    if moving == 0 {
+                        order.push(moving);
+                    } else {
+                        order.insert(0, moving);
+                    }
+                    for (j, &i) in order.iter().enumerate() {
+                        expected[i][0] = ptrs[order[(j + 1) % n]];
+                        expected[i][1] = ptrs[order[(j + n - 1) % n]];
+                    }
+                    // Moving the anchor keeps the original self-linking write order.
+                    if moving == 0 && n > 1 {
+                        expected[0][0] = ptrs[0];
+                        expected[0][1] = ptrs[0];
+                        expected[1][1] = ptrs[n - 1];
+                        expected[n - 1][0] = ptrs[0];
+                    }
+                    expected[moving][3] = 0x4000_0001;
+                    let current = if active == moving {
+                        if n == 1 {
+                            0
+                        } else {
+                            ptrs[(moving + n - 1) % n]
+                        }
+                    } else {
+                        list[2]
+                    };
+                    let tail = if n == 1 {
+                        ptrs[0]
+                    } else {
+                        ptrs[if moving == n - 1 { n - 2 } else { n - 1 }]
+                    };
+                    assert_eq!(
+                        run(fc4p_0090cff9 as *const () as usize, this, &[ptrs[moving]]),
+                        [ptrs[moving], ptrs[0], tail]
+                    );
+                    assert_eq!(nodes, expected);
+                    assert_eq!(list, [0x1111_1111, ptrs[0], current, 0x2222_2222]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn unlink_skips_singletons_and_releases_after_fixing_neighbors() {
+        for singleton in [false, true] {
+            for is_head in [false, true] {
+                reset();
+                let mut vt = [0usize; 4];
+                vt[3] = fake_one as *const () as usize;
+                let mut node = [0u32; 4];
+                let mut previous = [0xABCD_1234u32; 4];
+                let mut next = [0x9876_5432u32; 4];
+                let p = node.as_mut_ptr() as u32;
+                let prev = if singleton { p } else { previous.as_mut_ptr() as u32 };
+                let succ = if singleton { p } else { next.as_mut_ptr() as u32 };
+                node[0] = succ;
+                node[1] = prev;
+                let mut object = [vt.as_ptr() as u32, if is_head { p } else { succ }, 0x5555_5555];
+                let this = object.as_mut_ptr() as u32;
+                STATE.with(|s| s.borrow_mut().watch = Some((this, 12)));
+                let got = run(fc4p_0090d031 as *const () as usize, this, &[p]);
+                if singleton {
+                    assert_eq!(got, [p, this, p]);
+                    assert!(calls().is_empty());
+                } else {
+                    assert_eq!(got, [RESULT_EAX, RESULT_ECX, RESULT_EDX]);
+                    assert_eq!(previous[0], succ);
+                    assert_eq!(next[1], prev);
+                    assert_eq!(object[1], if is_head { prev } else { succ });
+                    assert_eq!(
+                        calls(),
+                        [VirtualCall {
+                            this,
+                            eax: vt.as_ptr() as u32,
+                            edx: p,
+                            arguments: vec![p]
+                        }]
+                    );
+                    STATE.with(|s| assert_eq!(&s.borrow().snapshots[0][4..8], &object[1].to_le_bytes()));
+                }
+                assert_eq!(node, [succ, prev, 0, 0]);
+            }
+        }
+    }
+
+    #[test]
+    fn service_destructor_checks_null_combinations_and_reloads_fields() {
+        for mask in 0..8u32 {
+            reset();
+            let mut vt = [0usize; 3];
+            vt[2] = fake_zero as *const () as usize;
+            let mut service = [vt.as_ptr() as u32];
+            let p = service.as_mut_ptr() as u32;
+            let mut object = [0xAAAA_AAAAu32; 12];
+            for (i, offset) in [10, 9, 8].into_iter().enumerate() {
+                object[offset] = if mask & (1 << i) != 0 { p } else { 0 };
+            }
+            let mut expected = object;
+            expected[0] = 0x00AC_EC00;
+            let this = object.as_mut_ptr() as u32;
+            STATE.with(|s| s.borrow_mut().watch = Some((this, 48)));
+            assert_eq!(
+                run(fc4p_009133ab as *const () as usize, this, &[]),
+                [
+                    if mask == 0 { ENTRY_EAX } else { RESULT_EAX },
+                    if mask & 4 != 0 { RESULT_ECX } else { 0 },
+                    if mask == 0 { ENTRY_EDX } else { RESULT_EDX }
+                ]
+            );
+            assert_eq!(object, expected);
+            let trace = calls();
+            assert_eq!(trace.len(), mask.count_ones() as usize);
+            for (i, call) in trace.iter().enumerate() {
+                assert_eq!(
+                    call,
+                    &VirtualCall {
+                        this: p,
+                        eax: vt.as_ptr() as u32,
+                        edx: if i == 0 { ENTRY_EDX } else { RESULT_EDX },
+                        arguments: vec![]
+                    }
+                );
+            }
+            STATE.with(|s| {
+                for bytes in &s.borrow().snapshots {
+                    assert_eq!(&bytes[..4], &0x00AC_EC00u32.to_le_bytes());
+                }
+            });
+        }
+        reset();
+        let mut vt = [0usize; 3];
+        vt[2] = fake_zero as *const () as usize;
+        let mut service = [vt.as_ptr() as u32];
+        let p = service.as_mut_ptr() as u32;
+        let mut object = [0u32; 12];
+        object[10] = p;
+        object[9] = p;
+        let this = object.as_mut_ptr() as u32;
+        STATE.with(|s| s.borrow_mut().mutation = Some((this, 0x24, 0)));
+        run(fc4p_009133ab as *const () as usize, this, &[]);
+        assert_eq!(calls().len(), 1);
+    }
+
+    #[test]
+    fn interface_copy_stores_before_retaining_and_accepts_self_copy() {
+        for present in [false, true] {
+            for self_copy in [false, true] {
+                reset();
+                let mut vt = [0usize; 2];
+                vt[1] = fake_zero as *const () as usize;
+                let mut service = [vt.as_ptr() as u32];
+                let value = if present { service.as_mut_ptr() as u32 } else { 0 };
+                let mut object = [0xAAAA_AAAA, value, 0xBBBB_BBBB];
+                let mut source = [0xCCCC_CCCC, value];
+                let this = object.as_mut_ptr() as u32;
+                let src = if self_copy { this } else { source.as_mut_ptr() as u32 };
+                STATE.with(|s| s.borrow_mut().watch = Some((this, 12)));
+                assert_eq!(
+                    run(fc4p_00940627 as *const () as usize, this, &[src]),
+                    [
+                        this,
+                        if present { RESULT_ECX } else { 0 },
+                        if present { RESULT_EDX } else { ENTRY_EDX }
+                    ]
+                );
+                assert_eq!(object, [0x00AD_43D8, value, 0xBBBB_BBBB]);
+                if present {
+                    assert_eq!(calls(), [expected_call(value, vt.as_ptr() as u32, None)]);
+                    STATE.with(|s| assert_eq!(&s.borrow().snapshots[0][4..8], &value.to_le_bytes()));
+                } else {
+                    assert!(calls().is_empty());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn type_assignment_handles_null_mismatches_and_value_upper_bytes() {
+        for same in [false, true] {
+            for null in [false, true] {
+                reset();
+                let mut vt = [0usize; 5];
+                vt[4] = fake_zero as *const () as usize;
+                let mut other_vt = vt;
+                other_vt[4] = fake_other_type as *const () as usize;
+                let mut source = [
+                    if same {
+                        vt.as_ptr() as u32
+                    } else {
+                        other_vt.as_ptr() as u32
+                    },
+                    0xFEDC_BA98,
+                ];
+                let mut object = [vt.as_ptr() as u32, 0xABCD_1234];
+                let this = object.as_mut_ptr() as u32;
+                let src = if null { 0 } else { source.as_mut_ptr() as u32 };
+                let want = if null {
+                    ENTRY_EAX & !255
+                } else if same {
+                    0xFEDC_BA01
+                } else {
+                    RESULT_EAX & !255
+                };
+                assert_eq!(
+                    run(fc4p_00940db5 as *const () as usize, this, &[src]),
+                    [
+                        want,
+                        if null { this } else { RESULT_ECX },
+                        if null { ENTRY_EDX } else { RESULT_EDX }
+                    ]
+                );
+                assert_eq!(object[1], if !null && same { source[1] } else { 0xABCD_1234 });
+                let trace = calls();
+                if !null {
+                    assert_eq!(
+                        trace,
+                        [
+                            expected_call(src, source[0], None),
+                            VirtualCall {
+                                this,
+                                eax: vt.as_ptr() as u32,
+                                edx: RESULT_EDX,
+                                arguments: vec![]
+                            }
+                        ]
+                    );
+                } else {
+                    assert!(trace.is_empty());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn buffer_release_reloads_owner_and_zeros_fields_between_calls() {
+        reset();
+        let mut vt = [0usize; 5];
+        vt[4] = fake_one as *const () as usize;
+        let mut second_vt = [0usize; 3];
+        second_vt[2] = fake_zero as *const () as usize;
+        let mut first = [vt.as_ptr() as u32];
+        let mut second = [second_vt.as_ptr() as u32];
+        let mut object = [
+            0x1234_5678,
+            0x8765_4321,
+            u32::MAX,
+            0xAAAA_AAAA,
+            first.as_mut_ptr() as u32,
+        ];
+        let this = object.as_mut_ptr() as u32;
+        let new_owner = second.as_mut_ptr() as u32;
+        STATE.with(|s| {
+            let mut s = s.borrow_mut();
+            s.watch = Some((this, 20));
+            s.mutation = Some((this, 0x10, new_owner));
+        });
+        assert_eq!(
+            run(fc4p_009446e4 as *const () as usize, this, &[]),
+            [RESULT_EAX, RESULT_ECX, RESULT_EDX]
+        );
+        assert_eq!(object, [0, 0, 0, 0xAAAA_AAAA, 0]);
+        assert_eq!(
+            calls(),
+            [
+                expected_call(first.as_mut_ptr() as u32, vt.as_ptr() as u32, Some(0x1234_5678)),
+                VirtualCall {
+                    this: new_owner,
+                    eax: second_vt.as_ptr() as u32,
+                    edx: RESULT_EDX,
+                    arguments: vec![]
+                }
+            ]
+        );
+        STATE.with(|s| {
+            let s = s.borrow();
+            assert_eq!(&s.snapshots[0][..4], &0x1234_5678u32.to_le_bytes());
+            assert_eq!(&s.snapshots[1][..12], &[0; 12]);
+            assert_eq!(&s.snapshots[1][16..20], &new_owner.to_le_bytes());
+        });
+    }
+
+    #[test]
+    fn retained_assignment_covers_null_identity_and_retain_before_release() {
+        for old_present in [false, true] {
+            for new_kind in 0..3 {
+                reset();
+                let mut vt = [0usize; 3];
+                vt[1] = fake_zero as *const () as usize;
+                vt[2] = fake_zero as *const () as usize;
+                let mut old_service = [vt.as_ptr() as u32];
+                let mut new_service = old_service;
+                let old = if old_present {
+                    old_service.as_mut_ptr() as u32
+                } else {
+                    0
+                };
+                let new = match new_kind {
+                    0 => 0,
+                    1 => old,
+                    _ => new_service.as_mut_ptr() as u32,
+                };
+                let mut object = [old, 0xABCD_1234];
+                let this = object.as_mut_ptr() as u32;
+                STATE.with(|s| s.borrow_mut().watch = Some((this, 8)));
+                let order: Vec<u32> = if old == new {
+                    vec![]
+                } else {
+                    [new, old].into_iter().filter(|p| *p != 0).collect()
+                };
+                assert_eq!(
+                    run(fc4p_0094909a as *const () as usize, this, &[new]),
+                    [
+                        this,
+                        if order.is_empty() { this } else { RESULT_ECX },
+                        if order.is_empty() { ENTRY_EDX } else { RESULT_EDX }
+                    ]
+                );
+                assert_eq!(object, [new, 0xABCD_1234]);
+                let trace = calls();
+                assert_eq!(trace.len(), order.len());
+                for (i, call) in trace.iter().enumerate() {
+                    assert_eq!(
+                        call,
+                        &VirtualCall {
+                            this: order[i],
+                            eax: vt.as_ptr() as u32,
+                            edx: if i == 0 { ENTRY_EDX } else { RESULT_EDX },
+                            arguments: vec![]
+                        }
+                    );
+                }
+                STATE.with(|s| {
+                    for (i, bytes) in s.borrow().snapshots.iter().enumerate() {
+                        assert_eq!(&bytes[..4], &(if new != 0 && i == 0 { old } else { new }).to_le_bytes());
+                    }
+                });
+            }
+        }
+    }
+
+    #[test]
+    fn record_copy_and_swap_keep_sequential_accesses_with_overlap() {
+        for source in 0..6usize {
+            for destination in 0..6usize {
+                let mut data: [u32; 12] = core::array::from_fn(|i| 0xABCD_1200 | i as u32);
+                let mut expected = data;
+                for i in 0..5 {
+                    expected[destination + i] = expected[source + i];
+                }
+                let this = data.as_mut_ptr().wrapping_add(destination) as u32;
+                let src = data.as_mut_ptr().wrapping_add(source) as u32;
+                assert_eq!(
+                    run(fc4p_0096e78b as *const () as usize, this, &[src]),
+                    [this, expected[destination + 4], expected[destination + 3]]
+                );
+                assert_eq!(data, expected);
+                let mut edx = 0;
+                for i in 0..3 {
+                    let a = expected[destination + i];
+                    let b = expected[source + i];
+                    expected[destination + i] = b;
+                    expected[source + i] = a;
+                    edx = a;
+                }
+                assert_eq!(run(fc4p_0096edf7 as *const () as usize, this, &[src]), [src, this, edx]);
+                assert_eq!(data, expected);
+            }
+        }
+    }
+
+    #[test]
+    fn unsigned_tree_lookup_checks_empty_missing_equal_and_high_bit_keys() {
+        let mut header = [0u32; 5];
+        let sentinel = header.as_mut_ptr() as u32;
+        let mut nodes = [[0u32; 5]; 5];
+        let ptrs: [u32; 5] = core::array::from_fn(|i| nodes[i].as_mut_ptr() as u32);
+        let keys = [0, 1, 0x7FFF_FFFF, 0x8000_0000, u32::MAX];
+        for i in 0..5 {
+            nodes[i][4] = keys[i];
+        }
+        nodes[2][2] = ptrs[0];
+        nodes[0][3] = ptrs[1];
+        nodes[2][3] = ptrs[4];
+        nodes[4][2] = ptrs[3];
+        let mut object = [sentinel, 0xABCD_1234];
+        let this = object.as_mut_ptr() as u32;
+        for empty in [false, true] {
+            header[1] = if empty { 0 } else { ptrs[2] };
+            let before = nodes;
+            let header_before = header;
+            for mut key in [0, 1, 2, 0x7FFF_FFFE, 0x7FFF_FFFF, 0x8000_0000, 0x8000_0001, u32::MAX] {
+                let found = if empty {
+                    None
+                } else {
+                    keys.iter().position(|v| *v == key)
+                };
+                assert_eq!(
+                    run(
+                        fc4p_0098129c as *const () as usize,
+                        this,
+                        &[&mut key as *mut u32 as u32]
+                    ),
+                    [
+                        found.map_or(sentinel, |i| ptrs[i]),
+                        if empty { 0 } else { key },
+                        sentinel
+                    ]
+                );
+            }
+            assert_eq!(nodes, before);
+            assert_eq!(header, header_before);
+        }
+    }
+
+    #[test]
+    fn byte_accumulation_handles_empty_unaligned_and_long_inputs() {
+        let mut data = [0xAAu8, 0, 1, 0x7F, 0x80, 0xFF, 0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC];
+        let before = data;
+        for start in 0..data.len() {
+            for n in 0..=data.len() - start {
+                let ptr = data.as_mut_ptr().wrapping_add(start) as u32;
+                let want = data[start..start + n]
+                    .iter()
+                    .fold(0u32, |sum, b| sum.wrapping_mul(256).wrapping_add(u32::from(*b)));
+                assert_eq!(
+                    invoke(
+                        fc4p_00a6d999 as *const () as usize,
+                        0x1234,
+                        &[ptr, n as u32],
+                        ENTRY_EAX,
+                        ENTRY_EDX,
+                        true
+                    ),
+                    [want, ptr + n as u32, 0]
+                );
+            }
+        }
+        assert_eq!(
+            invoke(
+                fc4p_00a6d999 as *const () as usize,
+                0x1234,
+                &[0, 0],
+                ENTRY_EAX,
+                ENTRY_EDX,
+                true
+            ),
+            [0, 0, 0]
+        );
+        assert_eq!(data, before);
+    }
+
+    unsafe extern "stdcall" fn observe_direct(frame: *mut Registers, address: u32, count: usize) {
+        STATE.with(|s| s.borrow_mut().direct_targets.push(address));
+        // SAFETY: the fake supplies its original registers and argument count.
+        unsafe {
+            observe(frame, count);
+        }
+    }
+    macro_rules! direct_fake {
+        ($name:ident, $address:literal, $count:literal, $pop:literal) => {
+            #[unsafe(naked)]
+            unsafe extern "C" fn $name() {
+                core::arch::naked_asm!(
+                    "push edx", "push ecx", "push eax", "mov eax, esp",
+                    "push {count}", "push {address}", "push eax", "call {observe}", "add esp, 12",
+                    "mov eax, 0xa1b2c3d4", "mov ecx, 0x4321abcd", "mov edx, 0xd4c3b2a1", "ret {pop}",
+                    count = const $count, address = const $address, pop = const $pop, observe = sym observe_direct,
+                );
+            }
+        };
+    }
+    direct_fake!(fake_hanging_destructor, 0x0090_86B7, 0, 0);
+    direct_fake!(fake_container_destructor, 0x0090_DC2F, 0, 0);
+    direct_fake!(fake_value_destructor, 0x0094_002A, 0, 0);
+    direct_fake!(fake_adjusted_destructor, 0x0090_D964, 0, 0);
+    direct_fake!(fake_text_destructor, 0x0041_4250, 0, 0);
+    direct_fake!(fake_free_scalar, 0x005E_5620, 1, 0);
+    direct_fake!(fake_free_array, 0x0090_CF63, 1, 0);
+    direct_fake!(fake_allocate_array, 0x0090_CF54, 1, 0);
+    direct_fake!(fake_bounds_base, 0x009A_B992, 0, 0);
+    direct_fake!(fake_node_member, 0x0097_BF85, 1, 4);
+    direct_fake!(fake_set_fill, 0x0099_BF1F, 1, 4);
+    direct_fake!(fake_erase_branch, 0x009A_84A0, 1, 4);
+    direct_fake!(fake_clear_tree, 0x009A_8947, 0, 0);
+    direct_fake!(fake_list_destructor, 0x0096_EDBC, 0, 0);
+    direct_fake!(fake_string_destructor, 0x0056_50A0, 0, 0);
+    direct_fake!(fake_vector_range, 0x0098_1543, 2, 0);
+    direct_fake!(fake_next_bucket, 0x0097_C1EA, 0, 0);
+    direct_fake!(fake_hash_lookup, 0x0097_C049, 1, 4);
+    direct_fake!(fake_hash_reserve, 0x0096_F614, 1, 4);
+    direct_fake!(fake_hash_insert, 0x0096_F209, 2, 8);
+    direct_fake!(fake_pointer_grow, 0x0097_3C0E, 2, 8);
+
+    fn install_game(address: u32) -> crate::testing::Fake {
+        let f = match address {
+            0x0090_86B7 => fake_hanging_destructor as *const (),
+            0x0090_DC2F => fake_container_destructor as *const (),
+            0x0094_002A => fake_value_destructor as *const (),
+            0x0090_D964 => fake_adjusted_destructor as *const (),
+            0x0041_4250 => fake_text_destructor as *const (),
+            0x005E_5620 => fake_free_scalar as *const (),
+            0x0090_CF63 => fake_free_array as *const (),
+            0x0090_CF54 => fake_allocate_array as *const (),
+            0x009A_B992 => fake_bounds_base as *const (),
+            0x0097_BF85 => fake_node_member as *const (),
+            0x0099_BF1F => fake_set_fill as *const (),
+            0x009A_84A0 => fake_erase_branch as *const (),
+            0x009A_8947 => fake_clear_tree as *const (),
+            0x0096_EDBC => fake_list_destructor as *const (),
+            0x0056_50A0 => fake_string_destructor as *const (),
+            0x0098_1543 => fake_vector_range as *const (),
+            0x0097_C1EA => fake_next_bucket as *const (),
+            0x0097_C049 => fake_hash_lookup as *const (),
+            0x0096_F614 => fake_hash_reserve as *const (),
+            0x0096_F209 => fake_hash_insert as *const (),
+            0x0097_3C0E => fake_pointer_grow as *const (),
+            _ => panic!("missing fake {address:08x}"),
+        };
+        crate::testing::fake(address, f as usize)
+    }
+    fn targets() -> Vec<u32> {
+        STATE.with(|s| core::mem::take(&mut s.borrow_mut().direct_targets))
+    }
+    fn trace(this: u32, eax: u32, edx: u32, arguments: &[u32]) -> VirtualCall {
+        VirtualCall {
+            this,
+            eax,
+            edx,
+            arguments: arguments.to_vec(),
+        }
+    }
+
+    #[test]
+    fn deleting_destructors_forward_members_and_only_test_the_low_flag_bit() {
+        for (entry, target, adjustment, nullable, pop_ecx) in [
+            (fc4p_00908902 as *const () as usize, 0x0090_86B7, 0, false, true),
+            (fc4p_0090ddd5 as *const () as usize, 0x0090_DC2F, 0, false, true),
+            (fc4p_0094065e as *const () as usize, 0x0094_002A, 0, false, true),
+            (fc4p_00991e90 as *const () as usize, 0x0090_D964, 4, true, false),
+            (fc4p_009be9af as *const () as usize, 0x0041_4250, 0x14, false, true),
+        ] {
+            let _destroy = install_game(target);
+            let _free = install_game(0x005E_5620);
+            for object in [0u32, 1, 0x1234_5678, u32::MAX] {
+                for flags in [0u32, 1, 2, 3, 0x100, 0xFFFF_FFFE, u32::MAX] {
+                    reset();
+                    let member = if nullable && object == 0 {
+                        0
+                    } else {
+                        object.wrapping_add(adjustment)
+                    };
+                    assert_eq!(
+                        run(entry, object, &[flags]),
+                        [
+                            object,
+                            if flags & 1 != 0 && pop_ecx { object } else { RESULT_ECX },
+                            RESULT_EDX
+                        ]
+                    );
+                    let mut expected = vec![trace(member, ENTRY_EAX, ENTRY_EDX, &[])];
+                    let mut addresses = vec![target];
+                    if flags & 1 != 0 {
+                        expected.push(trace(RESULT_ECX, RESULT_EAX, RESULT_EDX, &[object]));
+                        addresses.push(0x005E_5620);
+                    }
+                    assert_eq!(calls(), expected);
+                    assert_eq!(targets(), addresses);
+                }
+            }
+        }
+        let _free = install_game(0x005E_5620);
+        for flags in [0u32, 1, 2, 3, 0x100, u32::MAX] {
+            reset();
+            let mut object = [0xAAAA_AAAAu32, 0xBBBB_BBBB];
+            let this = object.as_mut_ptr() as u32;
+            STATE.with(|s| s.borrow_mut().watch = Some((this, 8)));
+            assert_eq!(
+                run(fc4p_00940bc5 as *const () as usize, this, &[flags]),
+                [this, this, if flags & 1 != 0 { RESULT_EDX } else { ENTRY_EDX }]
+            );
+            assert_eq!(object, [0x00AD_251C, 0xBBBB_BBBB]);
+            if flags & 1 != 0 {
+                assert_eq!(calls(), [trace(this, ENTRY_EAX, ENTRY_EDX, &[this])]);
+                assert_eq!(targets(), [0x005E_5620]);
+                STATE.with(|s| assert_eq!(&s.borrow().snapshots[0][..4], &0x00AD_251Cu32.to_le_bytes()));
+            } else {
+                assert!(calls().is_empty());
+                assert!(targets().is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn element_allocators_skip_zero_and_pass_wrapping_byte_counts() {
+        let _allocator = install_game(0x0090_CF54);
+        for (entry, size, pop) in [
+            (fc4p_009b3537 as *const () as usize, 40u32, 2),
+            (fc4p_009db998 as *const () as usize, 4u32, 1),
+        ] {
+            for count in [0u32, 1, 2, 0x0666_6666, 0x4000_0000, 0x8000_0000, u32::MAX] {
+                reset();
+                let args = [count, 0xABCD_1234];
+                let bytes = count.wrapping_mul(size);
+                assert_eq!(
+                    run(entry, 0x1234_5678, &args[..pop]),
+                    [
+                        if count == 0 { 0 } else { RESULT_EAX },
+                        if count == 0 { 0x1234_5678 } else { bytes },
+                        if count == 0 { ENTRY_EDX } else { RESULT_EDX }
+                    ]
+                );
+                if count == 0 {
+                    assert!(calls().is_empty());
+                    assert!(targets().is_empty());
+                } else {
+                    assert_eq!(calls(), [trace(0x1234_5678, bytes, ENTRY_EDX, &[bytes])]);
+                    assert_eq!(targets(), [0x0090_CF54]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn bounds_and_tagged_constructors_write_only_the_original_fields() {
+        let _base = install_game(0x009A_B992);
+        let _member = install_game(0x0097_BF85);
+        reset();
+        let mut object = [0xA5u8; 64];
+        let this = object.as_mut_ptr() as u32;
+        let mut expected = object;
+        for (offset, value) in [
+            (0xC, 0u32),
+            (0x10, 0x8000_0001),
+            (0x14, 0x7FFF_FFFF),
+            (0x18, 0x8000_0001),
+            (0x1C, 0x7FFF_FFFF),
+        ] {
+            expected[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+        }
+        expected[0x20] = 0;
+        assert_eq!(
+            run(fc4p_009abb63 as *const () as usize, this, &[]),
+            [this, 0x8000_0001, RESULT_EDX]
+        );
+        assert_eq!(object, expected);
+        assert_eq!(calls(), [trace(this, ENTRY_EAX, ENTRY_EDX, &[])]);
+        assert_eq!(targets(), [0x009A_B992]);
+        for value in [0u32, 1, 0x8000_0000, u32::MAX] {
+            reset();
+            let mut object = [0xA5u8; 32];
+            let mut expected = object;
+            let this = object.as_mut_ptr() as u32;
+            expected[..4].copy_from_slice(&value.to_le_bytes());
+            STATE.with(|s| s.borrow_mut().watch = Some((this, 32)));
+            assert_eq!(
+                run(fc4p_009db1a1 as *const () as usize, this, &[value, 0x1234_5678]),
+                [this, RESULT_ECX, RESULT_EDX]
+            );
+            assert_eq!(object, expected);
+            assert_eq!(calls(), [trace(this + 4, value, ENTRY_EDX, &[0x1234_5678])]);
+            assert_eq!(targets(), [0x0097_BF85]);
+            STATE.with(|s| assert_eq!(s.borrow().snapshots, [expected.to_vec()]));
+        }
+    }
+
+    #[test]
+    fn fill_setter_checks_flags_after_the_callback() {
+        let _setter = install_game(0x0099_BF1F);
+        for flag in [0u8, 1, 0x20, 0xFF] {
+            for mutate in [false, true] {
+                reset();
+                let mut vt = [0usize; 93];
+                vt[0x170 / 4] = fake_zero as *const () as usize;
+                let mut object = [0xA5u8; 0x130];
+                object[..4].copy_from_slice(&(vt.as_ptr() as u32).to_le_bytes());
+                object[0x128] = flag;
+                let this = object.as_mut_ptr() as u32;
+                let mut expected = object;
+                if mutate {
+                    expected[0x128..0x12C].copy_from_slice(&0x1234_5620u32.to_le_bytes());
+                    STATE.with(|s| s.borrow_mut().mutation = Some((this, 0x128, 0x1234_5620)));
+                }
+                assert_eq!(
+                    run(fc4p_009bc8b8 as *const () as usize, this, &[0xFEDC_BA98]),
+                    [RESULT_EAX, RESULT_ECX, RESULT_EDX]
+                );
+                let mut expected_calls = vec![trace(this, ENTRY_EAX, ENTRY_EDX, &[0xFEDC_BA98])];
+                if mutate || flag & 0x20 != 0 {
+                    expected_calls.push(trace(this, vt.as_ptr() as u32, RESULT_EDX, &[]));
+                }
+                assert_eq!(calls(), expected_calls);
+                assert_eq!(targets(), [0x0099_BF1F]);
+                assert_eq!(object, expected);
+            }
+        }
+    }
+
+    #[test]
+    fn tree_branch_deletion_calls_right_subtrees_before_each_left_chain_node() {
+        let _recursive = install_game(0x009A_84A0);
+        let _free = install_game(0x0090_CF63);
+        for n in 0..=4usize {
+            reset();
+            let mut nodes = [[0u32; 4]; 4];
+            let ptrs: [u32; 4] = core::array::from_fn(|i| nodes[i].as_mut_ptr() as u32);
+            for i in 0..n {
+                nodes[i][2] = if i + 1 < n { ptrs[i + 1] } else { 0 };
+                nodes[i][3] = 0x1000 + i as u32;
+            }
+            let before = nodes;
+            let mut expected = vec![];
+            let mut addresses = vec![];
+            let mut eax = ENTRY_EAX;
+            let mut edx = ENTRY_EDX;
+            for i in 0..n {
+                expected.push(trace(0x1234_5678, eax, edx, &[0x1000 + i as u32]));
+                addresses.push(0x009A_84A0);
+                expected.push(trace(RESULT_ECX, RESULT_EAX, RESULT_EDX, &[ptrs[i]]));
+                addresses.push(0x0090_CF63);
+                eax = RESULT_EAX;
+                edx = RESULT_EDX;
+            }
+            assert_eq!(
+                run(
+                    fc4p_009a84a0 as *const () as usize,
+                    0x1234_5678,
+                    &[if n == 0 { 0 } else { ptrs[0] }]
+                ),
+                [eax, if n == 0 { 0x1234_5678 } else { ptrs[n - 1] }, edx]
+            );
+            assert_eq!(calls(), expected);
+            assert_eq!(targets(), addresses);
+            assert_eq!(nodes, before);
+        }
+    }
+
+    #[test]
+    fn tree_clear_reloads_replaced_header_and_only_resets_nonempty_trees() {
+        let _erase = install_game(0x009A_84A0);
+        for count in [0u32, 1, 0x8000_0000, u32::MAX] {
+            for replace in [false, true] {
+                reset();
+                let mut header = [0xAAAA_AAAAu32; 5];
+                header[1] = 0x1234_5678;
+                let p = header.as_mut_ptr() as u32;
+                let mut other = [0xBBBB_BBBBu32; 5];
+                let q = other.as_mut_ptr() as u32;
+                let mut object = [p, count, 0xCCCC_CCCC];
+                let this = object.as_mut_ptr() as u32;
+                STATE.with(|s| {
+                    let mut s = s.borrow_mut();
+                    s.watch = Some((p, 20));
+                    if replace {
+                        s.mutation = Some((this, 0, q));
+                    }
+                });
+                let got = run(fc4p_009a8947 as *const () as usize, this, &[]);
+                if count == 0 {
+                    assert_eq!(got, [ENTRY_EAX, this, ENTRY_EDX]);
+                    assert!(calls().is_empty());
+                    assert!(targets().is_empty());
+                } else {
+                    let chosen = if replace { q } else { p };
+                    assert_eq!(got, [chosen, RESULT_ECX, RESULT_EDX]);
+                    assert_eq!(object, [chosen, 0, 0xCCCC_CCCC]);
+                    assert_eq!(
+                        if replace { other } else { header },
+                        [
+                            if replace { 0xBBBB_BBBB } else { 0xAAAA_AAAA },
+                            0,
+                            chosen,
+                            chosen,
+                            if replace { 0xBBBB_BBBB } else { 0xAAAA_AAAA }
+                        ]
+                    );
+                    assert_eq!(calls(), [trace(this, p, ENTRY_EDX, &[0x1234_5678])]);
+                    assert_eq!(targets(), [0x009A_84A0]);
+                    STATE.with(|s| assert_eq!(&s.borrow().snapshots[0][4..8], &0x1234_5678u32.to_le_bytes()));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tree_destructor_rereads_header_and_frees_only_nonnull_storage() {
+        let _clear = install_game(0x009A_8947);
+        let _free = install_game(0x0090_CF63);
+        for original in [0u32, 0x1234_5678] {
+            for replacement in [0u32, 0x8765_4321] {
+                reset();
+                let mut object = [original, 0xABCD_1234];
+                let this = object.as_mut_ptr() as u32;
+                STATE.with(|s| s.borrow_mut().mutation = Some((this, 0, replacement)));
+                assert_eq!(
+                    run(fc4p_009a9427 as *const () as usize, this, &[]),
+                    [
+                        RESULT_EAX,
+                        if replacement == 0 { RESULT_ECX } else { replacement },
+                        RESULT_EDX
+                    ]
+                );
+                let mut expected = vec![trace(this, ENTRY_EAX, ENTRY_EDX, &[])];
+                let mut addresses = vec![0x009A_8947];
+                if replacement != 0 {
+                    expected.push(trace(RESULT_ECX, RESULT_EAX, RESULT_EDX, &[replacement]));
+                    addresses.push(0x0090_CF63);
+                }
+                assert_eq!(calls(), expected);
+                assert_eq!(targets(), addresses);
+                assert_eq!(object, [replacement, 0xABCD_1234]);
+            }
+        }
+    }
+
+    #[test]
+    fn list_clear_releases_nodes_in_forward_order_and_restores_header_links() {
+        let _free = install_game(0x0090_CF63);
+        for n in 0..=4usize {
+            reset();
+            let mut header = [0u32; 3];
+            let p = header.as_mut_ptr() as u32;
+            let mut nodes = [[0u32; 3]; 4];
+            let ptrs: [u32; 4] = core::array::from_fn(|i| nodes[i].as_mut_ptr() as u32);
+            header = [
+                if n == 0 { p } else { ptrs[0] },
+                if n == 0 { p } else { ptrs[n - 1] },
+                0xABCD_1234,
+            ];
+            for i in 0..n {
+                nodes[i] = [if i + 1 == n { p } else { ptrs[i + 1] }, 0x1111_1111, 0x2222_2222];
+            }
+            let before = nodes;
+            let mut object = [p, 0xAAAA_AAAA];
+            let this = object.as_mut_ptr() as u32;
+            assert_eq!(
+                run(fc4p_009a841f as *const () as usize, this, &[]),
+                [
+                    p,
+                    if n == 0 { this } else { ptrs[n - 1] },
+                    if n == 0 { ENTRY_EDX } else { RESULT_EDX }
+                ]
+            );
+            let expected: Vec<_> = (0..n)
+                .map(|i| {
+                    trace(
+                        if i == 0 { this } else { ptrs[i - 1] },
+                        ptrs[i],
+                        if i == 0 { ENTRY_EDX } else { RESULT_EDX },
+                        &[ptrs[i]],
+                    )
+                })
+                .collect();
+            assert_eq!(calls(), expected);
+            assert_eq!(targets(), vec![0x0090_CF63; n]);
+            assert_eq!(header, [p, p, 0xABCD_1234]);
+            assert_eq!(nodes, before);
+            assert_eq!(object, [p, 0xAAAA_AAAA]);
+        }
+    }
+
+    #[test]
+    fn member_destructors_forward_in_order_and_wrap_the_global_counter() {
+        let _list = install_game(0x0096_EDBC);
+        let _text = install_game(0x0041_4250);
+        let _string = install_game(0x0056_50A0);
+        reset();
+        let mut object = [0xA5u8; 128];
+        let before = object;
+        let this = object.as_mut_ptr() as u32;
+        assert_eq!(
+            run(fc4p_00945f24 as *const () as usize, this, &[]),
+            [RESULT_EAX, RESULT_ECX, RESULT_EDX]
+        );
+        assert_eq!(
+            calls(),
+            [
+                trace(this + 0x64, ENTRY_EAX, ENTRY_EDX, &[]),
+                trace(this + 0xC, RESULT_EAX, RESULT_EDX, &[])
+            ]
+        );
+        assert_eq!(targets(), [0x0096_EDBC, 0x0041_4250]);
+        assert_eq!(object, before);
+        for mut counter in [0u32, 1, 0x8000_0000, u32::MAX] {
+            reset();
+            let start = counter;
+            let _counter = crate::testing::fake_data(0x00B6_33B8, (&mut counter as *mut u32).cast());
+            let mut expected = object;
+            expected[..4].copy_from_slice(&0x00AD_4648u32.to_le_bytes());
+            STATE.with(|s| s.borrow_mut().watch = Some((this, 128)));
+            assert_eq!(
+                run(fc4p_00943a0e as *const () as usize, this, &[]),
+                [RESULT_EAX, RESULT_ECX, RESULT_EDX]
+            );
+            assert_eq!(counter, start.wrapping_sub(1));
+            assert_eq!(object, expected);
+            assert_eq!(
+                calls(),
+                [
+                    trace(this + 0xC, ENTRY_EAX, ENTRY_EDX, &[]),
+                    trace(this + 8, RESULT_EAX, RESULT_EDX, &[])
+                ]
+            );
+            assert_eq!(targets(), [0x0056_50A0, 0x0056_50A0]);
+            STATE.with(|s| assert_eq!(s.borrow().snapshots, [expected.to_vec(), expected.to_vec()]));
+        }
+    }
+
+    #[test]
+    fn vector_destruction_reloads_storage_and_keeps_cdecl_pop_results() {
+        let _range = install_game(0x0098_1543);
+        let _free = install_game(0x0090_CF63);
+        for original in [0u32, 0x1234_5678] {
+            for replacement in [0u32, 0x8765_4321] {
+                reset();
+                let mut object = [original, 0x1122_3344, 0xAAAA_AAAA];
+                let this = object.as_mut_ptr() as u32;
+                STATE.with(|s| s.borrow_mut().mutation = Some((this, 0, replacement)));
+                assert_eq!(
+                    run(fc4p_0093de49 as *const () as usize, this, &[]),
+                    [
+                        RESULT_EAX,
+                        if replacement == 0 { 0x1122_3344 } else { replacement },
+                        RESULT_EDX
+                    ]
+                );
+                let mut expected = vec![trace(this, ENTRY_EAX, ENTRY_EDX, &[original, 0x1122_3344])];
+                let mut addresses = vec![0x0098_1543];
+                if replacement != 0 {
+                    expected.push(trace(0x1122_3344, RESULT_EAX, RESULT_EDX, &[replacement]));
+                    addresses.push(0x0090_CF63);
+                }
+                assert_eq!(calls(), expected);
+                assert_eq!(targets(), addresses);
+                assert_eq!(object, [replacement, 0x1122_3344, 0xAAAA_AAAA]);
+            }
+        }
+    }
+
+    #[test]
+    fn hash_iterator_advance_follows_links_or_calls_the_next_bucket_entry() {
+        let _next = install_game(0x0097_C1EA);
+        for successor in [0u32, 1, 0x8765_4321, u32::MAX] {
+            reset();
+            let mut node = [successor, 0xAAAA_AAAA];
+            let mut object = [node.as_mut_ptr() as u32, 0xBBBB_BBBB];
+            let this = object.as_mut_ptr() as u32;
+            assert_eq!(
+                run(fc4p_0096f5b7 as *const () as usize, this, &[]),
+                [
+                    this,
+                    if successor == 0 { RESULT_ECX } else { this },
+                    if successor == 0 { RESULT_EDX } else { ENTRY_EDX }
+                ]
+            );
+            assert_eq!(
+                object,
+                [if successor == 0 { RESULT_EAX } else { successor }, 0xBBBB_BBBB]
+            );
+            if successor == 0 {
+                assert_eq!(calls(), [trace(this, 0, ENTRY_EDX, &[])]);
+                assert_eq!(targets(), [0x0097_C1EA]);
+            } else {
+                assert!(calls().is_empty());
+                assert!(targets().is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn hash_lookup_writes_the_iterator_after_the_lookup_call() {
+        let _lookup = install_game(0x0097_C049);
+        for offset in [0usize, 4, 8, 16] {
+            reset();
+            let mut object = [0xA5u8; 32];
+            let mut expected = object;
+            let this = object.as_mut_ptr() as u32;
+            let output = this + offset as u32;
+            expected[offset..offset + 4].copy_from_slice(&RESULT_EAX.to_le_bytes());
+            expected[offset + 4..offset + 8].copy_from_slice(&this.to_le_bytes());
+            STATE.with(|s| s.borrow_mut().watch = Some((this, 32)));
+            assert_eq!(
+                run(fc4p_0096f290 as *const () as usize, this, &[output, 0x1234_5678]),
+                [output, output, RESULT_EDX]
+            );
+            assert_eq!(object, expected);
+            assert_eq!(calls(), [trace(this, ENTRY_EAX, ENTRY_EDX, &[0x1234_5678])]);
+            assert_eq!(targets(), [0x0097_C049]);
+            STATE.with(|s| assert_eq!(s.borrow().snapshots, [vec![0xA5; 32]]));
+        }
+    }
+
+    #[test]
+    fn insertion_reserves_wrapping_count_then_forwards_the_original_arguments() {
+        let _reserve = install_game(0x0096_F614);
+        let _insert = install_game(0x0096_F209);
+        for count in [0u32, 1, 0x8000_0000, u32::MAX] {
+            reset();
+            let mut object = [0xAAAA_AAAAu32; 6];
+            object[4] = count;
+            let before = object;
+            let this = object.as_mut_ptr() as u32;
+            let next = count.wrapping_add(1);
+            assert_eq!(
+                run(fc4p_0097005c as *const () as usize, this, &[0x1234_5678, 0x8765_4321]),
+                [0x1234_5678, RESULT_ECX, RESULT_EDX]
+            );
+            assert_eq!(
+                calls(),
+                [
+                    trace(this, next, ENTRY_EDX, &[next]),
+                    trace(this, RESULT_EAX, RESULT_EDX, &[0x1234_5678, 0x8765_4321])
+                ]
+            );
+            assert_eq!(targets(), [0x0096_F614, 0x0096_F209]);
+            assert_eq!(object, before);
+        }
+    }
+
+    #[test]
+    fn capacity_check_uses_wrapping_signed_pointer_difference_and_unsigned_limits() {
+        let _grow = install_game(0x0097_3C0E);
+        for (begin, end, capacity) in [
+            (0u32, 0u32, 0u32),
+            (0x1000, 0x1040, 20),
+            (0x1040, 0x1000, 20),
+            (0x8000_0000, 0, 0),
+            (0, 0x8000_0000, u32::MAX),
+        ] {
+            for requested in [0u32, 1, 3, 4, 19, 20, 0x7FFF_FFFF, u32::MAX] {
+                reset();
+                let mut object = [0xAAAA_AAAAu32; 12];
+                object[7] = begin;
+                object[8] = end;
+                object[9] = capacity;
+                let before = object;
+                let this = object.as_mut_ptr() as u32;
+                let occupied = ((begin.wrapping_sub(end) as i32) >> 2) as u32;
+                let remaining = capacity.wrapping_sub(occupied);
+                let grow = requested.wrapping_add(1) > remaining;
+                assert_eq!(
+                    run(fc4p_00982d95 as *const () as usize, this, &[requested]),
+                    if grow {
+                        [RESULT_EAX, RESULT_ECX, RESULT_EDX]
+                    } else {
+                        [requested, this, remaining]
+                    }
+                );
+                if grow {
+                    assert_eq!(calls(), [trace(this, requested, remaining, &[requested, 0])]);
+                    assert_eq!(targets(), [0x0097_3C0E]);
+                } else {
+                    assert!(calls().is_empty());
+                    assert!(targets().is_empty());
+                }
+                assert_eq!(object, before);
+            }
+        }
+    }
+
+    #[test]
+    fn locked_release_brackets_count_changes_and_calls_cleanup_for_zero_or_one() {
+        for count in [0u32, 1, 2, 0x8000_0000, u32::MAX] {
+            reset();
+            let mut vt = [0usize; 32];
+            vt[0x7C / 4] = fake_zero as *const () as usize;
+            let mut lock_vt = [0usize; 3];
+            lock_vt[1] = fake_zero as *const () as usize;
+            lock_vt[2] = fake_zero as *const () as usize;
+            let mut object = [vt.as_ptr() as u32, count, lock_vt.as_ptr() as u32, 0xAAAA_AAAA];
+            let this = object.as_mut_ptr() as u32;
+            STATE.with(|s| s.borrow_mut().watch = Some((this, 16)));
+            let remaining = if count > 1 { count - 1 } else { 0 };
+            assert_eq!(
+                run(fc4p_009756f6 as *const () as usize, this, &[]),
+                [remaining, RESULT_ECX, RESULT_EDX]
+            );
+            assert_eq!(object[1], if count > 1 { remaining } else { count });
+            let mut expected = vec![
+                trace(this + 8, lock_vt.as_ptr() as u32, ENTRY_EDX, &[]),
+                trace(this + 8, lock_vt.as_ptr() as u32, RESULT_EDX, &[]),
+            ];
+            if count <= 1 {
+                expected.push(trace(this, vt.as_ptr() as u32, RESULT_EDX, &[]));
+            }
+            assert_eq!(calls(), expected);
+            STATE.with(|s| {
+                let s = s.borrow();
+                assert_eq!(&s.snapshots[0][4..8], &count.to_le_bytes());
+                assert_eq!(&s.snapshots[1][4..8], &object[1].to_le_bytes());
+            });
+        }
+    }
+
+    #[test]
+    fn work_buffer_shutdown_clears_active_before_stopping_and_frees_even_null() {
+        let _free = install_game(0x005E_5620);
+        for active in [0u8, 1, 0xFF] {
+            for mode in [0u8, 1, 2, 3, 4, 0xFF] {
+                for buffer in [0u32, 0x1234_5678] {
+                    reset();
+                    let mut vt = [0usize; 9];
+                    vt[8] = fake_zero as *const () as usize;
+                    let mut object = [0xA5u8; 0x1D0];
+                    object[4..8].copy_from_slice(&(vt.as_ptr() as u32).to_le_bytes());
+                    object[0x14] = active;
+                    object[0x1C] = mode;
+                    object[0x1C4..0x1C8].copy_from_slice(&buffer.to_le_bytes());
+                    let this = object.as_mut_ptr() as u32;
+                    let mut expected = object;
+                    let stop = mode & 3 != 0;
+                    STATE.with(|s| s.borrow_mut().watch = Some((this, 0x1D0)));
+                    if active != 0 {
+                        expected[0x14] = 0;
+                        expected[0x1C4..0x1C8].fill(0);
+                    }
+                    assert_eq!(
+                        run(fc4p_0096df8d as *const () as usize, this, &[]),
+                        [
+                            if active == 0 {
+                                (ENTRY_EAX & !255) | 1
+                            } else {
+                                (RESULT_EAX & !255) | 1
+                            },
+                            if active == 0 { this } else { buffer },
+                            if active == 0 { ENTRY_EDX } else { RESULT_EDX }
+                        ]
+                    );
+                    let mut expected_calls = vec![];
+                    if active != 0 {
+                        if stop {
+                            expected_calls.push(trace(this + 4, vt.as_ptr() as u32, ENTRY_EDX, &[]));
+                        }
+                        expected_calls.push(trace(
+                            if stop { RESULT_ECX } else { this },
+                            if stop { RESULT_EAX } else { ENTRY_EAX },
+                            if stop { RESULT_EDX } else { ENTRY_EDX },
+                            &[buffer],
+                        ));
+                        assert_eq!(targets(), [0x005E_5620]);
+                        STATE.with(|s| {
+                            for snapshot in &s.borrow().snapshots {
+                                assert_eq!(snapshot[0x14], 0);
+                                assert_eq!(&snapshot[0x1C4..0x1C8], &buffer.to_le_bytes());
+                            }
+                        });
+                    } else {
+                        assert!(targets().is_empty());
+                    }
+                    assert_eq!(calls(), expected_calls);
+                    assert_eq!(object, expected);
+                }
+            }
+        }
+    }
+
 }
