@@ -61,6 +61,8 @@ pub mod served;
 pub mod service;
 pub mod strike;
 pub mod tuning;
+pub mod changes;
+pub mod ordinances;
 
 const COUNT: usize = interface::PORTS.len()
     + proximity::PORTS.len()
@@ -78,7 +80,9 @@ const COUNT: usize = interface::PORTS.len()
     + monthly::PORTS.len()
     + occupant::PORTS.len()
     + curves::PORTS.len()
-    + tuning::PORTS.len();
+    + tuning::PORTS.len()
+    + changes::PORTS.len()
+    + ordinances::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
     interface::PORTS,
     proximity::PORTS,
@@ -97,6 +101,8 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     occupant::PORTS,
     curves::PORTS,
     tuning::PORTS,
+    changes::PORTS,
+    ordinances::PORTS,
 ]);
 
 /// This module's replacements.
