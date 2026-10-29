@@ -28,9 +28,15 @@ layout! {
 /// The first word of a vector holds its first element. Each row is a three-word vector.
 unsafe fn row_data(vector: *mut u8, x: i32) -> *mut u8 {
     // SAFETY: the caller supplies the game's vector storage and an accessible row.
+    unsafe { row_data_at(vector, x.wrapping_mul(12)) }
+}
+
+/// Some branches keep a byte offset into the row table in a caller-owned argument word.
+unsafe fn row_data_at(vector: *mut u8, offset: i32) -> *mut u8 {
+    // SAFETY: the caller supplies an accessible row-table byte offset.
     unsafe {
         let rows = read_unaligned(vector.cast::<*mut u8>());
-        read_unaligned(rows.wrapping_offset(x.wrapping_mul(12) as isize).cast::<*mut u8>())
+        read_unaligned(rows.wrapping_offset(offset as isize).cast::<*mut u8>())
     }
 }
 
@@ -44,96 +50,140 @@ port! {
     /// Grid geometry and storage are queried once, destination first, in slots 11, 12, 13 and 24/25.
     /// Storage and row pointers are read again at each point that can follow a callback.
     /// EAX retains the original loop result, including on empty and negative dimensions.
-    #[port(address = 0x006B_DA30, owner = "landvalue", name = "ProcessTwoGridsWithCallback<uint8,int16>")]
-    pub unsafe extern "C" fn fc4p_006bda30(
-        a: *mut u8, b: *mut u8, callback: GridCallback, context: *mut u8,
-    ) -> u32 {
-        // SAFETY: the game supplies live grids with these virtual methods and vector storage.
-        unsafe {
-            let sa = vcall!(a, 0x2C => fn() -> i32);
-            let ax = vcall!(a, 0x30 => fn() -> i32);
-            let az = vcall!(a, 0x34 => fn() -> i32);
-            let av = vcall!(a, 0x60 => fn() -> *mut u8);
-            let sb = vcall!(b, 0x2C => fn() -> i32);
-            let bx = vcall!(b, 0x30 => fn() -> i32);
-            let bz = vcall!(b, 0x34 => fn() -> i32);
-            let bv = vcall!(b, 0x64 => fn() -> *mut u8);
-            if sa == sb {
-                if ax <= 0 {
-                    return ax as u32;
+    #[port(address = 0x006B_DA30, owner = "landvalue", name = "ProcessTwoGridsWithCallback<uint8,int16>", naked)]
+    pub unsafe extern "C" fn fc4p_006bda30() {
+        core::arch::naked_asm!("mov ecx, esp", "jmp {body}", body = sym process_grids)
+    }
+}
+
+unsafe extern "thiscall" fn process_grids(stack: *mut u32) -> u32 {
+    // SAFETY: the entry supplies the four live caller-owned argument words.
+    let a = unsafe { stack.add(1).read() as *mut u8 };
+    // SAFETY: the game supplies live grids with these virtual methods and vector storage.
+    unsafe {
+        let sa = vcall!(a, 0x2C => fn() -> i32);
+        let ax = vcall!(a, 0x30 => fn() -> i32);
+        let az = vcall!(a, 0x34 => fn() -> i32);
+        let av = vcall!(a, 0x60 => fn() -> *mut u8);
+        let b = stack.add(2).read() as *mut u8;
+        let sb = vcall!(b, 0x2C => fn() -> i32);
+        let bx = vcall!(b, 0x30 => fn() -> i32);
+        let bz = vcall!(b, 0x34 => fn() -> i32);
+        let bv = vcall!(b, 0x64 => fn() -> *mut u8);
+        if sa == sb {
+            if ax <= 0 {
+                return ax as u32;
+            }
+            stack.add(1).write(ax as u32);
+            let mut x = 0i32;
+            loop {
+                let mut z = 0i32;
+                while z < az {
+                    let source = row_data(bv, x).wrapping_offset(z.wrapping_mul(2) as isize);
+                    let value = i32::from(read_unaligned(source.cast::<u16>()));
+                    let dest = row_data(av, x).wrapping_offset(z as isize);
+                    grid_callback(stack, dest, value);
+                    z = z.wrapping_add(1);
                 }
-                let mut x = 0i32;
-                while x < ax {
-                    let mut z = 0i32;
-                    while z < az {
-                        let source = row_data(bv, x).wrapping_offset(z.wrapping_mul(2) as isize);
-                        let value = i32::from(read_unaligned(source.cast::<u16>()));
-                        let dest = row_data(av, x).wrapping_offset(z as isize);
-                        callback(dest, value, context);
-                        z = z.wrapping_add(1);
+                x = x.wrapping_add(1);
+                let remaining = stack.add(1).read().wrapping_sub(1);
+                stack.add(1).write(remaining);
+                if remaining == 0 {
+                    break;
+                }
+            }
+            0
+        } else if sa > sb {
+            let d = sa.wrapping_sub(sb) as u32;
+            let mut x = 0i32;
+            if ax > 0 {
+                stack.add(2).write(0);
+            }
+            while x < ax {
+                let x0 = x.wrapping_shl(d);
+                let x1 = x.wrapping_add(1).wrapping_shl(d);
+                let mut z = 0i32;
+                while z < az {
+                    let z0 = z.wrapping_shl(d);
+                    let z1 = z.wrapping_add(1).wrapping_shl(d);
+                    let mut sum = 0i32;
+                    let mut sx = x0;
+                    if sx < x1 {
+                        stack.add(1).write(sx.wrapping_mul(12) as u32);
                     }
-                    x = x.wrapping_add(1);
-                }
-                0
-            } else if sa > sb {
-                let d = sa.wrapping_sub(sb) as u32;
-                let mut x = 0i32;
-                while x < ax {
-                    let x0 = x.wrapping_shl(d);
-                    let x1 = x.wrapping_add(1).wrapping_shl(d);
-                    let mut z = 0i32;
-                    while z < az {
-                        let z0 = z.wrapping_shl(d);
-                        let z1 = z.wrapping_add(1).wrapping_shl(d);
-                        let mut sum = 0i32;
-                        let mut sx = x0;
-                        while sx < x1 {
-                            if z0 < z1 {
-                                let source = row_data(bv, sx);
-                                let mut sz = z0;
-                                while sz < z1 {
-                                    let p = source.wrapping_offset(sz.wrapping_mul(2) as isize);
-                                    sum = sum.wrapping_add(i32::from(read_unaligned(p.cast::<i16>())));
-                                    sz = sz.wrapping_add(1);
-                                }
+                    while sx < x1 {
+                        if z0 < z1 {
+                            let source = row_data(bv, sx);
+                            let mut sz = z0;
+                            while sz < z1 {
+                                let p = source.wrapping_offset(sz.wrapping_mul(2) as isize);
+                                sum = sum.wrapping_add(i32::from(read_unaligned(p.cast::<i16>())));
+                                sz = sz.wrapping_add(1);
                             }
-                            sx = sx.wrapping_add(1);
                         }
-                        let value = sum.wrapping_shr(d).wrapping_shr(d);
-                        callback(row_data(av, x).wrapping_offset(z as isize), value, context);
-                        z = z.wrapping_add(1);
+                        sx = sx.wrapping_add(1);
+                        stack.add(1).write(sx.wrapping_mul(12) as u32);
                     }
-                    x = x.wrapping_add(1);
+                    let value = sum.wrapping_shr(d).wrapping_shr(d);
+                    let row = row_data_at(av, stack.add(2).read() as i32);
+                    grid_callback(stack, row.wrapping_offset(z as isize), value);
+                    z = z.wrapping_add(1);
                 }
-                x as u32
-            } else {
-                let d = sb.wrapping_sub(sa) as u32;
-                let mut x = 0i32;
-                while x < bx {
-                    let x0 = x.wrapping_shl(d);
-                    let x1 = x.wrapping_add(1).wrapping_shl(d);
-                    let mut z = 0i32;
-                    while z < bz {
-                        let source = row_data(bv, x).wrapping_offset(z.wrapping_mul(2) as isize);
-                        let value = i32::from(read_unaligned(source.cast::<i16>()));
-                        let z0 = z.wrapping_shl(d);
-                        let z1 = z.wrapping_add(1).wrapping_shl(d);
-                        let mut dx = x0;
-                        while dx < x1 {
+                x = x.wrapping_add(1);
+                stack.add(2).write(stack.add(2).read().wrapping_add(12));
+            }
+            x as u32
+        } else {
+            let d = sb.wrapping_sub(sa) as u32;
+            let mut x = 0i32;
+            if bx > 0 {
+                stack.add(1).write(0);
+            }
+            while x < bx {
+                let x0 = x.wrapping_shl(d);
+                let x1 = x.wrapping_add(1).wrapping_shl(d);
+                let mut z = 0i32;
+                while z < bz {
+                    let source =
+                        row_data_at(bv, stack.add(1).read() as i32).wrapping_offset(z.wrapping_mul(2) as isize);
+                    let value = i32::from(read_unaligned(source.cast::<i16>()));
+                    let z0 = z.wrapping_shl(d);
+                    let z1 = z.wrapping_add(1).wrapping_shl(d);
+                    let mut dx = x0;
+                    if dx < x1 {
+                        stack.add(2).write(x1.wrapping_sub(x0) as u32);
+                        loop {
                             let mut dz = z0;
                             while dz < z1 {
-                                callback(row_data(av, dx).wrapping_offset(dz as isize), value, context);
+                                grid_callback(stack, row_data(av, dx).wrapping_offset(dz as isize), value);
                                 dz = dz.wrapping_add(1);
                             }
                             dx = dx.wrapping_add(1);
+                            let remaining = stack.add(2).read().wrapping_sub(1);
+                            stack.add(2).write(remaining);
+                            if remaining == 0 {
+                                break;
+                            }
                         }
-                        z = z.wrapping_add(1);
                     }
-                    x = x.wrapping_add(1);
+                    z = z.wrapping_add(1);
                 }
-                bx as u32
+                x = x.wrapping_add(1);
+                stack.add(1).write(stack.add(1).read().wrapping_add(12));
             }
+            bx as u32
         }
+    }
+}
+
+/// Reload the callback and context from the caller's words at every invocation.
+#[inline(always)]
+unsafe fn grid_callback(stack: *mut u32, dest: *mut u8, value: i32) {
+    // SAFETY: the caller supplies the live argument words and the callback's cell address.
+    unsafe {
+        let context = stack.add(4).read() as *mut u8;
+        let callback = core::mem::transmute::<u32, GridCallback>(stack.add(3).read());
+        callback(dest, value, context);
     }
 }
 
@@ -324,6 +374,9 @@ mod tests {
         write: bool,
         first: Option<unsafe fn(*mut u8)>,
         mutation: *mut u8,
+        caller_stack: *mut u32,
+        slot_update: Option<(usize, u32)>,
+        next_call: Option<(GridCallback, *mut u8)>,
     }
 
     unsafe extern "C" fn callback(dest: *mut u8, value: i32, context: *mut u8) {
@@ -333,6 +386,13 @@ mod tests {
             let context = &mut *context.cast::<Context>();
             if context.write {
                 *dest = value as u8;
+            }
+            if let Some((slot, value)) = context.slot_update.take() {
+                context.caller_stack.add(slot).write(value);
+            }
+            if let Some((next, next_context)) = context.next_call.take() {
+                context.caller_stack.add(3).write(next as *const () as u32);
+                context.caller_stack.add(4).write(next_context as u32);
             }
             if let Some(first) = context.first.take() {
                 first(context.mutation);
@@ -344,7 +404,9 @@ mod tests {
         take_calls();
         let (ap, bp, cp) = (a.ptr(), b.ptr(), (context as *mut Context).cast());
         // SAFETY: the test's grids, storage and callback context.
-        let result = unsafe { fc4p_006bda30(ap, bp, callback, cp) };
+        let entry: unsafe extern "C" fn(*mut u8, *mut u8, GridCallback, *mut u8) -> u32 =
+            unsafe { core::mem::transmute(fc4p_006bda30 as *const ()) };
+        let result = unsafe { entry(ap, bp, callback, cp) };
         let calls = take_calls();
         assert_eq!(
             calls[..8],
@@ -370,6 +432,173 @@ mod tests {
             })
             .collect();
         (result, visits)
+    }
+
+    // Cdecl leaves the four working argument words live for its caller to inspect.
+    #[unsafe(naked)]
+    unsafe extern "C" fn invoke_grid(
+        _a: *mut u8,
+        _b: *mut u8,
+        _callback: GridCallback,
+        _context: *mut u8,
+        _slots: *mut u32,
+    ) -> u32 {
+        core::arch::naked_asm!(
+            "push ebx", "mov ebx, [esp + 24]",
+            "push dword ptr [esp + 20]", "push dword ptr [esp + 20]",
+            "push dword ptr [esp + 20]", "push dword ptr [esp + 20]",
+            "mov ecx, [esp + 12]", "lea edx, [esp - 4]", "mov [ecx + {stack_offset}], edx",
+            "call {entry}",
+            "mov ecx, [esp]", "mov [ebx], ecx", "mov ecx, [esp + 4]", "mov [ebx + 4], ecx",
+            "add esp, 16", "pop ebx", "ret", entry = sym fc4p_006bda30,
+            stack_offset = const core::mem::offset_of!(Context, caller_stack),
+        )
+    }
+
+    #[test]
+    fn grid_pass_keeps_working_values_in_the_callers_argument_words() {
+        let table = grid_vtable();
+        for (sa, sb, ax, az, bx, bz) in [
+            (0, 0, 2, 2, 2, 2),
+            (1, 0, 2, 2, 4, 4),
+            (0, 1, 4, 4, 2, 2),
+            (0, 0, 0, 2, 2, 2),
+            (1, 0, 2, 0, 4, 4),
+            (0, 1, 4, 4, 2, 0),
+        ] {
+            let mut a = Storage::new(4, 4, 0u8);
+            let mut b = Storage::new(4, 4, 3i16);
+            let mut ga = Grid::new(&table, sa, ax, az, a.ptr());
+            let mut gb = Grid::new(&table, sb, bx, bz, b.ptr());
+            let ap = ga.ptr();
+            let bp = gb.ptr();
+            let mut slots = [0; 2];
+            let mut context = Context::default();
+            // SAFETY: live grids and callback storage, with enough cells for every branch.
+            unsafe {
+                invoke_grid(
+                    ap,
+                    bp,
+                    callback,
+                    (&mut context as *mut Context).cast(),
+                    slots.as_mut_ptr(),
+                );
+            }
+            let expected = if sa == sb {
+                [if ax > 0 { 0 } else { ap as u32 }, bp as u32]
+            } else if sa > sb {
+                [
+                    if az > 0 {
+                        (ax << (sa - sb)) as u32 * 12
+                    } else {
+                        ap as u32
+                    },
+                    ax as u32 * 12,
+                ]
+            } else {
+                [bx as u32 * 12, if bz > 0 { 0 } else { bp as u32 }]
+            };
+            assert_eq!(slots, expected, "shifts {sa}/{sb}, dimensions {ax}/{az}/{bx}/{bz}");
+            take_calls();
+        }
+    }
+
+    #[test]
+    fn callbacks_can_change_the_callers_loop_counter_and_row_offsets() {
+        let table = grid_vtable();
+        for (sa, sb, ax, az, bx, bz, slot, replacement) in [
+            (0, 0, 2, 1, 2, 1, 1, 1),
+            (1, 0, 1, 2, 2, 4, 2, 12),
+            (0, 1, 2, 2, 1, 1, 2, 1),
+            (0, 1, 2, 4, 1, 2, 1, 12),
+        ] {
+            let mut a = Storage::new(4, 4, 0u8);
+            let mut b = Storage::new(4, 4, 3i16);
+            b.values[1].fill(7);
+            let mut ga = Grid::new(&table, sa, ax, az, a.ptr());
+            let mut gb = Grid::new(&table, sb, bx, bz, b.ptr());
+            let bp = gb.ptr();
+            let mut slots = [0; 2];
+            let mut context = Context {
+                slot_update: Some((slot, replacement)),
+                ..Context::default()
+            };
+            take_calls();
+            // SAFETY: allocated grid storage covers the callback's selected rows and columns.
+            unsafe {
+                invoke_grid(
+                    ga.ptr(),
+                    bp,
+                    callback,
+                    (&mut context as *mut Context).cast(),
+                    slots.as_mut_ptr(),
+                );
+            }
+            let visits: Vec<_> = take_calls()
+                .into_iter()
+                .filter_map(|c| match c {
+                    Call::Visit(p, value, _) => Some((p, value)),
+                    _ => None,
+                })
+                .collect();
+            if sa == sb {
+                assert_eq!(visits, [(a.cell(0, 0) as usize, 3)]);
+                assert_eq!(slots, [0, bp as u32]);
+            } else if sa > sb {
+                assert_eq!(
+                    visits.iter().map(|v| v.0).collect::<Vec<_>>(),
+                    [a.cell(0, 0) as usize, a.cell(1, 1) as usize]
+                );
+                assert_eq!(slots, [24, 24]);
+            } else if slot == 2 {
+                assert_eq!(visits, [(a.cell(0, 0) as usize, 3), (a.cell(0, 1) as usize, 3)]);
+                assert_eq!(slots, [12, 0]);
+            } else {
+                assert_eq!(visits.iter().map(|v| v.1).collect::<Vec<_>>(), [3, 3, 3, 3, 7, 7, 7, 7]);
+                assert_eq!(slots, [24, 0]);
+            }
+        }
+    }
+
+    unsafe extern "C" fn alternate_callback(dest: *mut u8, value: i32, context: *mut u8) {
+        log(Call::Visit(dest as usize, value + 1000, context as usize));
+    }
+
+    #[test]
+    fn callbacks_can_replace_the_remaining_callback_and_context_words() {
+        let table = grid_vtable();
+        let mut a = Storage::new(1, 3, 0u8);
+        let mut b = Storage::new(1, 3, 3i16);
+        let mut ga = Grid::new(&table, 0, 1, 3, a.ptr());
+        let mut gb = Grid::new(&table, 0, 1, 3, b.ptr());
+        let mut next = Context::default();
+        let next_ptr = (&mut next as *mut Context).cast();
+        let mut context = Context {
+            next_call: Some((alternate_callback, next_ptr)),
+            ..Context::default()
+        };
+        let context_ptr = (&mut context as *mut Context).cast();
+        let mut slots = [0; 2];
+        take_calls();
+        // SAFETY: the callback replaces its remaining calls with another live context and C callback.
+        unsafe {
+            invoke_grid(ga.ptr(), gb.ptr(), callback, context_ptr, slots.as_mut_ptr());
+        }
+        let visits: Vec<_> = take_calls()
+            .into_iter()
+            .filter_map(|c| match c {
+                Call::Visit(p, v, ctx) => Some((p, v, ctx)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            visits,
+            [
+                (a.cell(0, 0) as usize, 3, context_ptr as usize),
+                (a.cell(0, 1) as usize, 1003, next_ptr as usize),
+                (a.cell(0, 2) as usize, 1003, next_ptr as usize),
+            ]
+        );
     }
 
     #[test]
