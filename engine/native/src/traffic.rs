@@ -168,17 +168,23 @@ pub mod monthly_queries;
 pub mod accidents;
 pub mod region_query;
 pub mod archive_write;
+pub mod apply_route;
+pub mod create_maps;
+#[cfg(test)]
+mod route_map_support;
 #[cfg(test)]
 mod test_support;
 
 /// This module's replacements.
 pub const PORTS: &[Port] = &crate::port::concat::<
     {
-        archive_write::PORTS.len() + region_query::PORTS.len() + accidents::PORTS.len() + monthly_queries::PORTS.len() + subnetwork_info::PORTS.len() + subnetworks::PORTS.len() + recalc::PORTS.len() +
+        apply_route::PORTS.len() + create_maps::PORTS.len() + archive_write::PORTS.len() + region_query::PORTS.len() + accidents::PORTS.len() + monthly_queries::PORTS.len() + subnetwork_info::PORTS.len() + subnetworks::PORTS.len() + recalc::PORTS.len() +
         commercial_window::PORTS.len() + switch_rules::PORTS.len() + elevated_paths::PORTS.len() + rail::PORTS.len() + neighbor_recalculate::PORTS.len() + neighbor_roll::PORTS.len() + neighbor_add::PORTS.len() + neighbor_changes::PORTS.len() + tunnel::PORTS.len() + destination::PORTS.len() + commercial::PORTS.len() + late_boundaries::PORTS.len() + late_passes::PORTS.len() + late_containers::PORTS.len() + queries::PORTS.len() + containers::PORTS.len() + budget::PORTS.len() + capacity::PORTS.len() + maps::PORTS.len()
             + network::PORTS.len() + trees::PORTS.len() + trips::PORTS.len() + refresh::PORTS.len() + finish_helpers::PORTS.len() + finish_passes::PORTS.len() + final_map::PORTS.len() + source_totals::PORTS.len() + trip_map::PORTS.len()
     },
 >(&[
+    apply_route::PORTS,
+    create_maps::PORTS,
     archive_write::PORTS,
     region_query::PORTS,
     accidents::PORTS,
