@@ -74,7 +74,7 @@ unsafe fn allocator(mut edx: u32) -> (*mut u8, u32) {
     }
 }
 
-unsafe fn new_list(edx: u32) -> (*mut u8, u32) {
+pub(super) unsafe fn new_list(edx: u32) -> (*mut u8, u32) {
     unsafe {
         let (alloc, edx) = allocator(edx);
         let call = virtual_call(alloc, 0x0C, &[12], table(alloc), edx, false);
