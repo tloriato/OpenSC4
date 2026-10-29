@@ -12,6 +12,8 @@ class CallInputs:
         self.md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
         self.md.detail = True
         self.decisions = {}
+        self.observed = None
+        self.input_masks = {}
 
     @lru_cache(None)
     def instruction(self, addr):
@@ -20,7 +22,11 @@ class CallInputs:
 
     @lru_cache(None)
     def scan(self, target, depth=0):
-        work, seen, reads, returns = [(target, frozenset(('ecx', 'edx')))], set(), set(), set()
+        names = ('ecx', 'edx')
+        masks = ({'ecx':0xffffffff, 'cx':0xffff, 'cl':0xff, 'ch':0xff00},
+                 {'edx':0xffffffff, 'dx':0xffff, 'dl':0xff, 'dh':0xff00})
+        work, seen, reads, returns = [(target, (0xffffffff,0xffffffff))], set(), set(), set()
+        observed = dict(ecx=0, edx=0)
         unknown = False
         while work:
             addr, live = work.pop()
@@ -42,10 +48,18 @@ class CallInputs:
                 read -= {'ecx', 'edx'}
             if ins.mnemonic in ('xor', 'sub') and len(ops) == 2 and ops[0].type == ops[1].type == X.X86_OP_REG and ops[0].reg == ops[1].reg:
                 read.clear()
-            for reg, aliases in (('ecx', {'ecx', 'cx', 'cl', 'ch'}), ('edx', {'edx', 'dx', 'dl', 'dh'})):
-                if reg in live and read & aliases:
-                    reads.add(reg)
-            live = live - write - reads  # partial writes do not kill a full-register input
+            remaining = []
+            for i,reg in enumerate(names):
+                read_mask = write_mask = 0
+                for alias,mask in masks[i].items():
+                    if alias in read:
+                        read_mask |= mask
+                    if alias in write:
+                        write_mask |= mask
+                observed[reg] |= live[i] & read_mask
+                remaining.append(live[i] & ~write_mask)
+            reads.update(reg for reg in names if observed[reg])
+            live = tuple(remaining)
             nxt = ins.address + ins.size
             direct = ops[0].imm & 0xffffffff if ops and ops[0].type == X.X86_OP_IMM else None
             m = ins.mnemonic
@@ -53,18 +67,22 @@ class CallInputs:
                 returns.add(direct or 0)
                 continue
             if m == 'call':
-                if live and direct is not None and depth < 3:
+                if any(live) and direct is not None and depth < 3:
                     nested, _, uncertain = self.scan(direct, depth+1)
-                    reads.update(live & nested)
+                    nested_masks = self.input_masks.get((direct,depth+1), {r:0xffffffff for r in nested})
+                    for i,reg in enumerate(names):
+                        observed[reg] |= live[i] & nested_masks.get(reg,0)
+                    reads.update(reg for reg in names if observed[reg])
                     unknown |= uncertain
-                elif live and direct is None:
+                elif any(live) and direct is None:
                     # A virtual call's receiver is observable. Its setup normally
                     # reads the receiver already, but preserve it here too.
-                    reads.update(live & {'ecx'})
+                    observed['ecx'] |= live[0]
+                    reads.update(reg for reg in names if observed[reg])
                     unknown = True
-                elif live:
+                elif any(live):
                     unknown = True
-                live = live - {'ecx', 'edx'}
+                live = (0,0)
             if m == 'jmp':
                 if direct is not None:
                     work.append((direct, live))
@@ -80,6 +98,7 @@ class CallInputs:
                 unknown = True
                 continue
             work.append((nxt, live))
+        self.input_masks[target,depth] = observed
         return reads, returns, unknown
 
     def dead_allocation_push(self, first):
@@ -129,9 +148,10 @@ class CallInputs:
                 n, source = pop//4, 'callee ret immediate'
         result = dict(target=key, registers=sorted(regs), stack_dwords=n, stack_source=source,
                       abi_confidence=row.get('confidence'), entry_read_registers=sorted(self.scan(target)[0]),
+                      entry_read_masks={n:f'{v:08x}' for n,v in self.input_masks.get((target,0),{}).items()},
                       abi_convention=row.get('convention'), abi_reg_args=row.get('reg_args'),
                       abi_this=row.get('this'), abi_stack_arg_dwords=row.get('stack_arg_dwords'),
-                      register_source='ECX declaration/thiscall/fastcall or entry reads; EDX fastcall or entry reads; overwritten allocation pushes excluded',
+                      register_source='ECX declaration/thiscall/fastcall or entry reads; EDX fastcall or entry reads; partial overwrites tracked by bit; overwritten allocation pushes excluded',
                       entry_scan_incomplete=uncertain, return_pop_bytes=sorted(pops), caller_sites={})
         self.decisions[key] = result
         return result
@@ -197,6 +217,14 @@ class CallInputs:
                 decision['caller_sites'][site] = dict(stack_dwords=count,
                     source='original caller cleanup' if count is not None else 'unknown')
             n = decision['caller_sites'][site]['stack_dwords']
+        if self.observed is not None:
+            key = decision['target']
+            if key not in self.observed:
+                self.observed[key] = {**decision, 'caller_sites': {}}
+            if original_site is not None:
+                site = f'{original_site:08x}'
+                if site in decision['caller_sites']:
+                    self.observed[key]['caller_sites'][site] = dict(decision['caller_sites'][site])
         return decision['registers'], n
 
     def entry_arity(self, rec):

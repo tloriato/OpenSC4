@@ -13,7 +13,7 @@ from .common import OUT
 from .store import PageStore
 from .replay import Replay
 from .check import same, twice
-from .variants import variants, float80
+from .variants import variants, float80, typed_values
 from .compare import call_values
 from .calls import CallInputs
 
@@ -22,6 +22,114 @@ CODE = bytes.fromhex('8b44240440c20400')  # return argument + 1
 
 
 class ReplayTests(unittest.TestCase):
+    def test_kernel_shared_fields_are_named_and_byte_logged(self):
+        from .validation import normalize_kernel, SHARED
+        initial = {SHARED: bytes(4096)}
+        actual = bytearray(4096)
+        actual[0x36a] = 8
+        actual[0x360] = 42  # QpcSystemTimeIncrementShift is not a changing counter
+        a, b, rules = normalize_kernel({SHARED: bytes(actual)}, {}, initial)
+        self.assertEqual(a[SHARED][0x36a], b[SHARED][0x36a])
+        self.assertNotEqual(a[SHARED][0x360], b[SHARED][0x360])
+        self.assertEqual(rules, [dict(rule='kernel maintained shared input', field='UnparkedProcessorCount',
+                                    address='7ffe036a', cpu=8, replay=0)])
+
+    def test_debugger_paused_work_does_not_consume_thread_hold(self):
+        from .debugger import Debugger
+        dbg = Debugger.__new__(Debugger)
+        dbg.owner, dbg.running_seconds, dbg.running_since = 12, 0.0, 100.0
+        dbg.pause_clock(100.2)
+        dbg.pause_clock(125.0)  # 24.8 seconds of entry/exit callbacks
+        self.assertAlmostEqual(dbg.running_seconds, .2)
+        dbg.running_since = 125.0
+        dbg.pause_clock(125.3)
+        self.assertAlmostEqual(dbg.running_seconds, .5)
+
+    def test_failed_thread_suspension_never_claims_isolation(self):
+        from .debugger import Debugger,k32
+        dbg=Debugger.__new__(Debugger)
+        dbg.owner=None;dbg.exits=[{}];dbg.suspended=[]
+        dbg.proc=SimpleNamespace(threads={1:123,2:456},cpu_seconds=lambda tid:0)
+        with patch.object(k32,'Wow64SuspendThread',return_value=0xffffffff), \
+             patch.object(k32,'WaitForSingleObject',return_value=0x102):
+            dbg.suspend_others(1)
+        self.assertFalse(dbg.exits[0]['isolation']['held'])
+        self.assertEqual(dbg.exits[0]['isolation']['thread'],2)
+
+    def test_kernel_shared_flag_exception_is_only_the_error_port_bit(self):
+        from .validation import normalize_kernel,shared_page_audit,SHARED
+        initial={SHARED:bytes(4096)}
+        changed=bytearray(4096);changed[0x2f0]=3
+        actual={SHARED:bytes(changed)}
+        a,b,rules=normalize_kernel(actual,{},initial)
+        self.assertEqual(a[SHARED][0x2f0],2)
+        self.assertEqual(b[SHARED][0x2f0],0)
+        self.assertEqual(rules[0]['mask'],1)
+        self.assertEqual(len(shared_page_audit(actual,{},initial)),1)
+
+    def test_file_position_syscall_only_services_supported_class(self):
+        from unicorn.x86_const import UC_X86_REG_ESP, UC_X86_REG_EAX
+        r = self.replay()
+        m = r.m
+        m.ensure(ESP, 512)
+        m.uc.reg_write(UC_X86_REG_ESP, ESP)
+        m.uc.reg_write(UC_X86_REG_EAX, 0x27)
+        m.write(ESP, struct.pack('<7I', RET, 0, 100, ESP+100, ESP+120, 8, 14))
+        m.write(ESP+100, b'\xff'*8)
+        m.write(ESP+120, struct.pack('<q', 98765))
+        m._syscall(m.uc, 0, 0, None)
+        self.assertEqual(m.read(ESP+100, 8), bytes(8))
+        self.assertEqual(m.uc.reg_read(UC_X86_REG_EAX), 0)
+        self.assertEqual(m.syscalls, [('NtSetInformationFile position', 100, 98765)])
+        m.uc.reg_write(UC_X86_REG_ESP, ESP)
+        m.uc.reg_write(UC_X86_REG_EAX, 0x27)
+        m.write(ESP+24, struct.pack('<I', 20))
+        m._syscall(m.uc, 0, 0, None)
+        self.assertEqual(m.syscalls[-1][0], 'unhandled NtSetInformationFile arguments')
+
+    def test_revalidation_repairs_gdt_but_preserves_lost_isolation(self):
+        from .revalidate import validate_record
+        r = self.replay()
+        out = r.run()
+        rec = copy.deepcopy(self.rec)
+        rec['exit'] = copy.deepcopy(rec['entry'])
+        rec['exit']['regs'].update(out[0]['regs'])
+        rec['exit_pages'] = {str(p):self.store.put_many([b])[0] for p,b in out[1].items()}
+        rec['validation'] = dict(valid=False, difference=dict(field='page 50000000'))
+        result = validate_record(rec, self.store)
+        self.assertTrue(result['valid'], result)
+        rec['validation']['difference'] = dict(field='other threads resumed while function was running')
+        result = validate_record(rec, self.store)
+        self.assertFalse(result['valid'])
+        self.assertEqual(result['difference'], rec['validation']['difference'])
+
+    def test_recursive_return_stops_survive_machine_reuse(self):
+        # The captured activation returns into the same function as its
+        # deeper recursive calls. Each deeper return must execute INC EBX.
+        code = bytes.fromhex('8b44240485c074084850e8f1ffffff43c20400')
+        after = ADDR+15
+        from .machine import Machine
+        from .replay import Provider
+        m = Machine(self.rec['entry'], Provider(self.rec, self.store), gdt=self.rec['gdt'])
+        m.ensure(ADDR, len(code))
+        m.ensure(ESP, 8)
+        m.entry[ADDR & -4096] = m.entry[ADDR & -4096][:ADDR % 4096]+code+m.entry[ADDR & -4096][ADDR % 4096+len(code):]
+        m.uc.mem_write(ADDR, code)
+        stack = bytearray(m.entry[ESP & -4096])
+        struct.pack_into('<II', stack, ESP % 4096, after, 3)
+        m.entry[ESP & -4096] = bytes(stack)
+        m.uc.mem_write(ESP & -4096, bytes(stack))
+        outcomes=[]
+        for _ in range(3):
+            out=m.run(ADDR, after, ESP, instruction_budget=10000)
+            outcomes.append({k:v for k,v in out.items() if k!='seconds'})
+            self.assertIsNone(out['err'], out)
+            self.assertEqual(out['regs']['ebx'], self.rec['entry']['regs']['ebx']+3)
+            self.assertEqual(out['regs']['esp'], ESP+8)
+            m.restore()
+        self.assertEqual(outcomes[0], outcomes[1])
+        self.assertEqual(outcomes[0], outcomes[2])
+
     @classmethod
     def setUpClass(cls):
         cls.store = PageStore(OUT / 'tests/pages.db')
@@ -84,6 +192,13 @@ class ReplayTests(unittest.TestCase):
     def test_hidden_state(self):
         code = b'\xc7\x05'+struct.pack('<I', BASE+0x800)+b'\x01\x00\x00\x00'+CODE
         self.assertIn('write into port DLL', self.difference(self.replay(code))['ours'])
+
+    def test_image_boundary_write_is_guarded_and_restored(self):
+        code=b'\x66\xc7\x05'+struct.pack('<I',BASE-1)+b'\x34\x12'+CODE
+        r=self.replay(code)
+        r.m.map_page(BASE-4096, bytes(4096))
+        self.assertIn('write into port DLL', self.difference(r)['ours'])
+        self.assertEqual(r.m.read(BASE, len(code)), code)
 
     def test_original_entry(self):
         code = b'\xb8'+struct.pack('<I', ADDR)+b'\xff\xe0'
@@ -209,6 +324,45 @@ class ReplayTests(unittest.TestCase):
         inputs = CallInputs()
         self.assertNotIn('ecx', inputs.callee(0x5d99a0)['registers'])
 
+    def test_partial_register_writes_preserve_only_unwritten_input_bits(self):
+        cases=(('b2000fb6c2c3',0),             # DL is written before reading DL
+               ('66ba00000fb6c2c3',0),         # DX is written before reading DL
+               ('b6000fb6c2c3',0xff),          # writing DH preserves incoming DL
+               ('b2008bc2c3',0xffffff00))      # upper EDX survives writing DL
+        for code,expected in cases:
+            with self.subTest(code=code):
+                inputs=CallInputs();base=0x1000
+                ins={i.address:i for i in inputs.md.disasm(bytes.fromhex(code),base)}
+                inputs.instruction=ins.get
+                regs,_,unknown=inputs.scan(base)
+                self.assertFalse(unknown)
+                self.assertEqual(inputs.input_masks[base,0]['edx'],expected)
+                self.assertEqual('edx' in regs,bool(expected))
+
+    def test_partial_register_masks_propagate_through_direct_calls(self):
+        inputs=CallInputs();base=0x1000
+        # Parent writes DL, child reads DL and DH: only incoming DH is observed.
+        parent=bytes.fromhex('b200e8f9000000c3')
+        child=bytes.fromhex('0fb6c20fb6c6c3')
+        ins={i.address:i for b,data in ((base,parent),(0x1100,child)) for i in inputs.md.disasm(data,b)}
+        inputs.instruction=ins.get
+        regs,_,unknown=inputs.scan(base)
+        self.assertFalse(unknown)
+        self.assertEqual(regs,{'edx'})
+        self.assertEqual(inputs.input_masks[base,0]['edx'],0xff00)
+
+    def test_network_setter_does_not_take_incoming_edx(self):
+        inputs=CallInputs();d=inputs.callee(0x61b480)
+        self.assertEqual(d['registers'],['ecx'])
+        self.assertEqual(d['entry_read_masks']['edx'],'00000000')
+
+    def test_typed_sweeps_include_width_boundaries_and_binary64_specials(self):
+        self.assertTrue({0,0xff,0x7f,0x80} <= set(typed_values(1)))
+        self.assertTrue({0,0xffff,0x7fff,0x8000} <= set(typed_values(2)))
+        self.assertTrue({0,0xffffffffffffffff,0x7fffffffffffffff,0x8000000000000000,
+                         0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000000,
+                         1,0x43e0000000000000} <= set(typed_values(8)))
+
     def test_unknown_arity_is_not_padded(self):
         inputs = CallInputs()
         decision = inputs.callee(0x90cf54)
@@ -310,6 +464,61 @@ class ReplayTests(unittest.TestCase):
             r.m.write(BASE+0x800, b'\x01\x00\x00\x00')
         r.m.uc.hook_add(UC_HOOK_CODE, kernel, None, BASE, BASE)
         self.assertIn('write into port DLL', self.difference(r)['ours'])
+
+    def test_worker_count_preserves_verdict_first_difference_and_proven(self):
+        import contextlib
+        import gzip
+        import io
+        import json
+        from argparse import Namespace
+        from . import check as checker
+        root = OUT/'tests/parallel'
+        root.mkdir(parents=True, exist_ok=True)
+        r = self.replay(b'\x31\xff'+CODE)
+        out, pages = r.run()
+        rec = copy.deepcopy(r.rec)
+        rec.update(scenario='synthetic', validation=dict(valid=True, clock_rules=[]), exit_pages={})
+        rec['exit'] = dict(regs={**out['regs'], 'eflags':out['eflags']},
+                           fpu=copy.deepcopy(rec['entry']['fpu']))
+        paths = []
+        for i in range(2):
+            path = root/f'capture-{i}.json.gz'
+            with gzip.open(path, 'wt') as f:
+                json.dump(rec, f)
+            paths.append(path)
+        dummy = root/'fixture.dll'
+        dummy.write_bytes(b'synthetic test image supplied by the loader fixture')
+        reports, tables = [], []
+        for keep_going,jobs in ((True,1),(True,2),(False,1),(False,2)):
+            table, report = root/f'proven-{jobs}-{keep_going}.tsv', root/f'check-{jobs}-{keep_going}.json'
+            table.unlink(missing_ok=True)
+            args = Namespace(dll=dummy, variants=64, seed=0xfc4, jobs=jobs, variant_batch=8,
+                             keep_going=keep_going, no_proven=False, report=report)
+            with patch.object(checker, 'Port', return_value=r.port), \
+                 patch.object(checker, 'captures_of', return_value=paths), \
+                 patch.object(checker, 'STORE_DB', self.store.path), \
+                 patch.object(checker, 'PROVEN', table), contextlib.redirect_stdout(io.StringIO()):
+                checker.check(args, [ADDR])
+            result = json.loads(report.read_text())['results']
+            for row in result:
+                row.pop('seconds')
+            reports.append(result)
+            tables.append(table.read_bytes())
+        for i in (0,2):
+            self.assertEqual(reports[i], reports[i+1])
+            self.assertEqual(tables[i], tables[i+1])
+        self.assertEqual(reports[0][0]['verdict'], 'DIFFERENT')
+        self.assertEqual(reports[0][0]['difference']['field'], 'edi')
+        self.assertEqual(reports[0][0]['difference']['input']['id'], 1)
+
+    def test_instruction_deadline_is_deterministic(self):
+        r = self.replay(b'\xeb\xfe')
+        first, _ = r.run(port=True, instruction_budget=1000)
+        r.m.restore()
+        second, _ = r.run(port=True, instruction_budget=1000)
+        self.assertEqual(first['kind'], 'instruction_limit')
+        self.assertEqual({k:v for k,v in first.items() if k!='seconds'},
+                         {k:v for k,v in second.items() if k!='seconds'})
 
 
 if __name__ == '__main__':

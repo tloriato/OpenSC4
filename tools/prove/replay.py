@@ -30,7 +30,11 @@ class Replay:
         if port:
             self.m.map_image(port.base, port.image)
         self.own = Ranges(ranges_of(rec['function']))
-        self.enabled = {a: port.exports[a] for a in enabled if port and a in port.exports}
+        # Entries outside this capture cannot execute at all. Filter once,
+        # rather than probing every export again on every generated input.
+        pages = self.m.provider.pages
+        self.enabled = {a: port.exports[a] for a in enabled if port and a in port.exports
+                        and a & -PAGE in pages and (a+4) & -PAGE in pages}
         self.md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
         self.blocks = {}
         # The instruction quantum bounds replay without a second Python hook
@@ -91,7 +95,7 @@ class Replay:
                     words = list(struct.unpack('<'+'I'*n, bytes(uc.mem_read(esp+offset, n*4)))) if n else ([] if n == 0 else None)
                     values = {name: uc.reg_read(UC_X86_REG_ECX if name == 'ecx' else UC_X86_REG_EDX) for name in regs}
                     self.trace.append(dict(target=f'{addr:08x}', registers=values, arguments=words,
-                                           frame=[esp+4, self.m.state['regs']['esp']]))
+                                           frame=[esp+4, self.m.state['regs']['esp']], site=f'{src:08x}'))
                     if not self.port_run:
                         self.current_sites.append((addr, src))
         ins = self.blocks.get((addr, size))
@@ -104,6 +108,8 @@ class Replay:
 
     def write(self, uc, access, addr, size, value, _):
         if self.port and addr < self.port.base + len(self.port.image) and addr + size > self.port.base:
+            self.m.image_writes.update(p for p in range(addr & -PAGE, ((addr+size-1) & -PAGE)+PAGE, PAGE)
+                                       if p in self.m.image_pages)
             self.stop(uc, f'write into port DLL at {addr:08x} ({size} bytes)' if self.port_run else
                       f'original wrote outside captured address space at {addr:08x}')
         if self.collect:
@@ -129,7 +135,7 @@ class Replay:
             return
         self.inputs.setdefault((addr, size), bytes(uc.mem_read(addr, size)))
 
-    def run(self, *, port=False, collect=False, timeout=30):
+    def run(self, *, port=False, collect=False, timeout=30, instruction_budget=None):
         self.reset()
         self.current_sites = []
         self.port_run, self.collect = port, collect
@@ -144,7 +150,7 @@ class Replay:
             memory_hooks.append(m.uc.hook_add(UC_HOOK_MEM_WRITE, self.write))
         elif port:
             memory_hooks.append(m.uc.hook_add(UC_HOOK_MEM_WRITE, self.write, None,
-                                             self.port.base, self.port.base+len(self.port.image)-1))
+                                             max(0, self.port.base-PAGE), self.port.base+len(self.port.image)-1))
         if port:
             for lo, hi in self.own:
                 body_hooks.append(m.uc.hook_add(UC_HOOK_CODE, self.body, None, lo, hi-1))
@@ -158,7 +164,8 @@ class Replay:
         try:
             self.in_run = True
             out = m.run(self.port.exports[rec['function']] if port else rec['function'],
-                        rec['ret'], m.state['regs']['esp'], timeout=timeout)
+                        rec['ret'], m.state['regs']['esp'], timeout=timeout,
+                        instruction_budget=instruction_budget)
             for a, data in patches.items():
                 expected = b'\xe9'+struct.pack('<I', (self.enabled[a]-a-5) & 0xffffffff)
                 if m.read(a, 5) != expected:

@@ -81,7 +81,8 @@ def functions():
 def owners():
     """address -> dict(bytes, owner, rule, subsystem) from tools/coverage.py --owners."""
     if not OWNERS.is_file():
-        raise SystemExit(f'{OWNERS} is missing: run python tools/coverage.py --owners {OWNERS.relative_to(REPO)}')
+        raise SystemExit(f'{OWNERS} is missing: run python tools/coverage.py --owners {OWNERS.relative_to(REPO)} '
+                         '--out build-runs/prove/coverage-owner-map.md')
     out = {}
     with open(OWNERS, encoding='utf-8') as f:
         for row in csv.DictReader(f, delimiter='\t'):

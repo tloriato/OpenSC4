@@ -13,6 +13,22 @@ VALUES = [0, 1, 0xffffffff, 2, 0x7fffffff, 0x80000000, 0x7ffffffe, 0xfffffffe,
           0x5f000000, 0xdf000000, 0x7f7fffff, 0x00000001, 0x3f7fffff, 0x3f800001]
 
 
+def typed_values(size):
+    """Integer boundaries use the field width; eight-byte floats use binary64 bits."""
+    if size == 8:
+        return [0,1,0xffffffffffffffff,2,0x7fffffffffffffff,0x8000000000000000,
+                0x7ffffffffffffffe,0xfffffffffffffffe,
+                0x3ff0000000000000,0xbff0000000000000,0x3fe0000000000000,0x8000000000000001,
+                0x000fffffffffffff,0x0010000000000000,0x7ff0000000000000,0xfff0000000000000,
+                0x7ff8000000000000,0x41e0000000000000,0xc1e0000000000000,0x41f0000000000000,
+                0x43e0000000000000,0xc3e0000000000000,0x7fefffffffffffff,1,
+                0x3fefffffffffffff,0x3ff0000000000001]
+    values = list(VALUES)
+    limit = (1 << (size*8))-1
+    values[2:8] = [limit,2,limit>>1,1 << (size*8-1),(limit>>1)-1,limit-1]
+    return [v & limit for v in values]
+
+
 def float80(bits):
     """Encode an IEEE binary32 value in the x87 extended format without rounding."""
     sign, exponent, fraction = bits >> 31, (bits >> 23) & 255, bits & 0x7fffff
@@ -55,10 +71,7 @@ def variants(rec, replay, reads, count, seed, start=0):
         # Sweep all typed boundaries at each target, then random single values.
         target = targets[(i // len(VALUES)) % len(targets)]
         kind, where, n = target
-        v = VALUES[i % len(VALUES)] if i < len(targets)*len(VALUES) else rng.getrandbits(n*8)
-        if n == 8 and i % 2:
-            v = [0x7ff0000000000000, 0xfff0000000000000, 0x7ff8000000000000,
-                 1, 0x43e0000000000000, 0x8000000000000000][i % 6]
+        v = typed_values(n)[i % len(VALUES)] if i < len(targets)*len(VALUES) else rng.getrandbits(n*8)
         v &= (1 << (n*8))-1
         if i < start:
             continue

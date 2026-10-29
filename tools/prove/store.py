@@ -15,6 +15,7 @@ import json
 import os
 import sqlite3
 import threading
+import time
 import zlib
 from pathlib import Path
 
@@ -28,14 +29,17 @@ def digest(data):
 
 
 class PageStore:
-    def __init__(self, path=STORE_DB):
+    def __init__(self, path=STORE_DB, *, readonly=False, cache_pages=8192):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.path = str(path)
-        self.db = sqlite3.connect(self.path, timeout=120, check_same_thread=False)
-        self.db.execute('PRAGMA journal_mode=WAL')
-        self.db.execute('PRAGMA synchronous=NORMAL')
-        self.db.execute('CREATE TABLE IF NOT EXISTS pages (h TEXT PRIMARY KEY, z BLOB NOT NULL)')
-        self.db.commit()
+        self.db = sqlite3.connect(Path(path).resolve().as_uri()+'?mode=ro' if readonly else self.path,
+                                  uri=readonly, timeout=120, check_same_thread=False)
+        if not readonly:
+            self.db.execute('PRAGMA journal_mode=WAL')
+            self.db.execute('PRAGMA synchronous=NORMAL')
+            self.db.execute('CREATE TABLE IF NOT EXISTS pages (h TEXT PRIMARY KEY, z BLOB NOT NULL)')
+            self.db.commit()
+        self.cache_pages = cache_pages
         self.cache = {}
         self.lock = threading.Lock()
 
@@ -49,6 +53,8 @@ class PageStore:
             out.append(h)
             if h not in self.cache:
                 rows.append((h, zlib.compress(data, 6)))
+                if len(self.cache) >= self.cache_pages:
+                    self.cache.clear()
                 self.cache[h] = data
         if rows:
             with self.lock:
@@ -64,7 +70,7 @@ class PageStore:
             if row is None:
                 raise KeyError(f'page {h} missing from {self.path}')
             data = zlib.decompress(row[0])
-            if len(self.cache) > 200_000:
+            if len(self.cache) >= self.cache_pages:
                 self.cache.clear()
             self.cache[h] = data
         return data
@@ -94,11 +100,26 @@ def capture_path(func, scen, run, n):
 
 def write_capture(rec):
     p = capture_path(rec['function'], rec['scenario'], rec['run'], rec['hit'])
+    return replace_capture(p, rec)
+
+
+def replace_capture(p, rec):
+    p = Path(p)
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix('.tmp')
     with gzip.open(tmp, 'wt', encoding='utf-8') as f:
-        json.dump(rec, f, separators=(',', ':'))
-    os.replace(tmp, p)
+        json.dump({k:v for k,v in rec.items() if not k.startswith('_')}, f, separators=(',', ':'))
+    deadline = time.monotonic()+10
+    while True:
+        try:
+            os.replace(tmp, p)
+            break
+        except PermissionError:
+            # A reader or scanner can briefly hold a Windows file without
+            # delete sharing. Keep the old complete record until replacement.
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(.05)
     return p
 
 

@@ -15,7 +15,7 @@ import time
 from .common import need_unicorn, PAGE
 
 uc_mod = need_unicorn()
-from unicorn import (Uc, UcError, UC_ARCH_X86, UC_MODE_32, UC_PROT_ALL, UC_HOOK_MEM_UNMAPPED, UC_HOOK_CODE, UC_HOOK_INSN_INVALID, UC_HOOK_BLOCK,  # noqa
+from unicorn import (Uc, UcError, UC_ARCH_X86, UC_MODE_32, UC_PROT_ALL, UC_HOOK_MEM_UNMAPPED, UC_HOOK_MEM_WRITE, UC_HOOK_CODE, UC_HOOK_INSN_INVALID, UC_HOOK_BLOCK,  # noqa
                      UC_ERR_READ_UNMAPPED, UC_ERR_WRITE_UNMAPPED, UC_ERR_FETCH_UNMAPPED)
 from unicorn.x86_const import *  # noqa: F401,F403
 from . import x87host
@@ -48,6 +48,8 @@ class Machine:
         self.commits = set()     # pages that did not exist at entry and were committed by the run
         self.dead = set()        # dead stack pages mapped as zeros
         self.static = set()      # pages excluded from the effect comparison (GDT, port image)
+        self.image_pages = set()
+        self.image_writes = set()
         self.faults = []
         self.syscalls = []
         self.dead_stack = dead_stack
@@ -129,6 +131,8 @@ class Machine:
     def write(self, addr, data):
         if not self.ensure(addr, len(data)):
             raise Fault(f'{addr:#x} is not captured')
+        self.image_writes.update(p for p in range(addr & -PAGE, ((addr+len(data)-1) & -PAGE)+PAGE, PAGE)
+                                 if p in self.image_pages)
         observer = getattr(self, 'write_observer', None)
         if observer:
             observer(addr, data)
@@ -143,6 +147,13 @@ class Machine:
             if p in self.entry:
                 raise Fault(f'port image page {p:#x} collides with a captured page')
             self.map_page(p, image[off:off + PAGE], static=True)
+            self.image_pages.add(p)
+        self.uc.hook_add(UC_HOOK_MEM_WRITE, self._image_write, None,
+                         max(0, base-PAGE), base+size-1)
+
+    def _image_write(self, uc, access, addr, size, value, _):
+        self.image_writes.update(p for p in range(addr & -PAGE, ((addr+size-1) & -PAGE)+PAGE, PAGE)
+                                 if p in self.image_pages)
 
     def _runs(self, pages):
         run = []
@@ -157,7 +168,9 @@ class Machine:
     def dirty(self):
         """{page: bytes now} for every mapped page whose bytes differ from the entry state."""
         out = {}
-        for run in self._runs(self.entry):
+        # Image writes are tracked separately. Do not copy an
+        # unchanged multi-megabyte DLL on every tiny generated input.
+        for run in self._runs((self.entry.keys()-self.image_pages) | self.image_writes):
             data = bytes(self.uc.mem_read(run[0], len(run) * PAGE))
             for i, p in enumerate(run):
                 chunk = data[i * PAGE:(i + 1) * PAGE]
@@ -175,6 +188,7 @@ class Machine:
             self.uc.mem_unmap(p, PAGE)
             del self.entry[p]
         self.commits.clear()
+        self.image_writes.clear()
 
     # ---- inputs that are not memory -------------------------------------------------------------------------------
     def _vector_instruction(self, uc, _):
@@ -264,6 +278,27 @@ class Machine:
                 return
             except (UcError, ValueError, Fault):
                 self.syscalls.append(('unhandled NtWriteFile arguments', n)); uc.emu_stop(); return
+        if n == 0x27:
+            # NtSetInformationFile(..., FilePositionInformation) positions the
+            # observer's synchronous file. Only its status block is visible in
+            # process memory. Keep other information classes unsupported.
+            try:
+                handle, iosb, info, length, kind = args[:5]
+                if kind != 14 or length != 8 or not iosb or not self.ensure(info, 8):
+                    raise ValueError('unsupported information class or length')
+                position = struct.unpack('<q', self.read(info, 8))[0]
+                if position < 0 or handle in (0, 0xffffffff):
+                    raise ValueError('unsupported file position')
+                self.write(iosb, struct.pack('<II', 0, 0))
+                self.syscalls.append(('NtSetInformationFile position', handle, position))
+                uc.reg_write(UC_X86_REG_EAX, 0)
+                uc.reg_write(UC_X86_REG_EIP, struct.unpack('<I', self.read(esp, 4))[0])
+                uc.reg_write(UC_X86_REG_ESP, esp+4)
+                return
+            except (UcError, ValueError, Fault):
+                self.syscalls.append(('unhandled NtSetInformationFile arguments', n, list(args[:5])))
+                uc.emu_stop()
+                return
         if n == 0x18 and args[0] == 0xFFFFFFFF and args[4] & 0x1000:
             # NtAllocateVirtualMemory(current process, &base, 0, &size, MEM_COMMIT, protect) inside a reservation:
             # the kernel commits zeroed pages at the given address, so we do the same
@@ -368,10 +403,33 @@ class Machine:
         self.faults = []
         self.syscalls = []
 
-    def run(self, eip, ret, esp0, *, timeout=30.0):
+    def _instruction(self, uc, addr, size, _):
+        if self.bootstrapping:
+            return
+        if self.instructions_left == 0:
+            self.instruction_expired = True
+            uc.emu_stop()
+        else:
+            self.instructions_left -= 1
+
+    def run(self, eip, ret, esp0, *, timeout=30.0, instruction_budget=None):
+        self.instructions_left = instruction_budget
+        self.instruction_expired = False
+        hook = self.uc.hook_add(UC_HOOK_CODE, self._instruction) if instruction_budget is not None else None
+        try:
+            return self._run(eip, ret, esp0, timeout=timeout, instruction_budget=instruction_budget)
+        finally:
+            if hook is not None:
+                self.uc.hook_del(hook)
+
+    def _run(self, eip, ret, esp0, *, timeout=30.0, instruction_budget=None):
         """Run from eip until EIP == ret with ESP above esp0. Returns a result dict (see outcome())."""
         uc = self.uc
         self.load_state(eip)
+        # A cached block at a recursive return can retain the stop inserted
+        # for an earlier emu_start. Rebuild it when changing between the
+        # watched return and the one-instruction step through a deeper return.
+        uc.ctl_remove_cache(ret, min(ret+16, 0xffffffff))
         t0 = time.perf_counter()
         err = kind = None
         deadline = t0 + timeout
@@ -381,6 +439,9 @@ class Machine:
             left = deadline - time.perf_counter()
             if left <= 0:
                 err, kind = 'did not return in time', 'timeout'
+                break
+            if self.instruction_expired:
+                err, kind = f'exceeded replay instruction budget ({instruction_budget})', 'instruction_limit'
                 break
             try:
                 # A block deadline plus an instruction quantum avoids starting
@@ -396,10 +457,14 @@ class Machine:
                     err = f'{e} at EIP {eip_now:#010x}'
                 break
             eip_now = uc.reg_read(UC_X86_REG_EIP)
+            if self.instruction_expired:
+                err, kind = f'exceeded replay instruction budget ({instruction_budget})', 'instruction_limit'
+                break
             if self.budget_expired:
                 err, kind = 'did not return in time', 'timeout'
                 break
-            if self.syscalls and self.syscalls[-1][0] not in ('NtAllocateVirtualMemory commit', 'NtWriteFile synchronous'):
+            if self.syscalls and self.syscalls[-1][0] not in ('NtAllocateVirtualMemory commit', 'NtWriteFile synchronous',
+                                                            'NtSetInformationFile position'):
                 err, kind = f'{self.syscalls[-1][0]} {self.syscalls[-1][1]:#x}', 'syscall'
                 break
             if eip_now != ret:
@@ -414,10 +479,12 @@ class Machine:
                 break
             # a deeper activation returned to the same address (recursion): step over it and go on
             try:
+                uc.ctl_remove_cache(ret, min(ret+16, 0xffffffff))
                 uc.emu_start(ret, 0xFFFFFFFF, count=1)
             except UcError as e:
                 err, kind = f'{e} at EIP {ret:#010x}', 'exception'
                 break
+            uc.ctl_remove_cache(ret, min(ret+16, 0xffffffff))
             start = uc.reg_read(UC_X86_REG_EIP)
         return self.outcome(err, kind, time.perf_counter() - t0)
 
@@ -433,7 +500,8 @@ class Machine:
                 st.append(None)
             else:
                 st.append(struct.pack('<QH', *uc.reg_read(UC_X86_REG_FP0 + phys)).hex())
-        return dict(err=err, kind=kind, seconds=seconds, regs=regs, top=top, cw=uc.reg_read(UC_X86_REG_FPCW), st=st,
+        return dict(err=err, kind=kind, seconds=seconds, regs=regs, eip=f'{uc.reg_read(UC_X86_REG_EIP):08x}',
+                    top=top, cw=uc.reg_read(UC_X86_REG_FPCW), st=st,
                     tag=tag, mxcsr=uc.reg_read(UC_X86_REG_MXCSR),
                     eflags=uc.reg_read(UC_X86_REG_EFLAGS), clock_reads=self.clock_reads,
                     syscalls=list(self.syscalls))

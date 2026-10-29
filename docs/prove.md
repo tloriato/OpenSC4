@@ -4,13 +4,18 @@ Run from the main checkout with 64-bit Python on Windows:
 
 ```powershell
 python -m pip install unicorn==2.1.4 pefile capstone psutil
-python tools/coverage.py --owners build-runs/coverage-owners.tsv
 python tools/prove.py list
-python tools/prove.py check landvalue --dll engine/target/i686-pc-windows-msvc/release/fc4native.dll --variants 1000 --keep-going --report build-runs/prove/landvalue-final.json
+python tools/prove.py revalidate --jobs 8
+python tools/prove.py check landvalue --dll engine/target/i686-pc-windows-msvc/release/fc4native.dll --variants 1000 --jobs 8 --keep-going --report build-runs/prove/landvalue-final.json
 python tools/prove.py selftest --variants 1000
 ```
 
 Addresses and coverage owners/subsystems can be mixed in a comma-separated selection.
+The coverage owner map must already exist at `build-runs/coverage-owners.tsv`.
+Prove writes only `docs/proven.tsv`; it never refreshes the coverage report.
+If the map is missing, create it with
+`python tools/coverage.py --owners build-runs/coverage-owners.tsv --out build-runs/prove/coverage-owner-map.md`
+so the companion report stays under ignored outputs.
 For example `landvalue`, `cSC4LandValueSimulator`, or `006bd540,006bd810`.
 Checks copy and hash the DLL before use. They reject imports, apply PE32 relocations,
 and map the image in a gap free in every captured address space.
@@ -20,7 +25,11 @@ TEB addressing are preserved with a private user-mode bootstrap.
 A check uses every stored **valid** capture for the selected functions. Invalid
 captures are listed separately and do not earn proof. The original runs twice and
 is revalidated against the stored CPU exit before the port runs. Only the precise
-clock-byte exceptions logged by the live validator apply to this CPU comparison.
+named kernel-input exceptions apply to this CPU comparison, with every differing
+byte logged during capture/revalidation. They cover shared timestamps and
+`KUSER_SHARED_DATA.UnparkedProcessorCount` and the error-port-present bit of
+`SharedDataFlags`, which can change while game threads
+are stopped. Other bytes on that page are audited and remain comparable.
 Unsupported instructions, uncaptured pages, incomplete returns, or other differences
 cannot earn EXACT. Missing captures are reported as DIFFERENT with `no captures`;
 this is a coverage limitation, not evidence of an incorrect port.
@@ -33,9 +42,17 @@ seeded random values. Immutable image constants and values pointing into committ
 memory are excluded from scalar-field mutation. Unknown argument counts are not
 padded. The default seed is `0xFC4`. Successful original and port variants each run
 twice for determinism. An original variant that faults, leaves the captured input,
-or exceeds its two-second replay deadline is skipped; a port fault or timeout is
-DIFFERENT. Capture checks allow thirty seconds per replay. Timeout skips describe
-an execution limit, not an input proven invalid. Skips never count as passing inputs.
+or exceeds the deterministic instruction limit is skipped. The default is
+200,000 instructions (`--variant-instructions`); `deadline_skips` reports these
+separately per function. A port fault or instruction limit is DIFFERENT.
+The thirty-second wall watchdog (`--replay-timeout`) aborts the check without
+writing proof rows, because system load must not change a verdict. Skips never
+count as passing inputs.
+
+`--jobs N` uses independent worker processes (default 8). Work is divided by
+capture and bounded variant batches (`--variant-batch`, default 32). Inputs retain
+their global numbers; the parent reduces results in function/capture/input order,
+so completion order cannot change the first difference or proof rows.
 
 By default a function stops at its first difference. `--keep-going` tests the rest
 of its captures and generated inputs while retaining the first difference and
@@ -71,6 +88,9 @@ calls and report incomplete paths. A register push used only to reserve a local,
 whose bytes are overwritten before being read, is excluded. The report retains
 both ABI confidence and entry-read evidence; an incorrect ABI label can still
 produce a false input requirement and is a known limitation.
+Partial register writes remove only the bits they replace: reading `DL` after
+writing `DL` does not require incoming `EDX`, while untouched higher bits remain
+inputs if used. Those masks also propagate through direct calls.
 
 When a compared argument/register value points between the current call ESP and
 the tested function's entry ESP in either replay, it compares as a frame token.
@@ -99,11 +119,31 @@ that neither permitted slot is already running a game:
 python tools/prove.py capture --functions landvalue,009eef04 --scenario berlin-tegel --hits 8 --slot 10
 ```
 
-Only slots 9 and 10 are accepted. The isolated harness stages cities outside
+Slots 9 and 10 are supported; lanes must use their assigned slot (10 for this work).
+The isolated harness stages cities outside
 Documents; the installed executable is read only and breakpoints exist in memory.
 Each hit stores contexts, touched pages plus the nearby stack, changed exit pages,
 and validation details. The page store deduplicates compressed 4-KB pages; no full
 memory image is written. Uncaptured input pages cannot be invented during checks.
+Other threads remain suspended while the tested thread runs. The hold timer counts
+only intervals after debugger continuation, excluding paused callbacks. A sampled
+system wait can release held threads to let the game finish; that capture records
+the wait and remains invalid. An unproven sixty-second isolation limit is a
+separate failure. Newly created threads are held too.
+Failure to suspend a live thread invalidates the capture.
+
+`revalidate [selection]` repeats original replay from stored entry pages and
+compares the stored CPU exit, updating each record atomically. Without a selection
+it visits the whole store. `--dry-run` produces a report without updating records.
+Replays use frozen entry pages, including zeroed heap commits, rather than reading
+live exit memory for a repeat. Missing CPU exits and known lost thread isolation
+cannot be repaired offline. Reports retain each previous verdict and the precise
+first repeated output difference. No game is started.
+
+Synchronous observer file writes and `NtSetInformationFile` with
+`FilePositionInformation` are modelled through their process-visible completion
+records. Other information classes and unsupported services remain failures;
+effects outside the process are outside this replay check.
 The pinned observer's debug runtime can itself retain stack addresses in global
 memory; those differences remain visible and need separate diagnosis. No blanket
 observer-memory exception is applied.
@@ -129,6 +169,5 @@ retained there; `summary.json` contains the baseline verdicts and every first
 mutation difference. Self-tests do not update the proof table.
 
 Measured results, classifications, run statistics and historical evidence belong
-under `build-runs/prove/`, not in this guide. The current full owner report is
-`build-runs/prove/landvalue-final.json`; related review notes are under
-`build-runs/prove/reports/`.
+under `build-runs/prove/`, not in this guide. Review notes and validation history
+are under `build-runs/prove/reports/`.

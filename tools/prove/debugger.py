@@ -32,6 +32,9 @@ k32.Wow64SuspendThread.argtypes = [wt.HANDLE]
 k32.Wow64SuspendThread.restype = wt.DWORD
 k32.ResumeThread.argtypes = [wt.HANDLE]
 k32.ResumeThread.restype = wt.DWORD
+k32.GetThreadTimes.argtypes = [wt.HANDLE, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+k32.WaitForSingleObject.argtypes = [wt.HANDLE, wt.DWORD]
+k32.WaitForSingleObject.restype = wt.DWORD
 psapi.GetMappedFileNameW.argtypes = [wt.HANDLE, ctypes.c_void_p, wt.LPWSTR, wt.DWORD]
 
 DBG_CONTINUE, DBG_NOT_HANDLED = 0x00010002, 0x80010001
@@ -184,6 +187,45 @@ class Process:
         lo, bl, bm, f1, f2, bh = struct.unpack('<HHBBBB', ldt.raw)
         return bl | (bm << 16) | (bh << 24)
 
+    def cpu_seconds(self, tid):
+        values = [ctypes.c_ulonglong() for _ in range(4)]
+        if not k32.GetThreadTimes(self.thread(tid), *(ctypes.byref(v) for v in values)):
+            return None
+        return (values[2].value + values[3].value) / 10_000_000
+
+    def wait_site(self, tid):
+        """Sample the stopped owner for a named ntdll wait stub."""
+        import pefile
+        from pathlib import Path
+        h = self.thread(tid)
+        if k32.Wow64SuspendThread(h) == 0xFFFFFFFF:
+            return None
+        try:
+            ctx = self.get_ctx(tid)
+            ip, sp = ctx_get(ctx, EIP), ctx_get(ctx, ESP)
+            stack = self.read(sp, 256) or b''
+            # The current instruction or its immediate thunk return can
+            # identify a wait. Deeper stack slots can contain stale returns.
+            addresses = [ip] + list(struct.unpack('<'+'I'*(min(len(stack), 8)//4), stack[:8]))
+            regions = [r for r in self.regions() if r[5].lower().endswith('\\ntdll.dll')]
+            if not regions:
+                return None
+            base = min(r[0] for r in regions)
+            pe = pefile.PE(str(Path(__import__('os').environ['WINDIR'])/'SysWOW64/ntdll.dll'))
+            names = {'NtWaitForSingleObject', 'NtWaitForMultipleObjects', 'NtWaitForMultipleObjects32',
+                     'NtSignalAndWaitForSingleObject', 'NtWaitForKeyedEvent', 'NtRemoveIoCompletion',
+                     'NtWaitForAlertByThreadId', 'NtDelayExecution'}
+            for symbol in pe.DIRECTORY_ENTRY_EXPORT.symbols:
+                name = (symbol.name or b'').decode()
+                if name in names:
+                    lo = base + symbol.address
+                    if any(lo <= a < lo+32 for a in addresses):
+                        return dict(service=name, eip=f'{ip:08x}', esp=f'{sp:08x}',
+                                    stub=f'{lo:08x}', stack=stack.hex())
+            return None
+        finally:
+            k32.ResumeThread(h)
+
     def close(self):
         for tid in list(self.threads):
             self.forget(tid)
@@ -226,6 +268,12 @@ class Debugger:
         self.exits = []             # pending: dict(tid, ret, esp0, ...) awaiting the real return
         self.suspended = []         # thread handles we suspended
         self.suspend_since = None
+        self.owner = None
+        self.running_since = None
+        self.running_seconds = 0.0
+        self.owner_cpu = None
+        self.next_hold_check = 0.0
+        self.isolation_issue = None
         self.attached = False
         self.armed = False
 
@@ -245,21 +293,60 @@ class Debugger:
                 self.attached = False
 
     def suspend_others(self, tid):
-        if self.suspended:
+        if self.owner is not None:
             return
+        self.owner = tid
+        self.isolation_issue = None
+        self.running_seconds = 0.0
+        self.next_hold_check = 3.0
+        self.owner_cpu = self.proc.cpu_seconds(tid)
         for t in list(self.proc.threads):
             if t == tid:
                 continue
             h = self.proc.threads[t]
             if k32.Wow64SuspendThread(h) != 0xFFFFFFFF:
                 self.suspended.append(h)
+            elif k32.WaitForSingleObject(h,0) != 0:
+                self.failed_hold(t)
         self.suspend_since = time.time()
+
+    def failed_hold(self, tid):
+        self.isolation_issue = dict(field='could not suspend another process thread', held=False,
+                                    thread=tid, error=ctypes.get_last_error())
+        for p in self.exits:
+            p['isolation'] = self.isolation_issue
 
     def resume_others(self):
         for h in self.suspended:
             k32.ResumeThread(h)
         self.suspended = []
         self.suspend_since = None
+        self.owner = None
+        self.running_since = None
+
+    def pause_clock(self, now=None):
+        if self.running_since is not None and self.owner is not None:
+            self.running_seconds += (time.perf_counter() if now is None else now) - self.running_since
+        self.running_since = None
+
+    def check_hold(self, hold):
+        if self.owner is None or self.running_seconds < max(hold, self.next_hold_check):
+            return
+        cpu = self.proc.cpu_seconds(self.owner)
+        used = None if cpu is None or self.owner_cpu is None else cpu-self.owner_cpu
+        wait = self.proc.wait_site(self.owner)
+        self.next_hold_check = self.running_seconds + hold
+        if used is not None and used > self.running_seconds*.5 and self.running_seconds < 60:
+            return
+        if wait is None and self.running_seconds < 60:
+            return  # computation, or an unproven wait: keep the other threads held
+        detail = dict(field='function waits with other threads held' if wait else 'thread isolation runtime limit',
+                      running_seconds=self.running_seconds, cpu_seconds=used, wait=wait)
+        for p in self.exits:
+            p['others_resumed'] = True
+            p['isolation'] = detail
+        self.log(f'  releasing held threads: {detail}')
+        self.resume_others()
 
     def step_over(self, tid, ctx, addr):
         """Run the original instruction at addr once, then put the int3 back (TF single step)."""
@@ -277,15 +364,16 @@ class Debugger:
         while time.time() < deadline:
             if self.armed and until() and not self.exits:
                 break
-            if self.suspended and time.time() - self.suspend_since > hold:
-                # the function under test waits on another thread: let the others run and say so in the capture
-                for p in self.exits:
-                    p['others_resumed'] = True
-                self.log(f'  others resumed after {hold:.0f}s (the function waits on another thread?)')
-                self.resume_others()
-            if not k32.WaitForDebugEvent(ctypes.byref(ev), 200):
+            received = k32.WaitForDebugEvent(ctypes.byref(ev), 200)
+            # Only time after ContinueDebugEvent counts. Entry replay, nested
+            # validation and page-store callbacks happen while the game is paused.
+            self.pause_clock()
+            if not received:
+                self.check_hold(hold)
                 if on_idle:
                     on_idle()
+                if self.owner is not None:
+                    self.running_since = time.perf_counter()
                 continue
             status = DBG_CONTINUE
             code = ev.code
@@ -294,10 +382,12 @@ class Debugger:
                 proc.thread(ev.tid)
             elif code == CREATE_THREAD:
                 proc.thread(ev.tid)
-                if self.suspended:     # a new thread while the function under test runs alone: hold it too
+                if self.owner is not None and ev.tid != self.owner:
                     h = proc.threads[ev.tid]
                     if k32.Wow64SuspendThread(h) != 0xFFFFFFFF:
                         self.suspended.append(h)
+                    elif k32.WaitForSingleObject(h,0) != 0:
+                        self.failed_hold(ev.tid)
             elif code == EXIT_THREAD:
                 h = proc.threads.get(ev.tid)
                 if h in self.suspended:
@@ -335,7 +425,7 @@ class Debugger:
                         if not self.exits:
                             self.resume_others()
                     elif addr in self.targets:
-                        keep = on_entry(ev.tid, addr, ctx)
+                        keep = True if self.exits and self.exits[0]['tid'] != ev.tid else on_entry(ev.tid, addr, ctx)
                         if keep:
                             self.step_over(ev.tid, ctx, addr)
                         else:
@@ -354,6 +444,8 @@ class Debugger:
                 else:
                     status = DBG_NOT_HANDLED
             k32.ContinueDebugEvent(ev.pid, ev.tid, status)
+            if self.owner is not None:
+                self.running_since = time.perf_counter()
         return 'timeout' if time.time() >= deadline else 'done'
 
     def wait_exit(self, p, tid, ret, esp0):
@@ -361,6 +453,8 @@ class Debugger:
         self.proc.arm(ret)
         self.exits.append(p)
         self.suspend_others(tid)
+        if self.isolation_issue:
+            p['isolation'] = self.isolation_issue
 
 
 class LiveProvider:

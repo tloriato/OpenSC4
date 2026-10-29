@@ -20,15 +20,31 @@ def main():
     chk.add_argument('functions')
     chk.add_argument('--dll', type=Path, default=Path('engine/target/i686-pc-windows-msvc/release/fc4native.dll'))
     chk.add_argument('--variants', type=int, default=1000)
+    chk.add_argument('--jobs', type=int, default=8)
+    chk.add_argument('--variant-batch', type=int, default=32)
+    chk.add_argument('--variant-instructions', type=int, default=200_000)
+    chk.add_argument('--replay-timeout', type=float, default=30)
     chk.add_argument('--seed', type=int, default=0xFC4)
     chk.add_argument('--report', type=Path)
     chk.add_argument('--no-proven', action='store_true', help='for deliberately broken self-test DLLs')
     chk.add_argument('--keep-going', action='store_true', help='test all captures and variants, retaining the first difference')
     sub.add_parser('list')
+    rev = sub.add_parser('revalidate', help='validate stored CPU exits with the current replay engine')
+    rev.add_argument('functions', nargs='?')
+    rev.add_argument('--jobs', type=int, default=8)
+    rev.add_argument('--replay-timeout', type=float, default=30)
+    rev.add_argument('--report', type=Path)
+    rev.add_argument('--dry-run', action='store_true')
+    rev.add_argument('--only-stale', action='store_true', help='visit records not yet validated by this validator version')
     selftest = sub.add_parser('selftest', help='build and check the Rust baseline and seventeen mutations')
     selftest.add_argument('--variants', type=int, default=1000)
     selftest.add_argument('--seed', type=int, default=0xFC4)
     args = ap.parse_args()
+    if args.command == 'revalidate':
+        from prove.revalidate import revalidate
+        if min(args.jobs, args.replay_timeout) <= 0:
+            ap.error('jobs and replay timeout must be positive')
+        return revalidate(args, resolve(args.functions) if args.functions else None)
     if args.command == 'selftest':
         from prove.selftest import run
         return run(args)
@@ -41,6 +57,8 @@ def main():
         from prove.check import check
         if args.variants < 0:
             ap.error('variants must be nonnegative')
+        if min(args.jobs, args.variant_batch, args.variant_instructions, args.replay_timeout) <= 0:
+            ap.error('jobs, variant batch, instruction budget, and replay timeout must be positive')
         return check(args, resolve(args.functions))
     from prove.store import all_functions, captures_of, read_capture
     for a in all_functions():

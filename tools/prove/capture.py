@@ -19,6 +19,7 @@ from .machine import Machine
 from .compare import context_result, difference
 from .store import PageStore, write_capture, write_run
 from .pe import free_gap
+from .validation import FrozenPages, cpu_difference, repeat_difference, shared_page_audit
 
 
 def log(s):
@@ -121,49 +122,36 @@ def capture(args, targets):
                     unreadable.append(p)
                 elif end != b:
                     actual[p] = end
-            # The kernel updates these shared timestamps even while all game
-            # threads are stopped. Excuse only the documented clock fields,
-            # and log each differing byte with both values in the hit record.
-            clock_rules = []
-            # The emulator's own pages (GDT and its entry frame, port images) exist only in the replay.
             emulated = {p: b for p, b in pending['dirty'].items() if p not in m.static}
-            compared_actual = dict(actual)
-            cp = 0x7ffe0000
-            if cp in initial:
-                a = bytearray(actual.get(cp, initial[cp]))
-                b = bytearray(emulated.get(cp, initial[cp]))
-                for lo, hi, label in ((0, 4, 'TickCountLowDeprecated'), (8, 32, 'InterruptTime/SystemTime'),
-                                      (0x320, 0x330, 'TickCount'),
-                                      (0x340, 0x358, 'TimeUpdateLock/BaselineQpc'),
-                                      (0x3b0, 0x3c0, 'InterruptTimeBias/QpcBias')):
-                    for i in range(lo, hi):
-                        if a[i] != b[i]:
-                            clock_rules.append(dict(rule='kernel shared timestamp', field=label,
-                                                    address=f'{cp+i:08x}', cpu=a[i], replay=b[i]))
-                        a[i] = b[i] = initial[cp][i]
-                compared_actual[cp], emulated[cp] = bytes(a), bytes(b)
-            diff = difference(context_result(cpu), original, ('al', 'ah', 'eaxhi', 'edx', 'ecx'),
-                              compared_actual, emulated, initial, rec['stack'])
+            rec['exit'] = cpu
+            diff, clock_rules = cpu_difference(rec, original, emulated, initial, actual)
             if unreadable:
                 diff = dict(field='CPU exit page unavailable', addresses=unreadable)
-            if pending.get('others_resumed'):
-                diff = dict(field='other threads resumed while function was running')
-            # Repeat from the identical entry, with fixed external inputs.
-            m.restore(pending['dirty'])
-            again = m.run(rec['function'], rec['ret'], rec['entry']['regs']['esp'], timeout=args.replay_timeout)
-            repeat_diff = None
-            if ({k: v for k, v in original.items() if k != 'seconds'} !=
-                    {k: v for k, v in again.items() if k != 'seconds'} or pending['dirty'] != m.dirty()):
-                repeat_diff = dict(field='replay outcome or memory differs')
+            # Re-reading the live process at exit changes the entry inputs of
+            # newly committed heap pages. Freeze the first replay's pages,
+            # including zeroed commits, and use a fresh machine for the repeat.
+            repeat = Machine(rec['entry'], FrozenPages(initial), gdt=rec['gdt'], syscall_range=rec['syscall_range'])
+            again = repeat.run(rec['function'], rec['ret'], rec['entry']['regs']['esp'], timeout=args.replay_timeout)
+            repeat_dirty = {p:b for p,b in repeat.dirty().items() if p not in repeat.static}
+            repeat_diff = repeat_difference((original, emulated), (again, repeat_dirty))
             if repeat_diff:
                 diff = dict(field='nondeterministic replay', detail=repeat_diff)
+            if original.get('kind') == 'timeout' or again.get('kind') == 'timeout':
+                diff = dict(field='replay watchdog limit', original=original.get('err'), ours=again.get('err'),
+                            detail=repeat_diff)
+            rec['isolation'] = pending.get('isolation') or dict(held=not pending.get('others_resumed'),
+                running_seconds=dbg.running_seconds, timer='ContinueDebugEvent intervals only')
+            if pending.get('others_resumed') or pending.get('isolation'):
+                diff = pending.get('isolation') or dict(field='other threads resumed while function was running')
             pages = sorted(initial)
             rec['pages'] = dict(zip(map(str, pages), store.put_many(initial[p] for p in pages)))
             changed = sorted(actual)
             rec['exit_pages'] = dict(zip(map(str, changed), store.put_many(actual[p] for p in changed)))
-            rec['exit'] = cpu
             rec['validation'] = dict(valid=diff is None, difference=diff, clock_rules=clock_rules,
-                                     compared_pages=len(initial), clock_reads=original['clock_reads'])
+                                     version=2,
+                                     compared_pages=len(initial), clock_reads=original['clock_reads'],
+                                     syscalls=original['syscalls'], repeat_difference=repeat_diff,
+                                     shared_page_unexcused=shared_page_audit(actual, emulated, initial))
             path = write_capture(rec)
             records.append(str(path))
             (passed if diff is None else failed)[rec['function']] += 1
@@ -181,7 +169,7 @@ def capture(args, targets):
                 pages = sorted(initial)
                 rec['pages'] = dict(zip(map(str, pages), store.put_many(initial[p] for p in pages)))
                 rec['exit_pages'], rec['exit'] = {}, None
-                rec['validation'] = dict(valid=False, difference=dict(field='CPU return was not captured'), clock_rules=[])
+                rec['validation'] = dict(valid=False, difference=dict(field='CPU return was not captured'), clock_rules=[], version=2)
                 records.append(str(write_capture(rec)))
                 failed[rec['function']] += 1
             dbg.detach()
