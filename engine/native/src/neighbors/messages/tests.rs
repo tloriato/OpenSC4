@@ -490,3 +490,44 @@ fn exported_message_interface_preserves_the_calling_convention() {
     }
     assert_eq!((call.eax, call.edx), (0x6AC2_8401, 0x1111_2222));
 }
+
+#[test]
+fn commodity_publication_uses_the_same_reverse_drain_without_clearing_the_deals() {
+    let f = Fixture::new();
+    let mut cache = f.p[5];
+    let mut manager = f.p[7];
+    let _cache = fake_data(0x00B2_07E0, (&mut cache as *mut *mut u8).cast());
+    let _manager = fake_data(0x00B4_3C94, (&mut manager as *mut *mut u8).cast());
+    unsafe {
+        *f.p[0].add(0x3C) = 1;
+        *f.p[0].add(0x3D) = 1;
+        f.p[10].add(8).cast::<u32>().write_unaligned(0xCCDD_EEFF);
+        f.p[11].add(8).cast::<*mut u8>().write_unaligned(f.p[9]);
+        f.p[12].add(8).cast::<u32>().write_unaligned(0);
+    }
+    STATE.with(|s| s.borrow_mut().nodes = vec![f.p[11] as u32, f.p[12] as u32]);
+    let mut argument = u32::MAX;
+    assert_eq!(
+        unsafe { publish_cities(f.p[0], &mut argument, answer(), true) },
+        answer()
+    );
+    assert_eq!(argument, f.p[10] as u32);
+    let list = unsafe { f.p[0].add(0x20) } as u32;
+    assert_eq!(
+        f.calls(),
+        vec![
+            (f.p[5] as u32, 0x0C, vec![12]),
+            (f.p[0] as u32, 0x50, vec![&mut argument as *mut u32 as u32, 0]),
+            (f.p[7] as u32, 0x90, vec![]),
+            (f.p[5] as u32, 0x10, vec![f.p[12] as u32]),
+            (f.p[9] as u32, 0x114, vec![list]),
+            (f.p[9] as u32, 0x11C, vec![]),
+            (f.p[9] as u32, 8, vec![]),
+            (f.p[5] as u32, 0x10, vec![f.p[11] as u32]),
+            (f.p[8] as u32, 0x114, vec![list]),
+            (f.p[8] as u32, 0x11C, vec![]),
+            (&mut argument as *mut u32 as u32, 0x0041_1FE0, vec![f.p[10] as u32]),
+        ]
+    );
+    assert_eq!(unsafe { [*f.p[0].add(0x3C), *f.p[0].add(0x3D)] }, [0, 0]);
+}

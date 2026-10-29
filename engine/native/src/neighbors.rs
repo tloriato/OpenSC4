@@ -51,6 +51,7 @@ mod regional;
 mod removal;
 mod selection;
 mod surface;
+mod statistics;
 mod terrain;
 
 const COUNT: usize = surface::PORTS.len()
@@ -71,7 +72,8 @@ const COUNT: usize = surface::PORTS.len()
     + terrain::PORTS.len()
     + operations::PORTS.len()
     + creation::PORTS.len()
-    + messages::PORTS.len();
+    + messages::PORTS.len()
+    + statistics::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
     deletion::PORTS,
     graph::PORTS,
@@ -92,6 +94,7 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     operations::PORTS,
     creation::PORTS,
     messages::PORTS,
+    statistics::PORTS,
 ]);
 pub const PORTS: &[Port] = &ALL;
 

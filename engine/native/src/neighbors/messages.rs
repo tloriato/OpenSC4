@@ -68,6 +68,14 @@ unsafe fn allocator(mut result: u64) -> (*mut u8, u64) {
 unsafe fn reset_cities(this: *mut u8, argument: *mut u32, mut result: u64) -> u64 {
     unsafe {
         result = call(0x0042_1660, this.add(0x20), &[], result as u32, (result >> 32) as u32);
+        publish_cities(this, argument, result, false)
+    }
+}
+
+/// Publishes the local list to adjacent cities in reverse order, then to the current city.
+/// The two callers load virtual tables into different scratch registers before the update calls.
+pub(super) unsafe fn publish_cities(this: *mut u8, argument: *mut u32, mut result: u64, table_in_eax: bool) -> u64 {
+    unsafe {
         argument.write_unaligned(0);
         let (service, carried) = allocator(result);
         result = virtual_call(service, 0x0C, &[12], word(service, 0), (carried >> 32) as u32);
@@ -93,7 +101,11 @@ unsafe fn reset_cities(this: *mut u8, argument: *mut u32, mut result: u64) -> u6
                     this.add(0x20) as u32,
                     word(city, 0),
                 );
-                result = virtual_call(city, 0x11C, &[], result as u32, word(city, 0));
+                result = if table_in_eax {
+                    virtual_call(city, 0x11C, &[], word(city, 0), (result >> 32) as u32)
+                } else {
+                    virtual_call(city, 0x11C, &[], result as u32, word(city, 0))
+                };
             }
             let header = argument.read_unaligned() as *mut u8;
             let node = pointer(header, 4);
@@ -103,7 +115,11 @@ unsafe fn reset_cities(this: *mut u8, argument: *mut u32, mut result: u64) -> u6
             next.add(4).cast::<*mut u8>().write_unaligned(previous);
             let reference = pointer(node, 8);
             if !reference.is_null() {
-                result = virtual_call(reference, 8, &[], word(reference, 0), (result >> 32) as u32);
+                result = if table_in_eax {
+                    virtual_call(reference, 8, &[], next as u32, word(reference, 0))
+                } else {
+                    virtual_call(reference, 8, &[], word(reference, 0), (result >> 32) as u32)
+                };
             }
             let (service, carried) = allocator(result);
             result = virtual_call(service, 0x10, &[node as u32], word(service, 0), (carried >> 32) as u32);
@@ -115,7 +131,11 @@ unsafe fn reset_cities(this: *mut u8, argument: *mut u32, mut result: u64) -> u6
             this.add(0x20) as u32,
             word(current, 0),
         );
-        result = virtual_call(current, 0x11C, &[], result as u32, word(current, 0));
+        result = if table_in_eax {
+            virtual_call(current, 0x11C, &[], word(current, 0), (result >> 32) as u32)
+        } else {
+            virtual_call(current, 0x11C, &[], result as u32, word(current, 0))
+        };
         let sim = NeighborsSim::from_ptr(this);
         sim.set_deals_dirty(0);
         sim.set_stats_dirty(0);
