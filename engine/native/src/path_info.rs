@@ -11,7 +11,7 @@
 // copy of the license along with this program (see LICENSE at the repository
 // root); if not, see <https://www.gnu.org/licenses/>.
 
-//! `cSC4PathInfo`, converted one function at a time. Its game functions and globals are declared in this file.
+//! `cSC4PathInfo`, converted one function at a time, with its game functions and globals declared beside the ports.
 
 use crate::abi::{call_raw, vslot, Conv, RawCall};
 use crate::port::Port;
@@ -27,6 +27,7 @@ layout! {
         0x28 => buckets_capacity / set_buckets_capacity: *mut *mut u8,
         0x2C => path_count / set_path_count: u32,
         0x30 => flags / set_flags: u8,
+        0x31 => type_intersections / set_type_intersections: [u8; 8],
     }
 }
 
@@ -54,10 +55,20 @@ fn bucket_count(info: PathInfo) -> u32 {
     ((info.buckets_end() as u32).wrapping_sub(info.buckets() as u32) as i32 >> 2) as u32
 }
 
+// The game uses DIV with a zero high half, including its hardware fault for an empty bucket allocation.
+fn unsigned_remainder(value: u32, divisor: u32) -> u32 {
+    let remainder: u32;
+    unsafe {
+        core::arch::asm!("xor edx, edx", "div {divisor:e}", divisor = in(reg) divisor,
+            inout("eax") value => _, out("edx") remainder, options(nomem, nostack));
+    }
+    remainder
+}
+
 // SAFETY: callers supply the game's initialized map, whose bucket count is nonzero.
 unsafe fn find(info: PathInfo, key: u32) -> *mut u8 {
     unsafe {
-        let mut node = read_unaligned(info.buckets().add((key % bucket_count(info)) as usize));
+        let mut node = read_unaligned(info.buckets().add(unsigned_remainder(key, bucket_count(info)) as usize));
         while !node.is_null() {
             let entry = PathNode::from_ptr(node);
             if entry.key() == key {
@@ -193,8 +204,8 @@ mod tests;
 pub mod geometry;
 pub mod life;
 pub mod scan;
+pub mod vertices;
 
-/// This module's replacements.
 const DIRECT: &[Port] = &[
     fc4p_0053cfa0::PORT,
     fc4p_0053cff0::PORT,
@@ -204,6 +215,8 @@ const DIRECT: &[Port] = &[
     fc4p_005403a0::PORT,
     fc4p_005403b0::PORT,
 ];
-const ALL: [Port; DIRECT.len() + geometry::PORTS.len() + life::PORTS.len() + scan::PORTS.len()] =
-    crate::port::concat(&[DIRECT, geometry::PORTS, life::PORTS, scan::PORTS]);
+const ALL: [Port;
+    DIRECT.len() + geometry::PORTS.len() + life::PORTS.len() + scan::PORTS.len() + vertices::PORTS.len()] =
+    crate::port::concat(&[DIRECT, geometry::PORTS, life::PORTS, scan::PORTS, vertices::PORTS]);
+/// This module's replacements.
 pub const PORTS: &[Port] = &ALL;

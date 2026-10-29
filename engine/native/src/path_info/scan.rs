@@ -30,7 +30,7 @@ unsafe fn begin(this: *mut u8, iterator: *mut *mut u8, edx: u32) -> u64 {
 unsafe fn next_bucket(map: *mut u8, key: u32) -> (*mut u8, u32, u32) {
     unsafe {
         let info = PathInfo::from_ptr(map.wrapping_sub(0x1C));
-        let mut index = key % bucket_count(info);
+        let mut index = unsigned_remainder(key, bucket_count(info));
         let count = bucket_count(info);
         loop {
             index = index.wrapping_add(1);

@@ -149,6 +149,67 @@ mod tests {
     use crate::abi::{call_raw, Conv, RawCall};
     use crate::testing::{fake_data, GameFpu};
 
+    fn environment() -> (u16, u16, u32, u32) {
+        let mut mxcsr = 0u32;
+        let flags: u32;
+        unsafe {
+            core::arch::asm!("stmxcsr [{p}]", "pushfd", "pop {flags}",
+                p = in(reg) &mut mxcsr, flags = out(reg) flags);
+        }
+        (
+            crate::x87::control_word(),
+            crate::x87::status_word() & 0x3800,
+            mxcsr,
+            flags & 0x400,
+        )
+    }
+
+    #[test]
+    fn geometry_keeps_existing_x87_values_control_word_mxcsr_and_direction_flag() {
+        let _fpu = GameFpu::new();
+        let mut zero = 0.0f32;
+        let _zero = fake_data(0x00A8_1054, (&mut zero as *mut f32).cast());
+        let mut points = [0.0f32, 0.0, 0.0, 3.0, 4.0, 0.0];
+        let mut record = [0u32; 5];
+        let path = unsafe { Path::from_ptr(record.as_mut_ptr().cast()) };
+        path.set_begin(points.as_mut_ptr());
+        path.set_end(points.as_mut_ptr().wrapping_add(6));
+        let start = [0.0f32, 2.0, 0.0];
+        let end = [10.0f32, 12.0, 20.0];
+        let bounds = [2.0f32, 4.0, 6.0, 16.0];
+        let mut out = [0.0f32; 3];
+        let mut side = 0u8;
+        let args = [
+            out.as_mut_ptr() as u32,
+            bounds.as_ptr() as u32,
+            15,
+            start.as_ptr() as u32,
+            end.as_ptr() as u32,
+            &mut side as *mut u8 as u32,
+        ];
+        let mut call = RawCall::new(Conv::Cdecl, fc4p_0053d160 as *const () as usize, 0, &args);
+        let sentinel = 123.25f64;
+        let mut restored = 0.0f64;
+        unsafe {
+            core::arch::asm!("fld qword ptr [{p}]", p = in(reg) &sentinel, out("st(0)") _);
+        }
+        let before = environment();
+        unsafe {
+            fc4p_0053d280(path.as_ptr());
+        }
+        let after_length = environment();
+        unsafe {
+            call_raw(&mut call);
+        }
+        let after_clip = environment();
+        unsafe {
+            core::arch::asm!("fstp qword ptr [{p}]", p = in(reg) &mut restored, out("st(0)") _);
+        }
+        assert_eq!(after_length, before);
+        assert_eq!(after_clip, before);
+        assert_eq!(restored.to_bits(), sentinel.to_bits());
+    }
+
     #[unsafe(naked)]
     unsafe extern "C" fn clip_mask_slot(args: *const u32) -> u64 {
         core::arch::naked_asm!(
