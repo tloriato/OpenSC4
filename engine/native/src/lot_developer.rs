@@ -107,9 +107,13 @@ pub mod lot_update;
 pub mod lighting_transition;
 pub mod rubble;
 pub mod entrypoints;
+pub mod initialization;
+pub mod restoration;
 
 const ALL: [Port;
-    entrypoints::PORTS.len()
+    initialization::PORTS.len()
+        + restoration::PORTS.len()
+        + entrypoints::PORTS.len()
         + rubble::PORTS.len()
         + lighting_transition::PORTS.len()
         + lot_update::PORTS.len()
@@ -140,6 +144,8 @@ const ALL: [Port;
         + daily::PORTS.len()
         + position::PORTS.len()] = crate::port::concat(&[
     rubble::PORTS,
+    initialization::PORTS,
+    restoration::PORTS,
     entrypoints::PORTS,
     lighting_transition::PORTS,
     lot_update::PORTS,
