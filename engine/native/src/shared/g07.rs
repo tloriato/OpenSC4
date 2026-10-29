@@ -994,8 +994,229 @@ register_port! { fc4p_0082af20, 0x0082af20, "ensure_surface_ready", 0,
     }
 }
 
+game_fn! { fn allocate_shared(bytes: u32) -> u64 = "C" 0x0090cf54; }
+game_fn! { fn free_shared(pointer: *mut u8) -> u64 = "C" 0x0090cf63; }
+game_fn! { fn copy_zone_records(first: *mut u8, last: *mut u8, output: *mut u8, stop: *mut u8) -> u64 = "C" 0x006bb5c0; }
+game_fn! { fn repeat_zone_record(output: *mut u8, count: u32, source: *mut u8, stop: *mut u8) -> u64 = "C" 0x006bb120; }
+game_fn! { fn budget_balance(this: *mut u8) -> u64 = "thiscall" 0x006e9210; }
+
+register_port! { fc4p_006bbbc0, 0x006bbbc0, "destroy_landfill_zone", 0,
+    destroy_landfill_zone(this, entry) {
+        // SAFETY: the zone owns a service reference and a contiguous array of 32-byte records.
+        unsafe {
+            put_word(this, 0, 0x00ab1610);
+            let service = word(this, 0x44) as *mut u8;
+            let mut result = entry.result(entry.eax);
+            if !service.is_null() {
+                result = virtual_result(service, 8, word(service, 0), entry.edx, &[]);
+            }
+            let mut record = word(this, 0x1c);
+            let end = word(this, 0x20);
+            while record != end {
+                let p = record as *mut u8;
+                result = virtual_result(p, 0, result as u32, word(p, 0), &[0]);
+                record = record.wrapping_add(0x20);
+            }
+            let allocation = word(this, 0x1c) as *mut u8;
+            if !allocation.is_null() { result = free_shared(allocation); }
+            result
+        }
+    }
+}
+
+register_port! { fc4p_006bbc10, 0x006bbc10, "grow_zone_record_vector", 20,
+    grow_zone_record_vector(this, entry) {
+        // SAFETY: the vector's ranges and caller-owned record are live. The last two argument words
+        // are also the allocation word and stop byte passed to the range helpers.
+        unsafe {
+            let position = entry.arg(0) as *mut u8;
+            let source = entry.arg(1) as *mut u8;
+            let count = entry.arg(3);
+            let size = (word(this, 4).wrapping_sub(word(this, 0)) as i32 >> 5) as u32;
+            let capacity = size.wrapping_add(size.max(count));
+            let allocation = if capacity == 0 { 0 } else { allocate_shared(capacity.wrapping_shl(5)) as u32 };
+            let arguments = (entry as *mut Entry).cast::<u32>().add(4);
+            arguments.add(3).write_unaligned(allocation);
+            let stop = arguments.add(4).cast::<u8>();
+            let mut result = copy_zone_records(word(this, 0) as *mut u8, position, allocation as *mut u8, stop);
+            let mut output = result as u32;
+            if count == 1 {
+                if output != 0 {
+                    let target = output as *mut u8;
+                    put_word(target, 0, 0x00ab15dc);
+                    for offset in [4, 8] { put_word(target, offset, word(source, offset)); }
+                    *target.add(12) = *source.add(12);
+                    *target.add(13) = *source.add(13);
+                    for offset in [16, 20, 24, 28] { put_word(target, offset, word(source, offset)); }
+                    result = (u64::from(word(source, 28)) << 32) | u64::from(source as u32);
+                }
+                output = output.wrapping_add(32);
+            } else {
+                result = repeat_zone_record(output as *mut u8, count, source, stop);
+                output = result as u32;
+            }
+            result = (result & !255) | u64::from(*stop);
+            if *stop == 0 {
+                result = copy_zone_records(position, word(this, 4) as *mut u8, output as *mut u8, stop);
+                output = result as u32;
+            }
+            let mut old = word(this, 0);
+            let end = word(this, 4);
+            while old != end {
+                let p = old as *mut u8;
+                result = virtual_result(p, 0, result as u32, word(p, 0), &[0]);
+                old = old.wrapping_add(32);
+            }
+            let old = word(this, 0) as *mut u8;
+            if !old.is_null() { result = free_shared(old); }
+            put_word(this, 4, output);
+            put_word(this, 0, allocation);
+            let end = allocation.wrapping_add(capacity.wrapping_shl(5));
+            put_word(this, 8, end);
+            (result & 0xffff_ffff_0000_0000) | u64::from(end)
+        }
+    }
+}
+
+register_port! { fc4p_006e08d0, 0x006e08d0, "station_funding", 12,
+    station_funding(this, entry) {
+        // SAFETY: the budget fills a 32-byte item. Its table is captured before the station callback,
+        // but its object pointer is read again afterwards.
+        unsafe {
+            let department = word(this, 0x74) as *mut u8;
+            let table = word(department, 0) as *mut u8;
+            let purpose = word(this, 0xb0);
+            let station = entry.arg(0) as *mut u8;
+            let mut item = core::mem::MaybeUninit::<[u32; 8]>::uninit();
+            let item_ptr = item.as_mut_ptr().cast::<u8>();
+            put_word(item_ptr, 28, 0);
+            let id = virtual_result(station, 0x18, word(station, 0), purpose, &[purpose]);
+            let args = [id as u32, item_ptr as u32];
+            let mut call = crate::abi::RawCall::new(crate::abi::Conv::Thiscall,
+                word(table, 0xcc) as usize, word(this, 0x74), &args);
+            call.eax = id as u32;
+            call.edx = (id >> 32) as u32;
+            crate::abi::call_raw(&mut call);
+            if call.eax as u8 == 0 { return (u64::from(call.edx) << 32) | u64::from(call.eax); }
+            let funding = entry.arg(2) as *mut u8;
+            if !funding.is_null() { put_word(funding, 0, word(item_ptr, 28)); }
+            let cost = entry.arg(1) as *mut u8;
+            let mut edx = call.edx;
+            if !cost.is_null() { edx = word(item_ptr, 16); put_word(cost, 0, edx); }
+            (u64::from(edx) << 32) | u64::from((cost as u32 & !255) | 1)
+        }
+    }
+}
+
+register_port! { fc4p_006f1570, 0x006f1570, "insert_word_list_range", 16,
+    insert_word_list_range(_this, entry) {
+        // SAFETY: each source node holds next, previous, value; new nodes use the game allocator.
+        unsafe {
+            let position = entry.arg(0) as *mut u8;
+            let mut source = entry.arg(1);
+            let end = entry.arg(2);
+            let mut result = entry.result(entry.eax);
+            while source != end {
+                let allocation = allocate_shared(12);
+                let node = allocation as u32 as *mut u8;
+                let value_address = (node as u32).wrapping_add(8);
+                let mut edx = (allocation >> 32) as u32;
+                if value_address != 0 {
+                    edx = word(source as *mut u8, 8);
+                    put_word(value_address as *mut u8, 0, edx);
+                }
+                let previous = word(position, 4) as *mut u8;
+                put_word(node, 0, position as u32);
+                put_word(node, 4, previous as u32);
+                put_word(previous, 0, node as u32);
+                put_word(position, 4, node as u32);
+                entry.ecx = previous as u32;
+                result = (u64::from(edx) << 32) | u64::from(node as u32);
+                source = word(source as *mut u8, 0);
+            }
+            result
+        }
+    }
+}
+
+register_port! { fc4p_00700fa0, 0x00700fa0, "publish_budget_balance", 0,
+    publish_budget_balance(this, entry) {
+        // SAFETY: the budget's optional sink is retained around the balance update.
+        unsafe {
+            let service = word(this, 0x30) as *mut u8;
+            let mut result = virtual_result(service, 0x50, word(service, 0), entry.edx, &[1]);
+            let sink = result as u32 as *mut u8;
+            if !sink.is_null() {
+                virtual_result(sink, 4, sink as u32, word(sink, 0), &[]);
+                let table = word(sink, 0) as *mut u8;
+                let balance = budget_balance(this);
+                let args = [balance as u32, (balance >> 32) as u32];
+                let mut call = crate::abi::RawCall::new(crate::abi::Conv::Thiscall,
+                    word(table, 0x30) as usize, sink as u32, &args);
+                call.eax = balance as u32;
+                call.edx = (balance >> 32) as u32;
+                crate::abi::call_raw(&mut call);
+                result = virtual_result(sink, 8, word(sink, 0), call.edx, &[]);
+            }
+            result
+        }
+    }
+}
+
+register_port! { fc4p_0072a1c0, 0x0072a1c0, "snap_point_and_apply", 4,
+    snap_point_and_apply(this, entry) {
+        // SAFETY: the input supplies x and z; the service may update both stack locals.
+        unsafe {
+            let point = entry.arg(0) as *mut u8;
+            let mut x = word(point, 0);
+            let mut z = word(point, 8);
+            let arguments = (entry as *mut Entry).cast::<u32>().add(4);
+            arguments.write_unaligned(z);
+            let service = word(this, 0x20) as *mut u8;
+            let mut result = virtual_result(service, 0x188, x, word(service, 0), &[x, z]);
+            if result as u8 == 0 { return result & 0xffff_ffff_0000_0000; }
+            let service = word(this, 0x20) as *mut u8;
+            let z_pointer = arguments;
+            vcall!(service, 0x17c => fn(u32, u32, *mut u32, *mut u32) -> u64,
+                word(point, 0), word(point, 8), &mut x, z_pointer);
+            z = z_pointer.read_unaligned();
+            result = virtual_result(this, 0x18, z, word(this, 0), &[x, z, 0]);
+            result
+        }
+    }
+}
+
+register_port! { fc4p_0072b410, 0x0072b410, "grid_object_at_origin", 12,
+    grid_object_at_origin(this, entry) {
+        // SAFETY: valid signed coordinates select one row header and one object slot.
+        unsafe {
+            let x = entry.arg(0) as i32;
+            if x < 0 || x >= word(this, 0x24) as i32 { return entry.result(0); }
+            let z = entry.arg(1) as i32;
+            if z < 0 || z >= word(this, 0x28) as i32 { return entry.result(0); }
+            let rows = word(this, 0x50) as *mut u8;
+            let row = word(rows, (x as usize).wrapping_mul(12));
+            let object = word(row as *mut u8, (z as usize).wrapping_mul(4));
+            if entry.arg(2) as u8 == 0 { return (u64::from(row) << 32) | u64::from(object); }
+            if object == 0 { return u64::from(row) << 32; }
+            let args = (entry as *mut Entry).cast::<u32>().add(4);
+            let result = vcall!(object as *mut u8, 0x54 => fn(*mut u32, *mut u32) -> u64,
+                args.add(2), args);
+            let matches = args.add(2).read_unaligned() == x as u32 && args.read_unaligned() == z as u32;
+            (result & 0xffff_ffff_0000_0000) | u64::from(if matches { object } else { 0 })
+        }
+    }
+}
+
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
+    fc4p_006bbbc0::PORT,
+    fc4p_006bbc10::PORT,
+    fc4p_006e08d0::PORT,
+    fc4p_006f1570::PORT,
+    fc4p_00700fa0::PORT,
+    fc4p_0072a1c0::PORT,
+    fc4p_0072b410::PORT,
     fc4p_006ba280::PORT,
     fc4p_006bbd40::PORT,
     fc4p_006bdde0::PORT,
@@ -2059,6 +2280,502 @@ mod tests {
                 core::arch::asm!("fxsave [{p}]","fstp st(0)",p=in(reg) &mut after,out("st(0)") _,options(nostack));
             }
             assert_eq!(before.0[..160], after.0[..160]);
+        }
+    }
+
+    thread_local! {
+        static ALLOCATIONS: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
+        static HOLDER: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+        static NEXT_SERVICE: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+        static ANSWER: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    }
+    extern "C" fn allocate_words(bytes: u32) -> u64 {
+        record(core::ptr::null_mut(), &[0xa110, bytes]);
+        let pointer = ALLOCATIONS.with(|a| a.borrow_mut().remove(0));
+        (RESULT & 0xffff_ffff_0000_0000) | u64::from(pointer)
+    }
+    extern "C" fn release_words(pointer: *mut u8) -> u64 {
+        record(pointer, &[0xfee]);
+        RESULT
+    }
+    extern "thiscall" fn destroy_record(this: *mut u8, flags: u32) -> u64 {
+        record(this, &[flags]);
+        RESULT
+    }
+    #[test]
+    fn landfill_destruction_releases_before_reading_range_and_keeps_fields() {
+        let _free = fake(0x0090cf63, release_words as *const () as usize);
+        let mut zone = Object::new(0x50);
+        let p = zone.ptr();
+        let mut records = Object::new(64);
+        let r = records.ptr();
+        let mut service = Object::new(4);
+        let q = service.ptr();
+        let table = [destroy_record as *const () as usize, 0, fake_zero as *const () as usize];
+        // SAFETY: every object has a live table and both records fit their allocation.
+        unsafe {
+            put_word(q, 0, table.as_ptr() as u32);
+            put_word(r, 0, table.as_ptr() as u32);
+            put_word(r, 32, table.as_ptr() as u32);
+        }
+        for present in [false, true] {
+            for count in [0u32, 1, 2] {
+                fill(p, 0x50);
+                let begin = if count == 0 { 0 } else { r as u32 };
+                // SAFETY: set the zone's owned service and record range.
+                unsafe {
+                    put_word(p, 0x44, if present { q as u32 } else { 0 });
+                    put_word(p, 0x1c, begin);
+                    put_word(p, 0x20, begin + count * 32);
+                }
+                let mut expected = memory(p, 0x50);
+                expected_word(&mut expected, 0, 0x00ab1610);
+                let result = invoke(fc4p_006bbbc0 as *const () as usize, p, &[]);
+                assert_eq!(
+                    result,
+                    if present || count != 0 {
+                        (RESULT as u32, (RESULT >> 32) as u32)
+                    } else {
+                        (EAX, EDX)
+                    }
+                );
+                let mut expected_calls = vec![];
+                if present {
+                    expected_calls.push((q as u32, vec![]));
+                }
+                for index in 0..count {
+                    expected_calls.push((begin + index * 32, vec![0]));
+                }
+                if count != 0 {
+                    expected_calls.push((begin, vec![0xfee]));
+                }
+                assert_eq!(calls(), expected_calls);
+                assert_eq!(memory(p, 0x50), expected);
+            }
+        }
+    }
+    extern "C" fn copy_records(first: *mut u8, last: *mut u8, output: *mut u8, stop: *mut u8) -> u64 {
+        // SAFETY: the test supplies whole records and the caller's live stop byte.
+        unsafe {
+            record(first, &[0xc0, last as u32, output as u32, u32::from(*stop)]);
+            let mut source = first;
+            let mut destination = output;
+            while source != last {
+                if !destination.is_null() {
+                    for offset in [0, 4, 8, 16, 20, 24, 28] {
+                        put_word(destination, offset, word(source, offset));
+                    }
+                    *destination.add(12) = *source.add(12);
+                    *destination.add(13) = *source.add(13);
+                }
+                source = source.wrapping_add(32);
+                destination = destination.wrapping_add(32);
+            }
+            (RESULT & 0xffff_ffff_0000_0000) | u64::from(destination as u32)
+        }
+    }
+    extern "C" fn repeat_records(output: *mut u8, count: u32, source: *mut u8, stop: *mut u8) -> u64 {
+        // SAFETY: the output capacity covers count records, and stop remains in the caller's frame.
+        unsafe {
+            record(output, &[0xc1, count, source as u32, u32::from(*stop)]);
+            for index in 0..count {
+                let destination = output.wrapping_add(index as usize * 32);
+                if !destination.is_null() {
+                    core::ptr::copy_nonoverlapping(source, destination, 32);
+                }
+            }
+            (RESULT & 0xffff_ffff_0000_0000) | u64::from((output as u32).wrapping_add(count * 32))
+        }
+    }
+    #[test]
+    fn zone_vector_growth_copies_prefix_insert_suffix_then_destroys_old_records() {
+        let _allocate = fake(0x0090cf54, allocate_words as *const () as usize);
+        let _free = fake(0x0090cf63, release_words as *const () as usize);
+        let _copy = fake(0x006bb5c0, copy_records as *const () as usize);
+        let _repeat = fake(0x006bb120, repeat_records as *const () as usize);
+        let mut header = Object::new(16);
+        let p = header.ptr();
+        let mut old = Object::new(64);
+        let r = old.ptr();
+        let mut output = Object::new(256);
+        let out = output.ptr();
+        let mut value = Object::new(32);
+        let v = value.ptr();
+        let table = [destroy_record as *const () as usize];
+        fill(r, 64);
+        fill(v, 32);
+        // SAFETY: install each record's destructor table and a value with distinct fields.
+        unsafe {
+            for index in [0, 32] {
+                put_word(r, index, table.as_ptr() as u32);
+            }
+            for offset in [4, 8, 16, 20, 24, 28] {
+                put_word(v, offset, 0x7000 + offset as u32);
+            }
+            *v.add(12) = 0x12;
+            *v.add(13) = 0x34;
+        }
+        for size in [0u32, 2] {
+            for count in [0u32, 1, 3] {
+                for skip_suffix in [0u32, 0xabcdef01] {
+                    let begin = if size == 0 { 0 } else { r as u32 };
+                    let position = if size == 0 { 0 } else { begin + 32 };
+                    let capacity = size + size.max(count);
+                    let allocation = if capacity == 0 { 0 } else { out as u32 };
+                    ALLOCATIONS.with(|a| *a.borrow_mut() = if capacity == 0 { vec![] } else { vec![allocation] });
+                    fill(p, 16);
+                    fill(out, 256);
+                    // SAFETY: restore the vector's three words for this independent case.
+                    unsafe {
+                        put_word(p, 0, begin);
+                        put_word(p, 4, begin + size * 32);
+                        put_word(p, 8, begin + size * 32);
+                    }
+                    let result = invoke(
+                        fc4p_006bbc10 as *const () as usize,
+                        p,
+                        &[position, v as u32, 0xdeadbeef, count, skip_suffix],
+                    );
+                    let prefix = u32::from(size != 0);
+                    let length = prefix + count + if skip_suffix == 0 { size - prefix } else { 0 };
+                    // SAFETY: the vector has exactly three written words; the padding word stays intact.
+                    unsafe {
+                        assert_eq!(
+                            [word(p, 0), word(p, 4), word(p, 8), word(p, 12)],
+                            [
+                                allocation,
+                                allocation + length * 32,
+                                allocation + capacity * 32,
+                                0xa5a5a5a5
+                            ]
+                        );
+                    }
+                    let edx = if size == 0 && count == 1 && skip_suffix != 0 {
+                        0x701c
+                    } else {
+                        (RESULT >> 32) as u32
+                    };
+                    assert_eq!(result, (allocation + capacity * 32, edx));
+                    let mut expected = vec![];
+                    if capacity != 0 {
+                        expected.push((0, vec![0xa110, capacity * 32]));
+                    }
+                    expected.push((begin, vec![0xc0, position, allocation, skip_suffix & 255]));
+                    let inserted = allocation + prefix * 32;
+                    if count != 1 {
+                        expected.push((inserted, vec![0xc1, count, v as u32, skip_suffix & 255]));
+                    }
+                    if skip_suffix == 0 {
+                        expected.push((position, vec![0xc0, begin + size * 32, inserted + count * 32, 0]));
+                    }
+                    for index in 0..size {
+                        expected.push((begin + index * 32, vec![0]));
+                    }
+                    if size != 0 {
+                        expected.push((begin, vec![0xfee]));
+                    }
+                    assert_eq!(calls(), expected);
+                    if count == 1 {
+                        let mut record = memory(v, 32);
+                        expected_word(&mut record, 0, 0x00ab15dc);
+                        record[14..16].fill(0xa5);
+                        assert_eq!(memory(inserted as *mut u8, 32), record);
+                    }
+                    assert!(ALLOCATIONS.with(|a| a.borrow().is_empty()));
+                }
+            }
+        }
+    }
+    extern "thiscall" fn station_id(this: *mut u8, purpose: u32) -> u64 {
+        record(this, &[purpose]);
+        // SAFETY: swap the simulator's department so the next call must reload its object pointer.
+        unsafe {
+            put_word(
+                HOLDER.with(|v| v.get()) as *mut u8,
+                0x74,
+                NEXT_SERVICE.with(|v| v.get()),
+            );
+        }
+        0x11223344_55667788
+    }
+    extern "thiscall" fn funding_item(this: *mut u8, id: u32, output: *mut u8) -> u64 {
+        // SAFETY: the caller initialized only the item's final word; the budget writes the rest.
+        unsafe {
+            record(this, &[id, word(output, 28)]);
+            put_word(output, 16, 0x87654321);
+            put_word(output, 28, 0x7fc12345);
+        }
+        (RESULT & 0xffff_ffff_0000_0000) | u64::from(ANSWER.with(|v| v.get()))
+    }
+    #[test]
+    fn station_funding_uses_saved_table_reloaded_service_optional_outputs_and_low_byte() {
+        let mut simulator = Object::new(0xb4);
+        let p = simulator.ptr();
+        let mut station = Object::new(4);
+        let s = station.ptr();
+        let mut service = Object::new(4);
+        let q = service.ptr();
+        let mut replacement = Object::new(4);
+        let q2 = replacement.ptr();
+        let mut table = [0usize; 52];
+        table[0xcc / 4] = funding_item as *const () as usize;
+        let mut station_table = [0usize; 7];
+        station_table[6] = station_id as *const () as usize;
+        // SAFETY: the replacement deliberately has no usable table: the original captured table must be used.
+        unsafe {
+            put_word(s, 0, station_table.as_ptr() as u32);
+            put_word(q, 0, table.as_ptr() as u32);
+            put_word(q2, 0, 0);
+            put_word(p, 0xb0, 0x12);
+        }
+        HOLDER.with(|v| v.set(p as u32));
+        NEXT_SERVICE.with(|v| v.set(q2 as u32));
+        let mut output = Object::new(16);
+        let out = output.ptr();
+        for answer in [0u32, 0xdeadbe00, 1, 0x12345680] {
+            for cost in [0u32, out as u32] {
+                for funding in [0u32, out as u32, out as u32 + 4] {
+                    ANSWER.with(|v| v.set(answer));
+                    fill(out, 16);
+                    // SAFETY: restore the department before the station callback swaps it.
+                    unsafe {
+                        put_word(p, 0x74, q as u32);
+                    }
+                    let result = invoke(fc4p_006e08d0 as *const () as usize, p, &[s as u32, cost, funding]);
+                    let mut expected = vec![0xa5; 16];
+                    if answer as u8 != 0 {
+                        if funding != 0 {
+                            expected_word(&mut expected, (funding - out as u32) as usize, 0x7fc12345);
+                        }
+                        if cost != 0 {
+                            expected_word(&mut expected, 0, 0x87654321);
+                        }
+                        assert_eq!(
+                            result,
+                            (
+                                (cost & !255) | 1,
+                                if cost == 0 { (RESULT >> 32) as u32 } else { 0x87654321 }
+                            )
+                        );
+                    } else {
+                        assert_eq!(result, (answer, (RESULT >> 32) as u32));
+                    }
+                    assert_eq!(memory(out, 16), expected);
+                    assert_eq!(calls(), vec![(s as u32, vec![0x12]), (q2 as u32, vec![0x55667788, 0])]);
+                }
+            }
+        }
+    }
+    #[test]
+    fn list_range_insertion_preserves_order_and_empty_registers() {
+        let _allocate = fake(0x0090cf54, allocate_words as *const () as usize);
+        let mut list = Object::new(12);
+        let p = list.ptr();
+        let mut input = Object::new(36);
+        let r = input.ptr();
+        let mut output = Object::new(36);
+        let out = output.ptr();
+        for count in [0u32, 1, 3] {
+            fill(out, 36);
+            // SAFETY: circular sentinels and the specified source node chain are live.
+            unsafe {
+                put_word(p, 0, p as u32);
+                put_word(p, 4, p as u32);
+                for index in 0..3u32 {
+                    put_word(r, index as usize * 12, r as u32 + (index + 1) * 12);
+                    put_word(r, index as usize * 12 + 8, 0x10203040 + index);
+                }
+            }
+            ALLOCATIONS.with(|a| *a.borrow_mut() = (0..count).map(|i| out as u32 + i * 12).collect());
+            let result = invoke(
+                fc4p_006f1570 as *const () as usize,
+                core::ptr::null_mut(),
+                &[p as u32, r as u32, r as u32 + count * 12, 0xdeadbeef],
+            );
+            if count == 0 {
+                assert_eq!(result, (EAX, EDX));
+            } else {
+                assert_eq!(result, (out as u32 + (count - 1) * 12, 0x10203040 + count - 1));
+                // SAFETY: follow only the count newly linked nodes and check both directions.
+                unsafe {
+                    let mut node = word(p, 0);
+                    let mut previous = p as u32;
+                    for index in 0..count {
+                        assert_eq!(node, out as u32 + index * 12);
+                        assert_eq!(word(node as *mut u8, 4), previous);
+                        assert_eq!(word(node as *mut u8, 8), 0x10203040 + index);
+                        previous = node;
+                        node = word(node as *mut u8, 0);
+                    }
+                    assert_eq!(node, p as u32);
+                    assert_eq!(word(p, 4), previous);
+                }
+            }
+            assert_eq!(calls(), vec![(0, vec![0xa110, 12]); count as usize]);
+        }
+    }
+    extern "thiscall" fn balance(this: *mut u8) -> u64 {
+        record(this, &[0xba1]);
+        RESULT
+    }
+    extern "thiscall" fn budget_sink(this: *mut u8, create: u32) -> u64 {
+        record(this, &[create]);
+        (RESULT & 0xffff_ffff_0000_0000) | u64::from(NEXT_SERVICE.with(|v| v.get()))
+    }
+    #[test]
+    fn budget_publish_retains_sets_full_signed_balance_then_releases_optional_sink() {
+        let _balance = fake(0x006e9210, balance as *const () as usize);
+        let mut budget = Object::new(0x34);
+        let p = budget.ptr();
+        let mut service = Object::new(4);
+        let q = service.ptr();
+        let mut sink = Object::new(4);
+        let s = sink.ptr();
+        let mut table = [0usize; 21];
+        table[0x50 / 4] = budget_sink as *const () as usize;
+        table[1] = fake_zero as *const () as usize;
+        table[2] = fake_zero as *const () as usize;
+        table[0x30 / 4] = fake_two as *const () as usize;
+        // SAFETY: the service and optional sink use live callbacks.
+        unsafe {
+            put_word(p, 0x30, q as u32);
+            put_word(q, 0, table.as_ptr() as u32);
+            put_word(s, 0, table.as_ptr() as u32);
+        }
+        for present in [0u32, s as u32] {
+            NEXT_SERVICE.with(|v| v.set(present));
+            let before = memory(p, 0x34);
+            let result = invoke(fc4p_00700fa0 as *const () as usize, p, &[]);
+            assert_eq!(
+                result,
+                (if present == 0 { 0 } else { RESULT as u32 }, (RESULT >> 32) as u32)
+            );
+            assert_eq!(memory(p, 0x34), before);
+            let mut expected = vec![(q as u32, vec![1])];
+            if present != 0 {
+                expected.extend([
+                    (s as u32, vec![]),
+                    (p as u32, vec![0xba1]),
+                    (s as u32, vec![RESULT as u32, (RESULT >> 32) as u32]),
+                    (s as u32, vec![]),
+                ]);
+            }
+            assert_eq!(calls(), expected);
+        }
+    }
+    extern "thiscall" fn point_available(this: *mut u8, x: u32, z: u32) -> u64 {
+        record(this, &[0x188, x, z]);
+        (RESULT & 0xffff_ffff_0000_0000) | u64::from(ANSWER.with(|v| v.get()))
+    }
+    extern "thiscall" fn snap_point(this: *mut u8, x: u32, z: u32, ox: *mut u32, oz: *mut u32) -> u64 {
+        // SAFETY: the caller initialized both local words before the callback.
+        unsafe {
+            record(this, &[0x17c, x, z, *ox, *oz]);
+            *ox = x + 10;
+            *oz = z + 20;
+        }
+        RESULT
+    }
+    extern "thiscall" fn apply_point(this: *mut u8, x: u32, z: u32, flags: u32) -> u64 {
+        record(this, &[0x18, x, z, flags]);
+        RESULT
+    }
+    #[test]
+    fn point_snap_checks_low_byte_and_passes_adjusted_coordinates() {
+        let mut owner = Object::new(0x24);
+        let p = owner.ptr();
+        let mut service = Object::new(4);
+        let q = service.ptr();
+        let mut point = [4u32, 0x12345678, 8];
+        let mut table = [0usize; 99];
+        table[0x188 / 4] = point_available as *const () as usize;
+        table[0x17c / 4] = snap_point as *const () as usize;
+        table[0x18 / 4] = apply_point as *const () as usize;
+        // SAFETY: both owner and service begin with a live table.
+        unsafe {
+            put_word(p, 0, table.as_ptr() as u32);
+            put_word(p, 0x20, q as u32);
+            put_word(q, 0, table.as_ptr() as u32);
+        }
+        for answer in [0u32, 0xdeadbe00, 0x12345601, 0xff] {
+            ANSWER.with(|v| v.set(answer));
+            assert_eq!(
+                invoke(fc4p_0072a1c0 as *const () as usize, p, &[point.as_mut_ptr() as u32]),
+                (if answer as u8 == 0 { 0 } else { RESULT as u32 }, (RESULT >> 32) as u32)
+            );
+            let mut expected = vec![(q as u32, vec![0x188, 4, 8])];
+            if answer as u8 != 0 {
+                expected.extend([(q as u32, vec![0x17c, 4, 8, 4, 8]), (p as u32, vec![0x18, 14, 28, 0])]);
+            }
+            assert_eq!(calls(), expected);
+            assert_eq!(point, [4, 0x12345678, 8]);
+        }
+    }
+    extern "thiscall" fn object_origin(this: *mut u8, x: *mut u32, z: *mut u32) -> u64 {
+        record(this, &[0x54]);
+        // SAFETY: the two outputs are distinct original argument words.
+        unsafe {
+            *x = ANSWER.with(|v| v.get());
+            *z = NEXT_SERVICE.with(|v| v.get());
+        }
+        RESULT
+    }
+    #[test]
+    fn grid_lookup_checks_signed_bounds_and_optional_origin_match() {
+        let mut owner = Object::new(0x54);
+        let p = owner.ptr();
+        let mut object = Object::new(4);
+        let q = object.ptr();
+        let mut cells = [0u32; 4];
+        let mut rows = [0u32; 6];
+        rows[0] = cells.as_mut_ptr() as u32;
+        rows[3] = cells.as_mut_ptr().wrapping_add(2) as u32;
+        let mut table = [0usize; 22];
+        table[0x54 / 4] = object_origin as *const () as usize;
+        // SAFETY: the owner describes a 2 by 2 grid of object pointers.
+        unsafe {
+            put_word(p, 0x24, 2);
+            put_word(p, 0x28, 2);
+            put_word(p, 0x50, rows.as_ptr() as u32);
+            put_word(q, 0, table.as_ptr() as u32);
+        }
+        for x in [-1i32, 0, 1, 2, i32::MIN, i32::MAX] {
+            for z in [-1i32, 0, 1, 2] {
+                for origin in [0u32, 1, 0xdeadbe00, 0xff] {
+                    for present in [0u32, q as u32] {
+                        cells.fill(present);
+                        ANSWER.with(|v| v.set(x as u32));
+                        NEXT_SERVICE.with(|v| v.set(z as u32));
+                        let result = invoke(fc4p_0072b410 as *const () as usize, p, &[x as u32, z as u32, origin]);
+                        let valid = (0..2).contains(&x) && (0..2).contains(&z);
+                        let checked = valid && present != 0 && origin as u8 != 0;
+                        assert_eq!(
+                            result,
+                            (
+                                if valid { present } else { 0 },
+                                if checked {
+                                    (RESULT >> 32) as u32
+                                } else if valid {
+                                    rows[x as usize * 3]
+                                } else {
+                                    EDX
+                                }
+                            )
+                        );
+                        assert_eq!(calls(), if checked { vec![(q as u32, vec![0x54])] } else { vec![] });
+                    }
+                }
+            }
+        }
+        cells.fill(q as u32);
+        for (ox, oz) in [(0u32, 1u32), (1, 0), (2, 2)] {
+            ANSWER.with(|v| v.set(ox));
+            NEXT_SERVICE.with(|v| v.set(oz));
+            assert_eq!(
+                invoke(fc4p_0072b410 as *const () as usize, p, &[0, 0, 1]),
+                (0, (RESULT >> 32) as u32)
+            );
+            assert_eq!(calls(), vec![(q as u32, vec![0x54])]);
         }
     }
 }
