@@ -1491,6 +1491,980 @@ port! {
     }
 }
 
+game_fn! { #[allow(dead_code)] fn align_particle_axis(direction: *const f32, matrix: *mut f32) = "C" 0x0080_B910; }
+game_fn! { #[allow(dead_code)] fn align_particle_plane(direction: *const f32, matrix: *mut f32) = "C" 0x0080_B530; }
+game_fn! { #[allow(dead_code)] fn align_particle_velocity(direction: *const f32, matrix: *mut f32) = "C" 0x0080_B830; }
+game_fn! { #[allow(dead_code)] fn displace_particle_point(time: f32, waves: *mut u8, point: *mut f32) = "C" 0x005A_C070; }
+game_data! { static particle_matrix_seed: f32 = 0x00B2_2D4C; }
+game_data! { static particle_radians_to_turns: f32 = 0x00B0_A5A4; }
+game_data! { static particle_direction_length: f32 = 0x00B0_A5A8; }
+
+// These views describe the scalar fields; matrix, vector and bounds accesses below use their byte offsets.
+layout! {
+    /// The effect that supplies the parent placement and accumulates particle bounds.
+    struct ParticlePlacementOwner {
+        0x24 => description / set_description: *mut u8,
+        0x108 => time_step / set_time_step: f32,
+        0x110 => clock / set_clock: f64,
+    }
+}
+layout! {
+    /// A live particle's spin multiplier and cached bank and heading angles.
+    struct PlacementParticle {
+        0x30 => spin / set_spin: f32,
+        0x4C => bank / set_bank: f32,
+        0x50 => heading / set_heading: f32,
+    }
+}
+
+fn subtract_popped(older: F80, newer: F80) -> F80 {
+    let mut output = F80::ZERO;
+    unsafe {
+        core::arch::asm!("fld tbyte ptr [{older}]", "fld tbyte ptr [{newer}]", "fsubp st(1), st(0)",
+            "fstp tbyte ptr [{output}]", older = in(reg) &older, newer = in(reg) &newer,
+            output = in(reg) &mut output, out("st(0)") _, out("st(1)") _);
+    }
+    output
+}
+
+fn particle_equal(a: F80, b: F80) -> bool {
+    let status: u16;
+    unsafe {
+        core::arch::asm!("fld tbyte ptr [{b}]", "fld tbyte ptr [{a}]", "fucompp", "fnstsw ax",
+            a = in(reg) &a, b = in(reg) &b, out("ax") status, out("st(0)") _, out("st(1)") _);
+    }
+    status & 0x4500 == 0x4000
+}
+
+unsafe fn particle_float(object: *mut u8, offset: usize) -> f32 {
+    unsafe { read_unaligned(object.add(offset).cast()) }
+}
+
+/// Samples the spin curve using the float-bit integer extraction, including its unsigned index conversion.
+unsafe fn sample_particle_spin(description: *mut u8, life: f32) -> F80 {
+    unsafe {
+        let first = pointer(description, 0xC4).cast::<f32>();
+        let last = ((pointer(description, 0xC8) as u32).wrapping_sub(first as u32) as i32 >> 2).wrapping_sub(1);
+        if last == 0 {
+            return F80::from_f32(read_unaligned(first));
+        }
+        let unsigned = |v: i32| {
+            let value = F80::from_i32(v);
+            if v < 0 {
+                add_float(value, 4294967296.0)
+            } else {
+                value
+            }
+        };
+        let position = multiply_float(unsigned(last), life);
+        let rounded = add_float(subtract_float(position, 0.5), 12582912.0);
+        let rounded = rounded.to_f32().to_bits().wrapping_add(0xB4C0_0000) as i32;
+        let upper = rounded.wrapping_add(1);
+        let index = if particle_equal(position, F80::from_i32(upper)) {
+            upper
+        } else {
+            rounded
+        };
+        let fraction = subtract_popped(position, unsigned(index));
+        let current = first.wrapping_offset(index as isize);
+        if compare_float(fraction, 0.0) & 0x4100 == 0 {
+            let difference = subtract_float(F80::from_f32(read_unaligned(current.add(1))), read_unaligned(current));
+            add_float(difference * fraction, read_unaligned(current))
+        } else {
+            F80::from_f32(read_unaligned(current))
+        }
+    }
+}
+
+port! {
+    /// Builds a particle placement from velocity alignment, smoothed heading, wind banking and spin.
+    /// Applies optional waves to the supplied point, composes the parent placement, increments the
+    /// destination revision byte and extends the owner's bounds. Destination padding is retained.
+    #[port(address = 0x005A_CA30, owner = "shared", name = "BuildParticlePlacement")]
+    pub unsafe extern "thiscall" fn fc4p_005aca30(
+        this: *mut u8, particle: *mut u8, life: f32, scale: f32, point: *mut f32, output: *mut u8,
+    ) {
+        unsafe {
+            let owner = ParticlePlacementOwner::from_ptr(this);
+            let p = PlacementParticle::from_ptr(particle);
+            let f = F80::from_f32;
+            let mut flags = if particle_equal(f(scale), f(1.0)) { 0 } else { 2 };
+            let mut matrix = [0.0f32; 9];
+            matrix[4] = 1.0;
+            let mut first;
+            let description = owner.description();
+            let mode = read_unaligned(description.add(0xD5));
+            if (2..=4).contains(&mode) {
+                let mut direction = [particle_float(particle, 0x1C), particle_float(particle, 0x20), particle_float(particle, 0x24)];
+                let original_z = direction[2].to_bits();
+                let z2 = multiply_float(f(direction[2]), direction[2]);
+                let y2 = multiply_float(f(direction[1]), direction[1]);
+                let x2 = multiply_float(f(direction[0]), direction[0]);
+                let length = add_popped(add_popped(z2, y2), x2).sqrt();
+                if compare_float(length, 0.0) & 0x4100 == 0 {
+                    let factor = divide_from_float(length, read_unaligned(particle_direction_length()));
+                    for value in &mut direction { *value = (f(*value) * factor).to_f32(); }
+                }
+                let mut basis = [read_unaligned(particle_matrix_seed()); 9];
+                let mode = read_unaligned(description.add(0xD5));
+                let direction_address = direction.as_ptr() as u32;
+                let matrix_address = basis.as_mut_ptr() as u32;
+                let target = match mode { 2 => 0x0080_B910, 3 => 0x0080_B530, 4 => 0x0080_B830, _ => 0 };
+                if target != 0 {
+                    // The C calls also retain their mode-specific scratch values in ECX and EDX.
+                    let (eax, ecx, edx) = match mode {
+                        2 => (0, matrix_address, direction_address),
+                        3 => (direction_address, description as u32, matrix_address),
+                        _ => (matrix_address, direction_address, original_z),
+                    };
+                    let args = [direction_address, matrix_address];
+                    let mut call = crate::abi::RawCall::new(crate::abi::Conv::Cdecl, crate::abi::target(target), ecx, &args);
+                    call.eax = eax;
+                    call.edx = edx;
+                    crate::abi::call_raw(&mut call);
+                }
+                for row in (0..3).rev() {
+                    let [a, b, c] = [basis[row * 3], basis[row * 3 + 1], basis[row * 3 + 2]];
+                    let bz = multiply_float(f(b), 0.0);
+                    let cz = multiply_float(f(c), 0.0);
+                    let az = multiply_float(f(a), 0.0);
+                    matrix[row * 3] = add_float(bz + cz, a).to_f32();
+                    matrix[row * 3 + 1] = add_float(az + cz, b).to_f32();
+                    matrix[row * 3 + 2] = add_float(az + bz, c).to_f32();
+                }
+                first = f(matrix[0]);
+                let smoothing = particle_float(owner.description(), 0x198);
+                if compare_float(f(smoothing), 0.0) & 0x4100 == 0 {
+                    let heading = multiply_float((-f(basis[6])).atan2(f(basis[0])), read_unaligned(particle_radians_to_turns()));
+                    let mut previous = f(p.heading());
+                    let smoothed = if particle_equal(previous, f(-999.0)) {
+                        heading.to_f32()
+                    } else {
+                        let lower = previous - F80::from_f64(0.5);
+                        let comparison = heading.compare(lower);
+                        if comparison.less() && !comparison.unordered() {
+                            previous = subtract_float(previous, 1.0);
+                        } else {
+                            let upper = F80::from_f64(0.5) + previous;
+                            let comparison = heading.compare(upper);
+                            if !comparison.less() && !comparison.equal() && !comparison.unordered() {
+                                previous = add_float(previous, 1.0);
+                            }
+                        }
+                        (multiply_float((heading - previous) / f(smoothing), 0.06666667) + previous).to_f32()
+                    };
+                    let angle = multiply_float(subtract_from_float(heading, smoothed), core::f32::consts::TAU);
+                    let cosine = angle.cos().to_f32();
+                    let sine = angle.sin();
+                    let sin32 = sine.to_f32();
+                    let before = matrix;
+                    first = multiply_float(f(cosine), matrix[0]) - multiply_float(sine, matrix[2]);
+                    for row in [1, 2] {
+                        let a = multiply_float(f(cosine), matrix[row * 3]).to_f32();
+                        let b = multiply_float(f(sin32), matrix[row * 3 + 2]).to_f32();
+                        matrix[row * 3] = subtract_float(f(a), b).to_f32();
+                    }
+                    p.set_heading(smoothed);
+                    let a = multiply_float(f(cosine), matrix[2]);
+                    let b = multiply_float(f(sin32), matrix[0]);
+                    matrix[2] = add_popped(a, b).to_f32();
+                    for row in [1, 2] {
+                        let a = multiply_float(f(cosine), before[row * 3 + 2]).to_f32();
+                        let b = f(multiply_float(f(sin32), before[row * 3]).to_f32());
+                        matrix[row * 3 + 2] = add_float(b, a).to_f32();
+                    }
+                }
+                flags |= 4;
+                let description = owner.description();
+                let banking = particle_float(description, 0x19C);
+                if !particle_equal(f(banking), f(0.0)) {
+                    let torque = if read_unaligned(description.add(8).cast::<u32>()) & 0x80 == 0 {
+                        let x = multiply_float(f(direction[0]), particle_float(this, 0x144));
+                        let z = multiply_float(-f(direction[2]), particle_float(this, 0x13C));
+                        let y = multiply_float(f(particle_float(this, 0x140)), 0.0);
+                        multiply_float(add_popped(add_popped(x, z), y), banking)
+                    } else {
+                        let wind = f(particle_float(description, 0xEC));
+                        let x = multiply_float(wind, particle_float(this, 0x1B8)).to_f32();
+                        let y = multiply_float(wind, particle_float(this, 0x1BC)).to_f32();
+                        let z = multiply_float(multiply_float(wind, particle_float(this, 0x1C0)), direction[0]);
+                        let x = f(x) * -f(direction[2]);
+                        multiply_float(add_popped(add_popped(z, x), multiply_float(f(y), 0.0)), banking)
+                    };
+                    let old = f(p.bank());
+                    let drag = multiply_float(f(particle_float(description, 0x1A0)), owner.time_step()) * old;
+                    let damped = subtract_popped(old, drag);
+                    p.set_bank(damped.to_f32());
+                    let angle = add_popped(damped, multiply_float(torque, owner.time_step()));
+                    p.set_bank(angle.to_f32());
+                    let cosine = angle.cos().to_f32();
+                    let sine = angle.sin().to_f32();
+                    let before = matrix;
+                    let first32 = first.to_f32();
+                    first = add_float(multiply_float(first, cosine), multiply_float(f(sine), before[1]).to_f32());
+                    for row in [1, 2] {
+                        let a = multiply_float(f(cosine), before[row * 3]).to_f32();
+                        let b = multiply_float(f(sine), before[row * 3 + 1]).to_f32();
+                        matrix[row * 3] = add_float(f(a), b).to_f32();
+                    }
+                    let negative_sine = -f(sine);
+                    for row in 0..3 {
+                        let a = if row == 0 { first32 } else { before[row * 3] };
+                        let a = if row == 2 { multiply_float(negative_sine, a) } else { f(a) * negative_sine }.to_f32();
+                        let b = multiply_float(f(cosine), before[row * 3 + 1]).to_f32();
+                        matrix[row * 3 + 1] = add_float(f(a), b).to_f32();
+                    }
+                }
+            } else {
+                let angle = multiply_float(f(p.heading()), core::f32::consts::TAU);
+                let cosine = angle.cos().to_f32();
+                let sine = angle.sin();
+                let zero_sine = (f(0.0) * sine).to_f32();
+                let zero_cosine = multiply_float(f(cosine), 0.0).to_f32();
+                first = subtract_float(f(cosine), zero_sine);
+                matrix[3] = subtract_float(f(zero_cosine), zero_sine).to_f32();
+                matrix[6] = (f(zero_cosine) - sine).to_f32();
+                matrix[2] = add_float(f(zero_cosine), sine.to_f32()).to_f32();
+                matrix[5] = add_float(f(zero_sine), zero_cosine).to_f32();
+                matrix[8] = add_float(f(zero_sine), cosine).to_f32();
+            }
+            flags |= 4;
+            let description = owner.description();
+            let angle = multiply_float(multiply_float(sample_particle_spin(description, life), p.spin()), core::f32::consts::TAU);
+            let cosine = angle.cos();
+            let sine = angle.sin();
+            let sin32 = sine.to_f32();
+            let before = matrix;
+            matrix[0] = (cosine * first - multiply_float(sine, before[2])).to_f32();
+            matrix[3] = (f(multiply_float(cosine, before[3]).to_f32()) - multiply_float(f(sin32), before[5])).to_f32();
+            matrix[6] = subtract_float(f(multiply_float(cosine, before[6]).to_f32()), multiply_float(f(sin32), before[8]).to_f32()).to_f32();
+            // The cosine remains unrounded until each matrix product is stored.
+            matrix[2] = add_float(multiply_float(first, sin32), (f(before[2]) * cosine).to_f32()).to_f32();
+            matrix[5] = add_float(multiply_float(f(sin32), before[3]), (f(before[5]) * cosine).to_f32()).to_f32();
+            matrix[8] = add_float(f(multiply_float(f(sin32), before[6]).to_f32()), multiply_float(cosine, before[8]).to_f32()).to_f32();
+            if pointer(description, 0x108) != pointer(description, 0x10C)
+                && read_unaligned(description.add(8).cast::<u32>()) & 0x100 == 0 {
+                let args = [F80::from_f64(owner.clock()).to_f32().to_bits(), description.add(0x108) as u32, point as u32];
+                let mut call = crate::abi::RawCall::new(crate::abi::Conv::Cdecl, crate::abi::target(0x005A_C070), pointer(description, 0x108) as u32, &args);
+                call.eax = description.add(0x108) as u32;
+                call.edx = read_unaligned(description.add(8).cast::<u32>()) >> 8;
+                crate::abi::call_raw(&mut call);
+            }
+            flags |= 1;
+            finish_particle_placement(this, matrix, flags, scale, point, output);
+        }
+    }
+}
+
+unsafe fn finish_particle_placement(
+    this: *mut u8,
+    local: [f32; 9],
+    flags: u8,
+    scale: f32,
+    point: *mut f32,
+    output: *mut u8,
+) {
+    unsafe {
+        let f = F80::from_f32;
+        let parent: [f32; 9] = core::array::from_fn(|i| particle_float(this, 0xC8 + i * 4));
+        let parent_first = f(parent[0]);
+        let translation: [f32; 3] = core::array::from_fn(|i| particle_float(this, 0xEC + i * 4));
+        let parent_scale = particle_float(this, 0xF8);
+        let parent_flags = read_unaligned(this.add(0xC5));
+        let position = [
+            read_unaligned(point),
+            read_unaligned(point.add(1)),
+            read_unaligned(point.add(2)),
+        ];
+        let (matrix, position, scale, flags) = if parent_flags == 0 {
+            (local, position, scale, flags)
+        } else {
+            let product = |a: f32, b: f32| multiply_float(f(a), b);
+            let sum = |a, b, c| add_popped(add_popped(a, b), c);
+            let mut placed = [0.0; 3];
+            for row in 0..3 {
+                let r = &parent[row * 3..row * 3 + 3];
+                let dot = if row < 2 {
+                    sum(
+                        product(position[2], r[2]),
+                        product(r[1], position[1]),
+                        product(r[0], position[0]),
+                    )
+                } else {
+                    f(sum(
+                        product(r[2], position[2]),
+                        product(r[1], position[1]),
+                        product(r[0], position[0]),
+                    )
+                    .to_f32())
+                };
+                let scaled = multiply_float(dot, parent_scale);
+                placed[row] = if row == 0 {
+                    add_float(f(scaled.to_f32()), translation[row]).to_f32()
+                } else if row == 1 {
+                    add_float(f(translation[row]), scaled.to_f32()).to_f32()
+                } else {
+                    (f(translation[row]) + scaled).to_f32()
+                };
+            }
+            let mut matrix = [0.0; 9];
+            // Every row keeps the multiplication and addition order of its corresponding placement slot.
+            matrix[6] = sum(
+                product(local[0], parent[6]),
+                product(parent[8], local[6]),
+                product(parent[7], local[3]),
+            )
+            .to_f32();
+            matrix[7] = sum(
+                product(parent[8], local[7]),
+                product(parent[7], local[4]),
+                product(parent[6], local[1]),
+            )
+            .to_f32();
+            matrix[8] = sum(
+                product(local[2], parent[6]),
+                product(parent[8], local[8]),
+                product(parent[7], local[5]),
+            )
+            .to_f32();
+            matrix[3] = sum(
+                product(local[6], parent[5]),
+                product(local[3], parent[4]),
+                product(local[0], parent[3]),
+            )
+            .to_f32();
+            matrix[4] = sum(
+                product(local[1], parent[3]),
+                product(parent[5], local[7]),
+                product(parent[4], local[4]),
+            )
+            .to_f32();
+            matrix[5] = sum(
+                product(local[8], parent[5]),
+                product(local[5], parent[4]),
+                product(local[2], parent[3]),
+            )
+            .to_f32();
+            matrix[0] = sum(
+                product(local[6], parent[2]),
+                product(local[3], parent[1]),
+                f(local[0]) * parent_first,
+            )
+            .to_f32();
+            matrix[1] = sum(
+                f(local[1]) * parent_first,
+                product(parent[2], local[7]),
+                product(parent[1], local[4]),
+            )
+            .to_f32();
+            matrix[2] = sum(
+                product(local[8], parent[2]),
+                product(local[5], parent[1]),
+                f(local[2]) * parent_first,
+            )
+            .to_f32();
+            (
+                matrix,
+                placed,
+                product(parent_scale, scale).to_f32(),
+                parent_flags | flags,
+            )
+        };
+        write_unaligned(output, read_unaligned(output).wrapping_add(1));
+        for (i, value) in matrix.into_iter().chain(position).enumerate() {
+            write_unaligned(output.add(4 + i * 4).cast::<f32>(), value);
+        }
+        write_unaligned(output.add(1), flags);
+        write_unaligned(output.add(0x34).cast::<f32>(), scale);
+        let invalid = compare_float(f(particle_float(this, 0x1A0)), particle_float(this, 0x1AC)) & 0x4100 == 0;
+        if invalid {
+            for base in [0x1AC, 0x1A0] {
+                for i in 0..3 {
+                    let value = read_unaligned(output.add(0x28 + i * 4).cast::<u32>());
+                    write_unaligned(this.add(base + i * 4).cast::<u32>(), value);
+                }
+            }
+        } else {
+            for i in 0..3 {
+                let value = f(particle_float(output, 0x28 + i * 4));
+                let maximum = f(particle_float(this, 0x1AC + i * 4));
+                let comparison = maximum.compare(value);
+                let result = if !comparison.less() && !comparison.equal() && !comparison.unordered() {
+                    maximum
+                } else {
+                    value
+                };
+                write_unaligned(this.add(0x1AC + i * 4).cast::<f32>(), result.to_f32());
+                let value = f(particle_float(output, 0x28 + i * 4));
+                let minimum = f(particle_float(this, 0x1A0 + i * 4));
+                let comparison = minimum.compare(value);
+                let result = if comparison.less() && !comparison.unordered() {
+                    minimum
+                } else {
+                    value
+                };
+                write_unaligned(this.add(0x1A0 + i * 4).cast::<f32>(), result.to_f32());
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod particle_placement_tests {
+    use super::*;
+    use crate::testing::{fake, fake_data, Fake, GameFpu, Object};
+    use std::cell::RefCell;
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum Event {
+        Align(u8, [u32; 3], [u32; 9]),
+        Wave(u32, usize, [u32; 3]),
+    }
+
+    struct State {
+        events: Vec<Event>,
+        basis: [f32; 9],
+        description: u32,
+        correct_ecx: bool,
+    }
+    thread_local! {
+        static STATE: RefCell<State> = const { RefCell::new(State {
+            events: Vec::new(), basis: [1., 0., 0., 0., 1., 0., 0., 0., 1.], description: 0, correct_ecx: true,
+        }) };
+    }
+    fn events() -> Vec<Event> {
+        STATE.with(|s| {
+            let mut s = s.borrow_mut();
+            assert!(s.correct_ecx, "callee received the wrong ECX");
+            core::mem::take(&mut s.events)
+        })
+    }
+    unsafe fn align(mode: u8, direction: *const f32, matrix: *mut f32) {
+        unsafe {
+            let input: [u32; 3] = core::array::from_fn(|i| read_unaligned(direction.add(i)).to_bits());
+            let seed: [u32; 9] = core::array::from_fn(|i| read_unaligned(matrix.add(i)).to_bits());
+            STATE.with(|s| {
+                let mut s = s.borrow_mut();
+                s.events.push(Event::Align(mode, input, seed));
+                for (i, value) in s.basis.into_iter().enumerate() {
+                    write_unaligned(matrix.add(i), value);
+                }
+            });
+        }
+    }
+    macro_rules! alignment_fake {
+        ($name:ident, $body:ident, $mode:literal) => {
+            #[unsafe(naked)]
+            unsafe extern "C" fn $name(_direction: *const f32, _matrix: *mut f32) {
+                core::arch::naked_asm!("push [esp + 8]", "push [esp + 8]", "call {body}", "ret", body = sym $body);
+            }
+            unsafe extern "fastcall" fn $body(ecx: u32, _edx: u32, direction: *const f32, matrix: *mut f32) {
+                STATE.with(|s| {
+                    let mut s = s.borrow_mut();
+                    let expected = match $mode { 2 => matrix as u32, 3 => s.description, _ => direction as u32 };
+                    s.correct_ecx &= ecx == expected;
+                });
+                unsafe { align($mode, direction, matrix); }
+            }
+        };
+    }
+    alignment_fake!(axis, axis_body, 2);
+    alignment_fake!(plane, plane_body, 3);
+    alignment_fake!(velocity, velocity_body, 4);
+    #[unsafe(naked)]
+    unsafe extern "C" fn wave(_time: f32, _vector: *mut u8, _point: *mut f32) {
+        core::arch::naked_asm!("push [esp + 12]", "push [esp + 12]", "push [esp + 12]", "call {body}", "ret", body = sym wave_body);
+    }
+    unsafe extern "fastcall" fn wave_body(ecx: u32, _edx: u32, time: f32, vector: *mut u8, point: *mut f32) {
+        unsafe {
+            let input = core::array::from_fn(|i| read_unaligned(point.add(i)).to_bits());
+            STATE.with(|s| {
+                let mut s = s.borrow_mut();
+                s.correct_ecx &= ecx == pointer(vector, 0) as u32;
+                s.events.push(Event::Wave(time.to_bits(), vector as usize, input));
+            });
+            for (i, value) in [3., -5., 7.].into_iter().enumerate() {
+                write_unaligned(point.add(i), value);
+            }
+        }
+    }
+
+    struct World {
+        owner: Object,
+        description: Object,
+        particle: Object,
+        output: Object,
+        point: [f32; 3],
+        curve: Vec<f32>,
+        _globals: Box<[f32; 3]>,
+        _fakes: Vec<Fake>,
+    }
+    impl World {
+        fn new() -> Self {
+            let mut globals = Box::new([0.125, 0.15915494, 1.]);
+            let fakes = vec![
+                fake_data(0x00B2_2D4C, globals.as_mut_ptr().cast()),
+                fake_data(0x00B0_A5A4, unsafe { globals.as_mut_ptr().add(1).cast() }),
+                fake_data(0x00B0_A5A8, unsafe { globals.as_mut_ptr().add(2).cast() }),
+                fake(0x0080_B910, axis as *const () as usize),
+                fake(0x0080_B530, plane as *const () as usize),
+                fake(0x0080_B830, velocity as *const () as usize),
+                fake(0x005A_C070, wave as *const () as usize),
+            ];
+            let mut w = Self {
+                owner: Object::new(0x1D0),
+                description: Object::new(0x1B0),
+                particle: Object::new(0x60),
+                output: Object::new(0x40),
+                point: [2., 4., 6.],
+                curve: vec![0.],
+                _globals: globals,
+                _fakes: fakes,
+            };
+            unsafe {
+                put_pointer(w.owner.ptr(), 0x24, w.description.ptr());
+                for (i, value) in [1., 0., 0., 0., 1., 0., 0., 0., 1.].into_iter().enumerate() {
+                    w.owner_float(0xC8 + i * 4, value);
+                }
+                w.owner_float(0xF8, 1.);
+                w.owner_float(0x108, 0.25);
+                write_unaligned(w.owner.ptr().add(0x110).cast::<f64>(), 0.1234567890123);
+                for i in 0..3 {
+                    w.owner_float(0x1A0 + i * 4, 1.);
+                }
+                for i in 0..0x40 {
+                    write_unaligned(w.output.ptr().add(i), 0xA5);
+                }
+                write_unaligned(w.output.ptr(), 255);
+            }
+            w.set_curve(&[0.]);
+            STATE.with(|s| {
+                *s.borrow_mut() = State {
+                    events: Vec::new(),
+                    basis: [1., 0., 0., 0., 1., 0., 0., 0., 1.],
+                    description: w.description.ptr() as u32,
+                    correct_ecx: true,
+                }
+            });
+            w
+        }
+        fn owner_float(&mut self, offset: usize, value: f32) {
+            unsafe {
+                write_unaligned(self.owner.ptr().add(offset).cast(), value);
+            }
+        }
+        fn desc_float(&mut self, offset: usize, value: f32) {
+            unsafe {
+                write_unaligned(self.description.ptr().add(offset).cast(), value);
+            }
+        }
+        fn particle_float(&mut self, offset: usize, value: f32) {
+            unsafe {
+                write_unaligned(self.particle.ptr().add(offset).cast(), value);
+            }
+        }
+        fn mode(&mut self, value: u8) {
+            unsafe {
+                write_unaligned(self.description.ptr().add(0xD5), value);
+            }
+        }
+        fn flags(&mut self, value: u32) {
+            unsafe {
+                write_unaligned(self.description.ptr().add(8).cast(), value);
+            }
+        }
+        fn set_curve(&mut self, values: &[f32]) {
+            self.curve = values.to_vec();
+            unsafe {
+                put_pointer(self.description.ptr(), 0xC4, self.curve.as_mut_ptr().cast());
+                put_pointer(
+                    self.description.ptr(),
+                    0xC8,
+                    self.curve.as_mut_ptr().add(self.curve.len()).cast(),
+                );
+            }
+        }
+        fn run(&mut self, life: f32, scale: f32) {
+            unsafe {
+                fc4p_005aca30(
+                    self.owner.ptr(),
+                    self.particle.ptr(),
+                    life,
+                    scale,
+                    self.point.as_mut_ptr(),
+                    self.output.ptr(),
+                );
+            }
+        }
+        fn output_words(&mut self) -> [u32; 13] {
+            unsafe { core::array::from_fn(|i| read_unaligned(self.output.ptr().add(4 + i * 4).cast())) }
+        }
+        fn bounds(&mut self) -> [u32; 6] {
+            unsafe { core::array::from_fn(|i| read_unaligned(self.owner.ptr().add(0x1A0 + i * 4).cast())) }
+        }
+    }
+
+    #[test]
+    fn particle_identity_revision_padding_and_initial_bounds() {
+        let _fpu = GameFpu::new();
+        let mut w = World::new();
+        w.run(0., 1.);
+        assert_eq!(
+            w.output_words(),
+            [1., 0., 0., 0., 1., 0., 0., 0., 1., 2., 4., 6., 1.].map(f32::to_bits)
+        );
+        assert_eq!(w.bounds(), [2., 4., 6., 2., 4., 6.].map(f32::to_bits));
+        unsafe {
+            assert_eq!(read_unaligned(w.output.ptr()), 0);
+            assert_eq!(read_unaligned(w.output.ptr().add(1)), 5);
+            assert_eq!(read_unaligned(w.output.ptr().add(2).cast::<u16>()), 0xA5A5);
+            assert_eq!(
+                read_unaligned(w.output.ptr().add(0x38).cast::<u64>()),
+                0xA5A5_A5A5_A5A5_A5A5
+            );
+        }
+        assert!(events().is_empty());
+    }
+
+    #[test]
+    fn particle_alignment_modes_normalize_direction_and_seed_all_nine_words() {
+        let _fpu = GameFpu::new();
+        for mode in 2..=4 {
+            let mut w = World::new();
+            w.mode(mode);
+            w.particle_float(0x1C, 3.);
+            w.particle_float(0x20, 4.);
+            w.run(0., 2.);
+            assert_eq!(
+                events(),
+                [Event::Align(
+                    mode,
+                    [0.6, 0.8, 0.].map(f32::to_bits),
+                    [0.125f32.to_bits(); 9]
+                )]
+            );
+            assert_eq!(w.output_words()[12], 2f32.to_bits());
+            unsafe {
+                assert_eq!(read_unaligned(w.output.ptr().add(1)), 7);
+            }
+        }
+        for direction in [[0., -0., 0.], [f32::NAN, 2., 3.], [f32::INFINITY, 1., 0.]] {
+            let mut w = World::new();
+            w.mode(2);
+            for (i, value) in direction.into_iter().enumerate() {
+                w.particle_float(0x1C + i * 4, value);
+            }
+            w.run(0., 1.);
+            let event = events();
+            if direction[0].is_infinite() {
+                let Event::Align(_, input, _) = event[0] else {
+                    panic!("alignment call missing");
+                };
+                assert!(f32::from_bits(input[0]).is_nan());
+                assert_eq!(&input[1..], &[0, 0]);
+            } else {
+                assert_eq!(
+                    event,
+                    [Event::Align(2, direction.map(f32::to_bits), [0.125f32.to_bits(); 9])]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn particle_spin_samples_endpoints_intervals_and_exact_keys() {
+        let _fpu = GameFpu::new();
+        let mut w = World::new();
+        w.set_curve(&[0., 2., 4.]);
+        for (life, expected) in [(0., 0.), (0.125, 0.5), (0.25, 1.), (0.5, 2.), (0.75, 3.), (1., 4.)] {
+            unsafe {
+                assert_eq!(
+                    sample_particle_spin(w.description.ptr(), life).to_f32().to_bits(),
+                    f32::to_bits(expected)
+                );
+            }
+        }
+        w.set_curve(&[0.25]);
+        for life in [f32::NAN, f32::INFINITY, -3.] {
+            unsafe {
+                assert_eq!(sample_particle_spin(w.description.ptr(), life).to_f32(), 0.25);
+            }
+        }
+    }
+
+    #[test]
+    fn particle_heading_wrap_bank_sources_spin_and_parent_rounding_bits() {
+        let _fpu = GameFpu::new();
+        let rotations = [
+            [
+                0x3EA7_BADB,
+                0x3ED0_0000,
+                0x3E7E_33C0,
+                0x3F5A_8BE4,
+                0x3F78_0000,
+                0x3F05_8E92,
+                0x3FB0_9D2E,
+                0x3FC4_0000,
+                0x3F4B_9033,
+            ],
+            [
+                0x3EC5_0967,
+                0x3ED0_0000,
+                0x3E13_D844,
+                0x3F77_94D0,
+                0x3F78_0000,
+                0x3E83_33B4,
+                0x3FC6_5277,
+                0x3FC4_0000,
+                0x3EBC_7B46,
+            ],
+            [
+                0x3C28_B088,
+                0x3ED0_0000,
+                0x3ED2_6190,
+                0x3DFF_5EEC,
+                0x3F78_0000,
+                0x3F7E_20C2,
+                0x3E74_D3E0,
+                0x3FC4_0000,
+                0x3FC9_885E,
+            ],
+            [
+                0x3C28_B0D0,
+                0x3ED0_0000,
+                0x3ED2_618F,
+                0x3DFF_5F00,
+                0x3F78_0000,
+                0x3F7E_20C2,
+                0x3E74_D3F4,
+                0x3FC4_0000,
+                0x3FC9_885E,
+            ],
+            [
+                0x3EBA_36F7,
+                0x3ECA_5EFF,
+                0x3E5A_6047,
+                0x3F70_70C8,
+                0x3F6E_0F16,
+                0x3EE0_AE1A,
+                0x3FC1_E30A,
+                0x3FBB_7756,
+                0x3F2A_160A,
+            ],
+            [
+                0x3EDC_5690,
+                0x3EBE_B3A0,
+                0x3DCD_5DF2,
+                0x3F89_9099,
+                0x3F5F_5EAC,
+                0x3E1B_9E74,
+                0x3FDC_0B8F,
+                0x3FAF_B1C3,
+                0x3E50_8DF0,
+            ],
+            [
+                0x3D45_E9F0,
+                0x3EE0_30F9,
+                0x3EBF_83FF,
+                0x3E5C_2B14,
+                0x3F84_A531,
+                0x3F67_B8F0,
+                0x3EC3_6DD6,
+                0x3FD1_3E24,
+                0x3FB7_D7F1,
+            ],
+            [
+                0x3D76_2C9A,
+                0x3EE4_52F3,
+                0x3EB9_AB72,
+                0x3E78_B146,
+                0x3F86_D01A,
+                0x3F60_CFE0,
+                0x3ED9_EBB4,
+                0x3FD4_8B77,
+                0x3FB2_6503,
+            ],
+        ];
+        let headings = [0xBD51_BFAE, 0xBDC7_3FA6, 0x3DBB_988E, 0x3DBB_988B];
+        for (case, rotation) in rotations.into_iter().enumerate() {
+            let mut w = World::new();
+            w.mode(2);
+            for (i, value) in [0.3, 0.4, 0.5].into_iter().enumerate() {
+                w.particle_float(0x1C + i * 4, value);
+            }
+            w.particle_float(0x30, 0.7);
+            w.particle_float(0x4C, 0.125);
+            w.particle_float(0x50, [-999., 0.9, -0.9, 0.1][case % 4]);
+            w.desc_float(0x198, 1.2);
+            w.desc_float(0x19C, if case < 4 { 0. } else { 0.25 });
+            w.desc_float(0x1A0, 0.5);
+            w.desc_float(0xEC, 0.3);
+            w.flags(if case % 2 == 0 { 0x80 } else { 0 });
+            STATE.with(|s| s.borrow_mut().basis = [0.75, 0.25, 0.5, -0.5, 0.75, 0.25, 0.25, 0.5, 0.75]);
+            for (i, value) in [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1., 1.125]
+                .into_iter()
+                .enumerate()
+            {
+                w.owner_float(0xC8 + i * 4, value);
+            }
+            for (i, value) in [3., -5., 7.].into_iter().enumerate() {
+                w.owner_float(0xEC + i * 4, value);
+                w.owner_float(0x13C + i * 4, value);
+                w.owner_float(0x1B8 + i * 4, value);
+            }
+            w.owner_float(0xF8, 0.8);
+            unsafe {
+                write_unaligned(w.owner.ptr().add(0xC5), 0x80);
+            }
+            w.set_curve(&[0.2, -0.3, 0.4]);
+            w.run(0.375, 1.5);
+            let output = w.output_words();
+            assert_eq!(&output[..9], &rotation, "case {case}");
+            assert_eq!(&output[9..], &[0x40B9_999A, 0x3FB3_3334, 0x4188_0000, 0x3F99_999A]);
+            unsafe {
+                assert_eq!(particle_float(w.particle.ptr(), 0x50).to_bits(), headings[case % 4]);
+                let bank = if case < 4 {
+                    0x3E00_0000
+                } else if case % 2 == 0 {
+                    0x3E00_4AB0
+                } else {
+                    0x3E26_4E4A
+                };
+                assert_eq!(particle_float(w.particle.ptr(), 0x4C).to_bits(), bank);
+                assert_eq!(read_unaligned(w.output.ptr().add(1)), 0x87);
+            }
+            assert!(matches!(events().as_slice(), [Event::Align(2, _, _)]));
+        }
+    }
+
+    #[test]
+    fn particle_waves_use_rounded_clock_and_mutate_point_before_parent_composition() {
+        let _fpu = GameFpu::new();
+        for suppress in [false, true] {
+            let mut w = World::new();
+            w.mode(3);
+            unsafe {
+                put_pointer(w.description.ptr(), 0x108, 0x1234usize as *mut u8);
+                put_pointer(w.description.ptr(), 0x10C, 0x1250usize as *mut u8);
+                write_unaligned(w.owner.ptr().add(0xC5), 0x80);
+            }
+            w.owner_float(0xEC, 10.);
+            w.owner_float(0xF0, 20.);
+            w.owner_float(0xF4, 30.);
+            w.owner_float(0xF8, 2.);
+            if suppress {
+                w.flags(0x100);
+            }
+            w.run(0., 3.);
+            let alignment = Event::Align(3, [0; 3], [0.125f32.to_bits(); 9]);
+            if suppress {
+                assert_eq!(events(), [alignment]);
+                assert_eq!(&w.output_words()[9..], &[14., 28., 42., 6.].map(f32::to_bits));
+            } else {
+                assert_eq!(
+                    events(),
+                    [
+                        alignment,
+                        Event::Wave(
+                            0.12345679f32.to_bits(),
+                            unsafe { w.description.ptr().add(0x108) } as usize,
+                            [2., 4., 6.].map(f32::to_bits)
+                        )
+                    ]
+                );
+                assert_eq!(&w.output_words()[9..], &[16., 10., 44., 6.].map(f32::to_bits));
+            }
+            unsafe {
+                assert_eq!(read_unaligned(w.output.ptr().add(1)), 0x87);
+            }
+        }
+    }
+
+    #[test]
+    fn particle_bounds_expand_and_unordered_values_choose_the_new_coordinate() {
+        let _fpu = GameFpu::new();
+        let mut w = World::new();
+        w.run(0., 1.);
+        w.point = [-2., 8., 3.];
+        w.run(0., 1.);
+        assert_eq!(w.bounds(), [-2., 4., 3., 2., 8., 6.].map(f32::to_bits));
+        w.point = [f32::from_bits(0x7FA1_2345), -0., 0.];
+        w.run(0., f32::NAN);
+        let bounds = w.bounds();
+        assert_eq!([bounds[0], bounds[3]], [0x7FE1_2345; 2]);
+        assert_eq!(bounds[1], (-0.0f32).to_bits());
+        unsafe {
+            assert_eq!(read_unaligned(w.output.ptr().add(1)), 7);
+        }
+        for i in 0..6 {
+            w.owner_float(0x1A0 + i * 4, 0.);
+        }
+        w.point = [-0.; 3];
+        w.run(0., 1.);
+        assert_eq!(w.bounds(), [0x8000_0000; 6]);
+        w.owner_float(0x1A0, 1.);
+        w.owner_float(0x1AC, 0.);
+        w.point = [f32::from_bits(0x7FA1_2345), -0., 0.];
+        w.run(0., 1.);
+        assert_eq!(w.bounds(), [0x7FA1_2345, 0x8000_0000, 0, 0x7FA1_2345, 0x8000_0000, 0]);
+    }
+
+    #[test]
+    fn particle_placement_preserves_float_environment_stack_and_unrelated_object_bytes() {
+        let _fpu = GameFpu::new();
+        for mode in [0, 1, 2, 3, 4, 5, 255] {
+            let mut w = World::new();
+            w.mode(mode);
+            w.desc_float(0x198, f32::NAN);
+            w.desc_float(0x19C, -0.0);
+            w.particle_float(0x50, 0.125);
+            w.particle_float(0x30, 0.25);
+            w.set_curve(&[0.1, 0.3]);
+            let snapshot = |p, n| unsafe { core::slice::from_raw_parts(p, n).to_vec() };
+            let owner_before = snapshot(w.owner.ptr(), 0x1D0);
+            let description_before = snapshot(w.description.ptr(), 0x1B0);
+            let particle_before = snapshot(w.particle.ptr(), 0x60);
+            let sentinel = 1.25f32;
+            unsafe {
+                core::arch::asm!("fld dword ptr [{p}]", p = in(reg) &sentinel, out("st(0)") _);
+            }
+            let before = super::tests::float_environment();
+            // The raw call also checks the five-word thiscall stack cleanup.
+            unsafe {
+                crate::testing::call_thiscall_with_eax(
+                    fc4p_005aca30 as *const () as usize,
+                    w.owner.ptr(),
+                    &[
+                        w.particle.ptr() as u32,
+                        0.5f32.to_bits(),
+                        1.0f32.to_bits(),
+                        w.point.as_mut_ptr() as u32,
+                        w.output.ptr() as u32,
+                    ],
+                    0xABCD_1234,
+                );
+            }
+            let after = super::tests::float_environment();
+            let mut restored = 0.0f32;
+            unsafe {
+                core::arch::asm!("fstp dword ptr [{p}]", p = in(reg) &mut restored, out("st(0)") _);
+            }
+            assert_eq!(after, before);
+            assert_eq!(restored.to_bits(), sentinel.to_bits());
+            assert_eq!(snapshot(w.description.ptr(), 0x1B0), description_before);
+            assert_eq!(snapshot(w.particle.ptr(), 0x60), particle_before);
+            let owner_after = snapshot(w.owner.ptr(), 0x1D0);
+            for i in 0..0x1D0 {
+                if !(0x1A0..0x1B8).contains(&i) {
+                    assert_eq!(owner_after[i], owner_before[i], "mode {mode} offset {i:x}");
+                }
+            }
+            let calls = events();
+            assert_eq!(calls.len(), usize::from((2..=4).contains(&mode)));
+        }
+    }
+}
+
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
     fc4p_005504e0::PORT,
@@ -1522,6 +2496,7 @@ pub const PORTS: &[Port] = &[
     fc4p_005a61b0::PORT,
     fc4p_005a6290::PORT,
     fc4p_005ac070::PORT,
+    fc4p_005aca30::PORT,
 ];
 
 #[cfg(test)]
