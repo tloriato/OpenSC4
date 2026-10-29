@@ -56,6 +56,7 @@ layout! {
         0xE4 => candidates_begin / set_candidates_begin: u32,
         0xE8 => candidates_end / set_candidates_end: u32,
         0xF0 => chosen_configuration / set_chosen_configuration: u32,
+        0xF4 => chosen_building / set_chosen_building: u32,
         0xF8 => observed_land_value / set_observed_land_value: i32,
         0xFC => minimum_building_capacity / set_minimum_building_capacity: i32,
         0x100 => maximum_building_capacity / set_maximum_building_capacity: i32,
@@ -180,8 +181,10 @@ unsafe fn store(base: u32, offset: u32, value: u32) {
 }
 
 pub mod cache;
+pub mod attempts;
 pub mod compatibility;
 pub mod configuration;
+pub mod construction;
 pub mod copying;
 pub mod discovery;
 pub mod evaluation;
@@ -192,15 +195,19 @@ pub mod networks;
 pub mod pool;
 pub mod population;
 pub mod removal;
+pub mod reoccupation;
 pub mod sites;
 pub mod sorting;
+pub mod subdivision;
 pub mod suitability;
 pub mod surface;
 pub mod trees;
 
 const COUNT: usize = compatibility::PORTS.len()
+    + attempts::PORTS.len()
     + cache::PORTS.len()
     + configuration::PORTS.len()
+    + construction::PORTS.len()
     + copying::PORTS.len()
     + discovery::PORTS.len()
     + evaluation::PORTS.len()
@@ -211,15 +218,19 @@ const COUNT: usize = compatibility::PORTS.len()
     + pool::PORTS.len()
     + population::PORTS.len()
     + removal::PORTS.len()
+    + reoccupation::PORTS.len()
     + sorting::PORTS.len()
+    + subdivision::PORTS.len()
     + sites::PORTS.len()
     + suitability::PORTS.len()
     + surface::PORTS.len()
     + trees::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
+    attempts::PORTS,
     compatibility::PORTS,
     cache::PORTS,
     configuration::PORTS,
+    construction::PORTS,
     copying::PORTS,
     discovery::PORTS,
     evaluation::PORTS,
@@ -230,7 +241,9 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     pool::PORTS,
     population::PORTS,
     removal::PORTS,
+    reoccupation::PORTS,
     sorting::PORTS,
+    subdivision::PORTS,
     sites::PORTS,
     suitability::PORTS,
     surface::PORTS,
