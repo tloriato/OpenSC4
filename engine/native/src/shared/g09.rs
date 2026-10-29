@@ -680,6 +680,906 @@ unsafe extern "fastcall" fn align_instruction_output(registers: *mut Registers, 
     }
 }
 
+game_fn! {
+    #[allow(dead_code)]
+    fn encode_memory_operand(this: *mut u8, opcode: u32, register: u32, operand: u32) = "thiscall" 0x008E_C190;
+}
+game_fn! {
+    #[allow(dead_code)]
+    fn append_instruction_block(this: *mut u8, record: u32) = "thiscall" 0x008E_CC20;
+}
+game_fn! {
+    #[allow(dead_code)]
+    fn emit_long_conditional_jump(this: *mut u8, condition: u32, destination: u32) = "thiscall" 0x008E_E0A0;
+}
+
+/// Start a scratch instruction, retaining the unused bytes from the preceding record.
+unsafe fn start_instruction(this: u32) {
+    unsafe {
+        let sequence = load(this.wrapping_add(0x0C));
+        store(this.wrapping_add(8), 0);
+        store(this.wrapping_add(0x0C), sequence.wrapping_add(1));
+    }
+}
+
+unsafe fn instruction_byte(this: u32, byte: u8) {
+    unsafe {
+        let length = load(this.wrapping_add(8));
+        (this.wrapping_add(0x10).wrapping_add(length) as *mut u8).write(byte);
+        store(this.wrapping_add(8), load(this.wrapping_add(8)).wrapping_add(1));
+    }
+}
+
+unsafe fn instruction_metadata(this: u32, latency: u32, memory: u32, reads: u32, writes: u32) {
+    unsafe {
+        store(this.wrapping_add(0x2C), latency);
+        store(this.wrapping_add(0x20), memory);
+        store(this.wrapping_add(0x24), reads);
+        store(this.wrapping_add(0x28), writes);
+    }
+}
+
+/// Append ten words in order, including overlapping scratch and deque storage. At the last slot,
+/// the game helper owns block growth. The comparison word remains visible in EDX in some forms.
+unsafe fn queue_instruction(this: u32, mut result: Registers, boundary_in_edx: bool) -> Registers {
+    unsafe {
+        result.eax = this.wrapping_add(0x30);
+        let boundary = load(this.wrapping_add(0x48)).wrapping_sub(0x28);
+        let destination = load(this.wrapping_add(0x40));
+        if boundary_in_edx {
+            result.edx = boundary;
+        } else {
+            result.ecx = boundary;
+        }
+        if destination == boundary {
+            result.ecx = result.eax;
+            return call_registers(0x008E_CC20, result, &[this.wrapping_add(8)], false);
+        }
+        if destination != 0 {
+            for i in 0..10u32 {
+                let value = load(this.wrapping_add(8).wrapping_add(i * 4));
+                store(destination.wrapping_add(i * 4), value);
+            }
+        }
+        result.ecx = load(this.wrapping_add(0x40)).wrapping_add(0x28);
+        store(this.wrapping_add(0x40), result.ecx);
+        result
+    }
+}
+
+register_port!(0x008E_CE20, fc4p_008ece20, emit_register_move, 8, "EmitRegisterMove");
+
+unsafe extern "fastcall" fn emit_register_move(registers: *mut Registers, stack: *mut u32) {
+    unsafe {
+        let this = (*registers).ecx;
+        let destination = stack.add(1).read();
+        let source = stack.add(2).read();
+        start_instruction(this);
+        instruction_byte(this, 0x8B);
+        instruction_byte(
+            this,
+            (destination as u8)
+                .wrapping_sub(8)
+                .wrapping_mul(8)
+                .wrapping_add(source as u8),
+        );
+        instruction_metadata(this, 1, 0, 1u32.wrapping_shl(source), 1u32.wrapping_shl(destination));
+        *registers = queue_instruction(
+            this,
+            Registers {
+                eax: this,
+                ecx: destination,
+                edx: destination,
+            },
+            true,
+        );
+    }
+}
+
+// Memory forms share the operand encoder, but retain each form's own dependency masks and register result.
+#[derive(Clone, Copy)]
+enum MemoryEffect {
+    Load,
+    Store,
+    Arithmetic,
+    Compare,
+    Address,
+    PackedArithmetic,
+}
+
+#[derive(Clone, Copy)]
+struct MemoryInstruction {
+    prefix: u8,
+    opcode: u32,
+    register_argument: usize,
+    mask: u32,
+    effect: MemoryEffect,
+    boundary_in_edx: bool,
+}
+
+unsafe fn emit_memory_instruction(registers: *mut Registers, stack: *mut u32, instruction: MemoryInstruction) {
+    unsafe {
+        let this = (*registers).ecx;
+        let register = stack.add(instruction.register_argument).read();
+        let operand = stack.add(3 - instruction.register_argument).read();
+        // Memory forms advance the sequence before resetting the scratch length.
+        store(this.wrapping_add(0x0C), load(this.wrapping_add(0x0C)).wrapping_add(1));
+        store(this.wrapping_add(8), 0);
+        let mut result = *registers;
+        result.eax = u32::from((register as u8).wrapping_mul(8));
+        if instruction.prefix != 0 {
+            instruction_byte(this, instruction.prefix);
+            result.eax = 0;
+            result.edx = 1;
+        }
+        result = call_registers(
+            0x008E_C190,
+            result,
+            &[instruction.opcode, u32::from((register as u8).wrapping_mul(8)), operand],
+            false,
+        );
+        let memory_reads = load(operand);
+        let mask = instruction.mask.wrapping_shl(register);
+        let (latency, memory, reads, writes) = match instruction.effect {
+            MemoryEffect::Load => (1, 1, memory_reads, mask),
+            MemoryEffect::Store => (2, 2, memory_reads | mask, 0),
+            MemoryEffect::Arithmetic => (2, 1, memory_reads | mask, mask | 0x10000),
+            MemoryEffect::Compare => (2, 1, memory_reads | mask, 0x10000),
+            MemoryEffect::Address => (1, 0, memory_reads, mask),
+            MemoryEffect::PackedArithmetic => (2, 1, memory_reads | mask, mask),
+        };
+        instruction_metadata(this, latency, memory, reads, writes);
+        result.ecx = register;
+        match instruction.effect {
+            MemoryEffect::Load => {
+                // The plain integer load leaves the operand encoder's EDX intact.
+                if instruction.prefix != 0 || instruction.mask != 1 {
+                    result.edx = mask;
+                }
+            }
+            MemoryEffect::Store | MemoryEffect::Compare | MemoryEffect::PackedArithmetic => result.edx = reads,
+            MemoryEffect::Address => result.edx = mask,
+            MemoryEffect::Arithmetic => result.ecx = reads,
+        }
+        *registers = queue_instruction(this, result, instruction.boundary_in_edx);
+    }
+}
+
+macro_rules! memory_instruction_port {
+    ($address:literal, $export:ident, $body:ident, $name:literal,
+        $prefix:literal, $opcode:literal, $argument:literal, $mask:literal, $effect:ident, $edx:literal) => {
+        register_port!($address, $export, $body, 8, $name);
+        unsafe extern "fastcall" fn $body(registers: *mut Registers, stack: *mut u32) {
+            unsafe {
+                emit_memory_instruction(
+                    registers,
+                    stack,
+                    MemoryInstruction {
+                        prefix: $prefix,
+                        opcode: $opcode,
+                        register_argument: $argument,
+                        mask: $mask,
+                        effect: MemoryEffect::$effect,
+                        boundary_in_edx: $edx,
+                    },
+                );
+            }
+        }
+    };
+}
+
+memory_instruction_port!(
+    0x008E_CF80,
+    fc4p_008ecf80,
+    emit_memory_load,
+    "EmitMemoryLoad",
+    0,
+    0x8B,
+    1,
+    1,
+    Load,
+    false
+);
+memory_instruction_port!(
+    0x008E_D0B0,
+    fc4p_008ed0b0,
+    emit_zero_extended_word_load,
+    "EmitZeroExtendedWordLoad",
+    0x0F,
+    0xB7,
+    1,
+    1,
+    Load,
+    true
+);
+memory_instruction_port!(
+    0x008E_D150,
+    fc4p_008ed150,
+    emit_word_store,
+    "EmitWordStore",
+    0x66,
+    0x89,
+    2,
+    1,
+    Store,
+    false
+);
+memory_instruction_port!(
+    0x008E_D1F0,
+    fc4p_008ed1f0,
+    emit_memory_store,
+    "EmitMemoryStore",
+    0,
+    0x89,
+    2,
+    1,
+    Store,
+    false
+);
+memory_instruction_port!(
+    0x008E_D5E0,
+    fc4p_008ed5e0,
+    emit_memory_add,
+    "EmitMemoryAdd",
+    0,
+    0x03,
+    1,
+    1,
+    Arithmetic,
+    true
+);
+memory_instruction_port!(
+    0x008E_D860,
+    fc4p_008ed860,
+    emit_word_memory_compare,
+    "EmitWordMemoryCompare",
+    0x66,
+    0x3B,
+    1,
+    1,
+    Compare,
+    false
+);
+memory_instruction_port!(
+    0x008E_D900,
+    fc4p_008ed900,
+    emit_memory_compare,
+    "EmitMemoryCompare",
+    0,
+    0x3B,
+    1,
+    1,
+    Compare,
+    false
+);
+memory_instruction_port!(
+    0x008E_DA40,
+    fc4p_008eda40,
+    emit_memory_subtract,
+    "EmitMemorySubtract",
+    0,
+    0x2B,
+    1,
+    1,
+    Arithmetic,
+    true
+);
+memory_instruction_port!(
+    0x008E_DDB0,
+    fc4p_008eddb0,
+    emit_effective_address,
+    "EmitEffectiveAddress",
+    0,
+    0x8D,
+    1,
+    1,
+    Address,
+    false
+);
+memory_instruction_port!(
+    0x008E_DE40,
+    fc4p_008ede40,
+    emit_memory_multiply,
+    "EmitMemoryMultiply",
+    0x0F,
+    0xAF,
+    1,
+    1,
+    PackedArithmetic,
+    false
+);
+memory_instruction_port!(
+    0x008E_E3D0,
+    fc4p_008ee3d0,
+    emit_mmx_dword_load,
+    "EmitMmxDwordLoad",
+    0x0F,
+    0x6E,
+    1,
+    0x100,
+    Load,
+    false
+);
+memory_instruction_port!(
+    0x008E_E470,
+    fc4p_008ee470,
+    emit_mmx_dword_store,
+    "EmitMmxDwordStore",
+    0x0F,
+    0x7E,
+    2,
+    0x100,
+    Store,
+    false
+);
+memory_instruction_port!(
+    0x008E_E5C0,
+    fc4p_008ee5c0,
+    emit_mmx_qword_load,
+    "EmitMmxQwordLoad",
+    0x0F,
+    0x6F,
+    1,
+    0x100,
+    Load,
+    false
+);
+memory_instruction_port!(
+    0x008E_E660,
+    fc4p_008ee660,
+    emit_mmx_qword_store,
+    "EmitMmxQwordStore",
+    0x0F,
+    0x7F,
+    2,
+    0x100,
+    Store,
+    false
+);
+memory_instruction_port!(
+    0x008E_E7B0,
+    fc4p_008ee7b0,
+    emit_mmx_memory_and,
+    "EmitMmxMemoryAnd",
+    0x0F,
+    0xDB,
+    1,
+    0x100,
+    PackedArithmetic,
+    false
+);
+memory_instruction_port!(
+    0x008E_EB30,
+    fc4p_008eeb30,
+    emit_mmx_memory_maximum,
+    "EmitMmxMemoryMaximum",
+    0x0F,
+    0xED,
+    1,
+    0x100,
+    PackedArithmetic,
+    false
+);
+
+#[derive(Clone, Copy)]
+enum RegisterEffect {
+    Arithmetic,
+    WordCompare,
+    FromMmx,
+    ToMmx,
+    MmxMove,
+    MmxArithmetic,
+    MmxXor,
+}
+
+unsafe fn emit_register_instruction(
+    registers: *mut Registers,
+    stack: *mut u32,
+    prefix: u8,
+    opcode: u8,
+    effect: RegisterEffect,
+) {
+    unsafe {
+        let this = (*registers).ecx;
+        let destination = stack.add(1).read();
+        let source = stack.add(2).read();
+        start_instruction(this);
+        if prefix != 0 {
+            instruction_byte(this, prefix);
+        }
+        instruction_byte(this, opcode);
+        let (high, low) = if matches!(effect, RegisterEffect::FromMmx) {
+            (source, destination)
+        } else {
+            (destination, source)
+        };
+        instruction_byte(
+            this,
+            (high as u8).wrapping_sub(8).wrapping_mul(8).wrapping_add(low as u8),
+        );
+        let d = 1u32.wrapping_shl(destination);
+        let s = 1u32.wrapping_shl(source);
+        let md = 0x100u32.wrapping_shl(destination);
+        let ms = 0x100u32.wrapping_shl(source);
+        let (reads, writes, edx) = match effect {
+            RegisterEffect::Arithmetic => (d | s, d | 0x10000, d | 0x10000),
+            RegisterEffect::WordCompare => (d | s, 0x10000, source),
+            RegisterEffect::FromMmx => (ms, d, destination),
+            RegisterEffect::ToMmx => (s, md, destination),
+            RegisterEffect::MmxMove => (ms, md, destination),
+            RegisterEffect::MmxArithmetic => (md | ms, md, md),
+            RegisterEffect::MmxXor => (if destination == source { 0 } else { md | ms }, md, md),
+        };
+        instruction_metadata(this, 1, 0, reads, writes);
+        *registers = queue_instruction(
+            this,
+            Registers {
+                eax: this,
+                ecx: source,
+                edx,
+            },
+            matches!(effect, RegisterEffect::MmxXor) && destination != source,
+        );
+    }
+}
+
+macro_rules! register_instruction_port {
+    ($address:literal, $export:ident, $body:ident, $name:literal, $prefix:literal, $opcode:literal, $effect:ident) => {
+        register_port!($address, $export, $body, 8, $name);
+        unsafe extern "fastcall" fn $body(registers: *mut Registers, stack: *mut u32) {
+            unsafe {
+                emit_register_instruction(registers, stack, $prefix, $opcode, RegisterEffect::$effect);
+            }
+        }
+    };
+}
+
+register_instruction_port!(
+    0x008E_D530,
+    fc4p_008ed530,
+    emit_register_add,
+    "EmitRegisterAdd",
+    0,
+    0x03,
+    Arithmetic
+);
+register_instruction_port!(
+    0x008E_D7B0,
+    fc4p_008ed7b0,
+    emit_word_register_compare,
+    "EmitWordRegisterCompare",
+    0x66,
+    0x3B,
+    WordCompare
+);
+register_instruction_port!(
+    0x008E_D990,
+    fc4p_008ed990,
+    emit_register_subtract,
+    "EmitRegisterSubtract",
+    0,
+    0x2B,
+    Arithmetic
+);
+register_instruction_port!(
+    0x008E_E270,
+    fc4p_008ee270,
+    emit_register_from_mmx,
+    "EmitRegisterFromMmx",
+    0x0F,
+    0x7E,
+    FromMmx
+);
+register_instruction_port!(
+    0x008E_E320,
+    fc4p_008ee320,
+    emit_mmx_from_register,
+    "EmitMmxFromRegister",
+    0x0F,
+    0x6E,
+    ToMmx
+);
+register_instruction_port!(
+    0x008E_E510,
+    fc4p_008ee510,
+    emit_mmx_register_move,
+    "EmitMmxRegisterMove",
+    0x0F,
+    0x6F,
+    MmxMove
+);
+register_instruction_port!(
+    0x008E_E700,
+    fc4p_008ee700,
+    emit_mmx_register_and,
+    "EmitMmxRegisterAnd",
+    0x0F,
+    0xDB,
+    MmxArithmetic
+);
+register_instruction_port!(
+    0x008E_E850,
+    fc4p_008ee850,
+    emit_mmx_register_and_not,
+    "EmitMmxRegisterAndNot",
+    0x0F,
+    0xDF,
+    MmxArithmetic
+);
+register_instruction_port!(
+    0x008E_E900,
+    fc4p_008ee900,
+    emit_mmx_register_xor,
+    "EmitMmxRegisterXor",
+    0x0F,
+    0xEF,
+    MmxXor
+);
+register_instruction_port!(
+    0x008E_E9D0,
+    fc4p_008ee9d0,
+    emit_mmx_register_add_words,
+    "EmitMmxRegisterAddWords",
+    0x0F,
+    0xFD,
+    MmxArithmetic
+);
+
+unsafe fn emit_immediate_instruction(registers: *mut Registers, stack: *mut u32, opcode: u8, bias: u8, width: u32) {
+    unsafe {
+        let this = (*registers).ecx;
+        let register = stack.add(1).read();
+        let immediate = stack.add(2).read();
+        start_instruction(this);
+        instruction_byte(this, opcode);
+        instruction_byte(this, (register as u8).wrapping_add(bias));
+        for i in 0..width {
+            instruction_byte(this, (immediate >> (i * 8)) as u8);
+        }
+        let reads = 1u32.wrapping_shl(register);
+        let writes = reads | 0x10000;
+        instruction_metadata(this, 1, 0, reads, writes);
+        *registers = queue_instruction(
+            this,
+            Registers {
+                eax: this,
+                ecx: register,
+                edx: writes,
+            },
+            false,
+        );
+    }
+}
+
+macro_rules! immediate_instruction_port {
+    ($address:literal, $export:ident, $body:ident, $name:literal, $opcode:literal, $bias:literal, $width:literal) => {
+        register_port!($address, $export, $body, 8, $name);
+        unsafe extern "fastcall" fn $body(registers: *mut Registers, stack: *mut u32) {
+            unsafe {
+                emit_immediate_instruction(registers, stack, $opcode, $bias, $width);
+            }
+        }
+    };
+}
+
+immediate_instruction_port!(
+    0x008E_D3C0,
+    fc4p_008ed3c0,
+    emit_register_and_immediate,
+    "EmitRegisterAndImmediate",
+    0x81,
+    0xE0,
+    4
+);
+immediate_instruction_port!(
+    0x008E_D670,
+    fc4p_008ed670,
+    emit_register_add_immediate,
+    "EmitRegisterAddImmediate",
+    0x81,
+    0xC0,
+    4
+);
+immediate_instruction_port!(
+    0x008E_DAD0,
+    fc4p_008edad0,
+    emit_register_shift_right,
+    "EmitRegisterShiftRight",
+    0xC1,
+    0xE8,
+    1
+);
+immediate_instruction_port!(
+    0x008E_DB70,
+    fc4p_008edb70,
+    emit_register_arithmetic_shift_right,
+    "EmitRegisterArithmeticShiftRight",
+    0xC1,
+    0xF8,
+    1
+);
+immediate_instruction_port!(
+    0x008E_DC10,
+    fc4p_008edc10,
+    emit_register_rotate_left,
+    "EmitRegisterRotateLeft",
+    0xC1,
+    0xC0,
+    1
+);
+
+register_port!(
+    0x008E_D730,
+    fc4p_008ed730,
+    emit_accumulator_add_carry,
+    0,
+    "EmitAccumulatorAddCarry"
+);
+unsafe extern "fastcall" fn emit_accumulator_add_carry(registers: *mut Registers, _stack: *mut u32) {
+    unsafe {
+        let this = (*registers).ecx;
+        start_instruction(this);
+        for byte in [0x15, 0, 0, 0, 0] {
+            instruction_byte(this, byte);
+        }
+        instruction_metadata(this, 2, 0, 0x10001, 0x10001);
+        *registers = queue_instruction(
+            this,
+            Registers {
+                eax: this,
+                ecx: this,
+                edx: 0,
+            },
+            false,
+        );
+    }
+}
+
+register_port!(
+    0x008E_DD30,
+    fc4p_008edd30,
+    emit_register_decrement,
+    4,
+    "EmitRegisterDecrement"
+);
+unsafe extern "fastcall" fn emit_register_decrement(registers: *mut Registers, stack: *mut u32) {
+    unsafe {
+        let this = (*registers).ecx;
+        let register = stack.add(1).read();
+        start_instruction(this);
+        instruction_byte(this, (register as u8).wrapping_add(0x48));
+        let mask = 1u32.wrapping_shl(register);
+        instruction_metadata(this, 1, 0, mask, mask | 0x10000);
+        *registers = queue_instruction(
+            this,
+            Registers {
+                eax: this,
+                ecx: register,
+                edx: mask | 0x10000,
+            },
+            false,
+        );
+    }
+}
+
+/// Write the scratch instruction directly after flushing pending records. Read the length again after
+/// each byte store, so an output cursor that aliases the owner has the same effects.
+unsafe fn write_instruction_bytes(this: u32, index_in_eax: bool) -> Registers {
+    unsafe {
+        let mut length = load(this.wrapping_add(8));
+        let mut output = load(this.wrapping_add(4));
+        let mut index = 0u32;
+        while (index as i32) < length as i32 {
+            let byte = (this.wrapping_add(0x10).wrapping_add(index) as *const u8).read();
+            (output as *mut u8).write(byte);
+            length = load(this.wrapping_add(8));
+            output = output.wrapping_add(1);
+            index = index.wrapping_add(1);
+        }
+        store(this.wrapping_add(4), output);
+        if index_in_eax {
+            Registers {
+                eax: index,
+                ecx: output,
+                edx: length,
+            }
+        } else {
+            Registers {
+                eax: output,
+                ecx: index,
+                edx: length,
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum JumpPlaceholder {
+    Unconditional,
+    Conditional,
+    ShortConditional,
+    LongConditional,
+}
+
+unsafe fn emit_jump_placeholder(registers: *mut Registers, stack: *mut u32, form: JumpPlaceholder) {
+    unsafe {
+        let this = (*registers).ecx;
+        call_registers(0x008E_CCA0, *registers, &[], false);
+        start_instruction(this);
+        let sequence = load(this.wrapping_add(0x0C));
+        let long = matches!(form, JumpPlaceholder::Conditional | JumpPlaceholder::LongConditional);
+        let short = matches!(form, JumpPlaceholder::ShortConditional);
+        let condition_argument = if matches!(form, JumpPlaceholder::LongConditional) {
+            1
+        } else {
+            2
+        };
+        let condition = if matches!(form, JumpPlaceholder::Unconditional) {
+            0
+        } else {
+            stack.add(condition_argument).read()
+        };
+        if long {
+            instruction_byte(this, 0x0F);
+        }
+        instruction_byte(
+            this,
+            if matches!(form, JumpPlaceholder::Unconditional) {
+                0xE9
+            } else {
+                (condition as u8).wrapping_add(if short { 0x70 } else { 0x80 })
+            },
+        );
+        let displacement_size = if short { 1 } else { 4 };
+        for _ in 0..displacement_size {
+            instruction_byte(this, 0);
+        }
+        instruction_metadata(this, 1, 3, 0, 0);
+        let flush = Registers {
+            eax: if short {
+                (sequence & !0xFF) | u32::from((condition as u8).wrapping_add(0x70))
+            } else if long {
+                5
+            } else {
+                1
+            },
+            ecx: this,
+            edx: if long { 4 } else { 1 },
+        };
+        call_registers(0x008E_CCA0, flush, &[], false);
+        let mut result = write_instruction_bytes(this, false);
+        if matches!(form, JumpPlaceholder::LongConditional) {
+            result.eax = result.eax.wrapping_sub(4);
+            if result.eax != 0 {
+                result.ecx = stack.add(2).read().wrapping_sub(result.eax).wrapping_sub(4);
+                store(result.eax, result.ecx);
+            }
+        } else {
+            result.ecx = result.eax.wrapping_sub(displacement_size);
+            result.eax = stack.add(1).read();
+            store(result.eax, result.ecx);
+        }
+        *registers = result;
+    }
+}
+
+macro_rules! jump_placeholder_port {
+    ($address:literal, $export:ident, $body:ident, $pop:literal, $name:literal, $form:ident) => {
+        register_port!($address, $export, $body, $pop, $name);
+        unsafe extern "fastcall" fn $body(registers: *mut Registers, stack: *mut u32) {
+            unsafe {
+                emit_jump_placeholder(registers, stack, JumpPlaceholder::$form);
+            }
+        }
+    };
+}
+
+jump_placeholder_port!(
+    0x008E_DEE0,
+    fc4p_008edee0,
+    emit_jump_patch_location,
+    4,
+    "EmitJumpPatchLocation",
+    Unconditional
+);
+jump_placeholder_port!(
+    0x008E_DF70,
+    fc4p_008edf70,
+    emit_conditional_jump_patch_location,
+    8,
+    "EmitConditionalJumpPatchLocation",
+    Conditional
+);
+jump_placeholder_port!(
+    0x008E_E020,
+    fc4p_008ee020,
+    emit_short_jump_patch_location,
+    8,
+    "EmitShortJumpPatchLocation",
+    ShortConditional
+);
+jump_placeholder_port!(
+    0x008E_E0A0,
+    fc4p_008ee0a0,
+    emit_conditional_jump_long,
+    8,
+    "EmitConditionalJumpLong",
+    LongConditional
+);
+
+register_port!(
+    0x008E_E160,
+    fc4p_008ee160,
+    emit_conditional_jump,
+    8,
+    "EmitConditionalJump"
+);
+unsafe extern "fastcall" fn emit_conditional_jump(registers: *mut Registers, stack: *mut u32) {
+    unsafe {
+        let this = (*registers).ecx;
+        call_registers(0x008E_CCA0, *registers, &[], false);
+        start_instruction(this);
+        let destination = stack.add(2).read();
+        let displacement = destination.wrapping_sub(load(this.wrapping_add(4))).wrapping_sub(2);
+        let signed_byte = displacement as i8 as i32 as u32;
+        let condition = stack.add(1).read();
+        if signed_byte != displacement {
+            *registers = call_registers(
+                0x008E_E0A0,
+                Registers {
+                    eax: condition,
+                    ecx: this,
+                    edx: signed_byte,
+                },
+                &[condition, destination],
+                false,
+            );
+            return;
+        }
+        instruction_byte(this, (condition as u8).wrapping_add(0x70));
+        instruction_byte(this, displacement as u8);
+        instruction_metadata(this, 1, 3, 0, 0);
+        call_registers(
+            0x008E_CCA0,
+            Registers {
+                eax: displacement,
+                ecx: this,
+                edx: 0,
+            },
+            &[],
+            false,
+        );
+        *registers = write_instruction_bytes(this, true);
+    }
+}
+
+register_port!(
+    0x008E_E200,
+    fc4p_008ee200,
+    emit_return_instruction,
+    0,
+    "EmitReturnInstruction"
+);
+unsafe extern "fastcall" fn emit_return_instruction(registers: *mut Registers, _stack: *mut u32) {
+    unsafe {
+        let this = (*registers).ecx;
+        start_instruction(this);
+        instruction_byte(this, 0xC3);
+        instruction_metadata(this, 4, 3, 0, 0);
+        call_registers(
+            0x008E_CCA0,
+            Registers {
+                eax: 0,
+                ecx: this,
+                edx: (*registers).edx,
+            },
+            &[],
+            false,
+        );
+        *registers = write_instruction_bytes(this, true);
+    }
+}
+
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
     fc4p_008ec550::PORT,
@@ -694,6 +1594,46 @@ pub const PORTS: &[Port] = &[
     fc4p_008ecc20::PORT,
     fc4p_008ecca0::PORT,
     fc4p_008ecd50::PORT,
+    fc4p_008ece20::PORT,
+    fc4p_008ecf80::PORT,
+    fc4p_008ed0b0::PORT,
+    fc4p_008ed150::PORT,
+    fc4p_008ed1f0::PORT,
+    fc4p_008ed3c0::PORT,
+    fc4p_008ed530::PORT,
+    fc4p_008ed5e0::PORT,
+    fc4p_008ed670::PORT,
+    fc4p_008ed730::PORT,
+    fc4p_008ed7b0::PORT,
+    fc4p_008ed860::PORT,
+    fc4p_008ed900::PORT,
+    fc4p_008ed990::PORT,
+    fc4p_008eda40::PORT,
+    fc4p_008edad0::PORT,
+    fc4p_008edb70::PORT,
+    fc4p_008edc10::PORT,
+    fc4p_008edd30::PORT,
+    fc4p_008eddb0::PORT,
+    fc4p_008ede40::PORT,
+    fc4p_008edee0::PORT,
+    fc4p_008edf70::PORT,
+    fc4p_008ee020::PORT,
+    fc4p_008ee0a0::PORT,
+    fc4p_008ee160::PORT,
+    fc4p_008ee200::PORT,
+    fc4p_008ee270::PORT,
+    fc4p_008ee320::PORT,
+    fc4p_008ee3d0::PORT,
+    fc4p_008ee470::PORT,
+    fc4p_008ee510::PORT,
+    fc4p_008ee5c0::PORT,
+    fc4p_008ee660::PORT,
+    fc4p_008ee700::PORT,
+    fc4p_008ee7b0::PORT,
+    fc4p_008ee850::PORT,
+    fc4p_008ee900::PORT,
+    fc4p_008ee9d0::PORT,
+    fc4p_008eeb30::PORT,
 ];
 
 #[cfg(test)]
@@ -744,7 +1684,7 @@ mod tests {
         saved: [u32; 3],
     }
 
-    unsafe fn invoke(function: usize, this: u32, args: &mut [u32], caller_pops: bool) -> Registers {
+    pub(super) unsafe fn invoke(function: usize, this: u32, args: &mut [u32], caller_pops: bool) -> Registers {
         let mut probe = Probe {
             target: function,
             registers: Registers {
@@ -1784,5 +2724,1173 @@ mod tests {
             }
             assert_eq!(result, expected_result);
         }
+    }
+}
+
+#[cfg(test)]
+mod instruction_tests {
+    use super::tests::invoke;
+    use super::*;
+    use crate::testing::fake;
+    use std::cell::RefCell;
+
+    const CALLEE_RESULT: Registers = Registers {
+        eax: 0xAABB_CCDD,
+        ecx: 0x1122_3344,
+        edx: 0xDDEE_1234,
+    };
+    const OPERAND_READS: u32 = 0x1357_9BDF;
+    const VALUES: [u32; 10] = [0, 1, 7, 8, 31, 32, 0xFF, 0x100, 0x1234_5678, u32::MAX];
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum Event {
+        Operand(Registers, [u32; 3], [u32; 10]),
+        Append(Registers, u32, [u32; 10]),
+        Flush(Registers, [u32; 10]),
+        LongJump(Registers, [u32; 2], [u32; 10]),
+    }
+
+    thread_local! {
+        static EVENTS: RefCell<Vec<Event>> = const { RefCell::new(Vec::new()) };
+        static FLUSH_LENGTH: RefCell<Option<u32>> = const { RefCell::new(None) };
+        static FLUSH_OUTPUT: RefCell<Option<u32>> = const { RefCell::new(None) };
+    }
+
+    fn events() -> Vec<Event> {
+        EVENTS.with(|e| core::mem::take(&mut *e.borrow_mut()))
+    }
+    fn log(event: Event) {
+        EVENTS.with(|e| e.borrow_mut().push(event));
+    }
+    unsafe fn scratch(this: u32) -> [u32; 10] {
+        unsafe { read_unaligned(this.wrapping_add(8) as *const [u32; 10]) }
+    }
+    fn scratch_expected(object: &[u32; 28]) -> [u32; 10] {
+        object[2..12].try_into().unwrap()
+    }
+    fn byte(object: &mut [u32; 28], index: usize, value: u8) {
+        let word = 4 + index / 4;
+        let shift = (index % 4) * 8;
+        object[word] = (object[word] & !(0xFF << shift)) | (u32::from(value) << shift);
+    }
+    fn expected_record(object: &mut [u32; 28], bytes: &[u8], metadata: [u32; 4]) {
+        object[2] = bytes.len() as u32;
+        object[3] = object[3].wrapping_add(1);
+        for (i, &value) in bytes.iter().enumerate() {
+            byte(object, i, value);
+        }
+        object[8..12].copy_from_slice(&metadata);
+    }
+
+    #[unsafe(naked)]
+    unsafe extern "C" fn operand_fake() {
+        register_boundary!(operand_body, 12);
+    }
+    unsafe extern "fastcall" fn operand_body(registers: *mut Registers, stack: *mut u32) {
+        unsafe {
+            let this = (*registers).ecx;
+            let args = [stack.add(1).read(), stack.add(2).read(), stack.add(3).read()];
+            log(Event::Operand(*registers, args, scratch(this)));
+            // The encoder can alter its descriptor before the owner reads the dependency mask.
+            store(args[2], OPERAND_READS);
+            for value in [args[0] as u8, args[1] as u8, 0x42] {
+                instruction_byte(this, value);
+            }
+            *registers = CALLEE_RESULT;
+        }
+    }
+
+    #[unsafe(naked)]
+    unsafe extern "C" fn append_fake() {
+        register_boundary!(append_body, 4);
+    }
+    unsafe extern "fastcall" fn append_body(registers: *mut Registers, stack: *mut u32) {
+        unsafe {
+            let source = stack.add(1).read();
+            log(Event::Append(
+                *registers,
+                source,
+                read_unaligned(source as *const [u32; 10]),
+            ));
+            store((*registers).ecx.wrapping_add(0x10), 0x1020_3040);
+            *registers = CALLEE_RESULT;
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    enum Destination {
+        Slot,
+        Null,
+        Boundary,
+    }
+    const DESTINATIONS: [Destination; 3] = [Destination::Slot, Destination::Null, Destination::Boundary];
+
+    fn object(block: &mut [u32; 30], destination: Destination, sequence: u32) -> [u32; 28] {
+        let mut object = [0xA5A5_A5A5; 28];
+        let first = block.as_mut_ptr() as u32;
+        object[3] = sequence;
+        object[16] = if matches!(destination, Destination::Null) {
+            0
+        } else {
+            first + 8
+        };
+        object[18] = if matches!(destination, Destination::Boundary) {
+            first + 48
+        } else {
+            first + 120
+        };
+        object
+    }
+
+    fn check_queue(
+        actual: &[u32; 28],
+        mut expected: [u32; 28],
+        block: &[u32; 30],
+        before_block: [u32; 30],
+        result: Registers,
+        edx: u32,
+        destination: Destination,
+    ) {
+        let this = actual.as_ptr() as u32;
+        let mut expected_block = before_block;
+        if matches!(destination, Destination::Boundary) {
+            assert_eq!(
+                events(),
+                [Event::Append(
+                    Registers {
+                        eax: this + 0x30,
+                        ecx: this + 0x30,
+                        edx
+                    },
+                    this + 8,
+                    scratch_expected(&expected),
+                )]
+            );
+            expected[16] = 0x1020_3040;
+            assert_eq!(result, CALLEE_RESULT);
+        } else {
+            assert!(events().is_empty());
+            if matches!(destination, Destination::Slot) {
+                expected_block[2..12].copy_from_slice(&expected[2..12]);
+            }
+            expected[16] = expected[16].wrapping_add(40);
+            assert_eq!(
+                result,
+                Registers {
+                    eax: this + 0x30,
+                    ecx: expected[16],
+                    edx
+                }
+            );
+        }
+        assert_eq!(*actual, expected);
+        assert_eq!(*block, expected_block);
+    }
+
+    #[derive(Clone, Copy)]
+    enum MemoryEdx {
+        Encoder,
+        Mask,
+        Reads,
+        Boundary,
+    }
+    #[derive(Clone, Copy)]
+    struct MemoryCase {
+        entry: usize,
+        prefix: u8,
+        opcode: u8,
+        argument: usize,
+        mask: u32,
+        latency: u32,
+        memory: u32,
+        reads_register: bool,
+        writes_register: bool,
+        flags: bool,
+        edx: MemoryEdx,
+    }
+
+    fn check_memory(case: MemoryCase) {
+        let _operand = fake(0x008E_C190, operand_fake as *const () as usize);
+        let _append = fake(0x008E_CC20, append_fake as *const () as usize);
+        for register in VALUES {
+            for destination in DESTINATIONS {
+                for aliased in [false, true] {
+                    let mut block = [0xCCCC_CCCC; 30];
+                    let before_block = block;
+                    let mut object = object(
+                        &mut block,
+                        destination,
+                        if register & 1 == 0 { u32::MAX } else { 0x1020_3040 },
+                    );
+                    let this = object.as_mut_ptr() as u32;
+                    let mut descriptor = [0x0246_8ACE, 0xFFEEDDCC, 0xBA98_7654];
+                    let operand = if aliased {
+                        this + 0x24
+                    } else {
+                        descriptor.as_mut_ptr() as u32
+                    };
+                    let mut args = if case.argument == 1 {
+                        [register, operand]
+                    } else {
+                        [operand, register]
+                    };
+                    let mut before_call = object;
+                    before_call[2] = 0;
+                    before_call[3] = before_call[3].wrapping_add(1);
+                    if case.prefix != 0 {
+                        before_call[2] = 1;
+                        byte(&mut before_call, 0, case.prefix);
+                    }
+                    let modrm = u32::from((register as u8).wrapping_mul(8));
+                    let mask = case.mask.wrapping_shl(register);
+                    let reads = OPERAND_READS | if case.reads_register { mask } else { 0 };
+                    let writes = if case.writes_register { mask } else { 0 } | if case.flags { 0x10000 } else { 0 };
+                    let mut expected = object;
+                    let mut bytes = Vec::new();
+                    if case.prefix != 0 {
+                        bytes.push(case.prefix);
+                    }
+                    bytes.extend([case.opcode, modrm as u8, 0x42]);
+                    expected_record(&mut expected, &bytes, [case.memory, reads, writes, case.latency]);
+                    let result = unsafe { invoke(case.entry, this, &mut args, false) };
+                    let mut logged = events();
+                    assert_eq!(
+                        logged.remove(0),
+                        Event::Operand(
+                            Registers {
+                                eax: if case.prefix != 0 { 0 } else { modrm },
+                                ecx: this,
+                                edx: if case.prefix != 0 { 1 } else { 0x8765_4321 }
+                            },
+                            [u32::from(case.opcode), modrm, operand],
+                            scratch_expected(&before_call),
+                        )
+                    );
+                    EVENTS.with(|e| *e.borrow_mut() = logged);
+                    let edx = match case.edx {
+                        MemoryEdx::Encoder => CALLEE_RESULT.edx,
+                        MemoryEdx::Mask => mask,
+                        MemoryEdx::Reads => reads,
+                        MemoryEdx::Boundary => expected[18].wrapping_sub(40),
+                    };
+                    check_queue(&object, expected, &block, before_block, result, edx, destination);
+                    if !aliased {
+                        assert_eq!(descriptor, [OPERAND_READS, 0xFFEEDDCC, 0xBA98_7654]);
+                    }
+                }
+            }
+        }
+    }
+
+    macro_rules! memory_test {
+        ($test:ident, $entry:ident, $prefix:literal, $opcode:literal, $argument:literal, $mask:literal,
+            $latency:literal, $memory:literal, $reads:literal, $writes:literal, $flags:literal, $edx:ident) => {
+            #[test]
+            fn $test() {
+                check_memory(MemoryCase {
+                    entry: $entry as *const () as usize,
+                    prefix: $prefix,
+                    opcode: $opcode,
+                    argument: $argument,
+                    mask: $mask,
+                    latency: $latency,
+                    memory: $memory,
+                    reads_register: $reads,
+                    writes_register: $writes,
+                    flags: $flags,
+                    edx: MemoryEdx::$edx,
+                });
+            }
+        };
+    }
+
+    memory_test!(
+        memory_load_bytes_dependencies_calls_and_registers,
+        fc4p_008ecf80,
+        0,
+        0x8B,
+        1,
+        1,
+        1,
+        1,
+        false,
+        true,
+        false,
+        Encoder
+    );
+    memory_test!(
+        word_load_bytes_dependencies_calls_and_registers,
+        fc4p_008ed0b0,
+        0x0F,
+        0xB7,
+        1,
+        1,
+        1,
+        1,
+        false,
+        true,
+        false,
+        Boundary
+    );
+    memory_test!(
+        word_store_bytes_dependencies_calls_and_registers,
+        fc4p_008ed150,
+        0x66,
+        0x89,
+        2,
+        1,
+        2,
+        2,
+        true,
+        false,
+        false,
+        Reads
+    );
+    memory_test!(
+        memory_store_bytes_dependencies_calls_and_registers,
+        fc4p_008ed1f0,
+        0,
+        0x89,
+        2,
+        1,
+        2,
+        2,
+        true,
+        false,
+        false,
+        Reads
+    );
+    memory_test!(
+        memory_add_bytes_dependencies_calls_and_registers,
+        fc4p_008ed5e0,
+        0,
+        0x03,
+        1,
+        1,
+        2,
+        1,
+        true,
+        true,
+        true,
+        Boundary
+    );
+    memory_test!(
+        word_compare_bytes_dependencies_calls_and_registers,
+        fc4p_008ed860,
+        0x66,
+        0x3B,
+        1,
+        1,
+        2,
+        1,
+        true,
+        false,
+        true,
+        Reads
+    );
+    memory_test!(
+        memory_compare_bytes_dependencies_calls_and_registers,
+        fc4p_008ed900,
+        0,
+        0x3B,
+        1,
+        1,
+        2,
+        1,
+        true,
+        false,
+        true,
+        Reads
+    );
+    memory_test!(
+        memory_subtract_bytes_dependencies_calls_and_registers,
+        fc4p_008eda40,
+        0,
+        0x2B,
+        1,
+        1,
+        2,
+        1,
+        true,
+        true,
+        true,
+        Boundary
+    );
+    memory_test!(
+        effective_address_bytes_dependencies_calls_and_registers,
+        fc4p_008eddb0,
+        0,
+        0x8D,
+        1,
+        1,
+        1,
+        0,
+        false,
+        true,
+        false,
+        Mask
+    );
+    memory_test!(
+        memory_multiply_bytes_dependencies_calls_and_registers,
+        fc4p_008ede40,
+        0x0F,
+        0xAF,
+        1,
+        1,
+        2,
+        1,
+        true,
+        true,
+        false,
+        Reads
+    );
+    memory_test!(
+        mmx_dword_load_bytes_dependencies_calls_and_registers,
+        fc4p_008ee3d0,
+        0x0F,
+        0x6E,
+        1,
+        0x100,
+        1,
+        1,
+        false,
+        true,
+        false,
+        Mask
+    );
+    memory_test!(
+        mmx_dword_store_bytes_dependencies_calls_and_registers,
+        fc4p_008ee470,
+        0x0F,
+        0x7E,
+        2,
+        0x100,
+        2,
+        2,
+        true,
+        false,
+        false,
+        Reads
+    );
+    memory_test!(
+        mmx_qword_load_bytes_dependencies_calls_and_registers,
+        fc4p_008ee5c0,
+        0x0F,
+        0x6F,
+        1,
+        0x100,
+        1,
+        1,
+        false,
+        true,
+        false,
+        Mask
+    );
+    memory_test!(
+        mmx_qword_store_bytes_dependencies_calls_and_registers,
+        fc4p_008ee660,
+        0x0F,
+        0x7F,
+        2,
+        0x100,
+        2,
+        2,
+        true,
+        false,
+        false,
+        Reads
+    );
+    memory_test!(
+        mmx_memory_and_bytes_dependencies_calls_and_registers,
+        fc4p_008ee7b0,
+        0x0F,
+        0xDB,
+        1,
+        0x100,
+        2,
+        1,
+        true,
+        true,
+        false,
+        Reads
+    );
+    memory_test!(
+        mmx_memory_maximum_bytes_dependencies_calls_and_registers,
+        fc4p_008eeb30,
+        0x0F,
+        0xED,
+        1,
+        0x100,
+        2,
+        1,
+        true,
+        true,
+        false,
+        Reads
+    );
+
+    #[derive(Clone, Copy)]
+    enum RegisterEdx {
+        Destination,
+        Source,
+        Writes,
+        Boundary,
+        Xor,
+    }
+    struct RegisterCase {
+        entry: usize,
+        prefix: u8,
+        opcode: u8,
+        reverse: bool,
+        read_destination: u32,
+        read_source: u32,
+        write_destination: u32,
+        flags: bool,
+        edx: RegisterEdx,
+    }
+
+    fn check_register(case: RegisterCase) {
+        let _append = fake(0x008E_CC20, append_fake as *const () as usize);
+        for destination_register in VALUES {
+            for source_register in VALUES {
+                for destination in DESTINATIONS {
+                    let mut block = [0xCCCC_CCCC; 30];
+                    let before_block = block;
+                    let mut object = object(&mut block, destination, u32::MAX);
+                    let this = object.as_mut_ptr() as u32;
+                    let mut expected = object;
+                    let (high, low) = if case.reverse {
+                        (source_register, destination_register)
+                    } else {
+                        (destination_register, source_register)
+                    };
+                    let mut bytes = Vec::new();
+                    if case.prefix != 0 {
+                        bytes.push(case.prefix);
+                    }
+                    bytes.extend([
+                        case.opcode,
+                        0xC0u8
+                            .wrapping_add((high as u8).wrapping_mul(8))
+                            .wrapping_add(low as u8),
+                    ]);
+                    let writes = case.write_destination.wrapping_shl(destination_register)
+                        | if case.flags { 0x10000 } else { 0 };
+                    let reads = if matches!(case.edx, RegisterEdx::Xor) && destination_register == source_register {
+                        0
+                    } else {
+                        case.read_destination.wrapping_shl(destination_register)
+                            | case.read_source.wrapping_shl(source_register)
+                    };
+                    expected_record(&mut expected, &bytes, [0, reads, writes, 1]);
+                    let edx = match case.edx {
+                        RegisterEdx::Destination => destination_register,
+                        RegisterEdx::Source => source_register,
+                        RegisterEdx::Writes => writes,
+                        RegisterEdx::Boundary => expected[18].wrapping_sub(40),
+                        RegisterEdx::Xor => {
+                            if destination_register == source_register {
+                                writes
+                            } else {
+                                expected[18].wrapping_sub(40)
+                            }
+                        }
+                    };
+                    let result =
+                        unsafe { invoke(case.entry, this, &mut [destination_register, source_register], false) };
+                    check_queue(&object, expected, &block, before_block, result, edx, destination);
+                }
+            }
+        }
+    }
+
+    macro_rules! register_test {
+        ($test:ident, $entry:ident, $prefix:literal, $opcode:literal, $reverse:literal,
+            $destination:literal, $source:literal, $writes:literal, $flags:literal, $edx:ident) => {
+            #[test]
+            fn $test() {
+                check_register(RegisterCase {
+                    entry: $entry as *const () as usize,
+                    prefix: $prefix,
+                    opcode: $opcode,
+                    reverse: $reverse,
+                    read_destination: $destination,
+                    read_source: $source,
+                    write_destination: $writes,
+                    flags: $flags,
+                    edx: RegisterEdx::$edx,
+                });
+            }
+        };
+    }
+
+    register_test!(
+        register_move_bytes_masks_and_queue_branches,
+        fc4p_008ece20,
+        0,
+        0x8B,
+        false,
+        0,
+        1,
+        1,
+        false,
+        Boundary
+    );
+    register_test!(
+        register_add_bytes_masks_and_queue_branches,
+        fc4p_008ed530,
+        0,
+        0x03,
+        false,
+        1,
+        1,
+        1,
+        true,
+        Writes
+    );
+    register_test!(
+        register_word_compare_bytes_masks_and_queue_branches,
+        fc4p_008ed7b0,
+        0x66,
+        0x3B,
+        false,
+        1,
+        1,
+        0,
+        true,
+        Source
+    );
+    register_test!(
+        register_subtract_bytes_masks_and_queue_branches,
+        fc4p_008ed990,
+        0,
+        0x2B,
+        false,
+        1,
+        1,
+        1,
+        true,
+        Writes
+    );
+    register_test!(
+        register_from_mmx_bytes_masks_and_queue_branches,
+        fc4p_008ee270,
+        0x0F,
+        0x7E,
+        true,
+        0,
+        0x100,
+        1,
+        false,
+        Destination
+    );
+    register_test!(
+        mmx_from_register_bytes_masks_and_queue_branches,
+        fc4p_008ee320,
+        0x0F,
+        0x6E,
+        false,
+        0,
+        1,
+        0x100,
+        false,
+        Destination
+    );
+    register_test!(
+        mmx_move_bytes_masks_and_queue_branches,
+        fc4p_008ee510,
+        0x0F,
+        0x6F,
+        false,
+        0,
+        0x100,
+        0x100,
+        false,
+        Destination
+    );
+    register_test!(
+        mmx_and_bytes_masks_and_queue_branches,
+        fc4p_008ee700,
+        0x0F,
+        0xDB,
+        false,
+        0x100,
+        0x100,
+        0x100,
+        false,
+        Writes
+    );
+    register_test!(
+        mmx_and_not_bytes_masks_and_queue_branches,
+        fc4p_008ee850,
+        0x0F,
+        0xDF,
+        false,
+        0x100,
+        0x100,
+        0x100,
+        false,
+        Writes
+    );
+    register_test!(
+        mmx_xor_equal_full_words_and_queue_branches,
+        fc4p_008ee900,
+        0x0F,
+        0xEF,
+        false,
+        0x100,
+        0x100,
+        0x100,
+        false,
+        Xor
+    );
+    register_test!(
+        mmx_add_words_bytes_masks_and_queue_branches,
+        fc4p_008ee9d0,
+        0x0F,
+        0xFD,
+        false,
+        0x100,
+        0x100,
+        0x100,
+        false,
+        Writes
+    );
+
+    fn check_immediate(entry: usize, opcode: u8, bias: u8, width: usize) {
+        let _append = fake(0x008E_CC20, append_fake as *const () as usize);
+        for register in VALUES {
+            for immediate in VALUES {
+                for destination in DESTINATIONS {
+                    let mut block = [0xCCCC_CCCC; 30];
+                    let before_block = block;
+                    let mut object = object(&mut block, destination, u32::MAX);
+                    let this = object.as_mut_ptr() as u32;
+                    let mut expected = object;
+                    let mut bytes = vec![opcode, (register as u8).wrapping_add(bias)];
+                    bytes.extend_from_slice(&immediate.to_le_bytes()[..width]);
+                    let mask = 1u32.wrapping_shl(register);
+                    expected_record(&mut expected, &bytes, [0, mask, mask | 0x10000, 1]);
+                    let result = unsafe { invoke(entry, this, &mut [register, immediate], false) };
+                    check_queue(
+                        &object,
+                        expected,
+                        &block,
+                        before_block,
+                        result,
+                        mask | 0x10000,
+                        destination,
+                    );
+                }
+            }
+        }
+    }
+    #[test]
+    fn and_immediate_keeps_all_four_bytes() {
+        check_immediate(fc4p_008ed3c0 as *const () as usize, 0x81, 0xE0, 4);
+    }
+    #[test]
+    fn add_immediate_keeps_all_four_bytes() {
+        check_immediate(fc4p_008ed670 as *const () as usize, 0x81, 0xC0, 4);
+    }
+    #[test]
+    fn logical_shift_uses_the_low_count_byte() {
+        check_immediate(fc4p_008edad0 as *const () as usize, 0xC1, 0xE8, 1);
+    }
+    #[test]
+    fn arithmetic_shift_uses_the_low_count_byte() {
+        check_immediate(fc4p_008edb70 as *const () as usize, 0xC1, 0xF8, 1);
+    }
+    #[test]
+    fn rotate_uses_the_low_count_byte() {
+        check_immediate(fc4p_008edc10 as *const () as usize, 0xC1, 0xC0, 1);
+    }
+
+    #[test]
+    fn accumulator_carry_and_decrement_preserve_unused_bytes_and_append_at_the_boundary() {
+        let _append = fake(0x008E_CC20, append_fake as *const () as usize);
+        for destination in DESTINATIONS {
+            for register in VALUES {
+                for decrement in [false, true] {
+                    let mut block = [0xCCCC_CCCC; 30];
+                    let before_block = block;
+                    let mut object = object(&mut block, destination, u32::MAX);
+                    let this = object.as_mut_ptr() as u32;
+                    let mut expected = object;
+                    let (entry, mut args, bytes, metadata, edx) = if decrement {
+                        let mask = 1u32.wrapping_shl(register);
+                        (
+                            fc4p_008edd30 as *const () as usize,
+                            vec![register],
+                            vec![(register as u8).wrapping_add(0x48)],
+                            [0, mask, mask | 0x10000, 1],
+                            mask | 0x10000,
+                        )
+                    } else {
+                        (
+                            fc4p_008ed730 as *const () as usize,
+                            vec![],
+                            vec![0x15, 0, 0, 0, 0],
+                            [0, 0x10001, 0x10001, 2],
+                            0,
+                        )
+                    };
+                    expected_record(&mut expected, &bytes, metadata);
+                    let result = unsafe { invoke(entry, this, &mut args, false) };
+                    check_queue(&object, expected, &block, before_block, result, edx, destination);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn appending_copies_words_in_order_when_output_overlaps_scratch_or_the_end_cursor() {
+        for offset in [0, 4, 8, 12, 16, 0x20, 0x28, 0x30, 0x38, 0x40] {
+            let mut object = [0xA5A5_A5A5u32; 48];
+            let this = object.as_mut_ptr() as u32;
+            object[3] = 0xFFFF_FFFF;
+            object[16] = this + offset;
+            object[18] = this + 0x100;
+            let mut expected = object;
+            expected[2] = 2;
+            expected[3] = 0;
+            expected[4] = 0xA5A5_DA8B;
+            expected[8] = 0;
+            expected[9] = 4;
+            expected[10] = 8;
+            expected[11] = 1;
+            for i in 0..10 {
+                expected[offset as usize / 4 + i] = expected[2 + i];
+            }
+            expected[16] = expected[16].wrapping_add(40);
+            let result = unsafe { invoke(fc4p_008ece20 as *const () as usize, this, &mut [3, 2], false) };
+            assert_eq!(object, expected);
+            assert_eq!(
+                result,
+                Registers {
+                    eax: this + 0x30,
+                    ecx: expected[16],
+                    edx: this + 0xD8
+                }
+            );
+            assert!(events().is_empty());
+        }
+    }
+
+    #[unsafe(naked)]
+    unsafe extern "C" fn flush_fake() {
+        register_boundary!(flush_body, 0);
+    }
+    unsafe extern "fastcall" fn flush_body(registers: *mut Registers, _stack: *mut u32) {
+        unsafe {
+            let this = (*registers).ecx;
+            log(Event::Flush(*registers, scratch(this)));
+            FLUSH_LENGTH.with(|v| {
+                if let Some(length) = *v.borrow() {
+                    store(this + 8, length);
+                }
+            });
+            FLUSH_OUTPUT.with(|v| {
+                if let Some(output) = v.borrow_mut().take() {
+                    store(this + 4, output);
+                }
+            });
+            *registers = CALLEE_RESULT;
+        }
+    }
+    #[unsafe(naked)]
+    unsafe extern "C" fn long_jump_fake() {
+        register_boundary!(long_jump_body, 8);
+    }
+    unsafe extern "fastcall" fn long_jump_body(registers: *mut Registers, stack: *mut u32) {
+        unsafe {
+            log(Event::LongJump(
+                *registers,
+                [stack.add(1).read(), stack.add(2).read()],
+                scratch((*registers).ecx),
+            ));
+            *registers = CALLEE_RESULT;
+        }
+    }
+    fn entry_registers(this: u32) -> Registers {
+        Registers {
+            eax: 0x1234_5678,
+            ecx: this,
+            edx: 0x8765_4321,
+        }
+    }
+
+    fn check_placeholder(entry: usize, form: u8) {
+        let _flush = fake(0x008E_CCA0, flush_fake as *const () as usize);
+        for condition in VALUES {
+            for length_override in [None, Some(0), Some(1), Some(9), Some(0x8000_0000), Some(u32::MAX)] {
+                let mut object = [0xA5A5_A5A5; 28];
+                let this = object.as_mut_ptr() as u32;
+                let mut output = [0xCCCC_CCCCu32; 32];
+                let output_base = output.as_mut_ptr() as u32;
+                object[1] = output_base + 16;
+                object[3] = 0x12FF_FFFF;
+                let before = object;
+                let mut expected = object;
+                // The initial flush changes the output cursor. All displacement work uses the new one.
+                FLUSH_OUTPUT.with(|v| *v.borrow_mut() = Some(output_base + 24));
+                FLUSH_LENGTH.with(|v| *v.borrow_mut() = length_override);
+                let mut patch = 0xDEAD_BEEFu32;
+                let patch_pointer = &mut patch as *mut u32 as u32;
+                let target = output_base.wrapping_sub(0x1234);
+                let mut args = match form {
+                    0 => vec![patch_pointer],
+                    3 => vec![condition, target],
+                    _ => vec![patch_pointer, condition],
+                };
+                let bytes = match form {
+                    0 => vec![0xE9, 0, 0, 0, 0],
+                    2 => vec![(condition as u8).wrapping_add(0x70), 0],
+                    _ => vec![0x0F, (condition as u8).wrapping_add(0x80), 0, 0, 0, 0],
+                };
+                expected_record(&mut expected, &bytes, [3, 0, 0, 1]);
+                let scratch_at_flush = scratch_expected(&expected);
+                let length = length_override.unwrap_or(bytes.len() as u32);
+                let count = if (length as i32) > 0 { length } else { 0 };
+                let mut expected_bytes = [0xCCu8; 128];
+                for i in 0..count as usize {
+                    let word = expected[4 + i / 4];
+                    expected_bytes[24 + i] = (word >> ((i % 4) * 8)) as u8;
+                }
+                let end = output_base + 24 + count;
+                expected[1] = end;
+                expected[2] = length;
+                let displacement_size = if form == 2 { 1 } else { 4 };
+                let expected_result = if form == 3 {
+                    let patch_location = end - 4;
+                    let relative = target.wrapping_sub(end);
+                    let start = (patch_location - output_base) as usize;
+                    expected_bytes[start..start + 4].copy_from_slice(&relative.to_le_bytes());
+                    Registers {
+                        eax: patch_location,
+                        ecx: relative,
+                        edx: length,
+                    }
+                } else {
+                    Registers {
+                        eax: patch_pointer,
+                        ecx: end - displacement_size,
+                        edx: length,
+                    }
+                };
+                let result = unsafe { invoke(entry, this, &mut args, false) };
+                assert_eq!(object, expected);
+                assert_eq!(
+                    unsafe { core::slice::from_raw_parts(output.as_ptr().cast::<u8>(), 128) },
+                    expected_bytes
+                );
+                assert_eq!(result, expected_result);
+                assert_eq!(
+                    patch,
+                    if form == 3 {
+                        0xDEAD_BEEF
+                    } else {
+                        end - displacement_size
+                    }
+                );
+                let second_eax = match form {
+                    0 => 1,
+                    2 => 0x1300_0000 | u32::from((condition as u8).wrapping_add(0x70)),
+                    _ => 5,
+                };
+                assert_eq!(
+                    events(),
+                    [
+                        Event::Flush(entry_registers(this), scratch_expected(&before)),
+                        Event::Flush(
+                            Registers {
+                                eax: second_eax,
+                                ecx: this,
+                                edx: if form == 0 || form == 2 { 1 } else { 4 }
+                            },
+                            scratch_at_flush
+                        ),
+                    ]
+                );
+            }
+        }
+        FLUSH_LENGTH.with(|v| *v.borrow_mut() = None);
+    }
+    #[test]
+    fn unconditional_jump_flushes_twice_and_returns_the_patch_word_address() {
+        check_placeholder(fc4p_008edee0 as *const () as usize, 0);
+    }
+    #[test]
+    fn conditional_jump_placeholder_keeps_condition_wrapping_and_patch_location() {
+        check_placeholder(fc4p_008edf70 as *const () as usize, 1);
+    }
+    #[test]
+    fn short_jump_placeholder_keeps_the_partial_eax_at_the_second_flush() {
+        check_placeholder(fc4p_008ee020 as *const () as usize, 2);
+    }
+    #[test]
+    fn long_conditional_jump_patches_a_wrapping_relative_displacement() {
+        check_placeholder(fc4p_008ee0a0 as *const () as usize, 3);
+    }
+
+    #[test]
+    fn long_conditional_jump_skips_a_null_patch_location() {
+        let _flush = fake(0x008E_CCA0, flush_fake as *const () as usize);
+        let mut object = [0xA5A5_A5A5; 28];
+        let this = object.as_mut_ptr() as u32;
+        object[1] = 4;
+        FLUSH_LENGTH.with(|v| *v.borrow_mut() = Some(0));
+        let before = object;
+        let result = unsafe { invoke(fc4p_008ee0a0 as *const () as usize, this, &mut [2, 0x1234], false) };
+        let mut expected = before;
+        expected_record(&mut expected, &[0x0F, 0x82, 0, 0, 0, 0], [3, 0, 0, 1]);
+        let record = scratch_expected(&expected);
+        expected[2] = 0;
+        assert_eq!(object, expected);
+        assert_eq!(result, Registers { eax: 0, ecx: 0, edx: 0 });
+        assert_eq!(
+            events(),
+            [
+                Event::Flush(entry_registers(this), scratch_expected(&before)),
+                Event::Flush(
+                    Registers {
+                        eax: 5,
+                        ecx: this,
+                        edx: 4
+                    },
+                    record
+                )
+            ]
+        );
+        FLUSH_LENGTH.with(|v| *v.borrow_mut() = None);
+    }
+
+    #[test]
+    fn conditional_jump_chooses_short_at_both_signed_byte_limits_and_calls_long_beyond_them() {
+        let _flush = fake(0x008E_CCA0, flush_fake as *const () as usize);
+        let _long = fake(0x008E_E0A0, long_jump_fake as *const () as usize);
+        for displacement in [-129i32, -128, -127, -1, 0, 1, 126, 127, 128, i32::MIN, i32::MAX] {
+            for condition in VALUES {
+                let mut object = [0xA5A5_A5A5; 28];
+                let this = object.as_mut_ptr() as u32;
+                let mut output = [0xCCu8; 32];
+                let base = output.as_mut_ptr() as u32;
+                object[1] = base;
+                object[3] = u32::MAX;
+                let before = object;
+                let target = (base + 7).wrapping_add(displacement as u32);
+                FLUSH_OUTPUT.with(|v| *v.borrow_mut() = Some(base + 5));
+                let mut expected = object;
+                expected[1] = base + 5;
+                let result = unsafe {
+                    invoke(
+                        fc4p_008ee160 as *const () as usize,
+                        this,
+                        &mut [condition, target],
+                        false,
+                    )
+                };
+                let mut expected_output = [0xCCu8; 32];
+                if (-128..=127).contains(&displacement) {
+                    let bytes = [(condition as u8).wrapping_add(0x70), displacement as u8];
+                    expected_record(&mut expected, &bytes, [3, 0, 0, 1]);
+                    let record = scratch_expected(&expected);
+                    expected[1] += 2;
+                    expected_output[5..7].copy_from_slice(&bytes);
+                    assert_eq!(
+                        result,
+                        Registers {
+                            eax: 2,
+                            ecx: base + 7,
+                            edx: 2
+                        }
+                    );
+                    assert_eq!(
+                        events(),
+                        [
+                            Event::Flush(entry_registers(this), scratch_expected(&before)),
+                            Event::Flush(
+                                Registers {
+                                    eax: displacement as u32,
+                                    ecx: this,
+                                    edx: 0
+                                },
+                                record
+                            )
+                        ]
+                    );
+                } else {
+                    expected[2] = 0;
+                    expected[3] = 0;
+                    assert_eq!(result, CALLEE_RESULT);
+                    assert_eq!(
+                        events(),
+                        [
+                            Event::Flush(entry_registers(this), scratch_expected(&before)),
+                            Event::LongJump(
+                                Registers {
+                                    eax: condition,
+                                    ecx: this,
+                                    edx: displacement as i8 as i32 as u32
+                                },
+                                [condition, target],
+                                scratch_expected(&expected)
+                            )
+                        ]
+                    );
+                }
+                assert_eq!(object, expected);
+                assert_eq!(output, expected_output);
+            }
+        }
+    }
+
+    #[test]
+    fn return_flushes_once_then_copies_using_the_post_flush_length_and_cursor() {
+        let _flush = fake(0x008E_CCA0, flush_fake as *const () as usize);
+        for length_override in [None, Some(0), Some(3), Some(0x8000_0000), Some(u32::MAX)] {
+            let mut object = [0xA5A5_A5A5; 28];
+            let this = object.as_mut_ptr() as u32;
+            let mut output = [0xCCu8; 32];
+            let base = output.as_mut_ptr() as u32;
+            object[1] = base;
+            object[3] = u32::MAX;
+            FLUSH_OUTPUT.with(|v| *v.borrow_mut() = Some(base + 5));
+            FLUSH_LENGTH.with(|v| *v.borrow_mut() = length_override);
+            let mut expected = object;
+            expected_record(&mut expected, &[0xC3], [3, 0, 0, 4]);
+            let record = scratch_expected(&expected);
+            let length = length_override.unwrap_or(1);
+            let count = if (length as i32) > 0 { length } else { 0 };
+            expected[1] = base + 5 + count;
+            expected[2] = length;
+            let mut expected_output = [0xCCu8; 32];
+            for i in 0..count as usize {
+                expected_output[5 + i] = (expected[4 + i / 4] >> (i % 4 * 8)) as u8;
+            }
+            let result = unsafe { invoke(fc4p_008ee200 as *const () as usize, this, &mut [], false) };
+            assert_eq!(object, expected);
+            assert_eq!(output, expected_output);
+            assert_eq!(
+                result,
+                Registers {
+                    eax: count,
+                    ecx: expected[1],
+                    edx: length
+                }
+            );
+            assert_eq!(
+                events(),
+                [Event::Flush(
+                    Registers {
+                        eax: 0,
+                        ecx: this,
+                        edx: 0x8765_4321
+                    },
+                    record
+                )]
+            );
+        }
+        FLUSH_LENGTH.with(|v| *v.borrow_mut() = None);
     }
 }
