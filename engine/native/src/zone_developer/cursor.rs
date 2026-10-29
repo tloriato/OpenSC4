@@ -23,7 +23,7 @@ layout! {
 }
 
 game_fn! { fn allocate(size: u32) -> *mut u8 = "C" 0x005E_55E0; }
-game_fn! { fn append_cursor(this: *mut u8, out: *mut *mut u8, before: *mut u8, value: *const *mut u8) = "thiscall" 0x0072_BA10; }
+game_fn! { fn append_cursor(this: *mut u8, out: *mut *mut u8, before: *mut u8, value: *const *mut u8) -> u64 = "thiscall" 0x0072_BA10; }
 game_fn! { #[allow(dead_code)] fn create_cursor(this: *mut u8) -> *mut u8 = "thiscall" 0x0073_4860; }
 
 port! {
@@ -40,9 +40,9 @@ port! {
 port! {
     /// Allocate eight bytes, attach the grid, and copy its first position when the owner is nonnull.
     /// The owner's storage is dereferenced without a separate check. Register the cursor before the
-    /// list's stored header and return the allocated cursor.
+    /// list's stored header and return the allocated cursor, retaining the append helper's EDX.
     #[port(address = 0x0073_4860, owner = "zonedeveloper", name = "CreateRegisteredLotCursor")]
-    pub unsafe extern "thiscall" fn fc4p_00734860(this: *mut u8) -> *mut u8 {
+    pub unsafe extern "thiscall" fn fc4p_00734860(this: *mut u8) -> u64 {
         unsafe {
             let owner = CursorOwner::from_ptr(this);
             let cursor = allocate(8);
@@ -51,8 +51,8 @@ port! {
                 Cursor::from_ptr(cursor).set_position(read_unaligned(owner.storage()));
             }
             let mut node = core::mem::MaybeUninit::<*mut u8>::uninit();
-            append_cursor(this.add(4), node.as_mut_ptr(), owner.cursors(), &cursor);
-            read_unaligned(&cursor)
+            let appended = append_cursor(this.add(4), node.as_mut_ptr(), owner.cursors(), &cursor);
+            (appended & 0xFFFF_FFFF_0000_0000) | u64::from(read_unaligned(&cursor) as u32)
         }
     }
 }

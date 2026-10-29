@@ -19,13 +19,14 @@ extern "C" fn allocate_fake(size: u32) -> *mut u8 {
     })
 }
 
-extern "thiscall" fn append_fake(this: *mut u8, out: *mut *mut u8, before: *mut u8, value: *const *mut u8) {
+extern "thiscall" fn append_fake(this: *mut u8, out: *mut *mut u8, before: *mut u8, value: *const *mut u8) -> u64 {
     unsafe {
         let cursor = read_unaligned(value);
         assert_eq!(Cursor::from_ptr(cursor).owner(), this.sub(4));
         CALLS.with(|calls| calls.borrow_mut().push((this as u32, before as u32, cursor as u32)));
         core::ptr::write_unaligned(out, 0x1234_5678usize as *mut u8);
     }
+    0xAABB_CCDD_1234_5678
 }
 
 #[test]
@@ -47,11 +48,13 @@ fn cursor_allocation_initialization_and_registration() {
                 owner.set_storage(&mut position);
                 owner.set_cursors(0x2345_6789usize as *mut u8);
                 let snapshot = core::slice::from_raw_parts(primary, 0x100).to_vec();
-                let result = if thunk {
-                    call_thiscall_with_eax(fc4p_00734850 as *const () as usize, primary.add(4), &[], 0xABCD_1234).0
+                let (result, edx) = if thunk {
+                    call_thiscall_with_eax(fc4p_00734850 as *const () as usize, primary.add(4), &[], 0xABCD_1234)
                 } else {
-                    fc4p_00734860(grid) as u32
+                    let result = fc4p_00734860(grid);
+                    (result as u32, (result >> 32) as u32)
                 };
+                assert_eq!(edx, 0xAABB_CCDD);
                 ALLOCATION.with(|allocation| {
                     assert_eq!(result, allocation.as_ptr() as u32);
                     assert_eq!(*allocation.borrow(), [position as u32, grid as u32]);
