@@ -1934,8 +1934,169 @@ register_port!(
     }
 );
 
+
+game_fn! { #[allow(dead_code)] fn current_encoding() -> u32 = "C" 0x0091_0014; }
+game_fn! { #[allow(dead_code)] fn is_utf8_lead_byte(byte: u32) -> u32 = "C" 0x0091_03B0; }
+game_fn! { #[allow(dead_code)] fn utf8_tail_count(byte: u32) -> u32 = "C" 0x0091_0128; }
+game_fn! { #[allow(dead_code)] fn is_codepage_lead_byte(byte: u32, encoding: u32) -> u32 = "C" 0x0091_030F; }
+game_fn! { #[allow(dead_code)] fn codepage_tail_count(byte: u32, encoding: u32) -> u32 = "C" 0x0091_036D; }
+
+register_port!(
+    0x00910128,
+    fc4p_00910128,
+    count_utf8_trailing_bytes,
+    "CountUtf8TrailingBytes",
+    0,
+    |r| {
+        // SAFETY: only the low argument byte is inspected, including legacy five- and six-byte sequences.
+        unsafe {
+            r.eax = match r.argument(0) as u8 {
+                0xC2..=0xDF => 1,
+                0xE0..=0xEF => 2,
+                0xF0..=0xF7 => 3,
+                0xF8..=0xFB => 4,
+                0xFC..=0xFD => 5,
+                _ => 0,
+            };
+        }
+    }
+);
+register_port!(
+    0x0091030f,
+    fc4p_0091030f,
+    check_codepage_lead_byte,
+    "CheckCodepageLeadByte",
+    0,
+    |r| {
+        // SAFETY: recognized code pages return full Booleans; others retain the subtraction's upper bytes.
+        unsafe {
+            let byte = r.argument(0) as u8;
+            r.eax = match r.argument(1) {
+                932 => u32::from((0x81..=0x9F).contains(&byte) || (0xE0..=0xFC).contains(&byte)),
+                936 => u32::from((0xA1..=0xFC).contains(&byte)),
+                949 => u32::from((0xB0..=0xC8).contains(&byte)),
+                950 => u32::from((0x81..=0xFE).contains(&byte)),
+                other => other.wrapping_sub(950) & !255,
+            };
+        }
+    }
+);
+register_port!(
+    0x0091036d,
+    fc4p_0091036d,
+    count_codepage_trailing_bytes,
+    "CountCodepageTrailingBytes",
+    0,
+    |r| {
+        // SAFETY: delegate to the game's predicate and normalize its low byte only.
+        unsafe {
+            r.direct_call(0x0091_030F, &[r.argument(0), r.argument(1)], true);
+            r.eax = u32::from(r.eax as u8 != 0);
+        }
+    }
+);
+unsafe fn encoding_character_query(r: &mut Registers, count: bool) {
+    // SAFETY: both cdecl queries forward a character word and an encoding word to the original entries.
+    unsafe {
+        r.eax = r.argument(1);
+        let mut utf8 = r.eax == u32::MAX - 1;
+        if !utf8 {
+            if r.eax == u32::MAX {
+                r.direct_call(0x0091_0014, &[], true);
+            }
+            utf8 = r.eax == 8;
+        }
+        if utf8 {
+            let character = r.argument(0);
+            r.direct_call(if count { 0x0091_0128 } else { 0x0091_03B0 }, &[character], true);
+            if !count {
+                r.ecx = character;
+            }
+        } else if (r.eax as i32) >= 100 {
+            r.direct_call(
+                if count { 0x0091_036D } else { 0x0091_030F },
+                &[r.argument(0), r.eax],
+                true,
+            );
+        } else if count {
+            r.eax = 0;
+        } else {
+            r.eax &= !255;
+        }
+    }
+}
+register_port!(
+    0x009108b4,
+    fc4p_009108b4,
+    query_character_lead_byte,
+    "QueryCharacterLeadByte",
+    0,
+    |r| {
+        // SAFETY: retain the low-byte result convention and the UTF-8 branch's ECX cleanup value.
+        unsafe {
+            encoding_character_query(r, false);
+        }
+    }
+);
+register_port!(
+    0x009108ed,
+    fc4p_009108ed,
+    query_character_trailing_count,
+    "QueryCharacterTrailingCount",
+    0,
+    |r| {
+        // SAFETY: retain the full count and caller cleanup of both argument words.
+        unsafe {
+            encoding_character_query(r, true);
+        }
+    }
+);
+register_port!(
+    0x0097c081,
+    fc4p_0097c081,
+    begin_hash_iterator,
+    "BeginHashIterator",
+    4,
+    |r| {
+        // SAFETY: buckets lie between +4/+8; output's two sequential writes may overlap the container.
+        unsafe {
+            let object = r.ecx;
+            r.eax = ((word(object, 8).wrapping_sub(word(object, 4)) as i32) >> 2) as u32;
+            r.edx = 0;
+            let mut found = 0;
+            if r.eax != 0 {
+                r.eax = word(object, 4);
+                let mut slot = r.eax;
+                loop {
+                    if word(slot, 0) != 0 {
+                        r.edx = word(r.eax, r.edx.wrapping_mul(4) as usize);
+                        found = r.edx;
+                        break;
+                    }
+                    let count = ((word(object, 8).wrapping_sub(word(object, 4)) as i32) >> 2) as u32;
+                    r.edx = r.edx.wrapping_add(1);
+                    slot = slot.wrapping_add(4);
+                    if r.edx >= count {
+                        break;
+                    }
+                }
+            }
+            r.eax = r.argument(0);
+            put_word(r.eax, 0, found);
+            put_word(r.eax, 4, object);
+        }
+    }
+);
+
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
+    fc4p_00910128::PORT,
+    fc4p_0091030f::PORT,
+    fc4p_0091036d::PORT,
+    fc4p_009108b4::PORT,
+    fc4p_009108ed::PORT,
+    fc4p_0097c081::PORT,
+
     fc4p_00908902::PORT,
     fc4p_0090b2f6::PORT,
     fc4p_0090cff9::PORT,
@@ -3769,10 +3930,10 @@ mod tests {
             let mut addresses = vec![];
             let mut eax = ENTRY_EAX;
             let mut edx = ENTRY_EDX;
-            for i in 0..n {
+            for (i, &node) in ptrs.iter().take(n).enumerate() {
                 expected.push(trace(0x1234_5678, eax, edx, &[0x1000 + i as u32]));
                 addresses.push(0x009A_84A0);
-                expected.push(trace(RESULT_ECX, RESULT_EAX, RESULT_EDX, &[ptrs[i]]));
+                expected.push(trace(RESULT_ECX, RESULT_EAX, RESULT_EDX, &[node]));
                 addresses.push(0x0090_CF63);
                 eax = RESULT_EAX;
                 edx = RESULT_EDX;
@@ -4126,7 +4287,7 @@ mod tests {
             let mut object = [vt.as_ptr() as u32, count, lock_vt.as_ptr() as u32, 0xAAAA_AAAA];
             let this = object.as_mut_ptr() as u32;
             STATE.with(|s| s.borrow_mut().watch = Some((this, 16)));
-            let remaining = if count > 1 { count - 1 } else { 0 };
+            let remaining = count.saturating_sub(1);
             assert_eq!(
                 run(fc4p_009756f6 as *const () as usize, this, &[]),
                 [remaining, RESULT_ECX, RESULT_EDX]
@@ -4210,4 +4371,255 @@ mod tests {
         }
     }
 
+
+    #[test]
+    fn utf8_counts_cover_every_byte_and_ignore_upper_argument_bits() {
+        for upper in [0u32, 0x1234_5600, 0xFFFF_FF00] {
+            for byte in 0..=255u32 {
+                let want = if byte < 0xC2 {
+                    0
+                } else if byte <= 0xDF {
+                    1
+                } else if byte <= 0xEF {
+                    2
+                } else if byte <= 0xF7 {
+                    3
+                } else if byte <= 0xFB {
+                    4
+                } else if byte <= 0xFD {
+                    5
+                } else {
+                    0
+                };
+                assert_eq!(
+                    invoke(
+                        fc4p_00910128 as *const () as usize,
+                        0x1234,
+                        &[upper | byte],
+                        ENTRY_EAX,
+                        ENTRY_EDX,
+                        true
+                    ),
+                    [want, 0x1234, ENTRY_EDX]
+                );
+            }
+        }
+    }
+    #[test]
+    fn codepage_predicate_checks_all_bytes_and_retains_unknown_encoding_upper_bytes() {
+        for encoding in [
+            0u32,
+            1,
+            100,
+            931,
+            932,
+            933,
+            935,
+            936,
+            937,
+            948,
+            949,
+            950,
+            951,
+            1200,
+            0x8000_0000,
+            u32::MAX,
+        ] {
+            for upper in [0u32, 0xFFFF_FF00] {
+                for byte in 0..=255u32 {
+                    let want = match encoding {
+                        932 => u32::from((129..=159).contains(&byte) || (224..=252).contains(&byte)),
+                        936 => u32::from((161..=252).contains(&byte)),
+                        949 => u32::from((176..=200).contains(&byte)),
+                        950 => u32::from((129..=254).contains(&byte)),
+                        _ => encoding.wrapping_sub(950) & 0xFFFF_FF00,
+                    };
+                    assert_eq!(
+                        invoke(
+                            fc4p_0091030f as *const () as usize,
+                            0x1234,
+                            &[upper | byte, encoding],
+                            ENTRY_EAX,
+                            ENTRY_EDX,
+                            true
+                        ),
+                        [want, 0x1234, ENTRY_EDX]
+                    );
+                }
+            }
+        }
+    }
+
+    thread_local! { static ENCODING_RESULT: std::cell::Cell<u32> = const { std::cell::Cell::new(0) }; }
+    unsafe extern "stdcall" fn observe_encoding(frame: *mut Registers, address: u32, count: usize) {
+        // SAFETY: the fake's frame contains its original registers; the chosen result is local to this test.
+        unsafe {
+            observe_direct(frame, address, count);
+            (*frame).eax = ENCODING_RESULT.with(|v| v.get());
+            (*frame).ecx = RESULT_ECX;
+            (*frame).edx = RESULT_EDX;
+        }
+    }
+    macro_rules! encoding_fake {
+        ($name:ident,$address:literal,$count:literal) => {
+            #[unsafe(naked)]
+            unsafe extern "C" fn $name() {
+                core::arch::naked_asm!(
+                    "push edx","push ecx","push eax","mov eax, esp","push {count}","push {address}","push eax","call {observe}",
+                    "pop eax","pop ecx","pop edx","ret",
+                    count=const $count,address=const $address,observe=sym observe_encoding,
+                );
+            }
+        };
+    }
+    encoding_fake!(fake_current_encoding, 0x0091_0014, 0);
+    encoding_fake!(fake_encoding_predicate, 0x0091_030F, 2);
+    encoding_fake!(fake_utf8_predicate, 0x0091_03B0, 1);
+    encoding_fake!(fake_utf8_count, 0x0091_0128, 1);
+    encoding_fake!(fake_encoding_count, 0x0091_036D, 2);
+
+    #[test]
+    fn codepage_count_normalizes_only_the_predicate_low_byte() {
+        let _predicate = crate::testing::fake(0x0091_030F, fake_encoding_predicate as *const () as usize);
+        for result in [0u32, 1, 0xFF, 0x100, 0x8000_0000, u32::MAX] {
+            reset();
+            ENCODING_RESULT.with(|v| v.set(result));
+            assert_eq!(
+                invoke(
+                    fc4p_0091036d as *const () as usize,
+                    0x1234,
+                    &[0xABCD_12EF, 0x8765_4321],
+                    ENTRY_EAX,
+                    ENTRY_EDX,
+                    true
+                ),
+                [u32::from(result & 255 != 0), RESULT_ECX, RESULT_EDX]
+            );
+            assert_eq!(
+                calls(),
+                [trace(0x1234, ENTRY_EAX, ENTRY_EDX, &[0xABCD_12EF, 0x8765_4321])]
+            );
+            assert_eq!(targets(), [0x0091_030F]);
+        }
+    }
+    #[test]
+    fn encoding_adapters_cover_sentinels_signed_thresholds_and_cleanup_registers() {
+        let _current = crate::testing::fake(0x0091_0014, fake_current_encoding as *const () as usize);
+        let _predicate = crate::testing::fake(0x0091_030F, fake_encoding_predicate as *const () as usize);
+        let _utf8_predicate = crate::testing::fake(0x0091_03B0, fake_utf8_predicate as *const () as usize);
+        let _utf8_count = crate::testing::fake(0x0091_0128, fake_utf8_count as *const () as usize);
+        let _count = crate::testing::fake(0x0091_036D, fake_encoding_count as *const () as usize);
+        for count in [false, true] {
+            let entry = if count {
+                fc4p_009108ed as *const () as usize
+            } else {
+                fc4p_009108b4 as *const () as usize
+            };
+            for encoding in [
+                0u32,
+                8,
+                99,
+                100,
+                932,
+                0x7FFF_FFFF,
+                0x8000_0000,
+                u32::MAX - 2,
+                u32::MAX - 1,
+                u32::MAX,
+            ] {
+                for result in [0u32, 1, 8, 99, 100, 932, 0x8000_0000, u32::MAX] {
+                    reset();
+                    ENCODING_RESULT.with(|v| v.set(result));
+                    let effective = if encoding == u32::MAX { result } else { encoding };
+                    let utf8 = encoding == u32::MAX - 1 || effective == 8;
+                    let delegated = utf8 || (effective as i32) >= 100;
+                    let eax = if delegated {
+                        result
+                    } else if count {
+                        0
+                    } else {
+                        effective & !255
+                    };
+                    let ecx = if utf8 && !count {
+                        0xABCD_12EF
+                    } else if delegated || encoding == u32::MAX {
+                        RESULT_ECX
+                    } else {
+                        0x1234
+                    };
+                    let edx = if delegated || encoding == u32::MAX {
+                        RESULT_EDX
+                    } else {
+                        ENTRY_EDX
+                    };
+                    assert_eq!(
+                        invoke(entry, 0x1234, &[0xABCD_12EF, encoding], ENTRY_EAX, ENTRY_EDX, true),
+                        [eax, ecx, edx]
+                    );
+                    let mut expected = vec![];
+                    let mut addresses = vec![];
+                    if encoding == u32::MAX {
+                        expected.push(trace(0x1234, u32::MAX, ENTRY_EDX, &[]));
+                        addresses.push(0x0091_0014);
+                    }
+                    if delegated {
+                        let args = if utf8 {
+                            vec![0xABCD_12EF]
+                        } else {
+                            vec![0xABCD_12EF, effective]
+                        };
+                        expected.push(trace(
+                            if encoding == u32::MAX { RESULT_ECX } else { 0x1234 },
+                            effective,
+                            if encoding == u32::MAX { RESULT_EDX } else { ENTRY_EDX },
+                            &args,
+                        ));
+                        addresses.push(if utf8 {
+                            if count {
+                                0x0091_0128
+                            } else {
+                                0x0091_03B0
+                            }
+                        } else if count {
+                            0x0091_036D
+                        } else {
+                            0x0091_030F
+                        });
+                    }
+                    assert_eq!(calls(), expected);
+                    assert_eq!(targets(), addresses);
+                }
+            }
+        }
+    }
+    #[test]
+    fn hash_begin_checks_every_first_bucket_position_and_overlapping_outputs() {
+        for n in 0..=7usize {
+            for first in 0..=n {
+                for offset in [0usize, 4, 12, 20] {
+                    let mut buckets = [0u32; 7];
+                    if first < n {
+                        buckets[first] = 0x8765_4321;
+                    }
+                    let begin = buckets.as_mut_ptr() as u32;
+                    let mut object = [0xAAAA_AAAAu32; 9];
+                    object[1] = begin;
+                    object[2] = begin + (n as u32) * 4;
+                    let this = object.as_mut_ptr() as u32;
+                    let output = this + offset as u32;
+                    let mut expected = object;
+                    expected[offset / 4] = if first < n { 0x8765_4321 } else { 0 };
+                    expected[offset / 4 + 1] = this;
+                    let edx = if first < n { 0x8765_4321 } else { n as u32 };
+                    let before = buckets;
+                    assert_eq!(
+                        run(fc4p_0097c081 as *const () as usize, this, &[output]),
+                        [output, this, edx]
+                    );
+                    assert_eq!(object, expected);
+                    assert_eq!(buckets, before);
+                }
+            }
+        }
+    }
 }
