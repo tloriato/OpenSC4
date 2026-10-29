@@ -95,6 +95,16 @@ fn greater(value: F80, limit: F80) -> bool {
     value.compare(limit).status_word() & 0x4100 == 0
 }
 
+/// Use the unsigned divide instruction, including its fault on a zero chunk.
+fn divide(capacity: u32, chunk: u32) -> u32 {
+    let quotient: u32;
+    unsafe {
+        core::arch::asm!("div {chunk:e}", chunk=in(reg) chunk,
+            inlateout("eax") capacity=>quotient, inlateout("edx") 0u32=>_, options(nomem,nostack));
+    }
+    quotient
+}
+
 unsafe fn ratio(capacity: u32, served: u32) -> f32 {
     unsafe {
         let value = if capacity == 0 {
@@ -212,7 +222,7 @@ port! {
                 write_float(holder,staff_id,staff_ratio);
                 effective_capacity = multiply(multiply(unsigned(capacity),staff),m2).ftol() as u32;
                 grade = ratio(effective_capacity,served);
-                let units = capacity / chunk;
+                let units = divide(capacity, chunk);
                 let sentinel = tracts;
                 let mut node = Node::from_ptr(sentinel).next();
                 if node != sentinel {
