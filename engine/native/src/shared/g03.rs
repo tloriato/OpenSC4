@@ -13,7 +13,7 @@
 
 //! Shared helpers, group 03: small functions that several classes use. Each function is independent; its game functions and globals are declared in this file.
 
-use crate::abi::{call_raw, vslot, Conv, RawCall};
+use crate::abi::{Conv, RawCall, call_raw, vslot};
 use crate::port::Port;
 use crate::x87::F80;
 use core::mem::MaybeUninit;
@@ -1698,8 +1698,230 @@ port! {
     }
 }
 
+game_fn! { #[allow(dead_code)] fn construct_model_bounds(this: *mut u8) -> u64 = "thiscall" 0x0046_6E10; }
+game_fn! { #[allow(dead_code)] fn light_attachment(this: *mut u8, lights: *mut u8, flags: u32) -> u64 = "thiscall" 0x0080_3E10; }
+game_data! { static attachments_enabled: u8 = 0x00B0_9968; }
+game_data! { static attachment_service: *mut u8 = 0x00B4_3D44; }
+game_data! { static selected_automaton_owner: *mut u8 = 0x00B2_1D74; }
+game_data! { static attachment_coordinates: *mut u8 = 0x00B4_3D0C; }
+game_data! { static attachment_direction: *mut u8 = 0x00B4_3DD8; }
+game_data! { static attachment_renderer: *mut u8 = 0x00B4_3DD0; }
+game_data! { static attachment_lights: *mut u8 = 0x00B4_3DDC; }
+game_data! { static attachment_extent_scale: f32 = 0x00A8_80D4; }
+
+/// Moves the translation by 1.5 times the model's y extent along the stored direction. The first
+/// two direction products are rounded before subtraction; the third stays in an x87 register.
+unsafe fn offset_attachment_transform(bounds: *mut u8, transform: *mut u8, direction: *mut u8) {
+    let mut delta = [0u32; 3];
+    // SAFETY: six bounds words, the original transform, and the direction's three float fields.
+    // Every pushed x87 value is popped; the stores and register arithmetic keep their original order.
+    unsafe {
+        core::arch::asm!(
+            "fld dword ptr [{bounds} + 16]", "fsub dword ptr [{bounds} + 4]",
+            "fmul dword ptr [{scale}]", "fld st(0)", "fmul dword ptr [{direction} + 0x54]",
+            "fstp dword ptr [{delta}]", "fld st(0)", "fmul dword ptr [{direction} + 0x58]",
+            "fstp dword ptr [{delta} + 4]", "fmul dword ptr [{direction} + 0x5c]",
+            "fld dword ptr [{transform} + 40]", "fsub dword ptr [{delta}]",
+            "fld dword ptr [{transform} + 44]", "fsub dword ptr [{delta} + 4]",
+            "fld dword ptr [{transform} + 48]", "fsub st(0), st(3)",
+            "fstp dword ptr [{delta} + 8]", "fxch st(1)",
+            "fstp dword ptr [{transform} + 40]", "fstp dword ptr [{transform} + 44]",
+            "fstp st(0)",
+            bounds = in(reg) bounds, transform = in(reg) transform, direction = in(reg) direction,
+            scale = in(reg) attachment_extent_scale(), delta = in(reg) delta.as_mut_ptr(),
+            out("st(0)") _, out("st(1)") _, out("st(2)") _, out("st(3)") _,
+        );
+        store(transform, 48, delta[2]);
+    }
+}
+
+port! {
+    /// Enables or disables the selected model attachment, updates its transform from the first
+    /// model's bounds, submits it to the renderer, and lights its processor when present.
+    #[port(address = 0x0050_AFD0, owner = "shared", name = "UpdateSelectedModelAttachment", naked)]
+    pub unsafe extern "C" fn fc4p_0050afd0() {
+        // Keep the transform's untouched padding at the original stack location.
+        core::arch::naked_asm!(
+            "sub esp, 0x78", "lea eax, [esp + 0x40]", "push eax",
+            "lea eax, [esp + 0x2c]", "push eax", "call {body}", "add esp, 0x78", "ret",
+            body = sym update_selected_model_attachment,
+        );
+    }
+}
+
+unsafe extern "fastcall" fn update_selected_model_attachment(
+    this: *mut u8,
+    entry_edx: u32,
+    bounds: *mut u8,
+    transform: *mut u8,
+) -> u64 {
+    // SAFETY: the original automaton, its services, model interfaces and caller's temporary storage.
+    unsafe {
+        let mut result = virtual_call(this.add(4), 0x1C, word(this, 4), entry_edx, &[]);
+        if result as u32 == 0x496E_5783 {
+            result = virtual_call(this.add(4), 0x1C, result as u32, word(this, 4), &[]);
+            if result as u32 == 0x897F_7EC2 {
+                return result;
+            }
+        }
+        let enabled = *attachments_enabled();
+        result = (result & !0xFF) | u64::from(enabled);
+        if enabled == 0 {
+            return virtual_call(this, 0x1FC, word(this, 0), (result >> 32) as u32, &[]);
+        }
+        let service = *attachment_service();
+        result = virtual_call(service, 0x34, result as u32, word(service, 0), &[]);
+        let active = result as u8 != 0;
+        result = registers(word(this, 0xCC), (result >> 32) as u32);
+        if !active {
+            return if result as u32 == 0 {
+                result
+            } else {
+                virtual_call(this, 0x1FC, word(this, 0), (result >> 32) as u32, &[])
+            };
+        }
+        if result as u32 == 0 && word(this, 0x110) != word(this, 0x114) {
+            let mut queried = 0u32;
+            let service = *attachment_service();
+            result = virtual_call(
+                service,
+                0,
+                &mut queried as *mut u32 as u32,
+                word(service, 0),
+                &[0x098F_9BF4, &mut queried as *mut u32 as u32],
+            );
+            if queried != 0 {
+                let mut matched = false;
+                if !(*selected_automaton_owner()).is_null() {
+                    let interface = queried as *mut u8;
+                    result = virtual_call(interface, 0x34, result as u32, word(interface, 0), &[]);
+                    if result as u8 != 0 {
+                        let owner = *selected_automaton_owner();
+                        result = registers(owner as u32, (result >> 32) as u32);
+                        let selected = word(owner, 0x30) as *mut u8;
+                        if !selected.is_null() {
+                            result = virtual_call(selected, 0xE4, result as u32, word(selected, 0), &[0x10]);
+                            let selected = result as u32 as *mut u8;
+                            if !selected.is_null() {
+                                let coordinates = *attachment_coordinates();
+                                let mut cell = [0u32; 2];
+                                result = virtual_call(
+                                    coordinates,
+                                    0x44,
+                                    word(coordinates, 0),
+                                    word(this, 0x40),
+                                    &[
+                                        word(this, 0x40),
+                                        word(this, 0x48),
+                                        cell.as_mut_ptr() as u32,
+                                        cell.as_mut_ptr().add(1) as u32,
+                                    ],
+                                );
+                                let x = word(selected, 0x26C);
+                                result = registers(x, (result >> 32) as u32);
+                                matched = x == cell[0] && word(selected, 0x270) == cell[1];
+                            }
+                        }
+                    }
+                }
+                if queried != 0 {
+                    let interface = queried as *mut u8;
+                    result = virtual_call(interface, 8, result as u32, word(interface, 0), &[]);
+                }
+                if matched && word(this, 0xCC) == 0 {
+                    return virtual_call(this, 0x1F8, word(this, 0), (result >> 32) as u32, &[]);
+                }
+            }
+        }
+        if word(this, 0xCC) == 0 || word(this, 0x110) == word(this, 0x114) {
+            return result;
+        }
+        let model = word(word(this, 0x110) as *mut u8, 0) as *mut u8;
+        for (index, value) in [
+            0x3F80_0000,
+            0,
+            0,
+            0,
+            0x3F80_0000,
+            0,
+            0,
+            0,
+            0x3F80_0000,
+            0,
+            0,
+            0,
+            0x3F80_0000,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            store(transform, 4 + index * 4, value);
+        }
+        transform.add(1).write(0);
+        transform.write(0);
+        let adjustment = word(word(model, 4) as *mut u8, 4);
+        let interface = model.wrapping_add(adjustment as usize).wrapping_add(4);
+        result = virtual_call(
+            interface,
+            0x24,
+            transform as u32,
+            word(interface, 0),
+            &[transform as u32],
+        );
+        result = invoke(
+            Conv::Thiscall,
+            crate::abi::target(0x0046_6E10),
+            bounds,
+            result as u32,
+            (result >> 32) as u32,
+            &[],
+        );
+        result = virtual_call(model, 0, result as u32, word(model, 0), &[]);
+        let shape = result as u32 as *mut u8;
+        virtual_call(shape, 0x1C, shape as u32, word(shape, 0), &[bounds as u32]);
+        transform.add(1).write(transform.add(1).read() | 1);
+        transform.write(transform.read().wrapping_add(1));
+        offset_attachment_transform(bounds, transform, *attachment_direction());
+        let attachment = word(this, 0xCC) as *mut u8;
+        let adjustment = word(word(attachment, 4) as *mut u8, 4);
+        let interface = attachment.wrapping_add(adjustment as usize).wrapping_add(4);
+        result = virtual_call(
+            interface,
+            0x28,
+            word(interface, 0),
+            transform as u32,
+            &[transform as u32],
+        );
+        let attachment = word(this, 0xCC) as *mut u8;
+        let renderer = *attachment_renderer();
+        let target = vslot(renderer, 0x78);
+        result = virtual_call(attachment, 0, word(attachment, 0), (result >> 32) as u32, &[]);
+        result = invoke(
+            Conv::Thiscall,
+            target,
+            renderer,
+            result as u32,
+            (result >> 32) as u32,
+            &[result as u32],
+        );
+        result = registers(word(this, 0xD0), (result >> 32) as u32);
+        if result as u32 != 0 {
+            result = invoke(
+                Conv::Thiscall,
+                crate::abi::target(0x0080_3E10),
+                this.add(0xD0),
+                result as u32,
+                *attachment_lights() as u32,
+                &[*attachment_lights() as u32, 0],
+            );
+        }
+        result
+    }
+}
+
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
+    fc4p_0050afd0::PORT,
     fc4p_0050be90::PORT,
     fc4p_0054ed90::PORT,
     fc4p_00510040::PORT,
@@ -1745,6 +1967,420 @@ pub const PORTS: &[Port] = &[
 
 #[cfg(test)]
 mod tests {
+    thread_local! {
+        static ATTACHMENT_TYPES: RefCell<std::collections::VecDeque<u32>> = const { RefCell::new(std::collections::VecDeque::new()) };
+        static ATTACHMENT_TRANSFORMS: RefCell<Vec<Vec<u8>>> = const { RefCell::new(Vec::new()) };
+    }
+
+    extern "thiscall" fn attachment_type(this: *mut u8) -> u64 {
+        log(0x1C, this, &[]);
+        registers(
+            ATTACHMENT_TYPES.with(|q| q.borrow_mut().pop_front().unwrap_or(0)),
+            0x1122_3344,
+        )
+    }
+    extern "thiscall" fn attachment_active(this: *mut u8) -> u64 {
+        log(0x34, this, &[]);
+        registers(unsafe { word(this, 8) }, 0x2233_4455)
+    }
+    extern "thiscall" fn attachment_query(this: *mut u8, iid: u32, out: *mut u32) -> u64 {
+        log(0, this, &[iid]);
+        unsafe { out.write(word(this, 4)) };
+        RESULT
+    }
+    extern "thiscall" fn attachment_selected(this: *mut u8, flags: u32) -> u64 {
+        log(0xE4, this, &[flags]);
+        registers(unsafe { word(this, 8) }, 0x3344_5566)
+    }
+    extern "thiscall" fn attachment_cell(this: *mut u8, x: u32, z: u32, a: *mut u32, b: *mut u32) -> u64 {
+        log(0x44, this, &[x, z]);
+        unsafe {
+            a.write(word(this, 4));
+            b.write(word(this, 8));
+        }
+        RESULT
+    }
+    extern "thiscall" fn attachment_enable(this: *mut u8) -> u64 {
+        log(0x1F8, this, &[]);
+        RESULT
+    }
+    extern "thiscall" fn attachment_disable(this: *mut u8) -> u64 {
+        log(0x1FC, this, &[]);
+        RESULT
+    }
+    extern "thiscall" fn attachment_shape(this: *mut u8) -> u64 {
+        log(0x1000, this, &[]);
+        registers(unsafe { word(this, 8) }, 0x5566_7788)
+    }
+    extern "thiscall" fn attachment_bounds_new(this: *mut u8) -> u64 {
+        log(0x0046_6E10, this, &[]);
+        unsafe {
+            for i in 0..6 {
+                store(this, i * 4, if i < 3 { 1f32.to_bits() } else { 0 });
+            }
+        }
+        RESULT
+    }
+    extern "thiscall" fn attachment_bounds(this: *mut u8, out: *mut u8) -> u64 {
+        log(0x101C, this, &[]);
+        unsafe {
+            for (i, f) in [91f32, 2.0, 7.0, 98.0, 6.0, 17.0].into_iter().enumerate() {
+                store(out, i * 4, f.to_bits());
+            }
+        }
+        RESULT
+    }
+    extern "thiscall" fn attachment_get_transform(this: *mut u8, out: *mut u8) -> u64 {
+        log(0x24, this, &[]);
+        unsafe {
+            assert_eq!(out.read(), 0);
+            assert_eq!(out.add(1).read(), 0);
+            for i in 0..13 {
+                assert_eq!(word(out, 4 + i * 4), if i % 4 == 0 { 1f32.to_bits() } else { 0 });
+            }
+            out.write(255);
+            out.add(1).write(0x80);
+            store(out, 4, 123f32.to_bits());
+            for (i, f) in [7f32, 8.0, 9.0].into_iter().enumerate() {
+                store(out, 40 + i * 4, f.to_bits());
+            }
+        }
+        RESULT
+    }
+    extern "thiscall" fn attachment_set_transform(this: *mut u8, input: *mut u8) -> u64 {
+        log(0x28, this, &[]);
+        ATTACHMENT_TRANSFORMS.with(|t| t.borrow_mut().push(bytes(input, 56)));
+        RESULT
+    }
+    extern "thiscall" fn attachment_submit(this: *mut u8, shape: u32) -> u64 {
+        log(0x78, this, &[shape]);
+        RESULT
+    }
+    extern "thiscall" fn attachment_light(this: *mut u8, lights: u32, flags: u32) -> u64 {
+        log(0x0080_3E10, this, &[lights, flags]);
+        RESULT
+    }
+
+    struct AttachmentFixture {
+        object: Object,
+        service: Object,
+        queried: Object,
+        owner: Object,
+        selector: Object,
+        selected: Object,
+        coordinates: Object,
+        model: Object,
+        shape: Object,
+        model_interface: Object,
+        attached: Object,
+        attached_interface: Object,
+        renderer: Object,
+        direction: Object,
+        table: Box<[usize; 128]>,
+        globals: Box<[u32; 8]>,
+        models: Box<[u32; 1]>,
+        adjustment: Box<[u32; 2]>,
+        _fakes: Vec<crate::testing::Fake>,
+    }
+    impl AttachmentFixture {
+        fn new() -> Self {
+            let mut f = Self {
+                object: Object::new(0x1D0),
+                service: Object::new(16),
+                queried: Object::new(16),
+                owner: Object::new(0x34),
+                selector: Object::new(16),
+                selected: Object::new(0x274),
+                coordinates: Object::new(16),
+                model: Object::new(16),
+                shape: Object::new(16),
+                model_interface: Object::new(16),
+                attached: Object::new(16),
+                attached_interface: Object::new(16),
+                renderer: Object::new(16),
+                direction: Object::new(0x60),
+                table: Box::new([0; 128]),
+                globals: Box::new([0; 8]),
+                models: Box::new([0]),
+                adjustment: Box::new([0; 2]),
+                _fakes: Vec::new(),
+            };
+            for (slot, function) in [
+                (0, attachment_query as *const ()),
+                (8, release as *const ()),
+                (0x1C, attachment_type as *const ()),
+                (0x24, attachment_get_transform as *const ()),
+                (0x28, attachment_set_transform as *const ()),
+                (0x34, attachment_active as *const ()),
+                (0x44, attachment_cell as *const ()),
+                (0x78, attachment_submit as *const ()),
+                (0xE4, attachment_selected as *const ()),
+                (0x1F8, attachment_enable as *const ()),
+                (0x1FC, attachment_disable as *const ()),
+            ] {
+                f.table[slot / 4] = function as usize;
+            }
+            unsafe {
+                for object in [
+                    &mut f.object,
+                    &mut f.service,
+                    &mut f.queried,
+                    &mut f.selector,
+                    &mut f.coordinates,
+                    &mut f.model_interface,
+                    &mut f.attached_interface,
+                    &mut f.renderer,
+                ] {
+                    store(object.ptr(), 0, f.table.as_ptr() as u32);
+                }
+                store(f.object.ptr(), 4, f.table.as_ptr() as u32);
+                store(f.service.ptr(), 4, f.queried.ptr() as u32);
+                store(f.service.ptr(), 8, 1);
+                store(f.queried.ptr(), 8, 1);
+                store(f.owner.ptr(), 0x30, f.selector.ptr() as u32);
+                store(f.selector.ptr(), 8, f.selected.ptr() as u32);
+                store(f.selected.ptr(), 0x26C, 0x7FC0_1234);
+                store(f.selected.ptr(), 0x270, 0x8000_0000);
+                store(f.coordinates.ptr(), 4, 0x7FC0_1234);
+                store(f.coordinates.ptr(), 8, 0x8000_0000);
+                f.adjustment[1] = (f.model_interface.ptr() as u32)
+                    .wrapping_sub(f.model.ptr() as u32)
+                    .wrapping_sub(4);
+                // Both model bases are separately allocated; each has its own adjustment table below.
+                store(f.model.ptr(), 4, f.adjustment.as_ptr() as u32);
+                store(f.model.ptr(), 0, f.table.as_ptr() as u32);
+                store(f.model.ptr(), 8, f.shape.ptr() as u32);
+                store(f.attached.ptr(), 0, f.table.as_ptr() as u32);
+                store(f.attached.ptr(), 8, f.shape.ptr() as u32);
+                f.models[0] = f.model.ptr() as u32;
+                store(f.object.ptr(), 0x110, f.models.as_ptr() as u32);
+                store(f.object.ptr(), 0x114, f.models.as_ptr() as u32 + 4);
+                for (i, v) in [0.25f32, -0.5, 1.25].into_iter().enumerate() {
+                    store(f.direction.ptr(), 0x54 + 4 * i, v.to_bits());
+                }
+            }
+            f.globals.copy_from_slice(&[
+                1,
+                f.service.ptr() as u32,
+                f.owner.ptr() as u32,
+                f.coordinates.ptr() as u32,
+                f.direction.ptr() as u32,
+                f.renderer.ptr() as u32,
+                0x1234_5678,
+                1.5f32.to_bits(),
+            ]);
+            for (i, addr) in [
+                0x00B0_9968,
+                0x00B4_3D44,
+                0x00B2_1D74,
+                0x00B4_3D0C,
+                0x00B4_3DD8,
+                0x00B4_3DD0,
+                0x00B4_3DDC,
+                0x00A8_80D4,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                f._fakes.push(crate::testing::fake_data(addr, unsafe {
+                    f.globals.as_mut_ptr().add(i).cast()
+                }));
+            }
+            f._fakes
+                .push(fake(0x0046_6E10, attachment_bounds_new as *const () as usize));
+            f._fakes.push(fake(0x0080_3E10, attachment_light as *const () as usize));
+            f
+        }
+        fn run(&mut self) -> u64 {
+            run(fc4p_0050afd0 as *const (), self.object.ptr(), &[], 0xDEAD_BEEF, 9)
+        }
+    }
+
+    #[test]
+    fn attachment_type_checks_disabled_service_and_empty_model_paths_preserve_return_words() {
+        let mut f = AttachmentFixture::new();
+        let p = f.object.ptr();
+        ATTACHMENT_TYPES.with(|q| q.borrow_mut().extend([0x496E_5783, 0x897F_7EC2]));
+        assert_eq!(f.run(), registers(0x897F_7EC2, 0x1122_3344));
+        assert_eq!(
+            calls(),
+            [Call(0x1C, p as usize + 4, vec![]), Call(0x1C, p as usize + 4, vec![])]
+        );
+        f.globals[0] = 0;
+        ATTACHMENT_TYPES.with(|q| q.borrow_mut().extend([0x496E_5783, 0x1234]));
+        assert_eq!(f.run(), RESULT);
+        assert_eq!(
+            calls(),
+            [
+                Call(0x1C, p as usize + 4, vec![]),
+                Call(0x1C, p as usize + 4, vec![]),
+                Call(0x1FC, p as usize, vec![])
+            ]
+        );
+        f.globals[0] = 1;
+        unsafe {
+            store(f.service.ptr(), 8, 0);
+        }
+        for attachment in [0u32, 0x1234] {
+            unsafe {
+                store(p, 0xCC, attachment);
+            }
+            let before = bytes(p, 0x1D0);
+            assert_eq!(
+                f.run(),
+                if attachment == 0 {
+                    registers(0, 0x2233_4455)
+                } else {
+                    RESULT
+                }
+            );
+            let mut expected = vec![
+                Call(0x1C, p as usize + 4, vec![]),
+                Call(0x34, f.service.ptr() as usize, vec![]),
+            ];
+            if attachment != 0 {
+                expected.push(Call(0x1FC, p as usize, vec![]));
+            }
+            assert_eq!(calls(), expected);
+            assert_eq!(bytes(p, 0x1D0), before);
+        }
+        unsafe {
+            store(p, 0xCC, 0);
+            store(f.service.ptr(), 8, 1);
+            store(p, 0x114, f.models.as_ptr() as u32);
+        }
+        assert_eq!(f.run(), registers(0, 0x2233_4455));
+        assert_eq!(calls().iter().map(|c| c.0).collect::<Vec<_>>(), [0x1C, 0x34]);
+    }
+
+    #[test]
+    fn attachment_selection_compares_coordinate_bits_and_releases_the_queried_interface() {
+        for route in 0..8 {
+            let mut f = AttachmentFixture::new();
+            let p = f.object.ptr();
+            unsafe {
+                match route {
+                    0 => store(f.service.ptr(), 4, 0),
+                    1 => f.globals[2] = 0,
+                    2 => store(f.queried.ptr(), 8, 0),
+                    3 => store(f.owner.ptr(), 0x30, 0),
+                    4 => store(f.selector.ptr(), 8, 0),
+                    5 => store(f.coordinates.ptr(), 4, 0x7FC0_1235),
+                    6 => store(f.coordinates.ptr(), 8, 0),
+                    _ => (),
+                }
+            }
+            let before = bytes(p, 0x1D0);
+            let result = f.run();
+            let mut expected = vec![
+                Call(0x1C, p as usize + 4, vec![]),
+                Call(0x34, f.service.ptr() as usize, vec![]),
+                Call(0, f.service.ptr() as usize, vec![0x098F_9BF4]),
+            ];
+            if route >= 2 {
+                expected.push(Call(0x34, f.queried.ptr() as usize, vec![]));
+            }
+            if route >= 4 {
+                expected.push(Call(0xE4, f.selector.ptr() as usize, vec![0x10]));
+            }
+            if route >= 5 {
+                expected.push(Call(0x44, f.coordinates.ptr() as usize, vec![0, 0]));
+            }
+            if route != 0 {
+                expected.push(Call(8, f.queried.ptr() as usize, vec![]));
+            }
+            if route == 7 {
+                expected.push(Call(0x1F8, p as usize, vec![]));
+            }
+            assert_eq!(calls(), expected, "route {route}");
+            assert_eq!(result, RESULT);
+            assert_eq!(bytes(p, 0x1D0), before);
+        }
+    }
+
+    #[test]
+    fn attachment_transform_uses_adjusted_interfaces_then_submits_and_optionally_lights() {
+        let _fpu = crate::testing::GameFpu::new();
+        for light in [false, true] {
+            let mut f = AttachmentFixture::new();
+            let mut shape_table = [0usize; 8];
+            shape_table[7] = attachment_bounds as *const () as usize;
+            let mut model_table = [0usize; 1];
+            model_table[0] = attachment_shape as *const () as usize;
+            let mut attached_adjustment = [
+                0u32,
+                (f.attached_interface.ptr() as u32)
+                    .wrapping_sub(f.attached.ptr() as u32)
+                    .wrapping_sub(4),
+            ];
+            let p = f.object.ptr();
+            unsafe {
+                store(f.model.ptr(), 0, model_table.as_ptr() as u32);
+                store(f.attached.ptr(), 0, model_table.as_ptr() as u32);
+                store(f.attached.ptr(), 4, attached_adjustment.as_mut_ptr() as u32);
+                store(f.shape.ptr(), 0, shape_table.as_ptr() as u32);
+                store(p, 0xCC, f.attached.ptr() as u32);
+                store(p, 0xD0, u32::from(light));
+            }
+            let before = bytes(p, 0x1D0);
+            assert_eq!(
+                f.run(),
+                if light {
+                    RESULT
+                } else {
+                    registers(0, (RESULT >> 32) as u32)
+                }
+            );
+            let observed = calls();
+            let mut ids = vec![0x1C, 0x34, 0x24, 0x0046_6E10, 0x1000, 0x101C, 0x28, 0x1000, 0x78];
+            if light {
+                ids.push(0x0080_3E10);
+            }
+            assert_eq!(observed.iter().map(|c| c.0).collect::<Vec<_>>(), ids);
+            assert_eq!(observed[2].1, f.model_interface.ptr() as usize);
+            assert_eq!(observed[6], Call(0x28, f.attached_interface.ptr() as usize, vec![]));
+            assert_eq!(
+                observed[8],
+                Call(0x78, f.renderer.ptr() as usize, vec![f.shape.ptr() as u32])
+            );
+            if light {
+                assert_eq!(observed[9], Call(0x0080_3E10, p as usize + 0xD0, vec![0x1234_5678, 0]));
+            }
+            let transforms = ATTACHMENT_TRANSFORMS.with(|t| std::mem::take(&mut *t.borrow_mut()));
+            assert_eq!(transforms.len(), 1);
+            let t = &transforms[0];
+            assert_eq!(&t[..2], &[0, 0x81]);
+            for (offset, expected) in [(4, 123f32), (40, 5.5), (44, 11.0), (48, 1.5), (52, 1.0)] {
+                assert_eq!(&t[offset..offset + 4], &expected.to_bits().to_le_bytes());
+            }
+            assert_eq!(bytes(p, 0x1D0), before);
+        }
+    }
+
+    #[test]
+    fn attachment_third_product_keeps_the_x87_exponent_range_until_subtraction() {
+        let _fpu = crate::testing::GameFpu::new();
+        let mut f = AttachmentFixture::new();
+        let mut bounds = [0f32, 0.0, 0.0, 0.0, 2.0e38, 0.0];
+        let mut transform = [0u32; 14];
+        for i in 0..3 {
+            transform[10 + i] = 3.0e38f32.to_bits();
+            unsafe {
+                store(f.direction.ptr(), 0x54 + 4 * i, 2f32.to_bits());
+            }
+        }
+        unsafe {
+            offset_attachment_transform(
+                bounds.as_mut_ptr().cast(),
+                transform.as_mut_ptr().cast(),
+                f.direction.ptr(),
+            );
+        }
+        assert_eq!(&transform[10..12], &[f32::NEG_INFINITY.to_bits(); 2]);
+        assert!(f32::from_bits(transform[12]).is_finite());
+        assert!(f32::from_bits(transform[12]) < -2.9e38);
+    }
+
     #[test]
     fn building_refresh_saves_successor_before_callbacks_and_rereads_the_sentinel() {
         let _fake = fake(0x004F_C900, building_message as *const () as usize);
@@ -2610,11 +3246,7 @@ mod tests {
                 let result = run(entry, d, &[s as u32], 0x1234_5678, 0xABCD_EF00);
                 let edx = if count == 0 { (RESULT >> 32) as u32 } else { d as u32 };
                 let eax = if ecx_result {
-                    if count == 0 {
-                        0
-                    } else {
-                        source[4]
-                    }
+                    if count == 0 { 0 } else { source[4] }
                 } else if count == 0 {
                     source[4]
                 } else {
@@ -3962,7 +4594,7 @@ mod tests {
     }
 
     use super::*;
-    use crate::testing::{fake, Object};
+    use crate::testing::{Object, fake};
     use std::cell::RefCell;
 
     const RESULT: u64 = 0x7654_3210_ABCD_EF80;
