@@ -1997,7 +1997,9 @@ unsafe fn grow_flagged_vector(this: *mut u8, r: &mut Registers, at: u32, value: 
         if !narrow {
             r.edx = (((i64::from(delta) * 0x2aaa_aaab) >> 32) as i32 >> 1) as u32;
         }
-        r.ecx = capacity;
+        r.ecx = if narrow { capacity } else if size < count {
+            args.wrapping_add(12) as u32
+        } else { (r as *mut Registers).cast::<u8>().wrapping_add(8) as u32 };
         if narrow {
             store(args, 12, capacity);
         }
@@ -2090,7 +2092,8 @@ rust_port!(0x0062_6240, fc4p_00626240, grow_three_word_vector, "grow three word 
             let capacity = size.wrapping_add(size.max(count));
             let tag = argument_words(r).wrapping_add(16) as u32;
             r.edx = (((i64::from(delta) * 0x2aaa_aaab) >> 32) as i32 >> 1) as u32;
-            r.ecx = count;
+            r.ecx = if size < count { argument_words(r).wrapping_add(12) as u32 }
+                else { (r as *mut Registers).cast::<u8>().wrapping_add(8) as u32 };
             r.eax = size;
             let allocation = if capacity == 0 { 0 } else {
                 r.eax = capacity.wrapping_mul(12);
@@ -2494,12 +2497,15 @@ game_fn! {
 cdecl_port!(0x005F_87D0, fc4p_005f87d0, set_app_switching_disabled, "set application switching disabled", 1,
     (r, disable: u32) {
         unsafe {
-            let mut version = [0u32; 37];
-            version[0] = 0x94;
-            r.eax = version.as_mut_ptr() as u32;
+            let mut version = core::mem::MaybeUninit::<[u32; 37]>::uninit();
+            let version_words = version.as_mut_ptr().cast::<u32>();
+            // Explicit stores keep initialization inside this DLL without a runtime memory helper.
+            for index in 0..37 { core::ptr::write_volatile(version_words.add(index), 0); }
+            write_unaligned(version_words, 0x94);
+            r.eax = version_words as u32;
             r.ecx = 0;
             invoke(r, *read_windows_version() as usize, &[r.eax], false);
-            r.edx = version[1];
+            r.edx = read_unaligned(version_words.add(1));
             r.ecx = (r.ecx & !255) | u32::from(disable as u8);
             r.eax = (r.eax & !255) | u32::from(r.edx > 4);
             let modern = r.eax as u8 != 0;
@@ -6177,6 +6183,124 @@ mod tests {
                 [0x006d6880, 0x009eeb70]
             );
         }
+    }
+
+    #[test]
+    fn vector_growth_retains_null_allocation_behavior_for_a_single_skipped_tail() {
+        let _allocate = fake(0x0090cf54, array_allocate as *const () as usize);
+        let _copy = fake(0x00623fa0, record_copy as *const () as usize);
+        ALLOCATED.with(|v| v.set(0));
+        RECORD_STRIDE.with(|v| v.set(13));
+        for (entry, width) in [
+            (fc4p_00621a40 as unsafe extern "C" fn(), 12),
+            (fc4p_00621b40, 8),
+            (fc4p_00626240, 12),
+        ] {
+            let mut vector = [0u32, 0, 0, 0xfeed_face];
+            // No record fields are read when the destination allocation is null.
+            let result = run(entry, vector.as_mut_ptr().cast(), &[0, 0x1234, 0, 1, 1]);
+            assert_eq!(vector, [0, width, width, 0xfeed_face]);
+            assert_eq!(result[1], 0);
+            let log = calls();
+            assert_eq!(log[0].address, 0x0090cf54);
+            assert_eq!(log[0].args, [width]);
+            assert_eq!(log.len(), if entry as usize == fc4p_00626240 as *const () as usize { 2 } else { 1 });
+        }
+    }
+
+    /// Case-sensitive search fixtures from engine/core/src/language/rz_tests.rs, using live pointer triples.
+    #[test]
+    fn core_reverse_search_positions_failure_and_empty_needle() {
+        let _search = fake(0x004426c0, search_sequence as *const () as usize);
+        for (text, needle, position, expected) in [
+            (&b"ababa"[..], &b"ba"[..], u32::MAX, 3),
+            (&b"ababa"[..], &b"ababaa"[..], u32::MAX, u32::MAX),
+            (&b"ab"[..], &b""[..], 99, 2),
+            (&b"ab"[..], &b""[..], 0, 0),
+        ] {
+            let begin = text.as_ptr() as u32;
+            let mut string = [begin, begin + text.len() as u32, begin + text.len() as u32 + 1];
+            assert_eq!(run(fc4p_005c23e0, string.as_mut_ptr().cast(), &[needle.as_ptr() as u32, position, needle.len() as u32])[0], expected);
+            calls();
+        }
+    }
+
+    struct TestByteGrid {
+        cells: Vec<Vec<u8>>,
+        _rows: Vec<[u32; 3]>,
+        storage: Box<[u32; 3]>,
+        object: Box<[u32; 5]>,
+    }
+    impl TestByteGrid {
+        fn new(table: &[usize], width: usize, height: usize, shift: u32, value: u8) -> Self {
+            let mut cells = vec![vec![value; height]; width];
+            let mut rows: Vec<_> = cells.iter_mut().map(|row| [row.as_mut_ptr() as u32, height as u32, height as u32]).collect();
+            let mut storage = Box::new([rows.as_mut_ptr() as u32, 0, 0]);
+            let object = Box::new([table.as_ptr() as u32, width as u32, height as u32, shift, storage.as_mut_ptr() as u32]);
+            Self { cells, _rows: rows, storage, object }
+        }
+        fn pointer(&mut self) -> u32 { self.object.as_mut_ptr() as u32 }
+        fn relax(&mut self) {
+            run_cdecl(fc4p_005e4d60, &[self.storage.as_mut_ptr() as u32, self.object[1], self.object[2]]);
+        }
+        fn seed(&mut self, map: &mut Self, key: u32) {
+            let destination = self.pointer(); let source = map.pointer();
+            run_cdecl(fc4p_005e4fa0, &[destination, source, key]);
+            calls();
+        }
+    }
+    fn byte_grid_table() -> [usize; 26] {
+        let mut table = [0usize; 26];
+        table[0x60 / 4] = mask_storage as *const () as usize;
+        table[0x64 / 4] = mask_const_storage as *const () as usize;
+        table[0x30 / 4] = mask_width as *const () as usize;
+        table[0x34 / 4] = mask_height as *const () as usize;
+        table[0x2c / 4] = mask_shift as *const () as usize;
+        table
+    }
+    /// Fixtures from engine/core/src/residential/geometry.rs and its nonwrapping distance regression.
+    #[test]
+    fn core_grid_distance_caps_does_not_wrap_and_reaches_a_stable_result() {
+        let table = byte_grid_table();
+        let mut grid = TestByteGrid::new(&table, 1, 4, 0, 255);
+        grid.cells[0][1] = 0;
+        grid.relax(); assert_eq!(grid.cells, [vec![1, 0, 1, 2]]);
+        grid.relax(); assert_eq!(grid.cells, [vec![1, 0, 1, 2]]);
+        let mut line = TestByteGrid::new(&table, 300, 1, 0, 255);
+        line.cells[0][0] = 0; line.relax();
+        assert_eq!((line.cells[200][0], line.cells[280][0]), (200, 255));
+        let mut flat = TestByteGrid::new(&table, 3, 1, 0, 255); flat.relax();
+        assert_eq!(flat.cells, [vec![255], vec![255], vec![255]]);
+    }
+    /// The same wealths reuse a temporary grid; only its first row byte is seeded each time.
+    #[test]
+    fn core_grid_mask_and_relaxation_reuse_the_worked_example() {
+        let table = byte_grid_table();
+        let mut map = TestByteGrid::new(&table, 4, 4, 0, 0);
+        for (x, z) in [(1, 0), (1, 1), (2, 3)] { map.cells[x][z] = 6; }
+        map.cells[3][0] = 7;
+        let mut target = TestByteGrid::new(&table, 4, 4, 0, 0);
+        for (key, edge) in [(6, [1, 0, 1, 1]), (7, [1, 1, 1, 0]), (8, [1, 1, 1, 1])] {
+            target.seed(&mut map, key); target.relax();
+            assert_eq!(target.cells, edge.map(|value| vec![value, 0, 0, 0]));
+        }
+        let mut map = TestByteGrid::new(&table, 5, 5, 0, 0); map.cells[2][2] = 6;
+        let mut target = TestByteGrid::new(&table, 5, 5, 0, 0); target.seed(&mut map, 6);
+        assert!(target.cells.iter().all(|row| row == &[255, 0, 0, 0, 0]));
+        target.relax(); assert!(target.cells.iter().all(|row| row == &[1, 0, 0, 0, 0]));
+    }
+    #[test]
+    fn core_grid_coarser_and_finer_targets_use_the_last_z_tract() {
+        let table = byte_grid_table();
+        let mut map = TestByteGrid::new(&table, 4, 4, 0, 0); map.cells[3][1] = 6;
+        let mut target = TestByteGrid::new(&table, 2, 2, 1, 0); target.seed(&mut map, 6);
+        assert_eq!(target.cells, [vec![255, 0], vec![255, 0]]);
+        target.relax(); assert_eq!(target.cells, [vec![1, 0], vec![1, 0]]);
+        let mut line = TestByteGrid::new(&table, 2, 1, 1, 0); line.seed(&mut map, 6);
+        assert_eq!(line.cells, [vec![255], vec![0]]);
+        let mut map = TestByteGrid::new(&table, 2, 2, 2, 0); map.cells[1][1] = 8; map.cells[0][0] = 8;
+        let mut target = TestByteGrid::new(&table, 8, 8, 0, 0); target.seed(&mut map, 8);
+        for (x, row) in target.cells.iter().enumerate() { assert_eq!(row[0], if x >= 4 { 0 } else { 255 }); assert!(row[1..].iter().all(|&v| v == 0)); }
     }
 
     #[test]
