@@ -153,13 +153,16 @@ pub mod late_boundaries;
 pub mod commercial;
 pub mod destination;
 pub mod tunnel;
+pub mod neighbor_changes;
+pub mod neighbor_add;
+pub mod neighbor_roll;
 #[cfg(test)]
 mod test_support;
 
 /// This module's replacements.
 pub const PORTS: &[Port] = &crate::port::concat::<
     {
-        tunnel::PORTS.len() + destination::PORTS.len() + commercial::PORTS.len() + late_boundaries::PORTS.len() + late_passes::PORTS.len() + late_containers::PORTS.len() + queries::PORTS.len() + containers::PORTS.len() + budget::PORTS.len() + capacity::PORTS.len() + maps::PORTS.len()
+        neighbor_roll::PORTS.len() + neighbor_add::PORTS.len() + neighbor_changes::PORTS.len() + tunnel::PORTS.len() + destination::PORTS.len() + commercial::PORTS.len() + late_boundaries::PORTS.len() + late_passes::PORTS.len() + late_containers::PORTS.len() + queries::PORTS.len() + containers::PORTS.len() + budget::PORTS.len() + capacity::PORTS.len() + maps::PORTS.len()
             + network::PORTS.len() + trees::PORTS.len() + trips::PORTS.len() + refresh::PORTS.len() + finish_helpers::PORTS.len() + finish_passes::PORTS.len() + final_map::PORTS.len() + source_totals::PORTS.len() + trip_map::PORTS.len()
     },
 >(&[
@@ -169,6 +172,9 @@ pub const PORTS: &[Port] = &crate::port::concat::<
     commercial::PORTS,
     destination::PORTS,
     tunnel::PORTS,
+    neighbor_changes::PORTS,
+    neighbor_add::PORTS,
+    neighbor_roll::PORTS,
     queries::PORTS,
     containers::PORTS,
     budget::PORTS,
