@@ -50,22 +50,27 @@ layout! {
 
 mod altitude;
 mod basic;
+mod creation;
 mod deletion;
 mod dezone;
 mod edges;
 mod examine;
 mod face;
+mod jog;
 mod lot;
 mod manager;
 mod network;
 mod occupancy;
+mod parcellize;
 mod parcels;
 mod placement;
+mod plopped;
 mod region;
 mod registers;
 mod remnants;
 mod search;
 mod street;
+mod street_extension;
 
 /// Call a virtual method with its incoming scratch-register values and retain EDX:EAX.
 unsafe fn virtual_registers(this: *mut u8, slot: usize, eax: u32, edx: u32, args: &[u32]) -> u64 {
@@ -87,6 +92,7 @@ unsafe fn virtual_registers(this: *mut u8, slot: usize, eax: u32, edx: u32, args
 pub const PORTS: &[Port] = &crate::port::concat::<
     {
         basic::PORTS.len()
+            + creation::PORTS.len()
             + dezone::PORTS.len()
             + deletion::PORTS.len()
             + lot::PORTS.len()
@@ -96,16 +102,21 @@ pub const PORTS: &[Port] = &crate::port::concat::<
             + network::PORTS.len()
             + occupancy::PORTS.len()
             + parcels::PORTS.len()
+            + parcellize::PORTS.len()
             + altitude::PORTS.len()
             + face::PORTS.len()
+            + jog::PORTS.len()
             + region::PORTS.len()
             + search::PORTS.len()
             + placement::PORTS.len()
+            + plopped::PORTS.len()
             + street::PORTS.len()
+            + street_extension::PORTS.len()
             + remnants::PORTS.len()
     },
 >(&[
     basic::PORTS,
+    creation::PORTS,
     dezone::PORTS,
     deletion::PORTS,
     lot::PORTS,
@@ -115,11 +126,15 @@ pub const PORTS: &[Port] = &crate::port::concat::<
     network::PORTS,
     occupancy::PORTS,
     parcels::PORTS,
+    parcellize::PORTS,
     altitude::PORTS,
     face::PORTS,
+    jog::PORTS,
     region::PORTS,
     search::PORTS,
     placement::PORTS,
+    plopped::PORTS,
     street::PORTS,
+    street_extension::PORTS,
     remnants::PORTS,
 ]);
