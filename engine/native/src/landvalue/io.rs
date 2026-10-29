@@ -15,8 +15,25 @@
 
 use super::LandValueSim;
 use crate::abi::{call_raw, vslot, Conv, RawCall};
-use crate::game;
 use crate::port::Port;
+game_fn! {
+    #[allow(dead_code)]
+    fn write_serializable(stream: *mut u8, object: *mut u8) -> u32 = "C" 0x005D_99A0;
+}
+game_fn! {
+    fn read_serializable(stream: *mut u8, iid: u32, out: *mut *mut u8, immediate: u32) -> u32 = "C" 0x005D_9730;
+}
+
+// The reference writer retains addresses from its frame. Tail forwarding keeps the caller's
+// argument words at their original depths, including the words pending from earlier calls.
+#[unsafe(naked)]
+unsafe extern "C" fn write_reference() {
+    core::arch::naked_asm!("call {target}", "jmp eax", target = sym write_reference_target);
+}
+
+extern "C" fn write_reference_target() -> usize {
+    crate::abi::target(0x005D_99A0)
+}
 
 /// Transfers the mean-altitude word, supplying EAX and EDX as well as the stack argument. A stream may
 /// leave EDX alone when it cannot transfer the value, and the final error getter may replace only DL.
@@ -48,23 +65,31 @@ port! {
     /// Saves version 1, intrinsic/total/slope references, dirty-or-running, average, and mean-altitude bits.
     /// `this` is the serializable interface, eight bytes after the primary interface. Intermediate results
     /// are ignored; only the low byte of the final stream error determines success. EDX is retained.
-    #[port(address = 0x006B_D8D0, owner = "landvalue", name = "cSC4LandValueSimulator::Write")]
-    pub unsafe extern "thiscall" fn fc4p_006bd8d0(this: *mut u8, stream: *mut u8) -> u64 {
-        // SAFETY: the game's serializable interface and live output stream.
-        unsafe {
-            let lv = LandValueSim::from_ptr(this.sub(8));
-            vcall!(stream, 0x1C => fn(u32) -> u32, 1);
-            game::write_serializable(stream, lv.intrinsic_grid());
-            game::write_serializable(stream, lv.total_grid());
-            game::write_serializable(stream, lv.slope_grid());
-            let dirty = u32::from(lv.dirty() != 0 || lv.state() != 9);
-            // Only the low byte of the original stream argument is replaced for this call.
-            vcall!(stream, 0x14 => fn(u32) -> u32, (stream as u32 & !0xFF) | dirty);
-            vcall!(stream, 0x14 => fn(u32) -> u32, u32::from(lv.average()));
-            let mean = core::ptr::read_unaligned(this.add(0x70).cast::<u32>());
-            let result = transfer_mean(stream, mean);
-            finish(stream, result as u32, core::ptr::read_unaligned(stream.cast::<u32>()))
-        }
+    #[port(address = 0x006B_D8D0, owner = "landvalue", name = "cSC4LandValueSimulator::Write", naked)]
+    pub unsafe extern "C" fn fc4p_006bd8d0() {
+        // Only call-frame marshaling lives here; the remaining state decisions are in write_fields.
+        core::arch::naked_asm!(
+            "push esi", "mov esi, [esp + 8]", "push edi", "mov edi, ecx",
+            "mov eax, [esi]", "push 1", "mov ecx, esi", "call dword ptr [eax + 0x1c]",
+            "push dword ptr [edi + 0x1c]", "push esi", "call {reference}",
+            "push dword ptr [edi + 0x20]", "push esi", "call {reference}",
+            "push dword ptr [edi + 0x28]", "push esi", "call {reference}",
+            "add esp, 24", "mov ecx, edi", "pop edi", "pop esi", "jmp {fields}",
+            reference = sym write_reference, fields = sym write_fields,
+        )
+    }
+}
+
+unsafe extern "thiscall" fn write_fields(this: *mut u8, stream: *mut u8) -> u64 {
+    // SAFETY: the entry has written the version and references, retaining the original arguments.
+    unsafe {
+        let lv = LandValueSim::from_ptr(this.sub(8));
+        let dirty = u32::from(lv.dirty() != 0 || lv.state() != 9);
+        vcall!(stream, 0x14 => fn(u32) -> u32, (stream as u32 & !0xFF) | dirty);
+        vcall!(stream, 0x14 => fn(u32) -> u32, u32::from(lv.average()));
+        let mean = core::ptr::read_unaligned(this.add(0x70).cast::<u32>());
+        let result = transfer_mean(stream, mean);
+        finish(stream, result as u32, core::ptr::read_unaligned(stream.cast::<u32>()))
     }
 }
 
@@ -74,31 +99,42 @@ port! {
     /// the version reader's EDX and upper EAX bytes; a completed read keeps the error getter's EDX.
     /// The hidden EDX parameter uses fastcall to receive that register without changing thiscall's ECX,
     /// stack argument, or four-byte callee pop.
-    #[port(address = 0x006B_D950, owner = "landvalue", name = "cSC4LandValueSimulator::Read")]
-    pub unsafe extern "fastcall" fn fc4p_006bd950(this: *mut u8, entry_edx: u32, stream: *mut u8) -> u64 {
-        // SAFETY: the game's serializable interface and live input stream. Destinations are the original
-        // fields, so a reference read's effects are visible to every subsequent call.
-        unsafe {
-            let lv = LandValueSim::from_ptr(this.sub(8));
-            let mut version = this as u32;
-            let args = [&mut version as *mut u32 as u32];
-            let mut call = RawCall::new(Conv::Thiscall, vslot(stream, 0x1C), stream as u32, &args);
-            call.eax = core::ptr::read_unaligned(stream.cast::<u32>());
-            call.edx = entry_edx;
-            call_raw(&mut call);
-            if version as u16 != 1 {
-                return (u64::from(call.edx) << 32) | u64::from(call.eax & !0xFF);
-            }
-            game::read_serializable(stream, 0xC9BD_939A, this.add(0x1C).cast(), 0);
-            game::read_serializable(stream, 0xC9BD_939A, this.add(0x20).cast(), 0);
-            game::read_serializable(stream, 0xC9BD_939A, this.add(0x28).cast(), 0);
-            let mut dirty = stream as u8;
-            vcall!(stream, 0x14 => fn(*mut u8) -> u32, &mut dirty);
-            lv.set_dirty(u8::from(dirty != 0));
-            vcall!(stream, 0x14 => fn(*mut u8) -> u32, this.add(0x6C));
-            let result = transfer_mean(stream, this.add(0x70) as u32);
-            finish(stream, core::ptr::read_unaligned(stream.cast::<u32>()), (result >> 32) as u32)
+    #[port(address = 0x006B_D950, owner = "landvalue", name = "cSC4LandValueSimulator::Read", naked)]
+    pub unsafe extern "C" fn fc4p_006bd950() {
+        core::arch::naked_asm!(
+            "lea eax, [esp + 4]", "push eax", "call {body}", "ret 4",
+            body = sym read_fields,
+        )
+    }
+}
+
+unsafe extern "fastcall" fn read_fields(this: *mut u8, entry_edx: u32, stream_slot: *mut u32) -> u64 {
+    let stream = unsafe { stream_slot.read() as *mut u8 };
+    // SAFETY: the game's serializable interface and live input stream. Destinations are the original
+    // fields, so a reference read's effects are visible to every subsequent call.
+    unsafe {
+        let lv = LandValueSim::from_ptr(this.sub(8));
+        let mut version = this as u32;
+        let args = [&mut version as *mut u32 as u32];
+        let mut call = RawCall::new(Conv::Thiscall, vslot(stream, 0x1C), stream as u32, &args);
+        call.eax = core::ptr::read_unaligned(stream.cast::<u32>());
+        call.edx = entry_edx;
+        call_raw(&mut call);
+        if version as u16 != 1 {
+            return (u64::from(call.edx) << 32) | u64::from(call.eax & !0xFF);
         }
+        read_serializable(stream, 0xC9BD_939A, this.add(0x1C).cast(), 0);
+        read_serializable(stream, 0xC9BD_939A, this.add(0x20).cast(), 0);
+        read_serializable(stream, 0xC9BD_939A, this.add(0x28).cast(), 0);
+        vcall!(stream, 0x14 => fn(*mut u8) -> u32, stream_slot.cast());
+        lv.set_dirty(u8::from(stream_slot.cast::<u8>().read() != 0));
+        vcall!(stream, 0x14 => fn(*mut u8) -> u32, this.add(0x6C));
+        let result = transfer_mean(stream, this.add(0x70) as u32);
+        finish(
+            stream,
+            core::ptr::read_unaligned(stream.cast::<u32>()),
+            (result >> 32) as u32,
+        )
     }
 }
 
@@ -144,6 +180,8 @@ mod tests {
         // Changes made by callees let tests check when the simulator reads its fields.
         change_after_ref: bool,
         dirty_seen_by_average: Option<u8>,
+        reference_frames: Vec<usize>,
+        dirty_destination: usize,
     }
 
     impl Stream {
@@ -170,10 +208,20 @@ mod tests {
         0
     }
 
-    extern "C" fn put_ref(stream: *mut u8, object: *mut u8) -> u32 {
+    #[unsafe(naked)]
+    unsafe extern "C" fn put_ref() {
+        core::arch::naked_asm!(
+            "mov eax, esp", "push eax", "push dword ptr [esp + 12]",
+            "push dword ptr [esp + 12]", "call {body}", "add esp, 12", "ret",
+            body = sym put_ref_at,
+        )
+    }
+
+    extern "C" fn put_ref_at(stream: *mut u8, object: *mut u8, frame: usize) -> u32 {
         // SAFETY: the test installs this fake only for its stream.
         let s = unsafe { &mut *stream.cast::<Stream>() };
         s.calls.push(Call::PutRef(stream as usize, object as usize));
+        s.reference_frames.push(frame);
         s.put(&(object as u32).to_le_bytes());
         let class: u32 = if s.refs == 2 { 0x49B9_E60A } else { 0x49B9_E602 };
         s.put(&class.to_le_bytes());
@@ -239,6 +287,9 @@ mod tests {
         let s = unsafe { &mut *this };
         let average = out == s.lv.wrapping_add(0x74);
         s.calls.push(Call::GetByte(average.then_some(out as usize)));
+        if !average {
+            s.dirty_destination = out as usize;
+        }
         if average {
             // SAFETY: the test's simulator; dirty is stored before the average read.
             s.dirty_seen_by_average = Some(unsafe { LandValueSim::from_ptr(s.lv) }.dirty());
@@ -264,6 +315,63 @@ mod tests {
         let s = unsafe { &mut *this };
         s.calls.push(Call::Error);
         (u64::from(ERROR_EDX) << 32) | u64::from(s.error)
+    }
+
+    // Record the actual export-entry ESP while retaining the thiscall argument and return registers.
+    #[unsafe(naked)]
+    unsafe extern "thiscall" fn invoke_io(
+        _this: *mut u8,
+        _stream: *mut u8,
+        _entry_stack: *mut usize,
+        _entry: usize,
+    ) -> u64 {
+        core::arch::naked_asm!(
+            "mov eax, [esp + 8]",
+            "lea edx, [esp - 8]",
+            "mov [eax], edx",
+            "mov eax, [esp + 12]",
+            "push dword ptr [esp + 4]",
+            "call eax",
+            "ret 12",
+        )
+    }
+
+    #[test]
+    fn reference_writes_retain_the_three_original_call_frame_addresses() {
+        let mut world = World::new(None);
+        world.set_saved_fields(0, 9);
+        let mut entry_stack = 0;
+        // SAFETY: one live stream argument; the helper records ESP before calling the export.
+        unsafe {
+            invoke_io(
+                world.lv.ptr().add(8),
+                (&mut *world.stream as *mut Stream).cast(),
+                &mut entry_stack,
+                fc4p_006bd8d0 as *const () as usize,
+            );
+        }
+        assert_eq!(
+            world.stream.reference_frames,
+            [entry_stack - 20, entry_stack - 28, entry_stack - 36]
+        );
+        assert_eq!(world.stream.bytes, RECORD);
+    }
+
+    #[test]
+    fn dirty_read_destination_is_the_incoming_stream_argument_word() {
+        let mut world = World::new(Some(&RECORD));
+        let mut entry_stack = 0;
+        // SAFETY: one live stream argument; the byte reader records the destination address.
+        unsafe {
+            invoke_io(
+                world.lv.ptr().add(8),
+                (&mut *world.stream as *mut Stream).cast(),
+                &mut entry_stack,
+                fc4p_006bd950 as *const () as usize,
+            );
+        }
+        assert_eq!(world.stream.dirty_destination, entry_stack + 4);
+        assert_eq!(world.sim().dirty(), 0);
     }
 
     struct World {
@@ -304,6 +412,8 @@ mod tests {
                 lv: lv.ptr(),
                 change_after_ref: false,
                 dirty_seen_by_average: None,
+                reference_frames: Vec::new(),
+                dirty_destination: 0,
             });
             Self {
                 lv,
