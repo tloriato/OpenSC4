@@ -64,6 +64,7 @@ mod edges;
 mod examine;
 mod face;
 mod insert;
+mod initialization;
 mod jog;
 mod join;
 mod lot;
@@ -124,6 +125,7 @@ pub const PORTS: &[Port] = &crate::port::concat::<
             + jog::PORTS.len()
             + join::PORTS.len()
             + insert::PORTS.len()
+            + initialization::PORTS.len()
             + region::PORTS.len()
             + search::PORTS.len()
             + sizing::PORTS.len()
@@ -156,6 +158,7 @@ pub const PORTS: &[Port] = &crate::port::concat::<
     jog::PORTS,
     join::PORTS,
     insert::PORTS,
+    initialization::PORTS,
     region::PORTS,
     search::PORTS,
     sizing::PORTS,
