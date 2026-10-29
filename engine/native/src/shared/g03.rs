@@ -185,9 +185,9 @@ fn scale_interval(value: F80, scale: f32) -> f32 {
 }
 
 port! {
-    /// Uses a positive speed to calculate numerator / speed * scale, otherwise 0.1. Sends the stored
-    /// interval to +0x8C, rounds that slot's ST0 result to f32, and sends it to +0x90 through the same
-    /// saved vtable. Both float results retain x87 precision until the original store points.
+    /// Uses a positive speed to calculate numerator / speed * scale, otherwise 0.1. Reads +0x8C
+    /// without arguments, rounds its ST0 result to f32, and passes that value followed by the interval
+    /// to +0x90 through the same saved vtable. Float results round only at the original store points.
     #[port(address = 0x0054_DA50, owner = "shared", name = "UpdateSpeedInterval")]
     pub unsafe extern "fastcall" fn fc4p_0054da50(this: *mut u8, entry_edx: u32) -> u64 {
         // SAFETY: the original object's float-returning slots and the game's stored float constants.
@@ -202,15 +202,14 @@ port! {
                 scale_interval(F80::from_f32(interval_numerator().read()) / call.st0, interval_scale().read())
             } else { f32::from_bits(0x3DCC_CCCD) };
             let table = word(this, 0) as *mut u8;
-            let args = [interval.to_bits()];
-            let mut transform = RawCall::new(Conv::Thiscall, word(table, 0x8C) as usize, this as u32, &args);
+            let mut transform = RawCall::new(Conv::Thiscall, word(table, 0x8C) as usize, this as u32, &[]);
             transform.eax = (call.eax & 0xFFFF_0000) | u32::from(status);
             transform.edx = call.edx;
             transform.take_st0 = 1;
             call_raw(&mut transform);
             let output = transform.st0.to_f32();
             invoke(Conv::Thiscall, word(table, 0x90) as usize, this,
-                transform.eax, transform.edx, &[output.to_bits()])
+                transform.eax, transform.edx, &[output.to_bits(), interval.to_bits()])
         }
     }
 }
@@ -5873,6 +5872,7 @@ mod tests {
     #[unsafe(naked)]
     unsafe extern "C" fn speed_with_registers() {
         core::arch::naked_asm!(
+            "mov [ecx + 4], edx",
             "mov eax, 0xabcd1234",
             "mov edx, 0x76543210",
             "fld qword ptr [ecx + 8]",
@@ -5881,11 +5881,11 @@ mod tests {
     }
     #[unsafe(naked)]
     unsafe extern "C" fn transform_preserving_registers() {
-        core::arch::naked_asm!("fld1", "ret 4");
+        core::arch::naked_asm!("fld1", "ret");
     }
     #[unsafe(naked)]
     unsafe extern "C" fn set_preserving_registers() {
-        core::arch::naked_asm!("ret 4");
+        core::arch::naked_asm!("ret 8");
     }
 
     fn float_environment() -> (u16, u16, u32, u32) {
@@ -5921,20 +5921,26 @@ mod tests {
         }
         let before = float_environment();
         let mut outcomes = vec![];
-        for (speed, condition) in [(2.0f64, 0), (0.0, 0x4000), (-1.0, 0x100), (f64::NAN, 0x4500)] {
+        for (speed, condition, entry_edx) in [
+            (2.0f64, 0, 0x00A9_D400),
+            (0.0, 0x4000, 0x1234_5678),
+            (-1.0, 0x100, u32::MAX),
+            (f64::NAN, 0x4500, 0),
+        ] {
             unsafe { p.add(8).cast::<f64>().write_unaligned(speed) };
-            let result = run(fc4p_0054da50 as *const (), p, &[], 0, 0);
-            outcomes.push((result, condition, float_environment()));
+            let result = run(fc4p_0054da50 as *const (), p, &[], 0, entry_edx);
+            outcomes.push((result, condition, float_environment(), object[1], entry_edx));
         }
         // SAFETY: the sentinel remains on the stack through all port calls and is popped here.
         unsafe {
             core::arch::asm!("fstp qword ptr [{p}]", p = in(reg) &mut restored, out("st(0)") _);
         }
-        for (result, condition, environment) in outcomes {
+        for (result, condition, environment, getter_edx, entry_edx) in outcomes {
             assert_eq!(result as u32 & 0xFFFF_0000, 0xABCD_0000);
             assert_eq!(result as u32 & 0x4500, condition);
             assert_eq!(result >> 32, 0x7654_3210);
             assert_eq!(environment, before);
+            assert_eq!(getter_edx, entry_edx);
         }
         assert_eq!(restored.to_bits(), sentinel.to_bits());
     }
@@ -6090,16 +6096,16 @@ mod tests {
         // SAFETY: the test's speed object.
         unsafe { (*this).speed }
     }
-    extern "thiscall" fn transform_interval(this: *mut u8, value: f32) -> f64 {
-        log(0x8C, this, &[value.to_bits()]);
+    extern "thiscall" fn transform_interval(this: *mut u8) -> f64 {
+        log(0x8C, this, &[]);
         0.333_333_333_333_333_3
     }
-    extern "thiscall" fn set_interval(this: *mut u8, value: f32) -> u64 {
-        log(0x90, this, &[value.to_bits()]);
+    extern "thiscall" fn set_interval(this: *mut u8, value: f32, interval: f32) -> u64 {
+        log(0x90, this, &[value.to_bits(), interval.to_bits()]);
         RESULT
     }
-    extern "thiscall" fn wrong_set_interval(this: *mut u8, value: f32) -> u64 {
-        log(0x190, this, &[value.to_bits()]);
+    extern "thiscall" fn wrong_set_interval(this: *mut u8, value: f32, interval: f32) -> u64 {
+        log(0x190, this, &[value.to_bits(), interval.to_bits()]);
         0
     }
 
@@ -6139,8 +6145,8 @@ mod tests {
                 calls(),
                 [
                     Call(0x1F4, p as usize, vec![]),
-                    Call(0x8C, p as usize, vec![expected.to_bits()]),
-                    Call(0x90, p as usize, vec![0x3EAA_AAAB])
+                    Call(0x8C, p as usize, vec![]),
+                    Call(0x90, p as usize, vec![0x3EAA_AAAB, expected.to_bits()])
                 ]
             );
             assert_eq!(bytes(p, core::mem::size_of::<SpeedObject>()), before);
@@ -6152,8 +6158,8 @@ mod tests {
             calls(),
             [
                 Call(0x1F4, p as usize, vec![]),
-                Call(0x8C, p as usize, vec![1.0f32.to_bits()]),
-                Call(0x90, p as usize, vec![0x3EAA_AAAB])
+                Call(0x8C, p as usize, vec![]),
+                Call(0x90, p as usize, vec![0x3EAA_AAAB, 1.0f32.to_bits()])
             ]
         );
         assert_eq!(threshold, 1.0);
@@ -6167,8 +6173,8 @@ mod tests {
             calls(),
             [
                 Call(0x1F4, p as usize, vec![]),
-                Call(0x8C, p as usize, vec![1.5f32.to_bits()]),
-                Call(0x90, p as usize, vec![0x3EAA_AAAB])
+                Call(0x8C, p as usize, vec![]),
+                Call(0x90, p as usize, vec![0x3EAA_AAAB, 1.5f32.to_bits()])
             ]
         );
         assert_eq!(object.table, replacement.as_ptr());
