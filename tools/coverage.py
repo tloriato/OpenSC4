@@ -5,7 +5,7 @@ Every function of SimCity 4.exe (GOG 1.1.641) gets one owner by fixed rules, eve
 tools/coverage-map.tsv, and every row two yes/no statuses (specified, implemented). The report sums function body
 bytes and function counts per status, for the whole exe and per area, plus Reach (game code the corpus executes in the
 original, from the fixed-schedule references' entry counters, or a census's) and Exact-replaced (docs/NEXT_STEPS.md
-section 3, from the last `tools/check.py credit` run). Same inputs, same numbers:
+sections 1-3, from docs/proven.tsv and docs/native-checks.tsv). Same inputs, same numbers:
 nothing depends on dict order, time or the machine, and the report lists the SHA-256 of every input (text inputs
 hashed with CRLF line endings normalised to LF, so a CRLF checkout and an LF checkout give the same report).
 
@@ -22,14 +22,16 @@ Inputs (all read-only):
   docs/specs/*.md, engine/core/src/*        existence of the spec files and core modules the map names
   engine/plugin/FC4Subsystems.cpp           the enable keys and which are on by default
   build-runs/suite/<tag>/       a census's reach counters (--suite; default build-runs/suite/CURRENT)
-  build-runs/golden/credit.json the last `tools/check.py credit` run (--credit): per scenario its verdict with the
-      credited owners switched on together, its reference's entry counters and the replace-mode run's
+  docs/proven.tsv, docs/native-checks.tsv   native proof and whole-game check evidence
+  build-runs/prove/dlls/<sha256>.dll        the proven DLL's exported owner table
+  build-runs/golden/credit.json (--references, also --credit): reference entry counters for Reach only
 
 Output: docs/coverage-report.md (counts, class names, address ranges and statuses only; no code), and with --owners
 a per-function TSV (address, bytes, owner, rule) for audits.
 
 Usage: python tools/coverage.py [--suite <census tag>] [--out docs/coverage-report.md]
                                 [--owners build-runs/coverage-owners.tsv] [--export <dir>] [--exe <path>]
+                                [--references <manifest> | --reference-dll <sha256>]
 Rules: docs/COVERAGE.md.
 """
 import argparse
@@ -594,48 +596,163 @@ def kib(n):
 STAT = ("specified", "implemented")
 
 
-def credit_evidence(path, reached):
-    """A `tools/check.py credit` run: the scenarios whose reference enters each function, the functions any of its
-    replace-mode runs still enters (the original's code still running), and the exact scenarios. `missing` names the
-    entry-counter files that are absent; then Exact-replaced is not measured."""
+def reference_evidence(path, reached):
+    """Read original reference counters from a scenario manifest, solely for Reach."""
     data = json.loads(path.read_text(encoding="utf-8"))
-    by, still, missing, files, unrecorded = defaultdict(set), set(), [], [], []
+    by, missing, files, unrecorded = defaultdict(set), [], [], []
     for name, entry in sorted(data["scenarios"].items()):
         if (entry.get("kind") != "draw" and entry["reference"] is None
                 and "no golden baseline" in entry.get("detail", "")):
             unrecorded.append(name)  # no reference: not in the corpus (Reach comes from the references too)
             continue
         reference = path.parent / (entry["reference"] or "-") / "reach.tsv"
-        run = Path(entry["run"] or "-") / "reach.tsv"
         if not reference.is_file():
             missing.append(f"{name} (reference)")
             continue
         files.append(reference)
         for va in reached(reference)[0]:
             by[va].add(name)
-        if run.is_file():
-            files.append(run)
-            still |= reached(run)[0]
-        elif entry["verdict"] == "exact":
-            missing.append(f"{name} (run)")
-    exact = {name for name, entry in data["scenarios"].items() if entry["verdict"] == "exact"}
-    return {"keys": set(data["keys"]), "dll_sha256": data["dll_sha256"], "n": len(data["scenarios"]) - len(unrecorded),
-            "exact": exact, "by": by, "still": still, "missing": missing, "files": files, "unrecorded": unrecorded}
+    return {"n": len(data["scenarios"]) - len(unrecorded), "by": by, "missing": missing, "files": files}
 
 
-def credit_status(evidence, va, key):
-    """`credited`, or why a function of a switched-on owner is not: no scenario reaches it, a scenario that reaches
-    it differs, or the original's code still runs in replace mode. None: its owner is not switched on."""
-    if key not in evidence["keys"]:
-        return None
-    scenarios = evidence["by"].get(va)
-    if not scenarios:
-        return "unreached"
-    if va in evidence["still"]:
-        return "original-runs"
-    if not scenarios <= evidence["exact"]:
-        return "differs"
-    return "credited"
+def stored_reference_evidence(store, dll_sha, reached):
+    """Select a historical fixed-schedule corpus by its pinned reference DLL, without running the game."""
+    if not re.fullmatch(r"[0-9a-f]{64}", dll_sha):
+        raise ValueError("reference DLL needs its full sha256")
+    by, files, missing, count = defaultdict(set), [], [], 0
+    for path in sorted(store.glob("*/baseline.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if data["inputs"]["files"].get("reference.dll", {}).get("sha256") != dll_sha:
+            continue
+        count += 1
+        trace = path.with_name("reach.tsv")
+        if not trace.is_file():
+            missing.append(path.parent.name)
+            continue
+        files.extend((path, trace))
+        for va in reached(trace)[0]:
+            by[va].add(path.parent.name)
+    if not count:
+        raise ValueError(f"no stored references for DLL {dll_sha}")
+    return {"n": count, "by": by, "missing": missing, "files": files}
+
+
+def native_ports(path):
+    """Read address -> owner from the exported FC4P v1 table of a PE32 DLL, without loading it."""
+    raw = path.read_bytes()
+    try:
+        pe = struct.unpack_from("<I", raw, 0x3c)[0]
+        machine, nsec = struct.unpack_from("<HH", raw, pe + 4)
+        optsize = struct.unpack_from("<H", raw, pe + 20)[0]
+        opt = pe + 24
+        if raw[:2] != b"MZ" or raw[pe:pe + 4] != b"PE\0\0" or machine != 0x14c \
+                or struct.unpack_from("<H", raw, opt)[0] != 0x10b:
+            raise ValueError("expected a PE32 x86 DLL")
+        base = struct.unpack_from("<I", raw, opt + 28)[0]
+        headers = struct.unpack_from("<I", raw, opt + 60)[0]
+        sections = [struct.unpack_from("<IIII", raw, opt + optsize + 40 * i + 8) for i in range(nsec)]
+
+        def offset(rva, size=1):
+            if 0 <= rva < headers and rva + size <= min(headers, len(raw)):
+                return rva
+            for _vsize, va, length, start in sections:
+                if va <= rva and rva + size <= va + length and start + rva - va + size <= len(raw):
+                    return start + rva - va
+            raise ValueError(f"unmapped port table RVA {rva:x}")
+
+        def uint(rva):
+            return struct.unpack_from("<I", raw, offset(rva, 4))[0]
+
+        def string(rva):
+            chars = bytearray()
+            for i in range(4096):
+                c = raw[offset(rva + i)]
+                if c == 0:
+                    return chars.decode("utf-8")
+                chars.append(c)
+            raise ValueError("unterminated port table string")
+
+        export, export_size = struct.unpack_from("<II", raw, opt + 96)
+        offset(export, 40)
+        count, names, ordinals = uint(export + 24), uint(export + 32), uint(export + 36)
+        table = None
+        for i in range(count):
+            if string(uint(names + 4 * i)) == "fc4native_ports":
+                ordinal = struct.unpack_from("<H", raw, offset(ordinals + 2 * i, 2))[0]
+                if ordinal >= uint(export + 20):
+                    raise ValueError("invalid port table export ordinal")
+                table = uint(uint(export + 28) + 4 * ordinal)
+                break
+        if table is None or export <= table < export + export_size:
+            raise ValueError("missing fc4native_ports data export")
+        magic, version, count, size, entries = struct.unpack_from("<4sIIII", raw, offset(table, 20))
+        if (magic, version, size) != (b"FC4P", 1, 16):
+            raise ValueError("unsupported FC4P header")
+        offset(entries - base, count * size)
+        ports = {}
+        for i in range(count):
+            address, entry, owner, name = struct.unpack_from("<IIII", raw, offset(entries - base + i * size, size))
+            owner, name = string(owner - base), string(name - base)
+            if address in ports or not entry or not owner or not name:
+                raise ValueError("duplicate or invalid port table entry")
+            ports[address] = owner
+        return ports
+    except (struct.error, UnicodeError, IndexError) as exc:
+        raise ValueError(f"{path}: malformed native DLL") from exc
+
+
+def native_evidence(proven, checks, dll_dir, functions):
+    """Join proofs to whole-game checks by the actual DLL hash and its port-table owner.
+
+    functions is the denominator's address -> body-byte table. A function can earn its bytes only once.
+    Each owner/DLL row shows the latest successful check, or the latest check if none succeeded.
+    """
+    proofs, checks = read_tsv(proven), read_tsv(checks)
+    tables, files = {}, []
+    for sha in sorted({r["dll_sha256"] for r in proofs + checks}):
+        if not re.fullmatch(r"[0-9a-f]{64}", sha):
+            raise ValueError(f"invalid native DLL sha256: {sha!r}")
+        path = dll_dir / f"{sha}.dll"
+        if sha256(path) != sha:
+            raise ValueError(f"{path}: native DLL sha256 mismatch")
+        tables[sha] = native_ports(path)
+        files.append(path)
+    port_counts = {sha: Counter(table.values()) for sha, table in tables.items()}
+    per_owner, checked = {}, defaultdict(list)
+
+    def owner_row(owner, sha):
+        return per_owner.setdefault((owner, sha), {"exact": set(), "ports": port_counts[sha][owner],
+                                                   "check": None, "bytes": 0})
+
+    for r in checks:
+        n, identical = int(r["scenarios"]), int(r["identical"])
+        if not 0 <= identical <= n:
+            raise ValueError("native check counts must satisfy 0 <= identical <= scenarios")
+        key = (r["owner"], r["dll_sha256"])
+        owner_row(*key)
+        checked[key].append(r)
+    for key, runs in checked.items():
+        good = [r for r in runs if int(r["scenarios"]) > 0 and int(r["identical"]) == int(r["scenarios"])]
+        per_owner[key]["check"] = max(good or runs, key=lambda r: r["checked"])
+    credited, seen = set(), set()
+    for r in proofs:
+        va, sha = int(r["address"], 16), r["dll_sha256"]
+        if va in seen:
+            raise ValueError(f"duplicate proven function {va:08x}")
+        seen.add(va)
+        owner = tables[sha].get(va)
+        if owner is None:
+            continue
+        row = owner_row(owner, sha)
+        if r["verdict"] != "EXACT" or len(set(split_list(r["scenarios"]))) < 3:
+            continue
+        row["exact"].add(va)
+        check = row["check"]
+        if check and int(check["scenarios"]) > 0 and int(check["identical"]) == int(check["scenarios"]) \
+                and va in functions:
+            credited.add(va)
+            row["bytes"] += functions[va]
+    return {"credited": credited, "owners": per_owner, "files": files}
 
 
 def attribution_for_tree(repo, export, text_lo, text_hi):
@@ -750,10 +867,14 @@ def main():
                     "reaches: scenarios in order, each with the bytes it adds (tools/check.py selects by it)")
     current = REPO / "build-runs" / "suite" / "CURRENT"
     ap.add_argument("--suite", default=current.read_text(encoding="utf-8").strip() if current.is_file() else None,
-                    help="census tag whose original entry counters give Reach without a credit run (default: "
+                    help="census tag whose original entry counters give Reach without reference counters (default: "
                     "suite/CURRENT); --owner-scenarios uses it")
-    ap.add_argument("--credit", default=str(REPO / "build-runs" / "golden" / "credit.json"),
-                    help="the `tools/check.py credit` result that gives Exact-replaced and, from its references, Reach")
+    default_references = next((p for root in (REPO, main_checkout(REPO))
+                               if (p := root / "build-runs/golden/credit.json").is_file()), None)
+    ap.add_argument("--references", "--credit", dest="references", default=default_references,
+                    help="scenario manifest whose original reference counters give Reach only")
+    ap.add_argument("--reference-dll", help="select stored original references by their pinned DLL's full sha256 "
+                    "instead of the latest scenario manifest (Reach only)")
     args = ap.parse_args()
     data = load_report_data(args.export, args.exe)
     export, exe_sha = data["export"], data["exe_sha"]
@@ -775,20 +896,26 @@ def main():
                 clean_runs += 1
     reach_source = (f"`{args.suite}`, {clean_runs} clean of {len(suite_evidence['scenarios'])} census runs"
                     if suite_evidence else None)
-    # A complete credit run measures Exact-replaced, and its references (the corpus under the fixed schedule) give
-    # Reach, so that both count the same runs.
+    # Reference counters retain the existing Reach calculation independently of native proof credit.
     evidence = None
-    if args.credit and Path(args.credit).is_file():
-        evidence = credit_evidence(Path(args.credit), _sibling("suite_coverage").reached)
+    if args.reference_dll or (args.references and Path(args.references).is_file()):
+        try:
+            read_reach = _sibling("suite_coverage").reached
+            evidence = (stored_reference_evidence(find_input("build-runs/golden"), args.reference_dll, read_reach)
+                        if args.reference_dll else reference_evidence(Path(args.references), read_reach))
+        except (ValueError, OSError, KeyError) as exc:
+            ap.error(f"reference evidence: {exc}")
         if not evidence["missing"]:
             reached = set(evidence["by"])
             reach_source = f"the fixed-schedule references of {evidence['n']} scenarios"
-    measured = evidence is not None and not evidence["missing"]
-    stats = STAT + (("reach",) if reach_source else ()) + (("exact",) if measured else ())
-    status = {}
-    if measured:
-        for va, _size, i, _area in game:
-            status[va] = credit_status(evidence, va, rows[i]["replace"] if i is not None else "-")
+    inputs["proven"] = REPO / "docs/proven.tsv"
+    inputs["native checks"] = REPO / "docs/native-checks.tsv"
+    try:
+        native = native_evidence(inputs["proven"], inputs["native checks"], find_input("build-runs/prove/dlls"),
+                                 {va: size for va, size, _i, _area in game})
+    except (ValueError, OSError, KeyError) as exc:
+        ap.error(f"native evidence: {exc}")
+    stats = STAT + (("reach",) if reach_source else ()) + ("exact",)
 
     total_b = sum(att.funcs.values())
     total_n = len(att.order)
@@ -800,7 +927,7 @@ def main():
         if s == "reach":
             return va in reached
         if s == "exact":
-            return status.get(va) == "credited"
+            return va in native["credited"]
         return i is not None and rows[i][s]
 
     def tally(items):
@@ -861,7 +988,8 @@ def main():
     unspecified = sum(size for va, size, i, _ in game if has("implemented", va, i) and not has("specified", va, i))
     w("# OpenSC4 coverage report")
     w("")
-    w("Generated by `python tools/coverage.py`; the rules are in [COVERAGE.md](COVERAGE.md). Do not edit by hand: "
+    command = "python tools/coverage.py" + (f" --reference-dll {args.reference_dll}" if args.reference_dll else "")
+    w(f"Generated by `{command}`; the rules are in [COVERAGE.md](COVERAGE.md). Do not edit by hand: "
       "rerun the tool. Every number is a share of the machine code bytes of `SimCity 4.exe` (GOG 1.1.641), "
       "attributed to the class that owns each function by fixed rules; the inputs and their hashes are listed at the "
       "end. The picture of the same numbers is [coverage-map.svg](coverage-map.svg).")
@@ -879,16 +1007,10 @@ def main():
     w(f"| **Implemented** | our clean-room code in engine/ implements the owning class | "
       f"**{pct(whole['implemented_b'], game_b)}** | {whole['implemented_b']:,} | {whole['implemented_n']:,} | "
       f"{gap} |")
-    meaning = ("its owner is switched on (our code runs instead) in every corpus scenario, the original's code of it "
-               "never runs there, and every scenario whose reference enters it is identical to the reference under the "
-               "fixed schedule")
-    if measured:
-        w(f"| **Exact-replaced** | {meaning} | **{pct(whole['exact_b'], game_b)}** | {whole['exact_b']:,} | "
-          f"{whole['exact_n']:,} | - |")
-    else:
-        why = ("no `tools/check.py credit` run" if evidence is None else
-               f"entry counters missing for {len(evidence['missing'])} scenarios ({', '.join(evidence['missing'][:4])})")
-        w(f"| **Exact-replaced** | {meaning} | **not measured** | - | - | {why} |")
+    meaning = ("the function is EXACT in prove from at least three distinct scenarios, and its port-table owner "
+               "has a fully identical whole-game check on the same DLL")
+    w(f"| **Exact-replaced** | {meaning} | **{pct(whole['exact_b'], game_b)}** | {whole['exact_b']:,} | "
+      f"{whole['exact_n']:,} | - |")
     if reach_source:
         w(f"| Reach (the ceiling) | the corpus executes the code at all in the original ({reach_source}) | "
           f"**{pct(whole['reach_b'], game_b)}** | {whole['reach_b']:,} | {whole['reach_n']:,} | - |")
@@ -896,24 +1018,16 @@ def main():
         w("| Reach (the ceiling) | the corpus executes the code at all in the original | **not measured** | - | - | "
           "no references with entry counters and no census (`--suite`) |")
     w("")
-    if measured:
-        per_key = defaultdict(Counter)
-        for va, size, i, _area in game:
-            if status.get(va):
-                per_key[rows[i]["replace"]][status[va]] += size
-        w(f"The credit run switched on {len(evidence['keys'])} owners together ({', '.join(sorted(evidence['keys']))}) "
-          f"in {evidence['n']} scenarios, {len(evidence['exact'])} of them exact (DLL {evidence['dll_sha256'][:8]})"
-          + (f"; not in the corpus, no reference: {', '.join(evidence['unrecorded'])}" if evidence["unrecorded"] else "")
-          + ". Per owner, the bytes of its code the references enter, by why each byte is or is not credited:")
-        w("")
-        w("| Owner | Entered by the references | Credited | A scenario that enters it differs | "
-          "The original's code still runs | Unreached |")
-        w("|---|---:|---:|---:|---:|---:|")
-        for key in sorted(per_key, key=lambda k: (-sum(per_key[k].values()) + per_key[k]["unreached"], k)):
-            c = per_key[key]
-            w(f"| {key} | {sum(c.values()) - c['unreached']:,} | {c['credited']:,} | {c['differs']:,} | "
-              f"{c['original-runs']:,} | {c['unreached']:,} |")
-        w("")
+    w("Native evidence from `docs/proven.tsv` and `docs/native-checks.tsv`, joined by DLL hash and exported owner. "
+      "One row per owner/DLL; the in-game column shows the latest successful check, or the latest check if none passed.")
+    w("")
+    w("| Owner | Functions EXACT (three scenarios) | Functions in the port table | In-game check (identical / run, DLL) | Bytes credited |")
+    w("|---|---:|---:|---|---:|")
+    for (key, sha), row in sorted(native["owners"].items()):
+        check = row["check"]
+        result = f"{check['identical']} / {check['scenarios']}" if check else "not checked"
+        w(f"| {key} | {len(row['exact']):,} | {row['ports']:,} | {result}, {sha[:8]} | {row['bytes']:,} |")
+    w("")
     if reach_source:
         w(f"Of the implemented owners' code, the corpus reaches {pct(whole['impl_reach_b'], whole['implemented_b'])} "
           f"({whole['impl_reach_b']:,} of {whole['implemented_b']:,} bytes), so Exact-replaced cannot exceed "
@@ -941,8 +1055,7 @@ def main():
       "specified or implemented; Reach counts every function the corpus entered.")
     w("")
     cols = [("Specified", "specified"), ("Implemented", "implemented")]
-    if measured:
-        cols.append(("Exact-replaced", "exact"))
+    cols.append(("Exact-replaced", "exact"))
     if reach_source:
         cols.append(("Reach", "reach"))
     w("| Area | Functions | Bytes | % of game | " + " | ".join(c for c, _ in cols) + " |")
@@ -1011,25 +1124,32 @@ def main():
     w("")
     w("## Inputs")
     w("")
-    w("Text inputs are hashed with CRLF line endings normalised to LF (the text as git stores it); the exe as its bytes.")
+    w("Text inputs are hashed with CRLF line endings normalised to LF (the text as git stores it); the exe and DLLs as their bytes.")
     w("")
     w("| Input | SHA-256 (first 16 hex) | Note |")
     w("|---|---|---|")
     w(f"| SimCity 4.exe | {exe_sha[:16]} | GOG 1.1.641, image base 0x{base:08X} |")
     for f in ("functions.tsv", "function-details.tsv", "calls.tsv", "data-references.tsv", "instructions.asm"):
         w(f"| ghidra/export/windows/{f} | {text_sha256(export / f)[:16]} | Ghidra 12.1.4 auto-analysis export |")
-    for k in ("names", "vtables", "interfaces", "libs", "ranges", "noncode refs", "map", "subsystems"):
+    for k in ("names", "vtables", "interfaces", "libs", "ranges", "noncode refs", "map", "subsystems", "proven", "native checks"):
         w(f"| {inputs[k].relative_to(REPO).as_posix()} | {text_sha256(inputs[k])[:16]} | |")
+    for path in native["files"]:
+        w(f"| build-runs/prove/dlls/{path.name} | {sha256(path)[:16]} | native port table |")
     if suite_evidence:
         reach_files = sorted(p for p in suite_evidence["inputs"] if p.name.endswith(".reach.tsv"))
         digest = hashlib.sha256("".join(text_sha256(p) for p in reach_files).encode()).hexdigest()
         w(f"| build-runs/suite/{args.suite}/*.reach.tsv | {digest[:16]} | {len(reach_files)} entry-counter files "
           "(hash of their hashes) |")
     if evidence:
-        digest = hashlib.sha256("".join([text_sha256(Path(args.credit))] + [text_sha256(p) for p in evidence["files"]])
+        manifests = [] if args.reference_dll else [Path(args.references)]
+        digest = hashlib.sha256("".join(text_sha256(p) for p in manifests + evidence["files"])
                                 .encode()).hexdigest()
-        w(f"| build-runs/golden/credit.json | {digest[:16]} | with {len(evidence['files'])} entry-counter files of its "
-          "references and runs (hash of their hashes) |")
+        if args.reference_dll:
+            w(f"| build-runs/golden/*/baseline.json, reach.tsv | {digest[:16]} | Reach only, reference DLL "
+              f"{args.reference_dll[:16]}, {evidence['n']} references (hash of metadata and counter hashes) |")
+        else:
+            w(f"| {Path(args.references).name} | {digest[:16]} | Reach only, with {len(evidence['files'])} reference "
+              "entry-counter files (hash of their hashes) |")
     w("")
     w(f"On by default in FC4Subsystems.cpp: {', '.join(sorted(k for k, v in keys.items() if v))}.")
     w("")
@@ -1071,19 +1191,10 @@ def main():
                     covered += gain
                     left -= hit
                     f.write(f"{key}\t{name}\t{gain}\t{covered}\t{total}\n")
-    if measured:
-        # Per function of a switched-on owner, why it is or is not credited: what an engine lane works from.
-        path = Path(args.credit).with_name("credit-functions.tsv")
-        with open(path, "w", encoding="utf-8", newline="\n") as f:
-            f.write("address\tbytes\tkey\towner\tstatus\tscenarios\n")
-            for va, size, i, _area in game:
-                if status.get(va) not in (None, "unreached"):
-                    f.write(f"{va:08x}\t{size}\t{rows[i]['replace']}\t{owner[va]}\t{status[va]}\t"
-                            f"{','.join(sorted(evidence['by'][va]))}\n")
     reach_text = (f"reach {pct(whole['reach_b'], game_b)} of game code, "
                   f"{pct(whole['impl_reach_b'], whole['implemented_b'])} of implemented ({reach_source})"
                   if reach_source else "reach not measured")
-    exact_text = f"exact-replaced {pct(whole['exact_b'], game_b)}" if measured else "exact-replaced not measured"
+    exact_text = f"exact-replaced {pct(whole['exact_b'], game_b)}"
     print(f"coverage: game code {game_n} functions, {game_b} bytes; "
           + ", ".join(f"{s} {pct(whole[s + '_b'], game_b)}" for s in STAT)
           + f"; {exact_text}; {reach_text}; wrote {args.out}")
