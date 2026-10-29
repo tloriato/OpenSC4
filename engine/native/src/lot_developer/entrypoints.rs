@@ -615,7 +615,13 @@ pub(super) unsafe extern "fastcall" fn do_message(interface: *mut u8, frame: *mu
                 call = virtual_call(message, 0x38, &[], call.eax, table(message), false);
                 let occupied = matches!(call.eax, 3 | 4);
                 let reoccupied = old == 2 && call.eax == 3;
-                frame.add(0x54).write(u8::from(occupied));
+                // State four clears and then sets the caller's low argument byte.
+                if call.eax != 3 {
+                    frame.add(0x54).write_volatile(0);
+                }
+                if occupied {
+                    frame.add(0x54).write_volatile(1);
+                }
                 call.eax = call.eax & !255 | u32::from(occupied);
                 if occupied || reoccupied {
                     put(frame, 0x14, 0);
