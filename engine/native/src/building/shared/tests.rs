@@ -377,11 +377,12 @@ fn vector_assignment_all_capacity_branches_and_return_edx() {
             assert_eq!(events(), expected);
         }
         let before = dest;
+        let args = [dest_ptr as u32];
         let mut call = crate::abi::RawCall::new(
             crate::abi::Conv::Thiscall,
             fc4p_004e40a0 as *const () as usize,
             dest_ptr as u32,
-            &[dest_ptr as u32],
+            &args,
         );
         call.edx = 0xDEAD_BEEF;
         crate::abi::call_raw(&mut call);
