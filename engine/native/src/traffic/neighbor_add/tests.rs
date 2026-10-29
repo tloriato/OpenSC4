@@ -39,6 +39,8 @@ struct State {
     next: usize,
     allocation: usize,
     slot: usize,
+    position_outputs: [usize; 2],
+    change_position_during_property: bool,
 }
 thread_local! { static STATE: RefCell<State> = RefCell::new(State::default()); }
 fn log(c: Call) {
@@ -85,7 +87,8 @@ extern "thiscall" fn established(this: *mut u8) -> u32 {
 unsafe extern "thiscall" fn position(this: *mut u8, x: *mut u32, z: *mut i32) -> u32 {
     log(Call::Position(this as usize));
     STATE.with(|s| {
-        let s = s.borrow();
+        let mut s = s.borrow_mut();
+        s.position_outputs = [x as usize, z as usize];
         unsafe {
             x.write(s.city_x as u32);
             z.write(s.city_z);
@@ -97,6 +100,12 @@ unsafe extern "C" fn get(holder: *mut u8, id: u32, out: *mut i32) -> u32 {
     log(Call::Get(holder as usize, id));
     STATE.with(|s| {
         let s = s.borrow();
+        if s.change_position_during_property {
+            unsafe {
+                (s.position_outputs[0] as *mut u32).write(11);
+                (s.position_outputs[1] as *mut i32).write(21);
+            }
+        }
         if let Some(&(_, _, value, result)) = s
             .properties
             .iter()
@@ -434,4 +443,13 @@ fn cost_comparison_keeps_equal_zero_and_unordered_values_and_handles_shift_width
     STATE.with(|s| s.borrow_mut().city = 0);
     w.run(16);
     assert_eq!(w.rec().mask(), 0);
+}
+
+#[test]
+fn pool_matching_reads_city_position_again_after_property_callbacks() {
+    let mut w = World::new();
+    let mut node = w.pool(7, 0x1111, Some(11), Some(21));
+    STATE.with(|s| s.borrow_mut().change_position_during_property = true);
+    assert_eq!(w.run(2), (0xDDEE_0007, [11, 60.0f32.to_bits(), node.ptr() as u32]));
+    assert_eq!(w.rec().pool(), 7);
 }

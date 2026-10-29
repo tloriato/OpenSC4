@@ -95,8 +95,6 @@ unsafe extern "fastcall" fn add_neighbor(this: *mut u8, stack: *mut u32) -> u32 
         }
         let mut city_z = MaybeUninit::<i32>::uninit();
         vcall!(city, 0x14 => fn(*mut u32, *mut i32) -> u32, stack.add(1), city_z.as_mut_ptr());
-        let city_x = stack.add(1).read() as i32;
-        let city_z = city_z.assume_init();
         let tree = this.add(0xB8);
         let header = sim.pools();
         let mut node = PoolNode::from_ptr(header).left();
@@ -106,7 +104,10 @@ unsafe extern "fastcall" fn add_neighbor(this: *mut u8, stack: *mut u32) -> u32 
             let (mut px, mut pz) = (MaybeUninit::<i32>::uninit(), MaybeUninit::<i32>::uninit());
             if get_integer(holder, 0x4A23_576B, px.as_mut_ptr()) as u8 != 0 {
                 let eax = get_integer(holder, 0x4A23_576C, pz.as_mut_ptr());
-                if eax as u8 != 0 && px.assume_init() == city_x && pz.assume_init() == city_z {
+                if eax as u8 != 0
+                    && px.assume_init() == stack.add(1).read() as i32
+                    && pz.assume_init() == city_z.assume_init_read()
+                {
                     let key = PoolNode::from_ptr(node).key();
                     record.set_pool(key);
                     return (eax & 0xFFFF_0000) | u32::from(key);
@@ -122,8 +123,8 @@ unsafe extern "fastcall" fn add_neighbor(this: *mut u8, stack: *mut u32) -> u32 
             construct_holder(allocation)
         };
         vcall!(holder, 4 => fn() -> u32);
-        set_integer(holder, 0x4A23_576B, city_x);
-        set_integer(holder, 0x4A23_576C, city_z);
+        set_integer(holder, 0x4A23_576B, stack.add(1).read() as i32);
+        set_integer(holder, 0x4A23_576C, city_z.assume_init_read());
         let header = sim.pools();
         let root = PoolNode::from_ptr(header).parent();
         let mut key = 1u32;

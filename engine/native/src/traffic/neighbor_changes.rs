@@ -47,7 +47,6 @@ unsafe extern "fastcall" fn road_changed(this: *mut u8, stack: *mut u32) -> u32 
         let mut z = MaybeUninit::<u32>::uninit();
         vcall!(sim.city(), 0x17C => fn(u32, u32, *mut u32, *mut u32) -> u32,
             position[0], position[2], stack.add(1), z.as_mut_ptr());
-        let z = z.assume_init();
         let inserted = stack.add(2).read() as u8 != 0;
         let kind = stack.add(3).read();
         let count = this.wrapping_add(0x740).cast::<u32>().wrapping_add(kind as usize);
@@ -62,7 +61,7 @@ unsafe extern "fastcall" fn road_changed(this: *mut u8, stack: *mut u32) -> u32 
             return eax;
         }
         // The complete z word participates in OR, even when its upper bits are nonzero.
-        let key = (stack.add(1).read() & 0xFF).wrapping_shl(8) | z;
+        let key = (stack.add(1).read() & 0xFF).wrapping_shl(8) | z.assume_init_read();
         stack.add(2).write(key);
         let intact = this.add(0x7B8);
         let mut result = MaybeUninit::<[u32; 3]>::uninit();
@@ -93,7 +92,7 @@ unsafe extern "fastcall" fn road_changed(this: *mut u8, stack: *mut u32) -> u32 
                 vcall!(message, 4 => fn() -> u32);
                 vcall!(message, 0x14 => fn(u32) -> u32, 0x6924_7DC8);
                 vcall!(message, 0x2C => fn(u32) -> u32, stack.add(1).read());
-                vcall!(message, 0x40 => fn(u32) -> u32, z);
+                vcall!(message, 0x40 => fn(u32) -> u32, z.assume_init_read());
                 vcall!(message, 0x54 => fn(u32) -> u32, 0);
                 vcall!(sim.server(), 0x10 => fn(*mut u8, u32) -> u32, message, 0);
                 eax = vcall!(message, 8 => fn() -> u32);

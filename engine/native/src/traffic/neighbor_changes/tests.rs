@@ -34,6 +34,8 @@ struct State {
     intact: bool,
     damaged: bool,
     message: usize,
+    cell_outputs: [usize; 2],
+    change_cell_during_budget: bool,
 }
 thread_local! { static STATE: RefCell<State> = RefCell::new(State::default()); }
 fn log(c: Call) {
@@ -55,7 +57,8 @@ unsafe extern "thiscall" fn position(this: *mut u8, out: *mut u32) -> u32 {
 unsafe extern "thiscall" fn cell(this: *mut u8, x: u32, z: u32, out_x: *mut u32, out_z: *mut u32) -> u32 {
     log(Call::Cell(this as usize, x, z));
     STATE.with(|s| {
-        let s = s.borrow();
+        let mut s = s.borrow_mut();
+        s.cell_outputs = [out_x as usize, out_z as usize];
         unsafe {
             out_x.write(s.x);
             out_z.write(s.z);
@@ -66,6 +69,15 @@ unsafe extern "thiscall" fn cell(this: *mut u8, x: u32, z: u32, out_x: *mut u32,
 unsafe extern "thiscall" fn budget(this: *mut u8) -> u32 {
     let count = STATE.with(|s| unsafe { word(this, 0x740 + s.borrow().kind * 4) });
     log(Call::Budget(this as usize, count));
+    STATE.with(|s| {
+        let s = s.borrow();
+        if s.change_cell_during_budget {
+            unsafe {
+                (s.cell_outputs[0] as *mut u32).write(21);
+                (s.cell_outputs[1] as *mut u32).write(22);
+            }
+        }
+    });
     0x3333
 }
 unsafe extern "thiscall" fn insert(this: *mut u8, result: *mut u32, key: *const u32) -> u32 {
@@ -333,4 +345,20 @@ fn road_damage_counters_wrap_at_their_original_widths() {
     w.sim().set_damaged_count(0);
     w.run(0, 0, 0);
     assert_eq!((w.sim().potholes(), w.sim().damaged_count()), (u16::MAX, u32::MAX));
+}
+
+#[test]
+fn road_cell_outputs_are_read_again_after_budget_callbacks() {
+    let mut w = World::new();
+    STATE.with(|s| {
+        let mut s = s.borrow_mut();
+        s.damaged = true;
+        s.change_cell_during_budget = true;
+    });
+    let (_, args) = w.run(0, 0, 100);
+    assert_eq!(args, [21, 0x1516, 0]);
+    let actual = calls();
+    assert!(actual.contains(&Call::Find(w.sim.ptr() as usize + 0x7B8, 0x1516)));
+    assert!(actual.contains(&Call::X(21)));
+    assert!(actual.contains(&Call::Z(22)));
 }

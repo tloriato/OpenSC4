@@ -36,7 +36,7 @@ unsafe fn acquire_allocator() -> *mut u8 {
 }
 
 /// Calls the capacity writer with its holder in EDI and its value in EBX.
-unsafe fn write_capacity(holder: *mut u8, index: u32, value: u32, input: Registers) -> Registers {
+pub(super) unsafe fn write_capacity(holder: *mut u8, index: u32, value: u32, input: Registers) -> Registers {
     let target = crate::abi::target(0x0070_DE70);
     let mut frame = [
         target as u32,
