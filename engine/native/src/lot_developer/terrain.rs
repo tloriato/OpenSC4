@@ -521,9 +521,11 @@ unsafe extern "fastcall" fn foundation_bottom(this: *mut u8, stack: *mut u32, ou
         let allocation = allocate_lot_node(12);
         OccupantNode::from_ptr(allocation).set_next(allocation);
         OccupantNode::from_ptr(allocation).set_previous(allocation);
-        let mut head = allocation;
+        let head_slot = stack.add(1).cast::<*mut u8>();
+        head_slot.write(allocation);
         let manager = LotDeveloper::from_ptr(this).lot_manager();
-        let queried = vcall!(manager, 0x24 => fn(*mut u8, *mut *mut u8, u32) -> u32, lot, &mut head, 15);
+        let queried = vcall!(manager, 0x24 => fn(*mut u8, *mut *mut u8, u32) -> u32, lot, head_slot, 15);
+        let head = head_slot.read();
         if queried != 0 {
             let mut current = OccupantNode::from_ptr(head).next();
             while current != head {
@@ -808,6 +810,6 @@ pub const PORTS: &[Port] = &[
     fc4p_006c5b70::PORT,
     fc4p_006c5f20::PORT,
     fc4p_006c5f50::PORT,
-    fc4p_006c5f80::PORT,
     fc4p_006c7630::PORT,
+    fc4p_006c5f80::PORT,
 ];

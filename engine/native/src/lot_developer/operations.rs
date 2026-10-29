@@ -119,22 +119,28 @@ unsafe extern "thiscall" fn update_surrounding_body(this: *mut u8, lot: *mut u8)
 port! {
     /// Clears lot contents, the foundation at its saved location, neighboring foundations and traffic,
     /// then resets the lot's unit, habitation, growth type and configuration before setting empty texture.
-    #[port(address = 0x006C_8A20, owner = "lotdeveloper", name = "cSC4LotDeveloper::ClearLot")]
+    #[port(address = 0x006C_8A20, owner = "lotdeveloper", name = "cSC4LotDeveloper::ClearLot", naked)]
     pub unsafe extern "thiscall" fn fc4p_006c8a20(this: *mut u8, lot: *mut u8) -> u64 {
-        unsafe {
-            let mut x = 0u32;
-            let mut z = 0u32;
-            vcall!(lot, 0x54 => fn(*mut u32, *mut u32) -> u32, &mut x, &mut z);
-            clear_lot_contents(lot, 0);
-            vcall!(this, 0xD4 => fn(u32, u32) -> u32, x, z);
-            update_surrounding(this, lot);
-            clear_lot_traffic(lot);
-            vcall!(lot, 0x114 => fn(u32) -> u32, 0);
-            vcall!(lot, 0x88 => fn(u32, u32, u32) -> u32, 1, 0, 0);
-            vcall!(lot, 0xBC => fn(u32) -> u32, 0);
-            vcall!(lot, 0x28 => fn(u32) -> u32, 0);
-            vcall!(this, 0xAC => fn(*mut u8) -> u64, lot)
-        }
+        stack_entry!(clear_lot_entry, 4);
+    }
+}
+
+// Save the lot before its argument slot becomes the z coordinate.
+unsafe extern "fastcall" fn clear_lot_entry(this: *mut u8, stack: *mut u32, _entry_edx: u32) -> u64 {
+    unsafe {
+        let lot = stack.add(1).read() as *mut u8;
+        let x = stack.sub(1);
+        let z = stack.add(1);
+        vcall!(lot, 0x54 => fn(*mut u32, *mut u32) -> u32, x, z);
+        clear_lot_contents(lot, 0);
+        vcall!(this, 0xD4 => fn(u32, u32) -> u32, x.read(), z.read());
+        update_surrounding(this, lot);
+        clear_lot_traffic(lot);
+        vcall!(lot, 0x114 => fn(u32) -> u32, 0);
+        vcall!(lot, 0x88 => fn(u32, u32, u32) -> u32, 1, 0, 0);
+        vcall!(lot, 0xBC => fn(u32) -> u32, 0);
+        vcall!(lot, 0x28 => fn(u32) -> u32, 0);
+        vcall!(this, 0xAC => fn(*mut u8) -> u64, lot)
     }
 }
 
@@ -224,5 +230,4 @@ pub const PORTS: &[Port] = &[
     fc4p_006c60c0::PORT,
     fc4p_006c7720::PORT,
     fc4p_006c7a70::PORT,
-    fc4p_006c8a20::PORT,
 ];

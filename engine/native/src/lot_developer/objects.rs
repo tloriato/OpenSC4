@@ -120,72 +120,81 @@ port! {
 port! {
     /// Queries one building in the lot's cell rectangle. A successful interface query is released before
     /// the occupant list; the borrowed interface pointer remains the result, including on query failure.
-    #[port(address = 0x006C_9100, owner = "lotdeveloper", name = "cSC4LotDeveloper::GetFirstBuilding")]
+    #[port(address = 0x006C_9100, owner = "lotdeveloper", name = "cSC4LotDeveloper::GetFirstBuilding", naked)]
     pub unsafe extern "fastcall" fn fc4p_006c9100(this: *mut u8, entry_edx: u32, lot: *mut u8) -> u64 {
-        unsafe {
-            let mut rect = [0u32; 4];
-            let mut building = core::ptr::null_mut();
-            let _ = entry_edx;
-            let call = virtual_call(lot, 0x38, &[rect.as_mut_ptr() as u32], table(lot), rect.as_ptr() as u32, false);
-            let (mut head, _) = new_list(call.edx);
-            let manager = LotDeveloper::from_ptr(this).occupant_manager();
-            let mut call = virtual_call(manager, 0xA4,
-                &[&mut head as *mut *mut u8 as u32, rect.as_ptr() as u32, rect.as_ptr().add(2) as u32, 0x2781_28A0, 1],
-                &mut head as *mut *mut u8 as u32, table(manager), false);
-            if call.eax as u8 != 0 {
-                let first = OccupantNode::from_ptr(head).next();
-                call.eax = first as u32;
-                if first != head {
-                    let occupant = OccupantNode::from_ptr(first).occupant();
-                    call = virtual_call(occupant, 0, &[0x87DD_A3A9, &mut building as *mut *mut u8 as u32],
-                        &mut building as *mut *mut u8 as u32, table(occupant), false);
-                    if call.eax as u8 != 0 {
-                        virtual_call(building, 8, &[], call.eax, table(building), false);
-                    }
-                    let manager = LotDeveloper::from_ptr(this).occupant_manager();
-                    call = virtual_call(manager, 0xC0, &[&mut head as *mut *mut u8 as u32],
-                        table(manager), &mut head as *mut *mut u8 as u32, false);
+        stack_entry!(first_building, 4);
+    }
+}
+
+unsafe extern "fastcall" fn first_building(this: *mut u8, stack: *mut u32, entry_edx: u32) -> u64 {
+    unsafe {
+        let lot = stack.add(1).read() as *mut u8;
+        let mut rect = [0u32; 4];
+        let mut building = core::ptr::null_mut();
+        let _ = entry_edx;
+        let call = virtual_call(lot, 0x38, &[rect.as_mut_ptr() as u32], table(lot), rect.as_ptr() as u32, false);
+        let head_slot = stack.add(1).cast::<*mut u8>();
+        head_slot.write(core::ptr::null_mut());
+        let (head, _) = new_list(call.edx);
+        head_slot.write(head);
+        let manager = LotDeveloper::from_ptr(this).occupant_manager();
+        let mut call = virtual_call(manager, 0xA4,
+            &[head_slot as u32, rect.as_ptr() as u32, rect.as_ptr().add(2) as u32, 0x2781_28A0, 1],
+            head_slot as u32, table(manager), false);
+        if call.eax as u8 != 0 {
+            let head = head_slot.read();
+            let first = OccupantNode::from_ptr(head).next();
+            call.eax = first as u32;
+            if first != head {
+                let occupant = OccupantNode::from_ptr(first).occupant();
+                call = virtual_call(occupant, 0, &[0x87DD_A3A9, &mut building as *mut *mut u8 as u32],
+                    &mut building as *mut *mut u8 as u32, table(occupant), false);
+                if call.eax as u8 != 0 {
+                    virtual_call(building, 8, &[], call.eax, table(building), false);
                 }
+                let manager = LotDeveloper::from_ptr(this).occupant_manager();
+                call = virtual_call(manager, 0xC0, &[head_slot as u32],
+                    table(manager), head_slot as u32, false);
             }
-            let saved = building;
-            let returned = direct(0x0041_3FE0, Conv::Thiscall, &mut head as *mut *mut u8 as u32,
-                &[], call.eax, call.edx);
-            (u64::from(returned.edx) << 32) | u64::from(saved as u32)
         }
+        let saved = building;
+        let returned = direct(0x0041_3FE0, Conv::Thiscall, head_slot as u32,
+            &[], call.eax, call.edx);
+        (u64::from(returned.edx) << 32) | u64::from(saved as u32)
     }
 }
 
 /// Finds the first matching foundation, but continues releasing every occupant in the list.
-unsafe fn find_foundation(head: *mut u8, kind: u32, clear_interface: bool, mut call: RawCall) -> (*mut u8, RawCall) {
+unsafe fn find_foundation(head: *mut u8, kind: u32, clear_interface: bool, mut call: RawCall, interface_slot: *mut *mut u8) -> (*mut u8, RawCall) {
     unsafe {
         let mut found = core::ptr::null_mut::<u8>();
-        let mut interface = core::ptr::null_mut();
         let mut current = OccupantNode::from_ptr(head).next();
         call.eax = head as u32;
         while current != head {
             let node = OccupantNode::from_ptr(current);
             let occupant = node.occupant();
             if clear_interface {
-                interface = core::ptr::null_mut();
+                interface_slot.write(core::ptr::null_mut());
             }
             if found.is_null() {
                 call = virtual_call(
                     occupant,
                     0,
-                    &[0xC8FC_E101, &mut interface as *mut *mut u8 as u32],
+                    &[0xC8FC_E101, interface_slot as u32],
                     if clear_interface {
                         table(occupant)
                     } else {
-                        &mut interface as *mut *mut u8 as u32
+                        interface_slot as u32
                     },
                     if clear_interface {
-                        &mut interface as *mut *mut u8 as u32
+                        interface_slot as u32
                     } else {
                         table(occupant)
                     },
                     false,
                 );
                 if call.eax as u8 != 0 {
+                    let interface = interface_slot.read();
                     call = virtual_call(interface, 0x24, &[], call.eax, table(interface), false);
                     if call.eax == kind {
                         found = interface;
@@ -203,49 +212,68 @@ unsafe fn find_foundation(head: *mut u8, kind: u32, clear_interface: bool, mut c
 port! {
     /// Returns the first foundation of the requested kind on one cell, releasing interfaces and all
     /// queried occupants. A false low query byte skips payload releases but still frees the list nodes.
-    #[port(address = 0x006C_9480, owner = "lotdeveloper", name = "cSC4LotDeveloper::GetFoundationByStandardCityCell")]
+    #[port(address = 0x006C_9480, owner = "lotdeveloper", name = "cSC4LotDeveloper::GetFoundationByStandardCityCell", naked)]
     pub unsafe extern "fastcall" fn fc4p_006c9480(this: *mut u8, entry_edx: u32, kind: u32, x: u32, z: u32) -> u64 {
-        unsafe {
-            let rect = [x, z, x, z];
-            let (mut head, _) = new_list(entry_edx);
-            let manager = LotDeveloper::from_ptr(this).occupant_manager();
-            let queried = virtual_call(manager, 0xA4,
-                &[&mut head as *mut *mut u8 as u32, rect.as_ptr().add(2) as u32, rect.as_ptr() as u32, 0x68FD_0C69, u32::MAX],
-                &mut head as *mut *mut u8 as u32, table(manager), false);
-            let (found, call) = if queried.eax as u8 != 0 { find_foundation(head, kind, false, queried) } else { (core::ptr::null_mut(), queried) };
-            let mut call = free_list(&mut head, call.eax, call.edx);
-            call.eax = found as u32;
-            result(call)
-        }
+        stack_entry!(foundation_cell, 12);
+    }
+}
+
+// The x argument becomes the list head, and the z argument becomes the queried interface.
+unsafe extern "fastcall" fn foundation_cell(this: *mut u8, stack: *mut u32, entry_edx: u32) -> u64 {
+    unsafe {
+        let kind = stack.add(1).read();
+        let x = stack.add(2).read();
+        let z = stack.add(3).read();
+        let rect = [x, z, x, z];
+        let head_slot = stack.add(2).cast::<*mut u8>();
+        head_slot.write(core::ptr::null_mut());
+        stack.add(3).write(0);
+        let (head, _) = new_list(entry_edx);
+        head_slot.write(head);
+        let manager = LotDeveloper::from_ptr(this).occupant_manager();
+        let queried = virtual_call(manager, 0xA4,
+            &[head_slot as u32, rect.as_ptr().add(2) as u32, rect.as_ptr() as u32, 0x68FD_0C69, u32::MAX],
+            head_slot as u32, table(manager), false);
+        let (found, call) = if queried.eax as u8 != 0 { find_foundation(head_slot.read(), kind, false, queried, stack.add(3).cast()) } else { (core::ptr::null_mut(), queried) };
+        let mut call = free_list(&mut *head_slot, call.eax, call.edx);
+        call.eax = found as u32;
+        result(call)
     }
 }
 
 port! {
     /// Probes a vertical line at (x - inset, z + inset), with the same horizontal position for both
     /// endpoints. A missing local occupant manager is retained from the global before the query.
-    #[port(address = 0x006C_95E0, owner = "lotdeveloper", name = "cSC4LotDeveloper::GetFoundationByPosition")]
+    #[port(address = 0x006C_95E0, owner = "lotdeveloper", name = "cSC4LotDeveloper::GetFoundationByPosition", naked)]
     pub unsafe extern "fastcall" fn fc4p_006c95e0(this: *mut u8, entry_edx: u32, kind: u32, x: f32, z: f32) -> u64 {
-        unsafe {
-            let (mut head, _) = new_list(entry_edx);
-            let x = terrain::subtract_float(F80::from_f32(x), *position_inset()).to_f32();
-            let developer = LotDeveloper::from_ptr(this);
-            let missing_manager = developer.occupant_manager().is_null();
-            let z = terrain::add_float(F80::from_f32(z), *position_inset()).to_f32();
-            let min = [x, -f32::MAX, z];
-            let max = [x, f32::MAX, z];
-            if missing_manager {
-                developer.set_occupant_manager(occupant_manager().read());
-                vcall!(developer.occupant_manager(), 4 => fn() -> u32);
-            }
-            let manager = developer.occupant_manager();
-            let queried = virtual_call(manager, 0x94,
-                &[&mut head as *mut *mut u8 as u32, min.as_ptr() as u32, max.as_ptr() as u32, 0x68FD_0C69, u32::MAX],
-                table(manager), &mut head as *mut *mut u8 as u32, false);
-            let (found, call) = if queried.eax as u8 != 0 { find_foundation(head, kind, true, queried) } else { (core::ptr::null_mut(), queried) };
-            let mut call = free_list(&mut head, call.eax, call.edx);
-            call.eax = found as u32;
-            result(call)
+        stack_entry!(foundation_position, 12);
+    }
+}
+
+unsafe extern "fastcall" fn foundation_position(this: *mut u8, stack: *mut u32, entry_edx: u32) -> u64 {
+    unsafe {
+        let kind = stack.add(1).read();
+        let x = f32::from_bits(stack.add(2).read());
+        let z = f32::from_bits(stack.add(3).read());
+        let (mut head, _) = new_list(entry_edx);
+        let x = terrain::subtract_float(F80::from_f32(x), *position_inset()).to_f32();
+        let developer = LotDeveloper::from_ptr(this);
+        let missing_manager = developer.occupant_manager().is_null();
+        let z = terrain::add_float(F80::from_f32(z), *position_inset()).to_f32();
+        let min = [x, -f32::MAX, z];
+        let max = [x, f32::MAX, z];
+        if missing_manager {
+            developer.set_occupant_manager(occupant_manager().read());
+            vcall!(developer.occupant_manager(), 4 => fn() -> u32);
         }
+        let manager = developer.occupant_manager();
+        let queried = virtual_call(manager, 0x94,
+            &[&mut head as *mut *mut u8 as u32, min.as_ptr() as u32, max.as_ptr() as u32, 0x68FD_0C69, u32::MAX],
+            table(manager), &mut head as *mut *mut u8 as u32, false);
+        let (found, call) = if queried.eax as u8 != 0 { find_foundation(head, kind, true, queried, stack.add(2).cast()) } else { (core::ptr::null_mut(), queried) };
+        let mut call = free_list(&mut head, call.eax, call.edx);
+        call.eax = found as u32;
+        result(call)
     }
 }
 
@@ -439,7 +467,6 @@ port! {
 }
 
 pub const PORTS: &[Port] = &[
-    fc4p_006c90a0::PORT,
     fc4p_006c9100::PORT,
     fc4p_006c9480::PORT,
     fc4p_006c95e0::PORT,

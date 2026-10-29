@@ -26,36 +26,57 @@ port! {
     /// Positions the indexed configuration object, creates the requested nonzero instance and applies
     /// its appearance word. The position starts with three copies of the game's initial-position word;
     /// facing starts with the lot pointer's bits and is passed to the positioning callback by reference.
-    #[port(address = 0x006C_6230, owner = "lotdeveloper", name = "cSC4LotDeveloper::CreateLotProp")]
+    #[port(address = 0x006C_6230, owner = "lotdeveloper", name = "cSC4LotDeveloper::CreateLotProp", naked)]
     pub unsafe extern "fastcall" fn fc4p_006c6230(this: *mut u8, entry_edx: u32, lot: *mut u8, index: i32, instance: u32) -> u64 {
-        unsafe {
-            if lot.is_null() { return u64::from(entry_edx) << 32; }
-            let mut call = virtual_call(lot, 0x24, &[], table(lot), entry_edx, false);
-            let config = call.eax as *mut u8;
-            if config.is_null() { return result(call); }
-            call = virtual_call(config, 0x5C, &[], call.eax, table(config), false);
-            let begin = (call.eax as *const *mut u8).read_unaligned();
-            let record = begin.wrapping_add(index.wrapping_mul(52) as usize);
-            let initial = position_initial().read();
-            let mut position = [initial; 3];
-            let mut facing = lot as u32;
-            call = virtual_call(this, 0x9C,
-                &[lot as u32, config as u32, record as u32, position.as_mut_ptr() as u32, &mut facing as *mut u32 as u32],
-                table(this), position.as_mut_ptr() as u32, false);
-            if instance != 0 {
-                let manager = LotDeveloper::from_ptr(this).prop_manager();
-                call = virtual_call(manager, 0x68, &[instance, position.as_mut_ptr() as u32, facing], instance, table(manager), false);
-                let prop = call.eax as *mut u8;
-                if !prop.is_null() {
-                    let appearance = ConfigurationObject::from_ptr(record).appearance();
-                    call = virtual_call(prop, 0x70, &[appearance], appearance, table(prop), false);
-                    call.eax = prop as u32;
-                    return result(call);
-                }
+        stack_entry!(create_lot_prop, 12);
+    }
+}
+
+unsafe fn prop_call(object: *mut u8, slot: usize, args: &[u32], eax: u32, edx: u32) -> RawCall {
+    unsafe {
+        let mut call = RawCall::new(Conv::Thiscall, vslot(object, slot), object as u32, args);
+        call.eax = eax;
+        call.edx = edx;
+        call_with_ecx(&mut call);
+        call
+    }
+}
+
+// Facing overwrites the lot argument; position occupies the three words below the return address.
+unsafe extern "fastcall" fn create_lot_prop(this: *mut u8, stack: *mut u32, entry_edx: u32) -> u64 {
+    unsafe {
+        let lot = stack.add(1).read() as *mut u8;
+        let index = stack.add(2).read() as i32;
+        if lot.is_null() { return u64::from(entry_edx) << 32; }
+        let mut call = prop_call(lot, 0x24, &[], table(lot), entry_edx);
+        let config = call.eax as *mut u8;
+        if config.is_null() { stack.sub(1).write(call.ecx); return result(call); }
+        call = prop_call(config, 0x5C, &[], call.eax, table(config));
+        let begin = (call.eax as *const *mut u8).read_unaligned();
+        let record = begin.wrapping_add(index.wrapping_mul(52) as usize);
+        let initial = position_initial().read();
+        let position = stack.sub(3);
+        position.cast::<[u32; 3]>().write([initial; 3]);
+        let facing = stack.add(1);
+        call = prop_call(this, 0x9C,
+            &[lot as u32, config as u32, record as u32, position as u32, facing as u32],
+            table(this), position as u32);
+        let instance = stack.add(3).read();
+        if instance != 0 {
+            let manager = LotDeveloper::from_ptr(this).prop_manager();
+            call = prop_call(manager, 0x68, &[instance, position as u32, facing.read()], instance, table(manager));
+            let prop = call.eax as *mut u8;
+            if !prop.is_null() {
+                let appearance = ConfigurationObject::from_ptr(record).appearance();
+                call = prop_call(prop, 0x70, &[appearance], appearance, table(prop));
+                call.eax = prop as u32;
+                stack.sub(1).write(call.ecx);
+                return result(call);
             }
-            call.eax = 0;
-            result(call)
         }
+        stack.sub(1).write(call.ecx);
+        call.eax = 0;
+        result(call)
     }
 }
 
