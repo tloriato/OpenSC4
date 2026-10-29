@@ -187,9 +187,11 @@ pub mod configuration;
 pub mod construction;
 pub mod copying;
 pub mod discovery;
+pub mod develop;
 pub mod evaluation;
 pub mod geometry;
 pub mod growth;
+pub mod listeners;
 pub mod lot_scan;
 pub mod networks;
 pub mod pool;
@@ -210,9 +212,11 @@ const COUNT: usize = compatibility::PORTS.len()
     + construction::PORTS.len()
     + copying::PORTS.len()
     + discovery::PORTS.len()
+    + develop::PORTS.len()
     + evaluation::PORTS.len()
     + geometry::PORTS.len()
     + growth::PORTS.len()
+    + listeners::PORTS.len()
     + lot_scan::PORTS.len()
     + networks::PORTS.len()
     + pool::PORTS.len()
@@ -233,9 +237,11 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     construction::PORTS,
     copying::PORTS,
     discovery::PORTS,
+    develop::PORTS,
     evaluation::PORTS,
     geometry::PORTS,
     growth::PORTS,
+    listeners::PORTS,
     lot_scan::PORTS,
     networks::PORTS,
     pool::PORTS,
