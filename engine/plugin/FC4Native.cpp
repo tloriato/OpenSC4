@@ -17,6 +17,7 @@
 
 #include "FC4Config.h"
 #include "FC4Log.h"
+#include "FC4Schedule.h"
 #include "compat/FC4Compat.h"
 
 #include <windows.h>
@@ -46,6 +47,16 @@ struct NativePortTable {
     uint32_t count;
     uint32_t entrySize;
     const NativePort* entries;
+};
+
+// Optional companion to the unchanged v1 port table. Each declaration belongs to one port.
+struct NativeSite { uint32_t function; uint32_t site; };
+struct NativeSiteTable {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t count;
+    uint32_t entrySize;
+    const NativeSite* entries;
 };
 
 constexpr uint32_t kTableMagic = 0x50344346;  // 'F' 'C' '4' 'P'
@@ -253,6 +264,15 @@ void NativeStartup() {
     Log("native: loaded %s (%s) at 0x%08lX, %lu ports", path.c_str(), dllSource,
         static_cast<unsigned long>(moduleBase), static_cast<unsigned long>(table->count));
 
+    const auto* sites = reinterpret_cast<const NativeSiteTable*>(GetProcAddress(module, "fc4native_sites"));
+    if (sites != nullptr && (sites->magic != 0x53344346 || sites->version != 1 ||
+                            sites->entrySize != sizeof(NativeSite) || sites->entries == nullptr)) {
+        Log("native: NOT used: '%s' has an invalid site table (fc4native_sites)", path.c_str());
+        FreeLibrary(module);
+        return;
+    }
+    ScheduleNativeModule(module);
+
     const std::vector<std::string> items = Items(list);
     bool all = false;
     for (const std::string& item : items) all = all || item == "all";
@@ -275,6 +295,17 @@ void NativeStartup() {
         }
         if (!on) continue;
         ++enabled;
+        std::vector<uint32_t> honoured;
+        if (sites != nullptr) {
+            for (uint32_t j = 0; j < sites->count; ++j) {
+                if (sites->entries[j].function == p.address) honoured.push_back(sites->entries[j].site);
+            }
+        }
+        const uint32_t missing = ScheduleMissingSite(p.address, honoured.data(), honoured.size());
+        if (missing != 0) {
+            Log("native: 0x%08X not installed: the schedule keys on 0x%08X inside it", p.address, missing);
+            continue;
+        }
         char exportName[16];
         std::snprintf(exportName, sizeof(exportName), "fc4p_%08lx", static_cast<unsigned long>(p.address));
         const void* exported = reinterpret_cast<const void*>(GetProcAddress(module, exportName));

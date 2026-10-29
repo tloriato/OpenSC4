@@ -130,6 +130,8 @@ fn network_lookup_empty_match_chain_and_full_type_word() {
 
 #[test]
 fn ensure_info_preserves_padding_and_clears_the_previous_tail_count() {
+    let patch = crate::testing::fake_patch(0x0070_FBA9);
+    let _second = crate::testing::fake_patch(0x0070_FC34);
     reset();
     let mut w = World::new();
     let mut block = [0u32, 0, 0, 17];
@@ -161,6 +163,7 @@ fn ensure_info_preserves_padding_and_clears_the_previous_tail_count() {
         assert_eq!(NetworkInfo::from_ptr(memory).connection_count(), 0);
         assert_eq!(NetworkInfo::from_ptr(second).kind(), 3);
         assert_eq!((block[2], block[3]), (0, 19));
+        assert_eq!(patch.calls(), 2);
     }
 }
 

@@ -84,6 +84,12 @@ fn both_pools_pop_grow_reload_handle_and_wrap_the_live_count() {
         ),
         (0x00B0_B3AC, 0x00B0_B3A8, fc4p_0061d200),
     ] {
+        let site = if global == 0x00B0_B2D4 {
+            0x0060_5058
+        } else {
+            0x0061_D218
+        };
+        let patch = crate::testing::fake_patch(site);
         let mut old = Object::new(16);
         let mut new = Object::new(16);
         let mut block = [0xDEAD_BEEFu32, 0xAABB_CCDD];
@@ -119,6 +125,7 @@ fn both_pools_pop_grow_reload_handle_and_wrap_the_live_count() {
             registers(block.as_ptr() as u32, new.ptr() as u32)
         );
         assert_eq!(np.live_count(), 10);
+        assert_eq!(patch.calls(), 2);
         assert_eq!(np.free_head() as u32, 0xDEAD_BEEF);
         assert_eq!(op.live_count(), 0);
         assert_eq!(

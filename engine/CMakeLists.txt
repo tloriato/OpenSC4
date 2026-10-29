@@ -26,6 +26,10 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
 
 enable_testing()
 
+add_executable(fc4_native_sites_test tests/native_sites_test.cpp)
+target_include_directories(fc4_native_sites_test PRIVATE plugin)
+add_test(NAME native_sites_test COMMAND fc4_native_sites_test)
+
 # NR17 reference/byte-mutation/base/cleanup lifetime fixtures (no game image).
 add_executable(fc4_netrules_observation_test tests/netrules_observation_test.cpp)
 target_include_directories(fc4_netrules_observation_test PRIVATE plugin)

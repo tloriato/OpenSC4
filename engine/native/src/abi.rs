@@ -27,7 +27,6 @@
 //!   name for, and to take an ST0 result.
 
 use crate::x87::F80;
-use core::arch::asm;
 
 /// Calling conventions of the game's functions.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -153,17 +152,10 @@ impl RawCall {
     }
 }
 
-/// Makes the call `c` describes.
-///
-/// # Safety
-///
-/// `c.target` is a function that takes what `c` passes, preserves EBX, ESI, EDI and EBP, pops exactly
-/// `c.count` words unless `c.caller_pops`, and returns a value in ST0 if (and only if) `c.take_st0`. `c.args`
-/// points to `c.count` readable words.
-pub unsafe fn call_raw(c: &mut RawCall) {
-    // SAFETY: the caller's contract. EDI (callee-saved) holds `c` across the call.
-    unsafe {
-        asm!(
+// One call implementation, with an optional globally named return instruction.
+macro_rules! raw_call_site {
+    ($c:expr; $($label:expr),* $(,)?) => {
+        core::arch::asm!(
             "mov ecx, dword ptr [edi + 20]",
             "mov eax, dword ptr [edi + 16]",
             "2:",
@@ -177,6 +169,7 @@ pub unsafe fn call_raw(c: &mut RawCall) {
             "mov ecx, dword ptr [edi + 8]",
             "mov edx, dword ptr [edi + 12]",
             "call dword ptr [edi]",
+            $($label,)*
             "mov dword ptr [edi + 4], eax",
             "mov dword ptr [edi + 12], edx",
             "cmp dword ptr [edi + 24], 0",
@@ -188,9 +181,23 @@ pub unsafe fn call_raw(c: &mut RawCall) {
             "je 5f",
             "fstp tbyte ptr [edi + 32]",
             "5:",
-            in("edi") c as *mut RawCall,
+            in("edi") $c as *mut $crate::abi::RawCall,
             clobber_abi("C"),
         );
+    };
+}
+
+/// Makes the call `c` describes.
+///
+/// # Safety
+///
+/// `c.target` is a function that takes what `c` passes, preserves EBX, ESI, EDI and EBP, pops exactly
+/// `c.count` words unless `c.caller_pops`, and returns a value in ST0 if (and only if) `c.take_st0`. `c.args`
+/// points to `c.count` readable words.
+pub unsafe fn call_raw(c: &mut RawCall) {
+    // SAFETY: the caller's contract. EDI keeps the descriptor across the call.
+    unsafe {
+        raw_call_site!(c;);
     }
 }
 
@@ -389,6 +396,90 @@ macro_rules! game_fn {
     };
 }
 
+/// Calls the current rel32 target of an original E8 call instruction, including later hooks.
+///
+/// # Safety
+/// `site` points at a readable E8 rel32 instruction in the game image.
+pub unsafe fn call_site_target(site: u32) -> usize {
+    let p = data_target(site) as *const u8;
+    // SAFETY: the caller promises a live call instruction; volatile reads observe later hooks.
+    unsafe {
+        debug_assert_eq!(p.read_volatile(), 0xE8);
+        let rel = i32::from_le_bytes(p.add(1).cast::<[u8; 4]>().read_volatile());
+        (p as usize).wrapping_add(5).wrapping_add(rel as usize)
+    }
+}
+
+/// A typed call through an original call instruction, resolved anew on every invocation.
+#[allow(unused_macros)]
+macro_rules! game_call {
+    ($(#[$meta:meta])* $vis:vis fn $name:ident($($arg:ident: $ty:ty),* $(,)?) $(-> $ret:ty)? = $abi:tt $site:literal;) => {
+        $(#[$meta])*
+        #[allow(dead_code)]
+        #[inline]
+        $vis unsafe fn $name($($arg: $ty),*) $(-> $ret)? {
+            // SAFETY: caller supplies the original call's arguments and convention.
+            unsafe {
+                let f = core::mem::transmute::<usize, unsafe extern $abi fn($($ty),*) $(-> $ret)?>(
+                    $crate::abi::call_site_target($site));
+                f($($arg),*)
+            }
+        }
+    };
+}
+
+/// A thiscall with an integer result and a globally labelled return instruction. Define once per site.
+/// The label is exported independently of the wrapper, which cannot be inlined or cloned.
+macro_rules! game_return_fn {
+    ($vis:vis fn $name:ident($this:ident: $this_ty:ty $(, $arg:ident: $ty:ty)*) -> $ret:ty = $address:literal, $label:ident;) => {
+        #[cfg(not(test))]
+        core::arch::global_asm!(
+            ".pushsection .drectve,\"yn\"",
+            concat!(".ascii \" /EXPORT:", stringify!($label), "=_", stringify!($label), "\""),
+            ".popsection",
+        );
+        #[inline(never)]
+        #[no_mangle]
+        // This externally visible, non-inlined wrapper has exactly one copy of the labelled call.
+        #[allow(named_asm_labels)]
+        $vis unsafe extern "thiscall" fn $name($this: $this_ty $(, $arg: $ty)*) -> $ret {
+            let args: &[u32] = &[$($crate::abi::Word::word($arg)),*];
+            let mut call = $crate::abi::RawCall::new($crate::abi::Conv::Thiscall,
+                $crate::abi::target($address), $crate::abi::Word::word($this), args);
+            // SAFETY: caller supplies the original function's arguments and convention.
+            unsafe {
+                raw_call_site!(&mut call;
+                    concat!(".globl _", stringify!($label)), concat!("_", stringify!($label), ":"));
+            }
+            ((u64::from(call.edx) << 32) | u64::from(call.eax)) as $ret
+        }
+    };
+}
+
+/// Follow a pool stamp's callable patch, if installed, before unlinking the object.
+///
+/// # Safety
+/// `site` is a pool-page load in the supported exe, optionally patched to a no-argument call.
+pub unsafe fn pool_take(site: u32) {
+    #[cfg(test)]
+    let Some(p) = crate::testing::optional_data(site) else {
+        return;
+    };
+    #[cfg(not(test))]
+    let p = site as usize;
+    // SAFETY: the site is either the original load (no stamp) or a callable patch preserving registers.
+    unsafe {
+        if (p as *const u8).read_volatile() == 0xE8 {
+            // The original load may write a callee-saved register (including EDI). This thunk has
+            // an instruction-site convention, so keep all registers around it instead of using RawCall.
+            core::arch::asm!(
+                "pushfd", "pushad", "call eax", "popad", "popfd",
+                in("eax") call_site_target(site), clobber_abi("C"),
+            );
+        }
+    }
+}
+
 /// Declares a game global by address: `game_data! { pub static name: T = 0x00B4_3D14; }` defines
 /// `name() -> *mut T`.
 #[allow(unused_macros)]
@@ -492,6 +583,23 @@ mod tests {
             *counter() += 1;
         }
         assert_eq!(value, 8);
+    }
+
+    game_call! { fn patched_sub(a: i32, b: i32) -> i32 = "stdcall" 0x0000_1240; }
+    extern "stdcall" fn add_impl(a: i32, b: i32) -> i32 {
+        a + b
+    }
+
+    #[test]
+    fn call_sites_follow_a_later_rel32_patch() {
+        let mut code = [0xE8, 0, 0, 0, 0];
+        let _site = fake_data(0x0000_1240, code.as_mut_ptr());
+        for (target, expected) in [(sub_impl as *const (), 6), (add_impl as *const (), 14)] {
+            let rel = (target as usize).wrapping_sub(code.as_ptr() as usize + 5) as u32;
+            code[1..].copy_from_slice(&rel.to_le_bytes());
+            // SAFETY: the mapped instruction now targets a stdcall function with this signature.
+            assert_eq!(unsafe { patched_sub(10, 4) }, expected);
+        }
     }
 
     #[test]

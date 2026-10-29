@@ -90,7 +90,7 @@ port! {
     }
 }
 
-unsafe fn allocate(pool_location: *mut *mut u8, handle: *mut u32) -> u64 {
+unsafe fn allocate(pool_location: *mut *mut u8, handle: *mut u32, site: u32) -> u64 {
     unsafe {
         let pool = Pool::from_ptr(*pool_location);
         let mut block = pool.free_head();
@@ -98,6 +98,7 @@ unsafe fn allocate(pool_location: *mut *mut u8, handle: *mut u32) -> u64 {
             block = grow_pool(handle);
         }
         let next: *mut u8 = read(block, 0);
+        crate::abi::pool_take(site);
         let pool = Pool::from_ptr(*pool_location);
         let edx = pool.as_ptr() as u32;
         pool.set_free_head(next);
@@ -110,7 +111,7 @@ port! {
     /// Pop one occupant block; grow the pool only when its free list is empty. The size word is ignored.
     #[port(address = 0x0060_5040, owner = "networktool", name = "AllocateOccupantBlock")]
     pub unsafe extern "C" fn fc4p_00605040(_size: u32) -> u64 {
-        unsafe { allocate(occupant_pool(), occupant_pool_handle()) }
+        unsafe { allocate(occupant_pool(), occupant_pool_handle(), 0x0060_5058) }
     }
 }
 port! {
@@ -144,7 +145,7 @@ port! {
     /// Pop one block from the alternate occupant pool, ignoring the caller's size word.
     #[port(address = 0x0061_D200, owner = "networktool", name = "AllocateAlternateOccupantBlock")]
     pub unsafe extern "C" fn fc4p_0061d200(_size: u32) -> u64 {
-        unsafe { allocate(alternate_pool(), alternate_pool_handle()) }
+        unsafe { allocate(alternate_pool(), alternate_pool_handle(), 0x0061_D218) }
     }
 }
 port! {

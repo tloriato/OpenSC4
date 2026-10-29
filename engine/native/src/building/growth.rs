@@ -14,7 +14,7 @@ use core::mem::MaybeUninit;
 use core::ptr::{read_unaligned as read, write_unaligned as write};
 
 game_fn! { fn budget_new(this: *mut u8, category: u32) = "thiscall" 0x0068_BF50; }
-game_fn! { fn budget_expired(this: *mut u8) -> u32 = "thiscall" 0x0068_BF80; }
+game_return_fn! { fn grow_budget_expired(this: *mut u8) -> u32 = 0x0068_BF80, fc4r_0069b149; }
 game_fn! { fn copy_developers(this: *mut u8, source: *mut u8) = "thiscall" 0x0069_89D0; }
 game_fn! { fn random(this: *mut u8, limit: u32) -> u32 = "thiscall" 0x0091_36B1; }
 game_fn! { fn find_candidate(begin: *mut u8, end: *mut u8, predicate: u32, cookie: *mut u8) -> *mut u8 = "C" 0x0069_5E50; }
@@ -190,7 +190,7 @@ unsafe extern "fastcall" fn grow(this: *mut u8, _entry_edx: u32, padding: u32) -
         while tree.count() != 0 {
             steps = steps.wrapping_add(read(budget.add(12).cast::<u32>()));
             write(budget.add(8).cast::<u32>(), steps);
-            if steps & 1023 == 0 && budget_expired(budget) as u8 != 0 {
+            if steps & 1023 == 0 && grow_budget_expired(budget) as u8 != 0 {
                 clear_tree(copied, false);
                 break;
             }

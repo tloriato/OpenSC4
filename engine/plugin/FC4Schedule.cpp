@@ -95,6 +95,241 @@ constexpr uintptr_t kChunkFree = 0x0090D0A0;          // its VirtualFree(second 
 constexpr uintptr_t kBlockAlloc = 0x0090D8E0;         // the object pools' page source: 2^shift bytes, so aligned
 constexpr uintptr_t kBlockFree = 0x0090D91C;          // its free(p, shift)
 
+// Site inventory for the 1.1.641 executable: {site, containing function entry}.
+// Includes entry hooks, interior patches, seed stack keys and return-address keys.
+// Data patches have no containing function (0). Keep this complete when adding hooks.
+const fc4::ScheduleSite kScheduleSites[] = {
+    {0x0041AA02, 0x0041A990},  // kSeedSites
+    {0x00429A68, 0x00429890},  // kSeedSites
+    {0x004489A4, 0x004487F0},  // kWalkSites
+    {0x004489CD, 0x004487F0},  // kTickStep
+    {0x00458A78, 0x00458A60},  // kPoolTakes
+    {0x00458F58, 0x00458F40},  // kPoolTakes
+    {0x0045DA58, 0x0045D9D0},  // kSeedSites
+    {0x0046820F, 0x004681A0},  // kInlineWalks
+    {0x00468337, 0x004681A0},  // kInlineWalks
+    {0x00468912, 0x00468410},  // kInlineWalks
+    {0x00468DF8, 0x00468410},  // kInlineWalks
+    {0x00472978, 0x00472960},  // kPoolTakes
+    {0x00472C48, 0x00472C30},  // kPoolTakes
+    {0x00477338, 0x00477320},  // kPoolTakes
+    {0x004776C8, 0x004776B0},  // kPoolTakes
+    {0x004B0390, 0x004B0390},  // kHashBegin
+    {0x004B434D, 0x004B4300},  // kIntersectionInsert
+    {0x004B459B, 0x004B44F0},  // kJunctionInsert
+    {0x004B478B, 0x004B4710},  // kPoolTakes
+    {0x004B4980, 0x004B48B0},  // kWalkSites
+    {0x004B49A0, 0x004B48B0},  // kWalkSites
+    {0x004B4EE4, 0x004B4DE0},  // kPoolTakes
+    {0x004F6D2B, 0x004F6C80},  // kPoolTakes
+    {0x004F747A, 0x004F7300},  // kPoolTakes
+    {0x004F79D0, 0x004F7850},  // kPoolTakes
+    {0x004F9F40, 0x004F9D70},  // kPoolTakes
+    {0x00518961, 0x00518950},  // kWalkSites
+    {0x005189AB, 0x00518950},  // kWalkSites
+    {0x00518C75, 0x00518B80},  // kWalkSites
+    {0x00518D8C, 0x00518B80},  // kWalkSites
+    {0x0052A02F, 0x00529FD0},  // kSeedSites
+    {0x0052A22D, 0x0052A1E0},  // kWalkSites
+    {0x0052A2D7, 0x0052A1E0},  // kWalkSites
+    {0x0052A31B, 0x0052A1E0},  // kWalkExits
+    {0x0052A4A9, 0x0052A380},  // kWalkSites
+    {0x0052A4D0, 0x0052A380},  // kWalkExits
+    {0x0052A560, 0x0052A380},  // kWalkSites
+    {0x0054092B, 0x00540910},  // kPoolTakes
+    {0x00540AE8, 0x00540AC0},  // kPoolTakes
+    {0x00541B03, 0x00541AE0},  // kPoolTakes
+    {0x00542828, 0x00542800},  // kPoolTakes
+    {0x005448B3, 0x00544890},  // kPoolTakes
+    {0x005469BC, 0x00546990},  // kPoolTakes
+    {0x005572B3, 0x00557290},  // kPoolTakes
+    {0x0055B993, 0x0055B970},  // kPoolTakes
+    {0x00562C3C, 0x00562C10},  // kPoolTakes
+    {0x00573FFE, 0x005736A0},  // kInlineWalks
+    {0x005740D9, 0x005736A0},  // kInlineWalks
+    {0x00574120, 0x005736A0},  // kInlineWalks
+    {0x005741C6, 0x005736A0},  // kInlineWalks
+    {0x0057ADD9, 0x0057AD90},  // kSeedSites
+    {0x0057D072, 0x0057D040},  // kSeedSites
+    {0x005B9FC0, 0x005B9FC0},  // kFastAllocate
+    {0x005CA8B8, 0x005CA8A0},  // kPoolTakes
+    {0x005D0BD8, 0x005D0BC0},  // kPoolTakes
+    {0x005D4810, 0x005D4810},  // kWriteRef
+    {0x005D5518, 0x005D5500},  // kPoolTakes
+    {0x005D6238, 0x005D6220},  // kPoolTakes
+    {0x005D64D8, 0x005D64C0},  // kPoolTakes
+    {0x005DE9C2, 0x005DDEC0},  // kThumbnailWaitReturn
+    {0x005DED08, 0x005DECF0},  // kPoolTakes
+    {0x005E00CD, 0x005E0050},  // kPoolTakes
+    {0x005E0838, 0x005E0820},  // kPoolTakes
+    {0x005E14A8, 0x005E1490},  // kPoolTakes
+    {0x005E2A68, 0x005E2A50},  // kPoolTakes
+    {0x005E3348, 0x005E3330},  // kPoolTakes
+    {0x005EBE08, 0x005EBDF0},  // kPoolTakes
+    {0x005ECE78, 0x005ECE60},  // kPoolTakes
+    {0x005ED6F8, 0x005ED6E0},  // kPoolTakes
+    {0x005ED9B8, 0x005ED9A0},  // kPoolTakes
+    {0x005EDAF8, 0x005EDAE0},  // kPoolTakes
+    {0x005EDD98, 0x005EDD80},  // kPoolTakes
+    {0x005EEF68, 0x005EEF50},  // kPoolTakes
+    {0x005EF198, 0x005EF180},  // kPoolTakes
+    {0x005EFC98, 0x005EFC80},  // kPoolTakes
+    {0x005F04A8, 0x005F0490},  // kPoolTakes
+    {0x005F0578, 0x005F0560},  // kPoolTakes
+    {0x005F5068, 0x005F5050},  // kPoolTakes
+    {0x005F5CF8, 0x005F5CE0},  // kPoolTakes
+    {0x005F7D98, 0x005F7D80},  // kPoolTakes
+    {0x005F84E8, 0x005F84D0},  // kPoolTakes
+    {0x005F85F0, 0x005F85F0},  // kForeground
+    {0x005FD858, 0x005FD840},  // kPoolTakes
+    {0x005FD908, 0x005FD8F0},  // kPoolTakes
+    {0x005FDF18, 0x005FDEF0},  // kPoolTakes
+    {0x005FDFF0, 0x005FDFD0},  // kPoolTakes
+    {0x005FE244, 0x005FE210},  // kPoolTakes
+    {0x005FE2D4, 0x005FE2A0},  // kPoolTakes
+    {0x005FE364, 0x005FE330},  // kPoolTakes
+    {0x005FE3F4, 0x005FE3C0},  // kPoolTakes
+    {0x005FE484, 0x005FE450},  // kPoolTakes
+    {0x005FE524, 0x005FE4F0},  // kPoolTakes
+    {0x005FE5B4, 0x005FE580},  // kPoolTakes
+    {0x005FE644, 0x005FE610},  // kPoolTakes
+    {0x005FE6E4, 0x005FE6B0},  // kPoolTakes
+    {0x005FE784, 0x005FE750},  // kPoolTakes
+    {0x005FE824, 0x005FE7F0},  // kPoolTakes
+    {0x005FF304, 0x005FF280},  // kPoolTakes
+    {0x005FF7E9, 0x005FF770},  // kPoolTakes
+    {0x005FF8DC, 0x005FF860},  // kPoolTakes
+    {0x005FF9CC, 0x005FF950},  // kPoolTakes
+    {0x005FFAC1, 0x005FFA40},  // kPoolTakes
+    {0x00605058, 0x00605040},  // kPoolTakes
+    {0x00605468, 0x00605450},  // kPoolTakes
+    {0x00619EA8, 0x00619E90},  // kPoolTakes
+    {0x0061C498, 0x0061C480},  // kPoolTakes
+    {0x0061D218, 0x0061D200},  // kPoolTakes
+    {0x0061E838, 0x0061E820},  // kPoolTakes
+    {0x00647248, 0x00647230},  // kPoolTakes
+    {0x00647808, 0x006477F0},  // kPoolTakes
+    {0x006487E8, 0x006487D0},  // kPoolTakes
+    {0x006489C8, 0x006489B0},  // kPoolTakes
+    {0x006499E8, 0x006499D0},  // kPoolTakes
+    {0x0064A2F8, 0x0064A2E0},  // kPoolTakes
+    {0x0064AB88, 0x0064AB70},  // kPoolTakes
+    {0x0064E358, 0x0064E340},  // kPoolTakes
+    {0x00652FF8, 0x00652FE0},  // kPoolTakes
+    {0x00653578, 0x00653560},  // kPoolTakes
+    {0x0068BF50, 0x0068BF50},  // kLimitTimerStart
+    {0x0068BF80, 0x0068BF80},  // kLimitTimerExpired
+    {0x0068D2B8, 0x0068D280},  // kSeedSites
+    {0x0069B149, 0x0069B0B0},  // kGrowExpiredReturn
+    {0x0069E02E, 0x0069E010},  // kSeedSites
+    {0x006ADA65, 0x006ADA50},  // kSeedSites
+    {0x006AF19A, 0x006AF150},  // kReseedSites
+    {0x006B193A, 0x006B1880},  // kSeedSites
+    {0x006BF448, 0x006BF430},  // kPoolTakes
+    {0x006C2722, 0x006C26D0},  // kPoolTakes
+    {0x006C2FD8, 0x006C2FC0},  // kPoolTakes
+    {0x006C3434, 0x006C3100},  // kPoolTakes
+    {0x006D0628, 0x006D0520},  // kSeedSites
+    {0x006D585A, 0x006D57D0},  // kSeedSites
+    {0x006D9131, 0x006D90F0},  // kSwitchInsert
+    {0x006DF11B, 0x006DF0D0},  // kSeedSites
+    {0x006E1F95, 0x006E1F80},  // kSeedSites
+    {0x006F34B6, 0x006F3410},  // kSeedSites
+    {0x007005D6, 0x00700510},  // kSeedSites
+    {0x0070E2B0, 0x0070E2B0},  // kRemainingMs
+    {0x0070FBA9, 0x0070FB70},  // kPoolTakes
+    {0x0070FC34, 0x0070FB70},  // kPoolTakes
+    {0x0071F1A5, 0x0071E7E0},  // kSeedSites
+    {0x00728E58, 0x00728C40},  // kSeedSites
+    {0x00732F87, 0x00732BF0},  // kWalkSites
+    {0x007331C1, 0x00732BF0},  // kWalkSites
+    {0x007C5412, 0x007C5370},  // kPoolTakes
+    {0x007CA292, 0x007CA200},  // kPoolTakes
+    {0x007FB663, 0x007FB640},  // kPoolTakes
+    {0x007FC463, 0x007FC440},  // kPoolTakes
+    {0x007FDF08, 0x007FDCBA},  // kPoolTakes
+    {0x007FED68, 0x007FED50},  // kPoolTakes
+    {0x00801B23, 0x00801B00},  // kPoolTakes
+    {0x008065E8, 0x008065C0},  // kPoolTakes
+    {0x00890198, 0x00890198},  // kStopwatchReads
+    {0x00890279, 0x00890279},  // kStopwatchReads
+    {0x00890377, 0x00890377},  // kStopwatchReads
+    {0x008905F0, 0x008905F0},  // kStopwatchReads
+    {0x0090CF72, 0x0090CF72},  // kProcessHeapAlloc
+    {0x0090CF86, 0x0090CF86},  // kProcessHeapFree
+    {0x0090D089, 0x0090D089},  // kChunkAlloc
+    {0x0090D0A0, 0x0090D0A0},  // kChunkFree
+    {0x0090D8E0, 0x0090D8E0},  // kBlockAlloc
+    {0x0090D91C, 0x0090D91C},  // kBlockFree
+    {0x00913683, 0x00913667},  // clock return in Seed
+    {0x00913667, 0x00913667},  // kRandomSeed
+    {0x0091373B, 0x0091372E},
+    {0x00913740, 0x0091372E},  // clock return in RandomDoubleUniform  // kZeroStateClock
+    {0x00913A72, 0x00913A72},
+    {0x00913A86, 0x00913A72},  // clock return in RandomSuper::Seed  // kRandomSuperSeed
+    {0x009205B6, 0x009205A0},  // kSleepCurrentThreadReturn
+    {0x0093384F, 0x009337F9},  // kAddTimerNow
+    {0x0093388F, 0x009337F9},  // kAddTimerNow
+    {0x00933900, 0x009338C2},  // kWorkerNow
+    {0x00933905, 0x009338C2},  // worker return
+    {0x009339AA, 0x009338C2},  // kWorkerNow
+    {0x009339AF, 0x009338C2},  // worker return
+    {0x009EFB59, 0x009EFB59},  // kCrtTime
+    {0x009F015B, 0x009F015B},  // kFreeEntry
+    {0x009F066E, 0x009F066E},  // kMallocEntry
+    {0x009F2329, 0x009F2329},  // kReallocEntry
+    {0x009F361F, 0x009F361F},  // kCrtClock
+    {0x009F6CAB, 0x009F6CAB},  // kMsizeEntry
+    {0x009FE846, 0x009FE846},  // kCallocEntry
+    {0x00A800C8, 0x00000000},  // kSleepSlot
+    {0x00A8029C, 0x00000000},  // kTempPathASlot
+    {0x00A802F0, 0x00000000},  // kQpcSlot
+    {0x00A802F8, 0x00000000},  // kSleepExSlot
+    {0x00A8FEAC, 0x00000000},  // kTrafficMapWriteSlot
+    {0x00A9602C, 0x00000000},  // kControllerWriteSlot
+    {0x00A9DF1C, 0x00000000},  // kWatercraftWriteSlot
+    {0x00AB1F30, 0x00000000},  // kAdjacentCitiesSlot
+    {0x00B54358, 0x00000000},  // kTimerOverhead
+    {0x00B62904, 0x00000000},  // kTempPathW
+};
+constexpr uint32_t kReturnKeys[] = {
+    0x0041AA02,
+    0x00429A68,
+    0x0045DA58,
+    0x0052A02F,
+    0x0057ADD9,
+    0x0057D072,
+    0x005DE9C2,
+    0x0068D2B8,
+    0x0069B149,
+    0x0069E02E,
+    0x006ADA65,
+    0x006AF19A,
+    0x006B193A,
+    0x006D0628,
+    0x006D585A,
+    0x006DF11B,
+    0x006E1F95,
+    0x006F34B6,
+    0x007005D6,
+    0x0071F1A5,
+    0x00728E58,
+    0x00913683,
+    0x00913740,
+    0x00913A86,
+    0x009205B6,
+    0x00933905,
+    0x009339AF,
+};
+uintptr_t g_nativeReturns[std::size(kScheduleSites)] = {};
+
+uintptr_t OriginalReturn(uintptr_t site) {
+    for (size_t i = 0; i < std::size(kScheduleSites); ++i) {
+        if (g_nativeReturns[i] != 0 && site == g_nativeReturns[i]) return kScheduleSites[i].site;
+    }
+    return site;
+}
+
 // The bytes each hooked entry must hold before we write it.
 const uint8_t kStartBytes[] = {0x53, 0x56, 0x57, 0x8B, 0xF1, 0x0F, 0x31};
 const uint8_t kExpiredBytes[] = {0x56, 0x0F, 0x31, 0x8B, 0x31};
@@ -268,20 +503,21 @@ private:
 };
 
 // A jump at `entry` to `target`, if the entry holds `expected`.
-const char* PatchJump(uintptr_t entry, const uint8_t* expected, size_t n, const void* target) {
+const char* PatchJump(uintptr_t entry, const uint8_t* expected, size_t n, const void* target, uint8_t opcode = 0xE9) {
     auto* p = reinterpret_cast<uint8_t*>(entry);
     if (std::memcmp(p, expected, n) != 0) return "unexpected bytes";
-    uint8_t jump[5] = {0xE9, 0, 0, 0, 0};
+    uint8_t jump[5] = {opcode, 0, 0, 0, 0};
     const int32_t rel = static_cast<int32_t>(reinterpret_cast<uintptr_t>(target) - (entry + 5));
     std::memcpy(jump + 1, &rel, 4);
-    PausedThreads paused(entry, 5);
+    PausedThreads paused(entry, n);
     if (!paused.ok()) return "a thread is inside the entry";
     DWORD before = 0;
-    if (!VirtualProtect(p, 5, PAGE_EXECUTE_READWRITE, &before)) return "VirtualProtect failed";
+    if (!VirtualProtect(p, n, PAGE_EXECUTE_READWRITE, &before)) return "VirtualProtect failed";
     std::memcpy(p, jump, 5);
+    if (n > 5) std::memset(p + 5, 0x90, n - 5);
     DWORD ignored = 0;
-    VirtualProtect(p, 5, before, &ignored);
-    FlushInstructionCache(GetCurrentProcess(), p, 5);
+    VirtualProtect(p, n, before, &ignored);
+    FlushInstructionCache(GetCurrentProcess(), p, n);
     return nullptr;
 }
 
@@ -300,7 +536,7 @@ uint32_t __fastcall LimitExpired(uint32_t* self) {
     }
     const uint32_t reads = ++self[0];
     InterlockedIncrement(&g_reads);
-    const uintptr_t site = reinterpret_cast<uintptr_t>(_ReturnAddress());
+    const uintptr_t site = OriginalReturn(reinterpret_cast<uintptr_t>(_ReturnAddress()));
     if (site == kGrowExpiredReturn) {
         if (reads < kGrowReads) return 0;
         InterlockedIncrement(&g_growExpiries);
@@ -340,7 +576,7 @@ long g_timerFires = 0;
 
 uint32_t __fastcall SchedulerNow(void* timer, void*) {
     if (!g_timerOn) return reinterpret_cast<uint32_t(__fastcall*)(void*, void*)>(kTimerElapsed)(timer, nullptr);
-    const uintptr_t site = reinterpret_cast<uintptr_t>(_ReturnAddress()) - 5;
+    const uintptr_t site = OriginalReturn(reinterpret_cast<uintptr_t>(_ReturnAddress())) - 5;
     return site == kWorkerNow[0] || site == kWorkerNow[1] ? 0 : g_timerMs;
 }
 
@@ -556,7 +792,7 @@ uint32_t __cdecl CrtTime(uint32_t* out) {
 }
 
 int32_t __cdecl CrtClock() {
-    const uintptr_t site = reinterpret_cast<uintptr_t>(_ReturnAddress());
+    const uintptr_t site = OriginalReturn(reinterpret_cast<uintptr_t>(_ReturnAddress()));
     if (site >= kRandomFirst && site < kRandomEnd) {
         InterlockedIncrement(&g_clockVirtual);
         return kClock;
@@ -592,7 +828,7 @@ void WINAPI VirtualSleep(DWORD ms) {
 DWORD WINAPI VirtualSleepEx(DWORD ms, BOOL alertable) {
     // [ret][ms][alertable][SleepCurrentThread's return]: the thumbnail wait sleeps 1 ms.
     const auto* frame = static_cast<const uintptr_t*>(_AddressOfReturnAddress());
-    const bool thumbnail = frame[0] == kSleepCurrentThreadReturn && frame[3] == kThumbnailWaitReturn;
+    const bool thumbnail = OriginalReturn(frame[0]) == kSleepCurrentThreadReturn && OriginalReturn(frame[3]) == kThumbnailWaitReturn;
     return g_realSleepEx(MainSleep(ms) && thumbnail && ms > kRealSleepMs ? kRealSleepMs : ms, alertable);
 }
 
@@ -738,7 +974,7 @@ uint32_t __cdecl SeedFor(const uint32_t* stack) {
     for (int i = 0; i < 16; ++i) {
         for (size_t j = 0; j < kSeedSiteCount; ++j) {
             const SeedSite& e = kSeedSites[j];
-            if (stack[i] != e.site) continue;
+            if (OriginalReturn(stack[i]) != e.site) continue;
             if (seed != 0xFFFFFFFFu && e.kind != kAnySeed && e.kind != kTimes28Seed) return seed;
             InterlockedIncrement(&g_seedsDerived);
             const uint32_t n = g_seedCounts[j]++;
@@ -817,7 +1053,7 @@ int32_t __cdecl ZeroStateClock() {
     const auto* stack = static_cast<const uintptr_t*>(_AddressOfReturnAddress());
     for (int i = 0; i < 16; ++i) {
         for (const SeedSite& e : kReseedSites) {
-            if (stack[i] != e.site) continue;
+            if (OriginalReturn(stack[i]) != e.site) continue;
             InterlockedIncrement(&g_seedsDerived);
             return static_cast<int32_t>(Derive(e.k));
         }
@@ -1480,7 +1716,8 @@ void __cdecl PoolTaken(const uint32_t* pool, uint32_t stride) {
     g_poolStamps[static_cast<uint32_t>(object - g_arena.base)] = {++g_arena.stamps, stride};
 }
 
-// Each take's thunk: the hooked read, then PoolTaken(pool, stride) with every register and flag kept, then back.
+// Each take calls a thunk: the hooked read, then PoolTaken(pool, stride), preserving registers and flags.
+// A callable thunk also lets a native allocator follow the live rel32 at the site.
 const char* HookPoolTakes(unsigned* hooked) {
     constexpr size_t kBytes = 48 * std::size(kPoolTakes);  // a thunk is at most 6 + 27 bytes, aligned to 16
     auto* code = static_cast<uint8_t*>(VirtualAlloc(nullptr, kBytes, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
@@ -1510,11 +1747,10 @@ const char* HookPoolTakes(unsigned* hooked) {
         *c++ = 0x08;
         *c++ = 0x61;  // popad
         *c++ = 0x9D;  // popfd
-        *c++ = 0xE9;  // jmp back
-        rel32(t.at + t.n);
+        *c++ = 0xC3;  // ret to the exe or a native port
         c = code + ((c - code + 15) & ~15);
         FlushInstructionCache(GetCurrentProcess(), thunk, c - thunk);
-        if (const char* err = PatchJump(t.at, t.bytes, t.n, thunk)) return err;
+        if (const char* err = PatchJump(t.at, t.bytes, t.n, thunk, 0xE8)) return err;
         ++*hooked;
     }
     return nullptr;
@@ -1743,10 +1979,10 @@ uint32_t* OrderedBeginShift(uint8_t* table, unsigned shift, uint32_t* out, uint3
     return out;
 }
 uint32_t* __fastcall OrderedBegin(uint8_t* table, void*, uint32_t* out) {
-    return OrderedBeginShift(table, 0, out, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(_ReturnAddress())));
+    return OrderedBeginShift(table, 0, out, static_cast<uint32_t>(OriginalReturn(reinterpret_cast<uintptr_t>(_ReturnAddress()))));
 }
 uint32_t* __fastcall OrderedBeginPointers(uint8_t* table, void*, uint32_t* out) {
-    return OrderedBeginShift(table, 2, out, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(_ReturnAddress())));
+    return OrderedBeginShift(table, 2, out, static_cast<uint32_t>(OriginalReturn(reinterpret_cast<uintptr_t>(_ReturnAddress()))));
 }
 // A set of lot configurations (pointers) in ascending configuration ID (slot 3), zones.md §7.2.1's order.
 uint32_t LotConfigurationId(void* cfg) {
@@ -1754,7 +1990,7 @@ uint32_t LotConfigurationId(void* cfg) {
     return reinterpret_cast<GetIdFn>((*static_cast<void***>(cfg))[3])(cfg);
 }
 uint32_t* __fastcall OrderedBeginById(uint8_t* table, void*, uint32_t* out) {
-    return OrderedBeginShift(table, 2, out, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(_ReturnAddress())),
+    return OrderedBeginShift(table, 2, out, static_cast<uint32_t>(OriginalReturn(reinterpret_cast<uintptr_t>(_ReturnAddress()))),
                              &LotConfigurationId);
 }
 
@@ -1872,7 +2108,7 @@ uint32_t* __fastcall HashBeginCensus(uint8_t* table, void*, uint32_t* out) {
         }
     }
     if (count) {
-        CensusSite& site = g_census[static_cast<uint32_t>(reinterpret_cast<uintptr_t>(_ReturnAddress()))];
+        CensusSite& site = g_census[static_cast<uint32_t>(OriginalReturn(reinterpret_cast<uintptr_t>(_ReturnAddress())))];
         ++site.walks;
         if (region >= 2) {
             ++site.byAddress;
@@ -2205,6 +2441,32 @@ std::string Lower(std::string s) {
 }  // namespace
 
 namespace fc4 {
+
+const ScheduleSite* ScheduleSites(size_t* count) {
+    *count = std::size(kScheduleSites);
+    return kScheduleSites;
+}
+
+void ScheduleNativeModule(void* module) {
+    for (size_t i = 0; i < std::size(kScheduleSites); ++i) {
+        char name[16];
+        std::snprintf(name, sizeof(name), "fc4r_%08x", kScheduleSites[i].site);
+        g_nativeReturns[i] = reinterpret_cast<uintptr_t>(GetProcAddress(static_cast<HMODULE>(module), name));
+    }
+}
+
+uint32_t ScheduleMissingSite(uint32_t function, const uint32_t* sites, size_t count) {
+    const uint32_t missing = MissingScheduleSite(kScheduleSites, std::size(kScheduleSites), function, sites, count);
+    if (missing != 0) return missing;
+    // A declaration of a return key is usable only with its actual exported return instruction.
+    for (size_t i = 0; i < std::size(kScheduleSites); ++i) {
+        if (kScheduleSites[i].function != function) continue;
+        for (uint32_t key : kReturnKeys) {
+            if (kScheduleSites[i].site == key && g_nativeReturns[i] == 0) return key;
+        }
+    }
+    return 0;
+}
 
 bool ScheduleFixed() { return g_fixed; }
 

@@ -112,6 +112,7 @@ port! {
                 item = call.eax as *mut u8;
             }
             let next = read_unaligned(item.cast::<*mut u8>());
+            crate::abi::pool_take(0x0045_8A78);
             let page = read_unaligned(active_page());
             write_unaligned(page.add(8).cast::<*mut u8>(), next);
             let count_page = read_unaligned(active_page());
