@@ -31,6 +31,7 @@ layout! {
         0x60 => monthly_demand / set_monthly_demand: u32,
         0x64 => deficit / set_deficit: u32,
         0x78 => infrastructure_cost / set_infrastructure_cost: u64,
+        0x80 => powered_grid / set_powered_grid: *mut u8,
         0x90 => usage_ring / set_usage_ring: [i32; 120],
         0x270 => annual_usage / set_annual_usage: [i32; 10],
         0x298 => plant_header / set_plant_header: *mut u8,
@@ -43,6 +44,11 @@ layout! {
         0x2C0 => broken_fraction / set_broken_fraction: f32,
         0x2C8 => wire / set_wire: *mut u32,
         0x2D4 => powered / set_powered: *mut u32,
+        0x2DC => plant_count / set_plant_count: u32,
+        0x2E0 => plant_counts / set_plant_counts: [u32; 10],
+        0x308 => overworked_count / set_overworked_count: u32,
+        0x30C => aged_count / set_aged_count: u32,
+        0x310 => distressed_count / set_distressed_count: u32,
         0x338 => recompute / set_recompute: u8,
         0x339 => age_plants / set_age_plants: u8,
         0x378 => funding_curve / set_funding_curve: [u32; 4],
@@ -80,9 +86,12 @@ stored_op!(multiply_float, "fmul dword ptr [{operand}]");
 stored_op!(divide_into_float, "fdivr dword ptr [{operand}]");
 stored_op!(add_float, "fadd dword ptr [{operand}]");
 
-pub mod bitmap;
+pub mod accessors;
 pub mod ageing;
+pub mod bitmap;
+pub mod changes;
 pub mod com;
+pub mod distribution;
 pub mod find;
 pub mod grid;
 pub mod io;
@@ -90,8 +99,6 @@ pub mod monthly;
 pub mod occupants;
 pub mod plants;
 pub mod powered_lots;
-pub mod changes;
-pub mod distribution;
 
 const COUNT: usize = bitmap::PORTS.len()
     + ageing::PORTS.len()
@@ -104,7 +111,8 @@ const COUNT: usize = bitmap::PORTS.len()
     + find::PORTS.len()
     + powered_lots::PORTS.len()
     + changes::PORTS.len()
-    + distribution::PORTS.len();
+    + distribution::PORTS.len()
+    + accessors::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
     bitmap::PORTS,
     ageing::PORTS,
@@ -118,6 +126,7 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     powered_lots::PORTS,
     changes::PORTS,
     distribution::PORTS,
+    accessors::PORTS,
 ]);
 /// This module's complete replacements.
 pub const PORTS: &[Port] = &ALL;
