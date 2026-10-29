@@ -84,9 +84,9 @@ slot!(set_appearance, appearance);
 slot!(enumerate_instances, record, output);
 slot!(safe_iterator);
 slot!(set_empty, lot);
-slot!(normal_textures, lot, config);
-slot!(replacement_normal, lot, config);
-slot!(get_config_create, create);
+slot!(normal_textures, lot, config, force);
+slot!(replacement_normal, lot, config, force);
+slot!(get_config_create);
 slot!(lot_state);
 slot!(lot_condition);
 slot!(elapsed_days);
@@ -762,7 +762,7 @@ fn texture_mode_advances_iterator_before_callback_rereads_mode_and_keeps_saved_m
         assert_eq!(*(ip as *const u32), next);
         LotDeveloper::from_ptr(dp as *mut u8).set_force_empty(0);
     });
-    expect(second_lot.ptr(), "get_config_create", &[1], 0xABCD);
+    expect(second_lot.ptr(), "get_config_create", &[], 0xABCD);
     let rt = replacement_table.as_ptr() as usize;
     effect(move |_| unsafe {
         (dp as *mut u32).write(rt as u32);
@@ -770,7 +770,7 @@ fn texture_mode_advances_iterator_before_callback_rereads_mode_and_keeps_saved_m
     expect(
         developer.ptr(),
         "normal_textures",
-        &[second_lot.ptr() as u32, 0xABCD],
+        &[second_lot.ptr() as u32, 0xABCD, 1],
         RETURN,
     );
     expect(unsafe { owner.as_mut_ptr().add(1).cast() }, "unregister", &[], RETURN);
@@ -783,6 +783,49 @@ fn texture_mode_advances_iterator_before_callback_rereads_mode_and_keeps_saved_m
         unsafe { call_thiscall_with_eax(fc4p_006c77d0 as *const () as usize, developer.ptr(), &[0x1234_56FD], 0) };
     assert_eq!(returned, (RETURN as u32, (RETURN >> 32) as u32));
     assert_eq!(iterator[0], sentinel.ptr() as u32);
+    finished();
+}
+
+#[test]
+fn city_load_texture_reset_uses_zero_argument_getter_and_three_argument_setter() {
+    let _unregister = fake(0x0080_9580, unregister as *const () as usize);
+    let _delete = fake(0x005E_5620, delete_iterator as *const () as usize);
+    let (_mt, mut manager) = object(&[(0x3C, safe_iterator as *const () as usize)], 4);
+    let mut manager_pointer = manager.ptr();
+    let _manager = fake_data(0x00B4_3D08, (&mut manager_pointer as *mut *mut u8).cast());
+    let (_dt, mut developer) = object(&[(0xB0, normal_textures as *const () as usize)], 0x108);
+    let (_lt, mut lot) = object(&[(0x24, get_config as *const () as usize)], 4);
+    let mut sentinel = node(core::ptr::null_mut());
+    let mut member = node(lot.ptr());
+    link(&mut [&mut sentinel, &mut member]);
+    let mut owner = [sentinel.ptr() as u32, 0, 0];
+    let mut iterator = [member.ptr() as u32, owner.as_mut_ptr() as u32];
+    // Loading toggles the saved mode before requesting its opposite. The uninitialized service
+    // fields and the configuration result may still be null; neither supplies the setter's vtable.
+    unsafe { LotDeveloper::from_ptr(developer.ptr()).set_force_empty(1); }
+    expect(manager.ptr(), "safe_iterator", &[], iterator.as_mut_ptr() as u64);
+    expect(lot.ptr(), "get_config", &[], 0);
+    expect(developer.ptr(), "normal_textures", &[lot.ptr() as u32, 0, 1], RETURN);
+    expect(unsafe { owner.as_mut_ptr().add(1).cast() }, "unregister", &[], RETURN);
+    expect(core::ptr::null_mut(), "free_iterator", &[iterator.as_mut_ptr() as u32], RETURN);
+    let returned = unsafe {
+        call_thiscall_with_eax(fc4p_006c77d0 as *const () as usize, developer.ptr(), &[0], 0xAABB_CCDD)
+    };
+    assert_eq!(returned, (RETURN as u32, (RETURN >> 32) as u32));
+    unsafe { assert_eq!(LotDeveloper::from_ptr(developer.ptr()).force_empty(), 0); }
+    assert_eq!(iterator[0], sentinel.ptr() as u32);
+    finished();
+}
+
+#[test]
+fn unchanged_texture_mode_leaves_null_city_load_services_unread() {
+    let mut developer = Object::new(0x108);
+    let mut null_manager = core::ptr::null_mut::<u8>();
+    let _manager = fake_data(0x00B4_3D08, (&mut null_manager as *mut *mut u8).cast());
+    let returned = unsafe {
+        call_thiscall_with_eax(fc4p_006c77d0 as *const () as usize, developer.ptr(), &[0], 0xAABB_CCDD)
+    };
+    assert_eq!(returned, (0xAABB_CC00, 0));
     finished();
 }
 

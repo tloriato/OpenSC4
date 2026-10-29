@@ -202,6 +202,10 @@ macro_rules! mock {
 mod operations;
 mod anchor;
 mod objects;
+mod updates;
+mod textures;
+mod network;
+mod altitudes;
 
 #[test]
 fn record_initializers_retain_every_padding_byte() {

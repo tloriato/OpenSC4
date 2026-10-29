@@ -265,9 +265,10 @@ unsafe extern "fastcall" fn set_force_empty_textures(this: *mut u8, entry_eax: u
                 // The table pointer is captured before the lot's configuration callback; its method
                 // word is read afterwards, so edits to the old table are still visible.
                 let saved_table = table(this);
-                call = virtual_call(lot, 0x24, &[1], table(lot), call.edx, false);
+                // The force word belongs to the texture setter. The configuration getter pops nothing.
+                call = virtual_call(lot, 0x24, &[], table(lot), call.edx, false);
                 let target = (saved_table as *const usize).add(0xB0 / 4).read_unaligned();
-                let args = [lot as u32, call.eax];
+                let args = [lot as u32, call.eax, 1];
                 let mut normal = RawCall::new(Conv::Thiscall, target, this as u32, &args);
                 normal.eax = call.eax;
                 normal.edx = call.edx;
