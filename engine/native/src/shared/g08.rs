@@ -1589,6 +1589,572 @@ unsafe extern "fastcall" fn drain_raster_triangles(this: *mut u8, entry_edx: u32
     }
 }
 
+
+// Triangle setup shares this block with the edge initializers and generated spans.
+game_data! { static triangle_state: [u8; 0x5E0] = 0x00B5_C4A8; }
+game_data! { static triangle_edge_order: [u8; 0x40] = 0x00AC_C67C; }
+game_fn! { #[allow(dead_code)] fn triangle_color_edge() = "C" 0x008D_D760; }
+game_fn! { #[allow(dead_code)] fn triangle_texture_edge() = "C" 0x008D_D680; }
+game_fn! { #[allow(dead_code)] fn triangle_depth_edge() = "C" 0x008D_D620; }
+
+layout! {
+    /// A triangle vertex keeps screen coordinates, depth, packed color, and two texture coordinates.
+    struct TriangleVertex {
+        0x00 => x / set_x: i32,
+        0x04 => y / set_y: i32,
+        0x08 => depth / set_depth: i32,
+        0x0C => color / set_color: u32,
+        0x10 => texture_u / set_texture_u: i32,
+        0x14 => texture_v / set_texture_v: i32,
+    }
+}
+
+/// Packed integer lanes. All products and sums wrap at their destination width.
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+struct TriangleMmx(u64);
+impl TriangleMmx {
+    fn pair(a: u32, b: u32) -> Self {
+        Self(u64::from(a) | (u64::from(b) << 32))
+    }
+    fn d(self, i: usize) -> u32 {
+        (self.0 >> (i * 32)) as u32
+    }
+    fn w(self, i: usize) -> u16 {
+        (self.0 >> (i * 16)) as u16
+    }
+    fn map_d(self, f: impl Fn(u32) -> u32) -> Self {
+        Self::pair(f(self.d(0)), f(self.d(1)))
+    }
+    fn add(self, b: Self) -> Self {
+        Self::pair(self.d(0).wrapping_add(b.d(0)), self.d(1).wrapping_add(b.d(1)))
+    }
+    fn sub(self, b: Self) -> Self {
+        Self::pair(self.d(0).wrapping_sub(b.d(0)), self.d(1).wrapping_sub(b.d(1)))
+    }
+    fn shl(self, n: u32) -> Self {
+        self.map_d(|v| v << n)
+    }
+    fn sar(self, n: u32) -> Self {
+        self.map_d(|v| ((v as i32) >> n) as u32)
+    }
+    fn half_words(self) -> Self {
+        Self((self.0 >> 1) & 0x7FFF_7FFF_7FFF_7FFF)
+    }
+    fn madd(self, b: Self) -> Self {
+        let product = |i| i32::from(self.w(i) as i16).wrapping_mul(i32::from(b.w(i) as i16));
+        Self::pair(
+            product(0).wrapping_add(product(1)) as u32,
+            product(2).wrapping_add(product(3)) as u32,
+        )
+    }
+    fn low_d(self) -> Self {
+        Self::pair(self.d(0), self.d(0))
+    }
+    fn high_d(self) -> Self {
+        Self::pair(self.d(1), self.d(1))
+    }
+    fn words(a: i32, b: i32) -> Self {
+        Self::pair(u32::from(a as u16), u32::from(b as u16))
+    }
+    fn saturated(self, b: Self) -> Self {
+        let values = [self.d(0), self.d(1), b.d(0), b.d(1)];
+        Self(values.into_iter().enumerate().fold(0, |v, (i, n)| {
+            v | (u64::from((n as i32).clamp(-32768, 32767) as u16) << (i * 16))
+        }))
+    }
+}
+
+/// The first eight words use PUSHAD order; the bridge also carries every live MMX register.
+#[repr(C)]
+#[derive(Default)]
+struct TriangleRegisters {
+    edi: u32,
+    esi: u32,
+    ebp: u32,
+    esp: u32,
+    ebx: u32,
+    edx: u32,
+    ecx: u32,
+    eax: u32,
+    target: u32,
+    flags: u32,
+    mm: [TriangleMmx; 8],
+}
+
+const _: () = {
+    assert!(core::mem::offset_of!(TriangleRegisters, mm) == 40);
+    assert!(core::mem::size_of::<TriangleRegisters>() == 104);
+};
+
+/// Invoke a register-based edge initializer or span, retaining its complete register results.
+/// The texture initializer also reads the flags eleven words above its return address.
+#[unsafe(naked)]
+unsafe extern "thiscall" fn triangle_call(_: *mut TriangleRegisters) {
+    core::arch::naked_asm!(
+        "pushad",
+        "push ecx",
+        "push dword ptr [ecx + 32]",
+        "sub esp, 44",
+        "mov eax, [ecx + 36]",
+        "mov [esp + 40], eax",
+        "movq mm0, [ecx + 40]",
+        "movq mm1, [ecx + 48]",
+        "movq mm2, [ecx + 56]",
+        "movq mm3, [ecx + 64]",
+        "movq mm4, [ecx + 72]",
+        "movq mm5, [ecx + 80]",
+        "movq mm6, [ecx + 88]",
+        "movq mm7, [ecx + 96]",
+        "mov edi, [ecx]",
+        "mov esi, [ecx + 4]",
+        "mov ebp, [ecx + 8]",
+        "mov ebx, [ecx + 16]",
+        "mov edx, [ecx + 20]",
+        "mov eax, [ecx + 28]",
+        "mov ecx, [ecx + 24]",
+        "call dword ptr [esp + 44]",
+        "pushad",
+        "mov ecx, [esp + 80]",
+        "mov eax, [esp]",
+        "mov [ecx], eax",
+        "mov eax, [esp + 4]",
+        "mov [ecx + 4], eax",
+        "mov eax, [esp + 8]",
+        "mov [ecx + 8], eax",
+        "mov eax, [esp + 16]",
+        "mov [ecx + 16], eax",
+        "mov eax, [esp + 20]",
+        "mov [ecx + 20], eax",
+        "mov eax, [esp + 24]",
+        "mov [ecx + 24], eax",
+        "mov eax, [esp + 28]",
+        "mov [ecx + 28], eax",
+        "movq [ecx + 40], mm0",
+        "movq [ecx + 48], mm1",
+        "movq [ecx + 56], mm2",
+        "movq [ecx + 64], mm3",
+        "movq [ecx + 72], mm4",
+        "movq [ecx + 80], mm5",
+        "movq [ecx + 88], mm6",
+        "movq [ecx + 96], mm7",
+        "popad",
+        "add esp, 52",
+        "popad",
+        "ret"
+    )
+}
+
+impl TriangleRegisters {
+    unsafe fn call(&mut self, target: usize) {
+        self.target = target as u32;
+        unsafe { triangle_call(self) };
+    }
+    unsafe fn restore_mmx(&self, preserve_mm2: bool) {
+        unsafe {
+            core::arch::asm!(
+                "movq mm0, [{p}]", "movq mm1, [{p} + 8]", "movq mm3, [{p} + 24]",
+                "movq mm4, [{p} + 32]", "movq mm5, [{p} + 40]", "movq mm6, [{p} + 48]", "movq mm7, [{p} + 56]",
+                p = in(reg) self.mm.as_ptr(), out("mm0") _, out("mm1") _, out("mm3") _,
+                out("mm4") _, out("mm5") _, out("mm6") _, out("mm7") _, options(nostack, readonly));
+            if !preserve_mm2 {
+                core::arch::asm!("movq mm2, [{p}]", p = in(reg) &self.mm[2], out("mm2") _, options(nostack, readonly));
+            }
+        }
+    }
+}
+
+unsafe fn triangle_load<T: Copy>(address: u32) -> T {
+    unsafe { read(triangle_state().cast(), address.wrapping_sub(0x00B5_C4A8) as usize) }
+}
+unsafe fn triangle_store<T>(address: u32, value: T) {
+    unsafe {
+        write(
+            triangle_state().cast(),
+            address.wrapping_sub(0x00B5_C4A8) as usize,
+            value,
+        )
+    }
+}
+fn triangle_pointer(address: u32) -> u32 {
+    triangle_state()
+        .cast::<u8>()
+        .wrapping_add(address.wrapping_sub(0x00B5_C4A8) as usize) as u32
+}
+
+/// Signed division deliberately retains the processor's divide-error behavior on overflow.
+fn triangle_divide(numerator: i32, denominator: i32) -> i32 {
+    let quotient: i32;
+    unsafe {
+        core::arch::asm!("cdq", "idiv {divisor:e}", divisor = in(reg) denominator,
+            inlateout("eax") numerator => quotient, out("edx") _, options(nomem, nostack));
+    }
+    quotient
+}
+
+/// Compute horizontal gradients for two color channels, retaining the packed intermediates.
+fn triangle_color_pair(mm: &mut [TriangleMmx; 8], b: TriangleMmx, a: TriangleMmx) -> TriangleMmx {
+    mm[2] = b;
+    mm[4] = a;
+    mm[3] = mm[2];
+    mm[0] = mm[0].madd(mm[2]);
+    mm[3] = mm[3].shl(16).madd(mm[1]);
+    mm[6] = mm[6].half_words().madd(mm[4]);
+    mm[5] = mm[4].shl(16).madd(mm[7]);
+    mm[3] = mm[3].shl(15).add(mm[0]);
+    mm[5] = mm[5].shl(15);
+    mm[6] = mm[6].add(mm[5]);
+    // The caller reloads the two Y coefficients before the second plane.
+    mm[3] = mm[3].sub(mm[6]);
+    mm[3]
+}
+
+port! {
+    /// Set up fixed-point triangle edges and attribute gradients, then draw the two scanline ranges.
+    /// All general registers except EAX are preserved; the stack arguments remain caller-owned.
+    #[port(address = 0x008D_D8B0, owner = "shared", name = "RasterizeTriangle", naked)]
+    pub unsafe extern "C" fn fc4p_008dd8b0() {
+        core::arch::naked_asm!(
+            "pushad", "mov ecx, esp", "lea edx, [esp + 36]", "call {body}",
+            "mov [esp + 28], eax", "popad", "ret", body = sym rasterize_triangle)
+    }
+}
+
+unsafe extern "fastcall" fn rasterize_triangle(entry: *const u32, arguments: *const u32) -> u32 {
+    unsafe {
+        let vertices: [*mut u8; 3] = core::array::from_fn(|i| arguments.add(i).read() as *mut u8);
+        // Color, texture and depth planes use bits 0..2; bit 3 selects the texture scale.
+        let flags = arguments.add(3).read();
+        let vertex = |p| TriangleVertex::from_ptr(p);
+        let xy = |p| TriangleMmx::pair(vertex(p).x() as u32, vertex(p).y() as u32);
+        let mut r = TriangleRegisters {
+            flags,
+            ecx: entry.add(6).read(),
+            ..TriangleRegisters::default()
+        };
+        let m = &mut r.mm;
+        m[7] = xy(vertices[2]);
+        m[3] = xy(vertices[1]);
+        m[1] = m[7];
+        m[4] = xy(vertices[0]);
+        let first_y = m[4].d(1) as i32;
+        m[7] = m[7].sub(m[3]);
+        m[1] = m[1].sub(m[4]);
+        m[5] = m[7];
+        m[6] = m[1];
+        m[7] = m[7].saturated(m[1]);
+        m[1] = TriangleMmx(m[1].0 << 32);
+        m[6] = TriangleMmx::pair(m[6].d(1), m[1].d(1)).shl(16);
+        m[1] = TriangleMmx(0);
+        m[5] = m[5].shl(16);
+        m[4] = m[7];
+        m[5] = m[5].madd(m[6]);
+        m[7] = TriangleMmx::words(i32::from(m[7].w(0)), i32::from(m[7].w(1)));
+        m[4] = TriangleMmx::words(i32::from(m[4].w(2)), i32::from(m[4].w(3)));
+        m[3] = m[7];
+        m[6] = m[5];
+        m[5] = TriangleMmx(m[5].0 >> 32).sub(m[6]);
+        // The area uses signed low words, while the later coefficients use saturated words.
+        let area = m[5].d(0) as i32;
+        if area < 0 {
+            triangle_store(0x00B5_C5C0, 0u32);
+            // MM2 still carries its entry value, including its upper x87 bits.
+            r.restore_mmx(true);
+            return 0;
+        }
+        let reciprocal = if area > 256 {
+            let quotient: u32;
+            core::arch::asm!("div {divisor:e}", divisor = in(reg) area as u32,
+                inlateout("eax") 0u32 => quotient, inlateout("edx") 128u32 => _, options(nomem, nostack));
+            quotient
+        } else {
+            0
+        };
+        m[0] = TriangleMmx::pair(reciprocal, reciprocal);
+        triangle_store(0x00B5_C5C0, area);
+        m[6] = m[0];
+        m[0] = m[0].half_words();
+        m[7] = m[7].madd(m[0]);
+        m[3] = m[3].shl(16).madd(m[6]);
+        m[0] = m[0].madd(m[4]);
+        m[4] = m[4].shl(16).madd(m[6]);
+        m[7] = m[7].sar(14);
+        m[3] = m[3].add(m[3]);
+        m[0] = m[0].sar(14);
+        m[4] = m[4].add(m[4]);
+        m[7] = m[7].add(m[3]);
+        m[0] = m[0].add(m[4]);
+        m[5] = m[0];
+        let ys = [
+            first_y.wrapping_sub(8) >> 4,
+            vertex(vertices[1]).y().wrapping_sub(8) >> 4,
+            vertex(vertices[2]).y().wrapping_sub(8) >> 4,
+        ];
+        triangle_store(0x00B5_CA60, ys[1]);
+        triangle_store(0x00B5_CA5C, ys[0]);
+        triangle_store(0x00B5_CA64, ys[2]);
+        let (mut low, mut high, mut mid) = (1usize, 0usize, 2usize);
+        let (mut bottom, mut top) = (ys[0], ys[1]);
+        if bottom < top {
+            core::mem::swap(&mut bottom, &mut top);
+            high = 1;
+            low = 0;
+        }
+        if bottom <= ys[2] {
+            bottom = ys[2];
+            mid = high;
+            high = 2;
+        }
+        if top >= ys[2] {
+            top = ys[2];
+            mid = low;
+            low = 2;
+        }
+        let permutation = (((u32::from(mid < high) * 2) + u32::from(low < mid)) * 2) + u32::from(low < high);
+        let middle = triangle_load::<i32>(0x00B5_CA5C + mid as u32 * 4);
+        m[1] = TriangleMmx(u64::from(bottom as u32));
+        m[6] = m[7];
+        triangle_store(0x00B5_CA38, bottom.wrapping_sub(middle));
+        triangle_store(0x00B5_CA34, middle.wrapping_sub(top));
+        r.esi = vertices[high] as u32;
+        r.edi = vertices[low] as u32;
+        r.ecx = vertices[mid] as u32;
+        let upper_fraction = vertex(r.esi as *mut u8)
+            .y()
+            .wrapping_sub(8)
+            .wrapping_sub(bottom.wrapping_shl(4))
+            .wrapping_shl(11);
+        let lower_fraction = vertex(r.ecx as *mut u8)
+            .y()
+            .wrapping_sub(8)
+            .wrapping_sub(middle.wrapping_shl(4))
+            .wrapping_shl(11);
+        triangle_store(0x00B5_C4EC, upper_fraction);
+        triangle_store(0x00B5_C57C, upper_fraction);
+        triangle_store(0x00B5_C534, lower_fraction);
+        r.ebx = read(triangle_edge_order().cast(), 0x20 + permutation as usize * 4);
+        m[1] = m[1].low_d().madd(TriangleMmx(triangle_load(0x00B5_C5A0)));
+        m[5] = m[5].low_d();
+        m[3] = TriangleMmx(triangle_load(0x00B5_C598));
+        m[0] = m[0].high_d();
+        m[2] = TriangleMmx(read(triangle_edge_order().cast(), r.ebx as usize));
+        m[6] = m[6].high_d();
+        triangle_store(0x00B5_CA44, m[2].0);
+        m[7] = m[7].low_d();
+        m[2] = TriangleMmx(read(triangle_edge_order().cast(), r.ebx as usize + 8));
+        m[1] = m[1].add(m[3]);
+        triangle_store(0x00B5_CA3C, m[2].0);
+        for (start, end, edge, fraction) in [
+            (r.esi, r.ecx, 0x00B5_C4A8, 0x00B5_C4EC),
+            (r.ecx, r.edi, 0x00B5_C4F0, 0x00B5_C534),
+            (r.esi, r.edi, 0x00B5_C538, 0x00B5_C57C),
+        ] {
+            let start = start as *mut u8;
+            let end = end as *mut u8;
+            let end_x = vertex(end).x();
+            let start_x = vertex(start).x();
+            let numerator = end_x.wrapping_sub(start_x).wrapping_shl(15);
+            let denominator = vertex(start).y().wrapping_sub(vertex(end).y());
+            let slope = if denominator == 0 {
+                numerator
+            } else {
+                triangle_divide(numerator, denominator)
+            };
+            triangle_store(edge + 4, slope);
+            let product = i64::from(slope).wrapping_mul(i64::from(triangle_load::<i32>(fraction)));
+            r.eax = (product as u32) >> 15;
+            r.edx = ((product >> 15) as u64) as u32;
+            let x = (start_x as u32)
+                .wrapping_shl(11)
+                .wrapping_add(r.edx)
+                .wrapping_sub(0x4000);
+            triangle_store(edge, x);
+            triangle_store(edge + 0x40, r.edx);
+        }
+        r.edi = vertices[0] as u32;
+        r.edx = vertices[1] as u32;
+        r.eax = vertices[2] as u32;
+        triangle_store(0x00B5_C9E4, m[1].d(0));
+        m[1] = TriangleMmx(m[1].0 >> 32);
+        triangle_store(0x00B5_C9EC, m[1].d(0));
+        m[3] = TriangleMmx(0);
+        let colors: [u32; 3] = core::array::from_fn(|i| vertex(vertices[i]).color());
+        m[1] = m[0];
+        triangle_store(0x00B5_CA78, m[5].0);
+        triangle_store(0x00B5_CA70, m[6].0);
+        triangle_store(0x00B5_CA80, m[7].0);
+        triangle_store(0x00B5_CA68, m[1].0);
+        // Byte differences are signed words, with zero words between them after unpacking.
+        let packed_diff = |v: u32| {
+            (0..4).fold(0u64, |value, i| {
+                value
+                    | (u64::from((((v >> (i * 8)) & 255) as u16).wrapping_sub(((colors[2] >> (i * 8)) & 255) as u16))
+                        << (i * 16))
+            })
+        };
+        m[2] = TriangleMmx(packed_diff(colors[1]));
+        m[4] = TriangleMmx(packed_diff(colors[0]));
+        m[5] = TriangleMmx((0..4).fold(0u64, |v, i| v | (u64::from((colors[2] >> (i * 8)) as u8) << (i * 16))));
+        m[0] = m[0].half_words();
+        if flags & 1 != 0 {
+            for shift in [0u32, 16] {
+                if shift != 0 {
+                    m[0] = TriangleMmx(triangle_load(0x00B5_CA68));
+                    m[6] = TriangleMmx(triangle_load(0x00B5_CA70));
+                    m[1] = m[0];
+                    m[0] = m[0].half_words();
+                    m[7] = m[6];
+                } else {
+                    m[7] = m[6];
+                }
+                let pair_colors: [u32; 3] = if shift == 0 {
+                    colors
+                } else {
+                    core::array::from_fn(|i| vertex(vertices[i]).color())
+                };
+                let diff = |v: u32| {
+                    TriangleMmx::words(
+                        ((v >> shift) & 255) as i32 - ((pair_colors[2] >> shift) & 255) as i32,
+                        ((v >> (shift + 8)) & 255) as i32 - ((pair_colors[2] >> (shift + 8)) & 255) as i32,
+                    )
+                };
+                let b = diff(pair_colors[1]);
+                let a = diff(pair_colors[0]);
+                let x = triangle_color_pair(m, b, a);
+                triangle_store(0x00B5_CA08 + shift / 2, x.0);
+                m[0] = TriangleMmx(triangle_load(0x00B5_CA78));
+                m[6] = TriangleMmx(triangle_load(0x00B5_CA80));
+                m[1] = m[0];
+                m[0] = m[0].half_words();
+                m[7] = m[6];
+                m[0] = m[0].madd(m[2]);
+                m[2] = m[2].shl(16);
+                m[1] = m[1].madd(m[2]);
+                m[6] = m[6].half_words().madd(m[4]);
+                m[4] = m[4].shl(16);
+                m[7] = m[7].madd(m[4]);
+                m[1] = m[1].shl(15);
+                let y = if shift == 0 {
+                    m[1] = m[1].add(m[0]);
+                    m[7] = m[7].shl(15).add(m[6]);
+                    m[7] = m[7].sub(m[1]);
+                    m[7]
+                } else {
+                    m[0] = m[0].add(m[1]);
+                    m[7] = m[7].shl(15);
+                    m[6] = m[6].add(m[7]).sub(m[0]);
+                    m[6]
+                };
+                triangle_store(0x00B5_CA18 + shift / 2, y.0);
+                if shift == 0 {
+                    m[0] = TriangleMmx(triangle_load(0x00B5_CA68));
+                    m[6] = TriangleMmx(triangle_load(0x00B5_CA70));
+                }
+            }
+        }
+        if flags & 2 != 0 {
+            for i in 0..2 {
+                let texture = |p| {
+                    if i == 0 {
+                        vertex(p).texture_u()
+                    } else {
+                        vertex(p).texture_v()
+                    }
+                };
+                let c = texture(vertices[2]);
+                let b = texture(vertices[1]).wrapping_sub(c);
+                let a = texture(vertices[0]).wrapping_sub(c);
+                let gx = triangle_load::<i32>(0x00B5_CA68)
+                    .wrapping_mul(b)
+                    .wrapping_sub(triangle_load::<i32>(0x00B5_CA70).wrapping_mul(a));
+                let gy = triangle_load::<i32>(0x00B5_CA80)
+                    .wrapping_mul(a)
+                    .wrapping_sub(triangle_load::<i32>(0x00B5_CA78).wrapping_mul(b));
+                let (gx, gy) = if flags & 8 != 0 { (gx >> 4, gy >> 4) } else { (gx, gy) };
+                triangle_store(0x00B5_C9F0 + i as u32 * 4, gx);
+                triangle_store(0x00B5_C9F8 + i as u32 * 4, gy);
+                triangle_store(0x00B5_CA28 + i as u32 * 4, (gx >> 17) & 0xFFFF);
+            }
+        }
+        if flags & 4 != 0 {
+            let c = vertex(vertices[2]).depth();
+            let a = c.wrapping_sub(vertex(vertices[0]).depth());
+            let b = c.wrapping_sub(vertex(vertices[1]).depth());
+            let gx = triangle_load::<i32>(0x00B5_CA70)
+                .wrapping_mul(a)
+                .wrapping_sub(triangle_load::<i32>(0x00B5_CA68).wrapping_mul(b))
+                .wrapping_add(8)
+                >> 4;
+            let gy = triangle_load::<i32>(0x00B5_CA78)
+                .wrapping_mul(b)
+                .wrapping_sub(triangle_load::<i32>(0x00B5_CA80).wrapping_mul(a))
+                .wrapping_add(8)
+                >> 4;
+            triangle_store(0x00B5_CA00, gx);
+            triangle_store(0x00B5_CA04, gy);
+            r.eax = gy as u32;
+            r.edx = triangle_load::<i32>(0x00B5_CA80).wrapping_mul(a) as u32;
+        }
+        if r.ebx == 0 {
+            r.ebp = triangle_pointer(0x00B5_C538);
+            if flags & 1 != 0 {
+                r.call(crate::abi::target(0x008D_D760));
+            }
+            if flags & 2 != 0 {
+                r.ebx = triangle_load(0x00B5_C57C);
+                r.call(crate::abi::target(0x008D_D680));
+            }
+            if flags & 4 != 0 {
+                r.ebx = triangle_pointer(0x00B5_C538);
+                r.call(crate::abi::target(0x008D_D620));
+            }
+        } else {
+            for (bit, target) in [(1, 0x008D_D760), (2, 0x008D_D680), (4, 0x008D_D620)] {
+                if flags & bit == 0 {
+                    continue;
+                }
+                core::mem::swap(&mut r.esi, &mut r.ecx);
+                r.ebp = triangle_pointer(0x00B5_C4F0);
+                if bit == 2 {
+                    r.ebx = triangle_load(0x00B5_C534);
+                }
+                r.call(crate::abi::target(target));
+                core::mem::swap(&mut r.esi, &mut r.ecx);
+                r.ebp = triangle_pointer(0x00B5_C4A8);
+                if bit == 2 {
+                    r.ebx = triangle_load(0x00B5_C4EC);
+                }
+                r.call(crate::abi::target(target));
+            }
+        }
+        if flags & 4 != 0 {
+            r.eax = ((triangle_load::<i32>(0x00B5_CA00) >> 31) & 255) as u32;
+            r.esi = (triangle_load::<i32>(0x00B5_CA00).wrapping_add(r.eax as i32) >> 8) as u32;
+            triangle_store(0x00B5_CA30, r.esi);
+            r.esi = triangle_load::<u32>(0x00B5_CA00).rotate_left(16);
+            triangle_store(0x00B5_CA00, r.esi);
+        }
+        r.mm[0] = TriangleMmx(triangle_load(0x00B5_C9F0));
+        r.mm[4] = TriangleMmx(0);
+        r.ebp = triangle_load(0x00B5_C9E4);
+        r.edi = triangle_load(0x00B5_CA38);
+        if r.edi as i32 > 0 {
+            r.ebx = triangle_load(0x00B5_CA3C);
+            r.edx = triangle_load(0x00B5_CA40);
+            r.call(*raster_span() as usize);
+        }
+        r.edi = triangle_load(0x00B5_CA34);
+        if r.edi as i32 > 0 {
+            r.ebx = triangle_load(0x00B5_CA44);
+            r.edx = triangle_load(0x00B5_CA48);
+            triangle_store(0x00B5_CA3C, r.ebx);
+            triangle_store(0x00B5_CA40, r.edx);
+            r.call(*raster_span() as usize);
+        }
+        r.restore_mmx(false);
+        r.eax
+    }
+}
+
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
     fc4p_0089801e::PORT,
@@ -1604,6 +2170,7 @@ pub const PORTS: &[Port] = &[
     fc4p_008dd620::PORT,
     fc4p_008dd680::PORT,
     fc4p_008dd760::PORT,
+    fc4p_008dd8b0::PORT,
     fc4p_008e0100::PORT,
     fc4p_008dc4c0::PORT,
     fc4p_008eb800::PORT,
@@ -4339,6 +4906,592 @@ mod tests {
                 result,
                 iterator_at(&mut map, if backward { dest } else { dest + end - start }, 40, 3)
             );
+        }
+    }
+}
+
+
+#[cfg(test)]
+mod triangle_tests {
+    use super::*;
+    use crate::testing::{fake, fake_data, Fake, GameFpu};
+    use std::cell::RefCell;
+
+    #[derive(Debug, Clone)]
+    struct Event {
+        kind: u32,
+        regs: [u32; 8],
+        mm: [u64; 8],
+        flags: u32,
+    }
+    thread_local! {
+        static EVENTS: RefCell<Vec<Event>> = const { RefCell::new(Vec::new()) };
+        static SPAN_MUTATION: RefCell<Option<(u32, u32)>> = const { RefCell::new(None) };
+    }
+    fn events() -> Vec<Event> {
+        EVENTS.with(|v| core::mem::take(&mut *v.borrow_mut()))
+    }
+
+    unsafe extern "fastcall" fn record(stack: *const u32, kind: u32) {
+        let mut mm = [0u64; 8];
+        unsafe {
+            core::arch::asm!(
+                "movq [{p}], mm0", "movq [{p} + 8], mm1", "movq [{p} + 16], mm2", "movq [{p} + 24], mm3",
+                "movq [{p} + 32], mm4", "movq [{p} + 40], mm5", "movq [{p} + 48], mm6", "movq [{p} + 56], mm7",
+                p = in(reg) mm.as_mut_ptr(), options(nostack));
+            EVENTS.with(|v| {
+                v.borrow_mut().push(Event {
+                    kind,
+                    regs: core::array::from_fn(|i| stack.add(i).read()),
+                    mm,
+                    flags: stack.add(19).read(),
+                })
+            });
+            if kind == 16 {
+                SPAN_MUTATION.with(|v| {
+                    if let Some((address, value)) = v.borrow_mut().take() {
+                        triangle_store(address, value);
+                    }
+                });
+            }
+        }
+    }
+    macro_rules! edge_fake {
+        ($name:ident, $kind:literal) => {
+            #[unsafe(naked)]
+            unsafe extern "C" fn $name() {
+                core::arch::naked_asm!("pushad", "mov ecx, esp", "mov edx, {kind}", "call {record}",
+                    "popad", "ret", kind = const $kind, record = sym record)
+            }
+        };
+    }
+    edge_fake!(color, 1);
+    edge_fake!(texture, 2);
+    edge_fake!(depth, 4);
+    #[unsafe(naked)]
+    unsafe extern "C" fn span() {
+        core::arch::naked_asm!(
+            "pushad", "mov ecx, esp", "mov edx, 16", "call {record}", "popad",
+            "inc eax", "inc ecx", "inc edx", "inc ebx", "inc esi", "inc ebp", "paddd mm0, mm1", "ret",
+            record = sym record)
+    }
+
+    edge_fake!(second_span, 32);
+
+    #[repr(C, align(16))]
+    struct FpuState([u8; 512]);
+    #[repr(C)]
+    struct Invocation {
+        regs: TriangleRegisters,
+        vertices: [u32; 3],
+        fpu: *mut FpuState,
+    }
+    #[unsafe(naked)]
+    unsafe extern "thiscall" fn invoke(_: *mut Invocation) {
+        core::arch::naked_asm!(
+            "pushad",
+            "push ecx",
+            "push dword ptr [ecx + 32]",
+            "push dword ptr [ecx + 36]",
+            "push dword ptr [ecx + 112]",
+            "push dword ptr [ecx + 108]",
+            "push dword ptr [ecx + 104]",
+            "mov edx, [ecx + 116]",
+            "fxrstor [edx]",
+            "mov edi, [ecx]",
+            "mov esi, [ecx + 4]",
+            "mov ebp, [ecx + 8]",
+            "mov ebx, [ecx + 16]",
+            "mov edx, [ecx + 20]",
+            "mov eax, [ecx + 28]",
+            "mov ecx, [ecx + 24]",
+            "call dword ptr [esp + 16]",
+            "pushad",
+            "mov ebx, [esp + 52]",
+            "mov edi, ebx",
+            "mov esi, esp",
+            "mov ecx, 8",
+            "rep movsd",
+            "mov edx, [ebx + 116]",
+            "fxsave [edx]",
+            "emms",
+            "add esp, 32",
+            "add esp, 20",
+            "pop ecx",
+            "popad",
+            "ret"
+        )
+    }
+    struct Fixture {
+        state: Box<[u8; 0x5E0]>,
+        _table: Box<[u32; 16]>,
+        _guards: Vec<Fake>,
+    }
+    impl Fixture {
+        fn new(real_edges: bool) -> Self {
+            events();
+            let mut state = Box::new([0xA5u8; 0x5E0]);
+            let p = state.as_mut_ptr();
+            let edge = |a: u32| p.wrapping_add((a - 0x00B5_C4A8) as usize) as u32;
+            let mut table = Box::new([
+                edge(0x00B5_C538),
+                edge(0x00B5_C4F0),
+                edge(0x00B5_C538),
+                edge(0x00B5_C4A8),
+                edge(0x00B5_C4F0),
+                edge(0x00B5_C538),
+                edge(0x00B5_C4A8),
+                edge(0x00B5_C538),
+                16,
+                0,
+                0,
+                16,
+                16,
+                0,
+                0,
+                0,
+            ]);
+            let mut guards = vec![
+                fake_data(0x00B5_C4A8, p),
+                fake_data(0x00AC_C67C, table.as_mut_ptr().cast()),
+            ];
+            for address in [
+                0x00B5_C5B8,
+                0x00B5_CA00,
+                0x00B5_CA04,
+                0x00B5_C9F0,
+                0x00B5_C9F8,
+                0x00B5_CA08,
+                0x00B5_CA18,
+            ] {
+                guards.push(fake_data(address, p.wrapping_add((address - 0x00B5_C4A8) as usize)));
+            }
+            if !real_edges {
+                guards.extend([
+                    fake(0x008D_D760, color as *const () as usize),
+                    fake(0x008D_D680, texture as *const () as usize),
+                    fake(0x008D_D620, depth as *const () as usize),
+                ]);
+            }
+            unsafe {
+                write(p, 0xF0, 0x1234_5678u32);
+                write(p, 0xF4, 0x8765_4321u32);
+                write(p, 0xF8, 0xFFFD_0007u32);
+                write(p, 0xFC, 0x000B_FFFBu32);
+                write(p, 0x110, span as *const () as u32);
+            }
+            Self {
+                state,
+                _table: table,
+                _guards: guards,
+            }
+        }
+        fn pointer(&self, a: u32) -> u32 {
+            self.state.as_ptr().wrapping_add((a - 0x00B5_C4A8) as usize) as u32
+        }
+        fn word(&self, a: u32) -> u32 {
+            unsafe { read(self.state.as_ptr() as *mut u8, (a - 0x00B5_C4A8) as usize) }
+        }
+        fn run(&self, vertices: &mut [[u32; 6]; 3], flags: u32) -> (TriangleRegisters, FpuState) {
+            self.run_with_mm2_exponent(vertices, flags, 0xFFFF)
+        }
+        fn run_with_mm2_exponent(
+            &self,
+            vertices: &mut [[u32; 6]; 3],
+            flags: u32,
+            exponent: u16,
+        ) -> (TriangleRegisters, FpuState) {
+            let mut fpu = FpuState([0; 512]);
+            let mut call = Invocation {
+                regs: TriangleRegisters {
+                    edi: 0x1020_3040,
+                    esi: 0x2345_6789,
+                    ebp: 0x3456_789A,
+                    ebx: 0x4567_89AB,
+                    edx: 0x5678_9ABC,
+                    ecx: 0x6789_ABCD,
+                    eax: 0x789A_BCDE,
+                    target: fc4p_008dd8b0 as *const () as u32,
+                    flags,
+                    mm: core::array::from_fn(|i| TriangleMmx(0x1234_5678_90AB_CDEFu64.wrapping_mul(i as u64 + 1))),
+                    ..TriangleRegisters::default()
+                },
+                vertices: core::array::from_fn(|i| vertices[i].as_mut_ptr() as u32),
+                fpu: &mut fpu,
+            };
+            let expected = [
+                call.regs.edi,
+                call.regs.esi,
+                call.regs.ebp,
+                call.regs.ebx,
+                call.regs.edx,
+                call.regs.ecx,
+            ];
+            let mut saved_csr = 0u32;
+            unsafe {
+                core::arch::asm!("stmxcsr [{p}]", p = in(reg) &mut saved_csr, options(nostack));
+            }
+            fpu.0[..2].copy_from_slice(&crate::x87::GAME_CONTROL_WORD.to_le_bytes());
+            fpu.0[4] = 255;
+            fpu.0[24..28].copy_from_slice(&saved_csr.to_le_bytes());
+            for i in 0..8 {
+                fpu.0[32 + i * 16..40 + i * 16].copy_from_slice(&call.regs.mm[i].0.to_le_bytes());
+                let e = if i == 2 { exponent } else { 0xFFFF };
+                fpu.0[40 + i * 16..42 + i * 16].copy_from_slice(&e.to_le_bytes());
+            }
+            unsafe { invoke(&mut call) };
+            assert_eq!(
+                [
+                    call.regs.edi,
+                    call.regs.esi,
+                    call.regs.ebp,
+                    call.regs.ebx,
+                    call.regs.edx,
+                    call.regs.ecx
+                ],
+                expected
+            );
+            assert_eq!(
+                u16::from_le_bytes(fpu.0[..2].try_into().unwrap()),
+                crate::x87::GAME_CONTROL_WORD
+            );
+            assert_eq!(fpu.0[4], 0xFF);
+            assert_eq!(u16::from_le_bytes(fpu.0[2..4].try_into().unwrap()) & 0x3800, 0);
+            assert_eq!(u32::from_le_bytes(fpu.0[24..28].try_into().unwrap()), saved_csr);
+            for i in 0..8 {
+                call.regs.mm[i] = TriangleMmx(u64::from_le_bytes(fpu.0[32 + i * 16..40 + i * 16].try_into().unwrap()));
+                let e = if i == 2 && exponent != 0xFFFF { exponent } else { 0xFFFF };
+                assert_eq!(&fpu.0[40 + i * 16..42 + i * 16], &e.to_le_bytes());
+            }
+            (call.regs, fpu)
+        }
+    }
+    fn vertices() -> [[u32; 6]; 3] {
+        [
+            [24, 40, 0x1122_3344, 0x1234_5678, 0x1234, 0x5678],
+            [248, 88, 0x5566_7788, 0xFEDC_BA98, 0x9876, 0x5432],
+            [56, 296, 0x99AA_BBCC, 0x9182_7364, 0xABCD, 0xEF01],
+        ]
+    }
+    fn put(expected: &mut [u8], address: u32, value: u32) {
+        let offset = (address - 0x00B5_C4A8) as usize;
+        expected[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    }
+
+    #[test]
+    fn triangle_all_attribute_flags_write_only_the_selected_planes_and_exact_setup_words() {
+        let _fpu = GameFpu::new();
+        for flags in 0..16 {
+            let f = Fixture::new(false);
+            let mut expected = *f.state;
+            let mut vertices = vertices();
+            let before_vertices = vertices;
+            let (result, _) = f.run(&mut vertices, flags);
+            assert_eq!(vertices, before_vertices);
+            for (address, value) in [
+                (0x00B5_C4A8, 0x18000),
+                (0x00B5_C4AC, 0x7627),
+                (0x00B5_C4E8, 0),
+                (0x00B5_C4EC, 0),
+                (0x00B5_C4F0, 0x78000),
+                (0x00B5_C4F4, 0xFFFDAAAB),
+                (0x00B5_C530, 0),
+                (0x00B5_C534, 0),
+                (0x00B5_C538, 0x18000),
+                (0x00B5_C53C, 0xFFFFF000),
+                (0x00B5_C578, 0),
+                (0x00B5_C57C, 0),
+                (0x00B5_C5C0, 0xDA00),
+                (0x00B5_C9E4, 0x1234_56F6),
+                (0x00B5_C9EC, 0x8765_42C7),
+                (0x00B5_CA34, 3),
+                (0x00B5_CA38, 13),
+                (0x00B5_CA5C, 2),
+                (0x00B5_CA60, 5),
+                (0x00B5_CA64, 18),
+                (0x00B5_CA68, 0x12C9F),
+                (0x00B5_CA6C, 0x12C9F),
+                (0x00B5_CA70, 0xF441),
+                (0x00B5_CA74, 0xF441),
+                (0x00B5_CA78, 0x2593),
+                (0x00B5_CA7C, 0x2593),
+                (0x00B5_CA80, 0xFFFF1E88),
+                (0x00B5_CA84, 0xFFFF1E88),
+            ] {
+                put(&mut expected, address, value);
+            }
+            for (address, value) in [
+                (0x00B5_CA3C, f.pointer(0x00B5_C538)),
+                (0x00B5_CA40, f.pointer(0x00B5_C4F0)),
+                (0x00B5_CA44, f.pointer(0x00B5_C538)),
+                (0x00B5_CA48, f.pointer(0x00B5_C4F0)),
+            ] {
+                put(&mut expected, address, value);
+            }
+            if flags & 1 != 0 {
+                for (i, value) in [
+                    0x14FD8C, 0x378589, 0x5A0D86, 0x7C9583, 0xFFF3607C, 0x78F8D, 0x1BBE9E, 0x2FEDAF,
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    put(&mut expected, 0x00B5_CA08 + i as u32 * 4, value);
+                }
+            }
+            if flags & 2 != 0 {
+                let values = if flags & 8 == 0 {
+                    [0x7BD6DCD0, 0xDBBE9438, 0x8A1E26AD, 0x9D10B915, 0x3DEB, 0xEDDF]
+                } else {
+                    [0x07BD6DCD, 0xFDBBE943, 0xF8A1E26A, 0xF9D10B91, 0x03DE, 0xFEDD]
+                };
+                for (address, value) in [
+                    0x00B5_C9F0,
+                    0x00B5_C9F4,
+                    0x00B5_C9F8,
+                    0x00B5_C9FC,
+                    0x00B5_CA28,
+                    0x00B5_CA2C,
+                ]
+                .into_iter()
+                .zip(values)
+                {
+                    put(&mut expected, address, value);
+                }
+            }
+            if flags & 4 != 0 {
+                for (address, value) in [
+                    (0x00B5_CA00, 0x6345_0666),
+                    (0x00B5_CA04, 0x0111_08ED),
+                    (0x00B5_CA30, 0x0006_6663),
+                ] {
+                    put(&mut expected, address, value);
+                }
+            }
+            for (i, (actual, expected)) in f
+                .state
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .zip(expected.as_chunks::<4>().0.iter())
+                .enumerate()
+            {
+                assert_eq!(actual, expected, "flags {flags}, address {:08x}", 0x00B5_C4A8 + i * 4);
+            }
+            let calls = events();
+            let mut kinds = Vec::new();
+            for bit in [1, 2, 4] {
+                if flags & bit != 0 {
+                    kinds.push(bit);
+                }
+            }
+            kinds.extend([16, 16]);
+            assert_eq!(calls.iter().map(|c| c.kind).collect::<Vec<_>>(), kinds);
+            for e in calls.iter().filter(|e| e.kind != 16) {
+                assert_eq!(e.regs[2], f.pointer(0x00B5_C538));
+                assert_eq!(e.regs[1], vertices[2].as_ptr() as u32);
+                assert_eq!(e.regs[6], vertices[1].as_ptr() as u32);
+                assert_eq!(e.flags, flags);
+            }
+            let spans: Vec<_> = calls.iter().filter(|e| e.kind == 16).collect();
+            assert_eq!([spans[0].regs[0], spans[1].regs[0]], [13, 3]);
+            assert_eq!([spans[0].regs[2], spans[1].regs[2]], [0x1234_56F6, 0x1234_56F7]);
+            assert_eq!(spans[1].regs[6], spans[0].regs[6].wrapping_add(1));
+            assert_eq!(
+                result.eax,
+                if flags & 4 != 0 {
+                    2
+                } else {
+                    vertices[2].as_ptr() as u32 + 2
+                }
+            );
+            let remaining_mmx = if flags & 1 == 0 {
+                [
+                    0x0001_2C9F_0001_2C9F,
+                    0x006D_005A_0047_0034,
+                    0,
+                    0,
+                    0x0091_0082_0073_0064,
+                    0x0000_F441_0000_F441,
+                    0xFFFF_1E88_FFFF_1E88,
+                ]
+            } else {
+                [
+                    0,
+                    0x006D_0000_005A_0000,
+                    0x007C_9583_005A_0D86,
+                    0,
+                    0,
+                    0x002F_EDAF_001B_BE9E,
+                    0x003F_8000_0027_0000,
+                ]
+            };
+            assert_eq!(result.mm[1..].iter().map(|m| m.0).collect::<Vec<_>>(), remaining_mmx);
+            assert_eq!(result.mm[4], TriangleMmx(0));
+            assert_eq!(
+                result.mm[0],
+                TriangleMmx(spans[0].mm[0])
+                    .add(TriangleMmx(spans[0].mm[1]))
+                    .add(TriangleMmx(spans[0].mm[1]))
+            );
+        }
+    }
+
+    #[test]
+    fn triangle_rejected_winding_only_clears_area_and_keeps_entry_mm2() {
+        let _fpu = GameFpu::new();
+        let f = Fixture::new(false);
+        let mut v = vertices();
+        v.swap(0, 2);
+        let mut expected = *f.state;
+        put(&mut expected, 0x00B5_C5C0, 0);
+        let (result, _) = f.run_with_mm2_exponent(&mut v, 15, 0x1234);
+        assert_eq!(f.state[..], expected);
+        assert_eq!(result.eax, 0);
+        assert!(events().is_empty());
+        assert_eq!(result.mm[0], TriangleMmx(0));
+        assert_eq!(result.mm[1], TriangleMmx(0));
+        assert_eq!(result.mm[2].0, 0x1234_5678_90AB_CDEFu64.wrapping_mul(3));
+    }
+
+    #[test]
+    fn triangle_area_thresholds_keep_zero_gradients_until_257_and_preserve_empty_ranges() {
+        let _fpu = GameFpu::new();
+        for area in [0u32, 1, 255, 256, 257] {
+            let f = Fixture::new(false);
+            let mut v = [[0, 8, 0, 0, 0, 0], [area, 8, 0, 0, 0, 0], [0, 9, 0, 0, 0, 0]];
+            let (r, _) = f.run(&mut v, 0);
+            assert_eq!(f.word(0x00B5_C5C0), area);
+            assert!(events().is_empty());
+            assert_eq!(r.eax, v[2].as_ptr() as u32);
+            if area <= 256 {
+                assert_eq!(f.word(0x00B5_CA68), 0);
+                assert_eq!(f.word(0x00B5_CA80), 0);
+            } else {
+                assert_ne!(f.word(0x00B5_CA68), 0);
+            }
+            assert_eq!(f.word(0x00B5_CA34), 0);
+            assert_eq!(f.word(0x00B5_CA38), 0);
+        }
+    }
+
+    #[test]
+    fn triangle_vertex_permutations_tied_rows_and_both_edge_sides_keep_call_order() {
+        let _fpu = GameFpu::new();
+        for rows in [[40, 88, 296], [40, 40, 296], [40, 296, 296], [40, 40, 40]] {
+            for permutation in [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]] {
+                let f = Fixture::new(false);
+                let mut original = vertices();
+                for i in 0..3 {
+                    original[i][1] = rows[i];
+                }
+                let mut v = permutation.map(|i| original[i]);
+                let (r, _) = f.run(&mut v, 7);
+                let calls = events();
+                if calls.is_empty() && r.eax == 0 {
+                    continue;
+                }
+                let edge_calls: Vec<_> = calls.iter().filter(|c| c.kind != 16).collect();
+                let count = edge_calls.len() / 3;
+                assert!([1, 2].contains(&count));
+                let expected: Vec<_> = [1, 2, 4]
+                    .into_iter()
+                    .flat_map(|kind| core::iter::repeat_n(kind, count))
+                    .collect();
+                assert_eq!(edge_calls.iter().map(|c| c.kind).collect::<Vec<_>>(), expected);
+                for group in edge_calls.chunks(count) {
+                    if count == 1 {
+                        assert_eq!(group[0].regs[2], f.pointer(0x00B5_C538));
+                    } else {
+                        assert_eq!(
+                            [group[0].regs[2], group[1].regs[2]],
+                            [f.pointer(0x00B5_C4F0), f.pointer(0x00B5_C4A8)]
+                        );
+                        assert_eq!(
+                            [group[0].regs[1], group[1].regs[1]],
+                            [group[1].regs[6], group[0].regs[6]]
+                        );
+                    }
+                }
+                let spans = calls.iter().filter(|c| c.kind == 16).count();
+                assert_eq!(
+                    spans,
+                    usize::from(f.word(0x00B5_CA34) as i32 > 0) + usize::from(f.word(0x00B5_CA38) as i32 > 0)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn triangle_runs_real_edge_initializers_with_fractional_coordinates() {
+        let _fpu = GameFpu::new();
+        for flags in [1, 2, 4, 7, 15] {
+            let f = Fixture::new(true);
+            let mut v = vertices();
+            v[0][0] += 3;
+            v[0][1] += 3;
+            v[1][0] += 3;
+            v[1][1] += 4;
+            v[2][0] += 3;
+            v[2][1] += 3;
+            let (r, _) = f.run(&mut v, flags);
+            assert_eq!(events().iter().map(|e| e.kind).collect::<Vec<_>>(), [16, 16]);
+            assert_ne!(f.word(0x00B5_C578), 0);
+            assert_ne!(f.word(0x00B5_C57C), 0);
+            assert_eq!(r.mm[4], TriangleMmx(0));
+            if flags & 1 != 0 {
+                assert_ne!(f.word(0x00B5_C550), 0xA5A5_A5A5);
+            }
+            if flags & 2 != 0 {
+                assert_ne!(f.word(0x00B5_C540), 0xA5A5_A5A5);
+            }
+            if flags & 4 != 0 {
+                assert_ne!(f.word(0x00B5_C570), 0xA5A5_A5A5);
+            }
+        }
+    }
+
+    #[test]
+    fn triangle_reloads_lower_range_and_span_target_after_the_first_span() {
+        let _fpu = GameFpu::new();
+        for skip in [false, true] {
+            let f = Fixture::new(false);
+            let mut v = vertices();
+            SPAN_MUTATION.with(|m| {
+                *m.borrow_mut() = Some(if skip {
+                    (0x00B5_CA34, 0xFFFF_FFFF)
+                } else {
+                    (0x00B5_C5B8, second_span as *const () as u32)
+                })
+            });
+            let (r, _) = f.run(&mut v, 0);
+            let expected = if skip { vec![16] } else { vec![16, 32] };
+            assert_eq!(events().iter().map(|e| e.kind).collect::<Vec<_>>(), expected);
+            assert_eq!(r.eax, v[2].as_ptr() as u32 + 1);
+        }
+    }
+
+    #[test]
+    fn triangle_area_uses_low_signed_words_while_coefficients_saturate() {
+        let _fpu = GameFpu::new();
+        let f = Fixture::new(false);
+        let mut v = [
+            [0, 8, 0, 0x1122_3344, 0, 0],
+            [65537, 8, 0, 0x5566_7788, 0, 0],
+            [0, 265, 0, 0x99AA_BBCC, 0, 0],
+        ];
+        f.run(&mut v, 1);
+        assert_eq!(f.word(0x00B5_C5C0), 257);
+        for (address, value) in [
+            (0x00B5_CA68, 0x00FF_FFFF),
+            (0x00B5_CA70, 0x00FF_FFFF),
+            (0x00B5_CA78, 0),
+            (0x00B5_CA80, 0x807F_8080),
+        ] {
+            assert_eq!(f.word(address), value);
+        }
+        for i in 0..4 {
+            assert_eq!(f.word(0x00B5_CA08 + i * 4), 0x21FF_FFBC);
+            assert_eq!(f.word(0x00B5_CA18 + i * 4), 0xDE21_DE00);
         }
     }
 }
