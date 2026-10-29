@@ -86,35 +86,37 @@ macro_rules! register_port {
     };
 }
 
+mod bridge_helpers;
+mod bridge_steps;
 mod clear;
+mod construction;
 mod control;
 mod cost;
 mod drag_placement;
 mod geometry;
-mod highlights;
 mod helpers;
+mod highlights;
 mod init;
+mod intersection_storage;
 mod lifetime;
+mod occupant_insertion;
 mod occupants;
 mod placement;
 mod preview;
 mod records;
+mod refresh;
 mod reload;
 mod rules;
+mod solution_records;
+mod solved_insertion;
+#[cfg(test)]
+mod stack_tests;
 mod storage;
+mod suspension;
+mod tunnel_insertion;
+mod tunnel_piece;
 mod tunnels;
 mod type_reload;
-mod tunnel_piece;
-mod tunnel_insertion;
-mod solution_records;
-mod refresh;
-mod solved_insertion;
-mod occupant_insertion;
-mod intersection_storage;
-mod construction;
-mod bridge_helpers;
-mod bridge_steps;
-mod suspension;
 
 const COUNT: usize = helpers::PORTS.len()
     + preview::PORTS.len()

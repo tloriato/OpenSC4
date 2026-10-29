@@ -12,7 +12,7 @@ game_fn! { fn clear_preview(this: *mut u8) -> u32 = "thiscall" 0x0062_08D0; }
 game_fn! { fn erase_occupants(this: *mut u8, root: *mut u8) = "thiscall" 0x0046_76A0; }
 game_data! { static occupant_manager: *mut u8 = 0x00B4_3D0C; }
 
-unsafe fn copy_vector(this: *mut u8, source: *mut u8, shift: u32) -> *mut u8 {
+unsafe fn copy_vector(this: *mut u8, source: *mut u8, shift: u32, scratch: *mut *mut u8) -> *mut u8 {
     unsafe {
         let begin: u32 = read(source, 0);
         let end: u32 = read(source, 4);
@@ -31,11 +31,10 @@ unsafe fn copy_vector(this: *mut u8, source: *mut u8, shift: u32) -> *mut u8 {
         write(this, 8, capacity);
         let end = read(source, 4);
         let begin = read(source, 0);
-        let mut scratch = source;
         let copied = if shift == 5 {
-            copy_large(begin, end, buffer, &mut scratch)
+            copy_large(begin, end, buffer, scratch)
         } else {
-            copy_small(begin, end, buffer, &mut scratch)
+            copy_small(begin, end, buffer, scratch)
         };
         write(this, 4, copied);
         this
@@ -45,15 +44,19 @@ port! {
     /// Copy-construct a vector of 32-byte network records, allocating only for nonzero signed length.
     #[port(address = 0x0062_4EA0, owner = "networktool", name = "CopyLargeNetworkRecordVector")]
     pub unsafe extern "thiscall" fn fc4p_00624ea0(this: *mut u8, source: *mut u8) -> *mut u8 {
-        unsafe { copy_vector(this, source, 5) }
+        let mut scratch = source;
+        unsafe { copy_vector(this, source, 5, &mut scratch) }
     }
 }
 port! {
     /// Copy-construct a vector of 16-byte network records. The copy helper supplies the final end cursor.
-    #[port(address = 0x0062_5190, owner = "networktool", name = "CopySmallNetworkRecordVector")]
-    pub unsafe extern "thiscall" fn fc4p_00625190(this: *mut u8, source: *mut u8) -> *mut u8 {
-        unsafe { copy_vector(this, source, 4) }
+    #[port(address = 0x0062_5190, owner = "networktool", name = "CopySmallNetworkRecordVector", naked)]
+    pub unsafe extern "C" fn fc4p_00625190() {
+        core::arch::naked_asm!("lea edx, [esp + 4]", "call {body}", "ret 4", body = sym copy_small_vector);
     }
+}
+unsafe extern "fastcall" fn copy_small_vector(this: *mut u8, argument: *mut *mut u8) -> *mut u8 {
+    unsafe { copy_vector(this, argument.read(), 4, argument) }
 }
 unsafe fn successor(mut node: *mut u8) -> *mut u8 {
     unsafe {

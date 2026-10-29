@@ -2,7 +2,7 @@
 // Copyright (C) 2026 FreeCity4 contributors
 
 use super::*;
-use crate::testing::{fake, fake_data, Object};
+use crate::testing::{Object, fake, fake_data};
 use std::cell::RefCell;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -16,6 +16,7 @@ enum Call {
 }
 #[derive(Default)]
 struct State {
+    entry_location: usize,
     calls: Vec<Call>,
     buffer: usize,
     destination: usize,
@@ -48,6 +49,9 @@ extern "C" fn allocate(size: u32) -> *mut u8 {
 fn copy(shift: u32, begin: *mut u8, end: *mut u8, buffer: *mut u8, scratch: *mut *mut u8) -> *mut u8 {
     STATE.with(|s| {
         let mut s = s.borrow_mut();
+        if s.entry_location != 0 {
+            assert_eq!(scratch as usize, unsafe { *(s.entry_location as *const usize) } + 4);
+        }
         s.calls.push(Call::Copy(
             shift,
             begin as usize,
@@ -115,7 +119,7 @@ fn record_vectors_copy_payload_and_preserve_source_and_destination_guards() {
             5u32,
             fc4p_00624ea0 as unsafe extern "thiscall" fn(*mut u8, *mut u8) -> *mut u8,
         ),
-        (4, fc4p_00625190),
+        (4, SMALL_VECTOR),
     ] {
         for count in [0usize, 1, 3] {
             let mut source_bytes = [0u8; 128];
@@ -153,10 +157,12 @@ fn record_vectors_copy_payload_and_preserve_source_and_destination_guards() {
             );
             assert_eq!(source, source_before);
             assert_eq!(&buffer[16..16 + (count << shift)], &source_bytes[..count << shift]);
-            assert!(buffer[..16]
-                .iter()
-                .chain(buffer[16 + (count << shift)..].iter())
-                .all(|&b| b == 0xA5));
+            assert!(
+                buffer[..16]
+                    .iter()
+                    .chain(buffer[16 + (count << shift)..].iter())
+                    .all(|&b| b == 0xA5)
+            );
             let mut expected = vec![];
             if count != 0 {
                 expected.push(Call::Allocate((count as u32) << shift));
@@ -197,7 +203,7 @@ fn vector_copy_reloads_source_range_after_allocation_and_keeps_previous_capacity
         }
     });
     unsafe {
-        fc4p_00625190(d, source.as_mut_ptr().cast());
+        SMALL_VECTOR(d, source.as_mut_ptr().cast());
     }
     assert_eq!(destination, [b as u32, b as u32 + 16, b as u32 + 48]);
     assert_eq!(&buffer[..16], &[17; 16]);
@@ -275,4 +281,29 @@ fn retained_occupants_clear_preview_remove_release_in_order_then_reset_live_head
             assert_eq!(unsafe { read::<u32>(p, 0x22C) }, 0);
         }
     }
+}
+
+const SMALL_VECTOR: unsafe extern "thiscall" fn(*mut u8, *mut u8) -> *mut u8 =
+    unsafe { core::mem::transmute(fc4p_00625190 as unsafe extern "C" fn()) };
+
+#[test]
+fn small_vector_copy_uses_the_original_source_argument_for_scratch() {
+    let _fake = fake(0x0062_4E60, copy_small as *const () as usize);
+    let mut source = [0u32; 3];
+    let mut destination = [0u32; 3];
+    let args = [source.as_mut_ptr() as u32];
+    let mut call = super::super::stack_tests::StackCall::new(
+        fc4p_00625190 as *const () as usize,
+        destination.as_mut_ptr().cast(),
+        &args,
+    );
+    STATE.with(|s| {
+        *s.borrow_mut() = State {
+            entry_location: &mut call.entry as *mut usize as usize,
+            destination: destination.as_mut_ptr() as usize,
+            ..State::default()
+        }
+    });
+    assert_eq!(unsafe { call.run() }.0, destination.as_mut_ptr() as u32);
+    assert_eq!(destination, [0; 3]);
 }

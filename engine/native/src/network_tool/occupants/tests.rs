@@ -2,7 +2,7 @@
 // Copyright (C) 2026 FreeCity4 contributors
 
 use super::*;
-use crate::testing::{fake, fake_data, Object};
+use crate::testing::{Object, fake, fake_data};
 use std::cell::RefCell;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -19,6 +19,7 @@ enum Call {
 }
 #[derive(Default)]
 struct State {
+    entry_location: usize,
     calls: Vec<Call>,
     class: u32,
     id: usize,
@@ -51,6 +52,11 @@ extern "thiscall" fn id(this: *mut u8) -> u64 {
 extern "thiscall" fn resource(this: *mut u8, tgi: *const u32, iid: u32, output: *mut *mut u8, a: u32, b: u32) -> u32 {
     STATE.with(|s| {
         let mut s = s.borrow_mut();
+        if s.entry_location != 0 {
+            let entry = unsafe { *(s.entry_location as *const usize) };
+            assert_eq!(tgi as usize, entry - 12);
+            assert_eq!(output as usize, entry + 8);
+        }
         s.calls.push(Call::Resource(
             this as usize,
             unsafe { [*tgi, *tgi.add(1), *tgi.add(2)] },
@@ -186,7 +192,7 @@ fn exemplar_lookup_uses_active_group_only_for_zero_and_low_success_byte() {
                     }
                 });
                 assert_eq!(
-                    unsafe { fc4p_006244b0(p, 0x1020_3040, group) } as usize,
+                    unsafe { EXEMPLAR(p, 0x1020_3040, group) } as usize,
                     if success as u8 != 0 {
                         output.unwrap_or(group as usize)
                     } else {
@@ -299,11 +305,7 @@ fn adjacent_probes_check_lower_before_upper_apply_mask_and_stop_on_any_low_thirt
                     assert_eq!(
                         result.edx,
                         if found_a {
-                            if along_z {
-                                flags_a & !mask
-                            } else {
-                                !mask
-                            }
+                            if along_z { flags_a & !mask } else { !mask }
                         } else {
                             0xFACE_1234
                         }
@@ -446,4 +448,27 @@ fn occupant_query_releases_failed_manager_outputs_and_restores_query_low_byte_af
             }
         }
     }
+}
+
+const EXEMPLAR: unsafe extern "thiscall" fn(*mut u8, u32, u32) -> *mut u8 =
+    unsafe { core::mem::transmute(fc4p_006244b0 as unsafe extern "C" fn()) };
+
+#[test]
+fn exemplar_query_keeps_tgi_below_entry_and_output_in_the_group_argument() {
+    let table = [0usize, 0, 0, resource as *const () as usize];
+    let mut resource = [table.as_ptr() as usize];
+    let mut global = resource.as_mut_ptr().cast::<u8>();
+    let _g = fake_data(0x00B4_3CA8, (&mut global as *mut *mut u8).cast());
+    let mut tool = Object::new(0x360);
+    let args = [0x1234_5678, 0xABCD_EF00];
+    let mut call = super::super::stack_tests::StackCall::new(fc4p_006244b0 as *const () as usize, tool.ptr(), &args);
+    STATE.with(|s| {
+        *s.borrow_mut() = State {
+            entry_location: &mut call.entry as *mut usize as usize,
+            success: 1,
+            output: Some(0x7654_3210),
+            ..State::default()
+        }
+    });
+    assert_eq!(unsafe { call.run() }.0, 0x7654_3210);
 }
