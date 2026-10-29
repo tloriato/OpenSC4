@@ -3303,23 +3303,30 @@ register_port!(
     }
 );
 
-register_port!(
-    0x009d6185,
-    fc4p_009d6185,
-    erase_first_list_node,
-    "EraseFirstListNode",
-    0,
-    |r| {
-        // SAFETY: the list's sentinel contains a first link; the erase result has private stack storage.
-        unsafe {
-            let mut result = r.ecx;
-            r.edx = word(word(r.ecx, 0), 0);
-            r.eax = &mut result as *mut u32 as u32;
-            r.direct_call(0x0094_9259, &[r.eax, r.edx], false);
-            r.ecx = result;
-        }
+port! {
+    /// Keep the iterator result four bytes below entry ESP, including when its address is returned in EAX.
+    #[port(address = 0x009D_6185, owner = "shared", name = "EraseFirstListNode", naked)]
+    pub unsafe extern "C" fn fc4p_009d6185() {
+        core::arch::naked_asm!(
+            "sub esp, 4", "push edx", "push ecx", "push eax", "mov ecx, esp", "call {body}",
+            "pop eax", "pop ecx", "pop edx", "add esp, 4", "ret",
+            body = sym erase_first_list_node,
+        );
     }
-);
+}
+
+unsafe extern "thiscall" fn erase_first_list_node(frame: *mut Registers) {
+    // SAFETY: the entry reserves one original result word immediately above its register frame.
+    unsafe {
+        let r = &mut *frame;
+        let output = frame.cast::<u8>().add(12) as u32;
+        put_word(output, 0, r.ecx);
+        r.edx = word(word(r.ecx, 0), 0);
+        r.eax = output;
+        r.direct_call(0x0094_9259, &[output, r.edx], false);
+        r.ecx = word(output, 0);
+    }
+}
 
 register_port!(
     0x009d74d9,
@@ -3554,33 +3561,41 @@ register_port!(
     }
 );
 
-register_port!(
-    0x0096fde2,
-    fc4p_0096fde2,
-    remember_nonempty_stream_range,
-    "RememberNonemptyStreamRange",
-    8,
-    |r| {
-        // SAFETY: nonzero offset and size are copied to the range tree at 14C before marking it dirty at 158.
-        unsafe {
-            let object = r.ecx;
-            r.ecx = r.argument(0);
-            if r.ecx != 0 {
-                r.eax = r.argument(1);
-                if r.eax != 0 {
-                    let mut pair = [r.ecx, r.eax];
-                    let mut output = [0u32; 2];
-                    let pair_pointer = pair.as_mut_ptr() as u32;
-                    r.eax = output.as_mut_ptr() as u32;
-                    r.ecx = object.wrapping_add(0x14C);
-                    r.direct_call(0x0096_F594, &[r.eax, pair_pointer], false);
-                    (object.wrapping_add(0x158) as *mut u8).write(1);
-                }
-            }
-            r.eax = (r.eax & !255) | 1;
-        }
+port! {
+    /// Retain the result at entry ESP minus 20 and the range at entry ESP minus 12. The result address's
+    /// upper bytes can remain in EAX after the success byte is set.
+    #[port(address = 0x0096_FDE2, owner = "shared", name = "RememberNonemptyStreamRange", naked)]
+    pub unsafe extern "C" fn fc4p_0096fde2() {
+        core::arch::naked_asm!(
+            "sub esp, 20", "push edx", "push ecx", "push eax", "mov ecx, esp", "call {body}",
+            "pop eax", "pop ecx", "pop edx", "add esp, 20", "ret 8",
+            body = sym remember_nonempty_stream_range,
+        );
     }
-);
+}
+
+unsafe extern "thiscall" fn remember_nonempty_stream_range(frame: *mut Registers) {
+    // SAFETY: the entry reserves the original result and range slots above its saved registers.
+    unsafe {
+        let r = &mut *frame;
+        let object = r.ecx;
+        let arguments = frame.cast::<u8>().add(36).cast::<u32>();
+        r.ecx = arguments.read_unaligned();
+        if r.ecx != 0 {
+            r.eax = arguments.add(1).read_unaligned();
+            if r.eax != 0 {
+                let pair = frame.cast::<u8>().add(20) as u32;
+                put_word(pair, 4, r.eax);
+                put_word(pair, 0, r.ecx);
+                r.eax = frame.cast::<u8>().add(12) as u32;
+                r.ecx = object.wrapping_add(0x14C);
+                r.direct_call(0x0096_F594, &[r.eax, pair], false);
+                (object.wrapping_add(0x158) as *mut u8).write(1);
+            }
+        }
+        r.eax = (r.eax & !255) | 1;
+    }
+}
 
 register_port!(
     0x00975929,
@@ -6377,6 +6392,25 @@ mod tests {
             batch_fake!(refresh_style, 0x009C_1E6D, 0, 0);
             batch_fake!(refresh_title, 0xFFFF_0170, 0, 0);
 
+            unsafe extern "thiscall" fn record_entry_stack(frame: *mut Registers) {
+                BATCH.with(|s| s.borrow_mut().values[2] = frame as u32 + 12);
+            }
+
+            macro_rules! stack_checked_entry {
+                ($name:ident, $target:ident) => {
+                    #[unsafe(naked)]
+                    unsafe extern "C" fn $name() {
+                        core::arch::naked_asm!(
+                            "push edx", "push ecx", "push eax", "mov ecx, esp", "call {record}",
+                            "pop eax", "pop ecx", "pop edx", "jmp {target}",
+                            record = sym record_entry_stack, target = sym $target,
+                        );
+                    }
+                };
+            }
+            stack_checked_entry!(checked_remember_range, fc4p_0096fde2);
+            stack_checked_entry!(checked_erase_first, fc4p_009d6185);
+
             unsafe fn guarded_hook(r: &mut Registers, address: u32) {
                 let values = BATCH.with(|s| s.borrow().values);
                 let mut answer = RESULT_EAX;
@@ -6403,8 +6437,11 @@ mod tests {
                         0x0096_F594 => {
                             let pair = r.argument(1);
                             assert_eq!([word(pair, 0), word(pair, 4)], [values[6], values[7]]);
+                            assert_eq!(r.argument(0), values[2] - 20);
+                            assert_eq!(pair, values[2] - 12);
                             put_word(r.argument(0), 0, 0x1234_5678);
                             (r.argument(0).wrapping_add(4) as *mut u8).write(1);
+                            answer = r.argument(0);
                         }
                         _ => {}
                     }
@@ -6708,15 +6745,16 @@ mod tests {
                         let this = object.as_mut_ptr() as u32;
                         guarded_start([0, this, 0, 0, 0, 0, offset, size], Some((this, object.len())));
                         let inserted = offset != 0 && size != 0;
+                        let result = run(checked_remember_range as *const () as usize, this, &[offset, size]);
                         let expected_eax = if offset == 0 {
                             ENTRY_EAX
                         } else if size == 0 {
                             0
                         } else {
-                            RESULT_EAX
+                            BATCH.with(|s| s.borrow().values[2] - 20)
                         };
                         assert_eq!(
-                            run(fc4p_0096fde2 as *const () as usize, this, &[offset, size]),
+                            result,
                             [
                                 (expected_eax & !255) | 1,
                                 if inserted { RESULT_ECX } else { offset },
@@ -7446,12 +7484,18 @@ mod tests {
 
             #[test]
             fn list_front_erasure_and_append_keep_the_original_output_destinations() {
-                unsafe fn hook(r: &mut Registers, _: u32) {
+                unsafe fn hook(r: &mut Registers, address: u32) {
                     // SAFETY: both wrappers pass a writable iterator output word.
+                    let output = unsafe { r.argument(0) };
+                    if address == 0x0094_9259 {
+                        let entry_stack = BATCH.with(|s| s.borrow().values[2]);
+                        assert_eq!(output, entry_stack - 4);
+                    }
                     unsafe {
-                        put_word(r.argument(0), 0, 0x55667788);
+                        put_word(output, 0, 0x55667788);
                     }
                     results(r);
+                    if address == 0x0094_9259 { r.eax = output; }
                 }
                 let _erase = crate::testing::fake(0x0094_9259, erase_first as *const () as usize);
                 let _insert = install(0x0089_7C8D);
@@ -7459,10 +7503,9 @@ mod tests {
                 let mut list = [sentinel.as_mut_ptr() as u32, 0xA5A5_A5A5];
                 let this = list.as_mut_ptr() as u32;
                 start(Some(hook), [0; 8]);
-                assert_eq!(
-                    run(fc4p_009d6185 as *const () as usize, this, &[]),
-                    [RESULT_EAX, 0x55667788, RESULT_EDX]
-                );
+                let result = run(checked_erase_first as *const () as usize, this, &[]);
+                let entry_stack = BATCH.with(|s| s.borrow().values[2]);
+                assert_eq!(result, [entry_stack - 4, 0x55667788, RESULT_EDX]);
                 let log = calls();
                 assert_eq!(
                     log[0],
