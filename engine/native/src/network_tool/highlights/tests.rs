@@ -21,6 +21,7 @@ enum Call {
 
 #[derive(Default)]
 struct State {
+    entry_location: usize,
     calls: Vec<Call>,
     allocations: Vec<Box<[u32]>>,
     cells: Vec<(u32, usize)>,
@@ -145,6 +146,11 @@ extern "C" fn compute(
         }
         STATE.with(|s| {
             let mut s = s.borrow_mut();
+            if s.entry_location != 0 {
+                let entry = *(s.entry_location as *const usize);
+                assert_eq!(cells as usize, entry - 24);
+                assert_eq!(tree as usize, entry - 12);
+            }
             s.calls.push(Call::Compute(candidates, filter));
             let tool = s.tool as *mut u8;
             assert_eq!(region, tool.add(0x210).cast());
@@ -542,4 +548,19 @@ unsafe fn append_inline(cells: &mut CellVector, cell: [u32; 2]) {
             cells.capacity = begin.wrapping_add(capacity.wrapping_mul(8) as usize);
         }
     }
+}
+
+#[test]
+fn region_computation_keeps_vector_and_tree_at_the_original_entry_offsets() {
+    let mut w = World::new(vec![[0, 0, 0]], vec![[7, 8]], vec![]);
+    let args = [9];
+    let mut call =
+        super::super::stack_tests::StackCall::new(fc4p_006299a0 as *const () as usize, w.object.ptr(), &args);
+    STATE.with(|s| s.borrow_mut().entry_location = &mut call.entry as *mut usize as usize);
+    assert_eq!(unsafe { call.run() }.0, 9);
+    assert!(
+        calls()
+            .iter()
+            .any(|c| matches!(c, Call::Compute(v, _) if v == &[[7, 8]]))
+    );
 }

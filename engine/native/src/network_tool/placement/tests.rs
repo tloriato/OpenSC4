@@ -28,6 +28,7 @@ enum Call {
     Free(usize, u8),
 }
 struct State {
+    entry_location: usize,
     calls: Vec<Call>,
     tool: usize,
     allocated: usize,
@@ -48,6 +49,7 @@ struct State {
 impl Default for State {
     fn default() -> Self {
         Self {
+            entry_location: 0,
             calls: vec![],
             tool: 0,
             allocated: 0,
@@ -153,6 +155,9 @@ extern "thiscall" fn points(this: *mut u8, points: *mut u32) -> u32 {
 extern "thiscall" fn query(this: *mut u8, iid: u32, output: *mut *mut u8) -> u32 {
     STATE.with(|s| {
         let mut s = s.borrow_mut();
+        if s.entry_location != 0 {
+            assert_eq!(output as usize, unsafe { *(s.entry_location as *const usize) } - 4);
+        }
         s.calls.push(Call::Query(this as usize, iid));
         assert!(unsafe { *output }.is_null());
         unsafe {
@@ -694,3 +699,37 @@ fn creation_and_placement_preserve_float_environment_and_an_existing_x87_value()
 
 const CREATE_OCCUPANT: unsafe extern "thiscall" fn(*mut u8, *mut u8, *mut *mut u8, *mut u8, u32) -> u64 =
     unsafe { core::mem::transmute(fc4p_00624210 as unsafe extern "C" fn()) };
+
+#[test]
+fn model_query_keeps_the_interface_output_at_the_original_entry_offset() {
+    let _fpu = GameFpu::new();
+    let _fakes = fakes();
+    let table = table();
+    let mut occupant = [table.as_ptr() as usize];
+    let mut terrain = occupant;
+    let mut tool = Object::new(0x360);
+    let t = tool.ptr();
+    unsafe {
+        NetworkTool::from_ptr(t).set_terrain(terrain.as_mut_ptr().cast());
+    }
+    let mut cell = [0u8; 0xB8];
+    let mut output = core::ptr::null_mut::<u8>();
+    let mut points = [0u32; 12];
+    let o = occupant.as_mut_ptr().cast::<u8>();
+    let args = [
+        cell.as_mut_ptr() as u32,
+        &mut output as *mut *mut u8 as u32,
+        points.as_mut_ptr() as u32,
+        o as u32,
+    ];
+    let mut call = super::super::stack_tests::StackCall::new(fc4p_00624210 as *const () as usize, t, &args);
+    STATE.with(|s| {
+        *s.borrow_mut() = State {
+            tool: t as usize,
+            entry_location: &mut call.entry as *mut usize as usize,
+            ..State::default()
+        }
+    });
+    assert_eq!(unsafe { call.run() }, (0x1122_3344, 0x5566_7788));
+    assert_eq!(output, o);
+}

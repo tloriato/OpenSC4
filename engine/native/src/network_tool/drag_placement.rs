@@ -20,18 +20,18 @@ layout! {
     }
 }
 
-game_fn! { fn clear_steps(first: *mut u8, last: *mut u8, output: *mut u8, argument: *mut u32, flags: u32) -> *mut u8 = "C" 0x0061_43E0; }
-game_fn! { fn clear_cache(this: *mut u8) = "thiscall" 0x0064_7B20; }
-game_fn! { fn grow_anchors(this: *mut u8, end: *mut u8, point: *mut u32, argument: *mut u32, count: u32, copy: u32) = "thiscall" 0x007C_61A0; }
-game_fn! { fn clear_anchors(this: *mut u8) = "thiscall" 0x0060_6870; }
-game_fn! { fn push_anchor(this: *mut u8, point: *mut u32) = "thiscall" 0x0044_67A0; }
-game_fn! { fn place_network(this: *mut u8, real: u32, crew: u32, flags: u32, neighbours: u32, network: u32) -> u32 = "thiscall" 0x0063_B830; }
-game_fn! { fn allocate_filter(size: u32) -> *mut u8 = "C" 0x005E_55E0; }
-game_fn! { fn construct_filter(this: *mut u8) -> *mut u8 = "thiscall" 0x0061_F510; }
-game_fn! { fn allocate(size: u32) -> *mut u8 = "C" 0x0090_CF54; }
-game_fn! { fn free(p: *mut u8) = "C" 0x0090_CF63; }
-game_fn! { fn occupant_at(this: *mut u8, x: u32, z: u32, filter: *mut u8, output: *mut *mut u8) -> u32 = "thiscall" 0x0062_4B70; }
-game_fn! { fn cache_cell(this: *mut u8, key: u32) -> *mut u8 = "thiscall" 0x0064_7A20; }
+game_fn! { #[allow(dead_code)] fn clear_steps(first: *mut u8, last: *mut u8, output: *mut u8, argument: *mut u32, flags: u32) -> *mut u8 = "C" 0x0061_43E0; }
+game_fn! { #[allow(dead_code)] fn clear_cache(this: *mut u8) = "thiscall" 0x0064_7B20; }
+game_fn! { #[allow(dead_code)] fn grow_anchors(this: *mut u8, end: *mut u8, point: *mut u32, argument: *mut u32, count: u32, copy: u32) = "thiscall" 0x007C_61A0; }
+game_fn! { #[allow(dead_code)] fn clear_anchors(this: *mut u8) = "thiscall" 0x0060_6870; }
+game_fn! { #[allow(dead_code)] fn push_anchor(this: *mut u8, point: *mut u32) = "thiscall" 0x0044_67A0; }
+game_fn! { #[allow(dead_code)] fn place_network(this: *mut u8, real: u32, crew: u32, flags: u32, neighbours: u32, network: u32) -> u32 = "thiscall" 0x0063_B830; }
+game_fn! { #[allow(dead_code)] fn allocate_filter(size: u32) -> *mut u8 = "C" 0x005E_55E0; }
+game_fn! { #[allow(dead_code)] fn construct_filter(this: *mut u8) -> *mut u8 = "thiscall" 0x0061_F510; }
+game_fn! { #[allow(dead_code)] fn allocate(size: u32) -> *mut u8 = "C" 0x0090_CF54; }
+game_fn! { #[allow(dead_code)] fn free(p: *mut u8) = "C" 0x0090_CF63; }
+game_fn! { #[allow(dead_code)] fn occupant_at(this: *mut u8, x: u32, z: u32, filter: *mut u8, output: *mut *mut u8) -> u32 = "thiscall" 0x0062_4B70; }
+game_fn! { #[allow(dead_code)] fn cache_cell(this: *mut u8, key: u32) -> *mut u8 = "thiscall" 0x0064_7A20; }
 game_data! { static neighbour_x: [u32; 4] = 0x00AA_8390; }
 game_data! { static neighbour_z: [u32; 4] = 0x00AA_83A0; }
 
@@ -44,63 +44,57 @@ fn direction(value: u32) -> u32 {
     ((value as i32) >> 31).wrapping_sub((value.wrapping_neg() as i32) >> 31) as u32
 }
 
-unsafe fn append_anchor(tool: DragTool, point: &mut [u32; 2], argument: *mut u32) {
+// Caller-owned argument words and the four coordinate pairs keep their original stack locations.
+// Preparation returns to the entry before every game call so nested callees see the original depth.
+port! {
+    /// Place the clamped drag, extend masked ends, publish retained joins, and release temporary
+    /// occupants and filters. Restore insertion data and the empty anchor cursor before returning.
+    #[port(address = 0x0062_9210, owner = "networktool", name = "cSC4NetworkTool::PlaceNetworkOccupants", naked)]
+    pub unsafe extern "C" fn fc4p_00629210() {
+        core::arch::naked_asm!(
+            "sub esp, 68", "push ebx", "push ebp", "push esi", "push edi",
+            "mov ebp, esp", "mov esi, ecx", "xor edi, edi", "xor ebx, ebx",
+            "2:", "sub esp, 128", "mov ecx, esp", "push ecx", "push edx", "push eax", "push ebx", "push edi",
+            "mov ecx, esi", "mov edx, ebp", "call {step}", "mov edi, eax", "mov ebx, edx",
+            "cmp dword ptr [esp], 0", "jz 5f", "mov ecx, [esp + 16]", "mov edx, esp", "mov esp, ebp",
+            "3:", "test ecx, ecx", "jz 4f", "dec ecx", "push dword ptr [edx + ecx*4 + 20]", "jmp 3b",
+            "4:", "mov eax, [ebp - 124]", "mov ecx, [ebp - 120]", "mov edx, [ebp - 116]",
+            "call dword ptr [ebp - 128]", "mov esp, ebp", "jmp 2b",
+            "5:", "mov eax, [esp + 4]", "mov edx, [esp + 12]", "mov esp, ebp",
+            "pop edi", "pop esi", "pop ebp", "pop ebx", "add esp, 68", "ret 32",
+            step = sym drag_step,
+        );
+    }
+}
+unsafe fn append_anchor_command(
+    tool: DragTool,
+    point: *mut u32,
+    real: *mut u32,
+    c: &mut super::placement::PlacementCall,
+) -> bool {
     unsafe {
         let end = tool.anchors_end();
         if end == tool.anchors_capacity() {
-            grow_anchors(tool.as_ptr().add(0x118), end, point.as_mut_ptr(), argument, 1, 1);
+            c.set(
+                crate::abi::target(0x007C_61A0),
+                tool.as_ptr().add(0x118),
+                &[end as u32, point as u32, real as u32, 1, 1],
+                end as u32,
+                point as u32,
+            );
+            true
         } else {
             if !end.is_null() {
-                write(end, 0, point[0]);
-                write(end, 4, point[1]);
+                write(end, 0, point.read());
+                write(end, 4, point.add(1).read());
             }
             tool.set_anchors_end(tool.anchors_end().wrapping_add(8));
+            false
         }
     }
 }
-
-unsafe fn anchors(tool: DragTool, first: &mut [u32; 2], last: &mut [u32; 2], argument: *mut u32) {
+unsafe fn link_join(node: *mut u8, head: *mut u8, a: [u32; 2], b: [u32; 2]) {
     unsafe {
-        tool.set_anchors_end(tool.anchors());
-        append_anchor(tool, first, argument);
-        append_anchor(tool, last, argument);
-    }
-}
-
-unsafe fn draw_and_place(
-    this: *mut u8,
-    first: &mut [u32; 2],
-    last: &mut [u32; 2],
-    network: u32,
-    args: *mut u32,
-    store_drawn: bool,
-) {
-    unsafe {
-        let drawn = vcall!(this, 0x48 => fn(*mut u32, *mut u32, u32, u32) -> u32,
-            first.as_mut_ptr(), last.as_mut_ptr(), 0, network);
-        if store_drawn || drawn as u8 == 0 {
-            args.add(7).cast::<u8>().write(drawn as u8);
-        }
-        if drawn as u8 != 0 {
-            let result = place_network(this, args.add(6).read(), 0, 0, 0, network);
-            args.add(7).cast::<u8>().write(result as u8);
-        }
-    }
-}
-
-unsafe fn release_output(output: *mut *mut u8) {
-    unsafe {
-        let old = output.read();
-        if !old.is_null() {
-            output.write(null_mut());
-            vcall!(old, 8 => fn());
-        }
-    }
-}
-
-unsafe fn append_join(head: *mut u8, a: [u32; 2], b: [u32; 2]) {
-    unsafe {
-        let node = allocate(24);
         if !node.wrapping_add(8).is_null() {
             write(node, 8, a[0]);
             write(node, 12, a[1]);
@@ -114,185 +108,511 @@ unsafe fn append_join(head: *mut u8, a: [u32; 2], b: [u32; 2]) {
         write(head, 4, node);
     }
 }
-
-// Probe one end and either extend it or retain a join. The two ends store opposite join directions.
-unsafe fn probe(
+unsafe extern "fastcall" fn drag_step(
     this: *mut u8,
-    point: &mut [u32; 2],
-    outer: [u32; 2],
-    filter: *mut u8,
-    network: u32,
-    args: *mut u32,
-    at_start: bool,
-) {
+    frame: *mut u32,
+    mut stage: u32,
+    mut cursor: u32,
+    eax: u32,
+    edx: u32,
+    command: *mut super::placement::PlacementCall,
+) -> u64 {
     unsafe {
-        let output = args.add(3).cast::<*mut u8>();
-        release_output(output);
-        if occupant_at(this, outer[0], outer[1], filter, output) as u8 != 0 {
-            if vcall!(output.read(), 0x58 => fn(u32) -> u32, network) as u8 != 0 {
-                *point = outer;
-            } else {
-                let head = args.add(2).read() as *mut u8;
-                if at_start {
-                    append_join(head, *point, outer);
-                } else {
-                    append_join(head, outer, *point);
-                }
-            }
-        } else if args.add(6).read() as u8 == 0 {
-            let cell = cache_cell(this.add(0x1C), outer[1].wrapping_shl(16).wrapping_add(outer[0]));
-            if !cell.is_null() && read::<u32>(cell, 8) & args.add(4).read() != 0 {
-                *point = outer;
-            }
-        }
-    }
-}
-
-port! {
-    /// Clamp the requested endpoints, reset the step vector, and place each straight run. Masked drags
-    /// may extend to matching occupants or cached cells and retain joins for the callback tool. Restore
-    /// insertion data to one and empty the anchors after all cleanup. EDX is zero; EAX's upper bytes
-    /// retain the last anchor-end pointer.
-    #[port(address = 0x0062_9210, owner = "networktool", name = "cSC4NetworkTool::PlaceNetworkOccupants", naked)]
-    pub unsafe extern "C" fn fc4p_00629210() {
-        core::arch::naked_asm!("lea edx, [esp + 4]", "call {body}", "ret 32", body = sym place);
-    }
-}
-
-unsafe extern "fastcall" fn place(this: *mut u8, args: *mut u32) -> u64 {
-    unsafe {
+        let c = &mut *command;
         let tool = NetworkTool::from_ptr(this);
         let drag = DragTool::from_ptr(this);
-        let network = if (args.add(7).read() as i32) < 0 {
-            tool.network_type()
-        } else {
-            args.add(7).read()
-        };
-        let raw_end = [args.add(2).read(), args.add(3).read()];
-        let max_z = tool.height().wrapping_sub(1);
-        tool.set_insertion_data(3);
-        drag.set_failure(0);
-        args.add(7).cast::<u8>().write(1);
-        let start_z = clamp(args.add(1).read(), max_z);
-        let max_x = tool.width().wrapping_sub(1);
-        let mut first = [clamp(args.read(), max_x), start_z];
-        let mut last = [clamp(raw_end[0], max_x), clamp(raw_end[1], max_z)];
-        args.add(3).write(max_x);
-        let step_end = drag.steps_end();
-        drag.set_steps_end(clear_steps(step_end, step_end, drag.steps(), args.add(6), 0));
-        drag.set_dragged(0);
-        drag.set_straight(0);
-        if args.add(6).read() as u8 != 0 {
-            clear_cache(this.add(0x1C));
-        }
-        if args.add(4).read() == 0 {
-            anchors(drag, &mut first, &mut last, args.add(6));
-            draw_and_place(this, &mut first, &mut last, network, args, true);
-            if drag.failure() != 0 {
-                args.add(7).cast::<u8>().write(0);
-            }
-        } else {
-            let allocation = allocate_filter(16);
-            let filter = if allocation.is_null() {
-                null_mut()
-            } else {
-                construct_filter(allocation)
-            };
-            if !filter.is_null() {
-                vcall!(filter, 4 => fn());
-            }
-            let mut dx = raw_end[0].wrapping_sub(args.read());
-            let mut dz = raw_end[1].wrapping_sub(args.add(1).read());
-            write(filter, 12, args.add(4).read());
-            args.add(3).write(0);
-            if dx == 0 || dz == 0 {
-                let head = allocate(24);
-                args.add(2).write(head as u32);
-                write(head, 0, head);
-                write(head, 4, head);
-                if dx == 0 && dz == 0 {
-                    let mut found = [0u8; 4];
-                    for (index, found) in found.iter_mut().enumerate() {
-                        let x = args.read().wrapping_add(neighbour_x().cast::<u32>().add(index).read());
-                        let z = args
-                            .add(1)
+        let args = frame.add(22);
+        let real = args.add(6);
+        let answer = args.add(7).cast::<u8>();
+        let first = frame.add(13);
+        let last = frame.add(15);
+        let a = frame.add(9);
+        let b = frame.add(11);
+        let outer = frame.add(7);
+        loop {
+            match stage {
+                0 => {
+                    let network = if (args.add(7).read() as i32) < 0 {
+                        tool.network_type()
+                    } else {
+                        args.add(7).read()
+                    };
+                    frame.add(5).write(network);
+                    outer.write(args.add(2).read());
+                    outer.add(1).write(args.add(3).read());
+                    let max_z = tool.height().wrapping_sub(1);
+                    let max_x = tool.width().wrapping_sub(1);
+                    tool.set_insertion_data(3);
+                    drag.set_failure(0);
+                    answer.write(1);
+                    first.write(clamp(args.read(), max_x));
+                    first.add(1).write(clamp(args.add(1).read(), max_z));
+                    last.write(clamp(outer.read(), max_x));
+                    last.add(1).write(clamp(outer.add(1).read(), max_z));
+                    args.add(3).write(max_x);
+                    let end = drag.steps_end();
+                    c.set(
+                        crate::abi::target(0x0061_43E0),
+                        drag.steps(),
+                        &[end as u32, end as u32, drag.steps() as u32, real as u32, 0],
+                        end as u32,
+                        real as u32,
+                    );
+                    stage = 1;
+                }
+                1 => {
+                    drag.set_steps_end(eax as *mut u8);
+                    drag.set_dragged(0);
+                    drag.set_straight(0);
+                    if real.read() as u8 == 0 {
+                        stage = 2;
+                        continue;
+                    }
+                    c.set(
+                        crate::abi::target(0x0064_7B20),
+                        this.add(0x1C),
+                        &[],
+                        eax & !255 | u32::from(real.read() as u8),
+                        edx,
+                    );
+                    stage = 2;
+                }
+                2 => {
+                    if args.add(4).read() == 0 {
+                        drag.set_anchors_end(drag.anchors());
+                        stage = 10;
+                        continue;
+                    }
+                    c.set(crate::abi::target(0x005E_55E0), null_mut(), &[16], eax, edx);
+                    stage = 20;
+                }
+                10 | 11 => {
+                    let point = if stage == 10 { first } else { last };
+                    stage += 1;
+                    if append_anchor_command(drag, point, real, c) {
+                        break;
+                    }
+                    continue;
+                }
+                12 | 33 | 55 => {
+                    let (pa, pb) = if stage == 55 { (a, b) } else { (first, last) };
+                    c.virtual_call(
+                        this,
+                        0x48,
+                        &[pa as u32, pb as u32, 0, frame.add(5).read()],
+                        if stage == 12 { read(this, 0) } else { pa as u32 },
+                        if stage == 12 { pa as u32 } else { read(this, 0) },
+                    );
+                    stage = match stage {
+                        12 => 13,
+                        33 => 34,
+                        _ => 56,
+                    };
+                }
+                13 | 34 | 56 => {
+                    if stage != 56 || eax as u8 == 0 {
+                        answer.write(eax as u8);
+                    }
+                    if eax as u8 == 0 {
+                        stage = match stage {
+                            13 => 15,
+                            34 => 70,
+                            _ => 58,
+                        };
+                        continue;
+                    }
+                    let network = frame.add(5).read();
+                    let mode = real.read();
+                    c.set(
+                        crate::abi::target(0x0063_B830),
+                        this,
+                        &[mode, 0, 0, 0, network],
+                        mode,
+                        edx,
+                    );
+                    stage = match stage {
+                        13 => 14,
+                        34 => 35,
+                        _ => 57,
+                    };
+                }
+                14 | 35 | 57 => {
+                    answer.write(eax as u8);
+                    stage = match stage {
+                        14 => 15,
+                        35 => 70,
+                        _ => 58,
+                    };
+                    continue;
+                }
+                15 => {
+                    if drag.failure() != 0 {
+                        answer.write(0);
+                    }
+                    stage = 90;
+                    continue;
+                }
+                20 => {
+                    frame.add(6).write(eax);
+                    if eax == 0 {
+                        stage = 22;
+                        continue;
+                    }
+                    c.set(crate::abi::target(0x0061_F510), eax as *mut u8, &[], eax, edx);
+                    stage = 21;
+                }
+                21 => {
+                    frame.add(6).write(eax);
+                    if eax == 0 {
+                        stage = 22;
+                        continue;
+                    }
+                    let p = eax as *mut u8;
+                    c.virtual_call(p, 4, &[], eax, read(p, 0));
+                    stage = 22;
+                }
+                22 => {
+                    let dx = outer.read().wrapping_sub(args.read());
+                    let dz = outer.add(1).read().wrapping_sub(args.add(1).read());
+                    write(frame.add(6).read() as *mut u8, 12, args.add(4).read());
+                    args.add(3).write(0);
+                    b.write(dx);
+                    a.write(dz);
+                    if dx != 0 && dz != 0 {
+                        stage = 89;
+                        continue;
+                    }
+                    c.set(
+                        crate::abi::target(0x0090_CF54),
+                        null_mut(),
+                        &[24],
+                        args.add(4).read(),
+                        edx,
+                    );
+                    stage = 23;
+                }
+                23 => {
+                    args.add(2).write(eax);
+                    let head = eax as *mut u8;
+                    write(head, 0, head);
+                    write(head, 4, head);
+                    if b.read() == 0 && a.read() == 0 {
+                        cursor = 0;
+                        stage = 24;
+                    } else {
+                        stage = 30;
+                    }
+                    continue;
+                }
+                24 => {
+                    b.write(
+                        args.read()
+                            .wrapping_add(neighbour_x().cast::<u32>().add(cursor as usize).read()),
+                    );
+                    a.write(
+                        args.add(1)
                             .read()
-                            .wrapping_add(neighbour_z().cast::<u32>().add(index).read());
-                        release_output(args.add(3).cast());
-                        *found = occupant_at(this, x, z, filter, args.add(3).cast()) as u8;
+                            .wrapping_add(neighbour_z().cast::<u32>().add(cursor as usize).read()),
+                    );
+                    outer.cast::<u8>().add(cursor as usize).write(0);
+                    let output = args.add(3).read() as *mut u8;
+                    if output.is_null() {
+                        stage = 25;
+                        continue;
                     }
-                    if found[0] != 0 || found[2] != 0 {
-                        dx = 1;
+                    args.add(3).write(0);
+                    c.virtual_call(output, 8, &[], output as u32, read(output, 0));
+                    stage = 25;
+                }
+                25 => {
+                    c.set(
+                        crate::abi::target(0x0062_4B70),
+                        this,
+                        &[b.read(), a.read(), frame.add(6).read(), args.add(3) as u32],
+                        args.add(3) as u32,
+                        edx,
+                    );
+                    stage = 26;
+                }
+                26 => {
+                    outer.cast::<u8>().add(cursor as usize).write(eax as u8);
+                    cursor += 1;
+                    if cursor < 4 {
+                        stage = 24;
+                        continue;
                     }
-                    if found[1] != 0 || found[3] != 0 {
-                        dz = 1;
+                    let f = outer.cast::<u8>();
+                    b.write(u32::from(f.read() != 0 || f.add(2).read() != 0));
+                    a.write(u32::from(f.add(1).read() != 0 || f.add(3).read() != 0));
+                    stage = 30;
+                    continue;
+                }
+                30 => {
+                    let dx = b.read();
+                    let dz = a.read();
+                    if dx == 0 && dz == 0 {
+                        c.set(crate::abi::target(0x0060_6870), this.add(0x118), &[], eax, edx);
+                        stage = 31;
+                    } else {
+                        let mut count = 0usize;
+                        if dx != 0 {
+                            frame.add(17).write(direction(dx));
+                            frame.add(18).write(0);
+                            count += 1;
+                        }
+                        if dz != 0 {
+                            frame.add(17 + count * 2).write(0);
+                            frame.add(18 + count * 2).write(direction(dz));
+                            count += 1;
+                        }
+                        args.add(1).write(count as u32);
+                        args.write(0);
+                        stage = 40;
+                        continue;
                     }
                 }
-                if dx == 0 && dz == 0 {
-                    clear_anchors(this.add(0x118));
-                    push_anchor(this.add(0x118), first.as_mut_ptr());
-                    push_anchor(this.add(0x118), last.as_mut_ptr());
-                    draw_and_place(this, &mut first, &mut last, network, args, true);
-                } else {
-                    let mut directions = [[0u32; 2]; 2];
-                    let mut count = 0usize;
-                    if dx != 0 {
-                        directions[count] = [direction(dx), 0];
-                        count += 1;
+                31 | 32 => {
+                    let point = if stage == 31 { first } else { last };
+                    c.set(
+                        crate::abi::target(0x0044_67A0),
+                        this.add(0x118),
+                        &[point as u32],
+                        point as u32,
+                        edx,
+                    );
+                    stage += 1;
+                }
+                40 => {
+                    if args.read() as i32 >= args.add(1).read() as i32 {
+                        stage = 70;
+                        continue;
                     }
-                    if dz != 0 {
-                        directions[count] = [0, direction(dz)];
-                        count += 1;
+                    let direction = frame.add(17).wrapping_add(args.read().wrapping_mul(2) as usize);
+                    a.write(first.read());
+                    a.add(1).write(first.add(1).read());
+                    b.write(last.read());
+                    b.add(1).write(last.add(1).read());
+                    frame.add(4).write(first.read().wrapping_sub(direction.read()));
+                    cursor = first.add(1).read().wrapping_sub(direction.add(1).read());
+                    outer.write(last.read().wrapping_add(direction.read()));
+                    outer
+                        .add(1)
+                        .write(last.add(1).read().wrapping_add(direction.add(1).read()));
+                    let output = args.add(3).read() as *mut u8;
+                    if output.is_null() {
+                        stage = 41;
+                        continue;
                     }
-                    args.add(1).write(count as u32);
-                    args.write(0);
-                    while (args.read() as i32) < (args.add(1).read() as i32) {
-                        let d = directions.as_ptr().wrapping_add(args.read() as usize).read();
-                        let mut a = first;
-                        let mut b = last;
-                        let before = [a[0].wrapping_sub(d[0]), a[1].wrapping_sub(d[1])];
-                        let after = [b[0].wrapping_add(d[0]), b[1].wrapping_add(d[1])];
-                        probe(this, &mut a, before, filter, network, args, true);
-                        probe(this, &mut b, after, filter, network, args, false);
-                        anchors(drag, &mut a, &mut b, args.add(6));
-                        draw_and_place(this, &mut a, &mut b, network, args, false);
-                        args.write(args.read().wrapping_add(1));
+                    args.add(3).write(0);
+                    c.virtual_call(output, 8, &[], output as u32, read(output, 0));
+                    stage = 41;
+                }
+                41 => {
+                    c.set(
+                        crate::abi::target(0x0062_4B70),
+                        this,
+                        &[frame.add(4).read(), cursor, frame.add(6).read(), args.add(3) as u32],
+                        args.add(3) as u32,
+                        edx,
+                    );
+                    stage = 42;
+                }
+                42 | 48 => {
+                    if eax as u8 != 0 {
+                        let output = args.add(3).read() as *mut u8;
+                        let network = frame.add(5).read();
+                        c.virtual_call(output, 0x58, &[network], network, read(output, 0));
+                        stage += 1;
+                    } else if real.read() as u8 == 0 {
+                        let (x, z) = if stage == 42 {
+                            (frame.add(4).read(), cursor)
+                        } else {
+                            (outer.read(), outer.add(1).read())
+                        };
+                        let key = z.wrapping_shl(16).wrapping_add(x);
+                        c.set(crate::abi::target(0x0064_7A20), this.add(0x1C), &[key], eax & !255, edx);
+                        stage += 2;
+                    } else {
+                        stage = if stage == 42 { 46 } else { 52 };
+                        continue;
                     }
                 }
-                if drag.failure() != 0 {
-                    args.add(7).cast::<u8>().write(0);
+                43 | 49 => {
+                    if eax as u8 != 0 {
+                        if stage == 43 {
+                            a.write(frame.add(4).read());
+                            a.add(1).write(cursor);
+                        } else {
+                            b.write(outer.read());
+                            b.add(1).write(outer.add(1).read());
+                        }
+                        stage = if stage == 43 { 46 } else { 52 };
+                        continue;
+                    }
+                    c.set(crate::abi::target(0x0090_CF54), null_mut(), &[24], eax, edx);
+                    stage += 2;
                 }
-                let head = args.add(2).read() as *mut u8;
-                let callback = args.add(5).read() as *mut u8;
-                if tool.real() != 0 && !callback.is_null() {
-                    let mut node: *mut u8 = read(head, 0);
-                    let real = args.add(6).read();
-                    while node != head {
-                        vcall!(callback, 0x1C => fn(u32, u32, u32, u32, u32, u32, u32, u32),
-                            read::<u32>(node, 8), read::<u32>(node, 12), read::<u32>(node, 16), read::<u32>(node, 20), 0, 0, real, u32::MAX);
-                        node = read(node, 0);
+                44 | 50 => {
+                    if eax != 0 && read::<u32>(eax as *mut u8, 8) & args.add(4).read() != 0 {
+                        if stage == 44 {
+                            a.write(frame.add(4).read());
+                            a.add(1).write(cursor);
+                        } else {
+                            b.write(outer.read());
+                            b.add(1).write(outer.add(1).read());
+                        }
+                    }
+                    stage = if stage == 44 { 46 } else { 52 };
+                    continue;
+                }
+                45 | 51 => {
+                    let (pa, pb) = if stage == 45 {
+                        ([first.read(), first.add(1).read()], [frame.add(4).read(), cursor])
+                    } else {
+                        ([outer.read(), outer.add(1).read()], [last.read(), last.add(1).read()])
+                    };
+                    link_join(eax as *mut u8, args.add(2).read() as *mut u8, pa, pb);
+                    stage = if stage == 45 { 46 } else { 52 };
+                    continue;
+                }
+                46 => {
+                    let output = args.add(3).read() as *mut u8;
+                    if output.is_null() {
+                        stage = 47;
+                        continue;
+                    }
+                    args.add(3).write(0);
+                    c.virtual_call(output, 8, &[], read(output, 0), edx);
+                    stage = 47;
+                }
+                47 => {
+                    c.set(
+                        crate::abi::target(0x0062_4B70),
+                        this,
+                        &[
+                            outer.read(),
+                            outer.add(1).read(),
+                            frame.add(6).read(),
+                            args.add(3) as u32,
+                        ],
+                        eax,
+                        frame.add(6).read(),
+                    );
+                    stage = 48;
+                }
+                52 => {
+                    drag.set_anchors_end(drag.anchors());
+                    stage = 53;
+                    continue;
+                }
+                53 | 54 => {
+                    let point = if stage == 53 { a } else { b };
+                    stage += 1;
+                    if append_anchor_command(drag, point, real, c) {
+                        break;
+                    }
+                    continue;
+                }
+                58 => {
+                    args.write(args.read().wrapping_add(1));
+                    stage = 40;
+                    continue;
+                }
+                70 => {
+                    if drag.failure() != 0 {
+                        answer.write(0);
+                    }
+                    frame.add(5).write(real.read());
+                    first.write(args.add(5).read());
+                    last.write(args.add(2).read());
+                    cursor = read(last.read() as *mut u8, 0);
+                    stage = if tool.real() != 0 && args.add(5).read() != 0 {
+                        71
+                    } else {
+                        73
+                    };
+                    continue;
+                }
+                71 => {
+                    if cursor == last.read() {
+                        stage = 73;
+                        continue;
+                    }
+                    let node = cursor as *mut u8;
+                    let callback = first.read() as *mut u8;
+                    c.virtual_call(
+                        callback,
+                        0x1C,
+                        &[
+                            read(node, 8),
+                            read(node, 12),
+                            read(node, 16),
+                            read(node, 20),
+                            0,
+                            0,
+                            frame.add(5).read(),
+                            u32::MAX,
+                        ],
+                        read(callback, 0),
+                        read(node, 8),
+                    );
+                    stage = 72;
+                }
+                72 => {
+                    cursor = read(cursor as *mut u8, 0);
+                    stage = 71;
+                    continue;
+                }
+                73 => {
+                    cursor = read(last.read() as *mut u8, 0);
+                    stage = 74;
+                    continue;
+                }
+                74 => {
+                    let head = last.read();
+                    if cursor == head {
+                        write(head as *mut u8, 0, head);
+                        write(head as *mut u8, 4, head);
+                        c.set(crate::abi::target(0x0090_CF63), null_mut(), &[head], eax, edx);
+                        stage = 76;
+                    } else {
+                        frame.add(4).write(read(cursor as *mut u8, 0));
+                        c.set(crate::abi::target(0x0090_CF63), null_mut(), &[cursor], cursor, edx);
+                        stage = 75;
                     }
                 }
-                let mut node: *mut u8 = read(head, 0);
-                while node != head {
-                    let next = read(node, 0);
-                    free(node);
-                    node = next;
+                75 => {
+                    cursor = frame.add(4).read();
+                    stage = 74;
+                    continue;
                 }
-                write(head, 0, head);
-                write(head, 4, head);
-                free(head);
-                let output = args.add(3).read() as *mut u8;
-                if !output.is_null() {
-                    vcall!(output, 8 => fn());
+                76 => {
+                    let output = args.add(3).read() as *mut u8;
+                    if output.is_null() {
+                        stage = 89;
+                        continue;
+                    }
+                    c.virtual_call(output, 8, &[], read(output, 0), edx);
+                    stage = 89;
+                }
+                89 => {
+                    let filter = frame.add(6).read() as *mut u8;
+                    c.virtual_call(filter, 8, &[], eax, read(filter, 0));
+                    stage = 90;
+                }
+                _ => {
+                    let end = drag.anchors_end() as u32;
+                    drag.set_anchors_end(drag.anchors());
+                    tool.set_insertion_data(1);
+                    c.target = 0;
+                    c.eax = end & !255 | u32::from(answer.read());
+                    c.edx = 0;
+                    break;
                 }
             }
-            vcall!(filter, 8 => fn());
+            break;
         }
-        let end = drag.anchors_end() as u32;
-        drag.set_anchors_end(drag.anchors());
-        tool.set_insertion_data(1);
-        registers((end & !0xFF) | u32::from(args.add(7).cast::<u8>().read()), 0)
+        registers(stage, cursor)
     }
 }
 
