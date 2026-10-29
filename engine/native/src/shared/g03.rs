@@ -1709,6 +1709,28 @@ game_data! { static attachment_renderer: *mut u8 = 0x00B4_3DD0; }
 game_data! { static attachment_lights: *mut u8 = 0x00B4_3DDC; }
 game_data! { static attachment_extent_scale: f32 = 0x00A8_80D4; }
 
+layout! {
+    /// Automaton fields used to select, submit and light its attached model.
+    struct AttachmentAutomaton {
+        0x000 => primary_table / set_primary_table: u32,
+        0x004 => occupant_table / set_occupant_table: u32,
+        0x040 => position_x / set_position_x: u32,
+        0x048 => position_z / set_position_z: u32,
+        0x0CC => attached_model / set_attached_model: u32,
+        0x0D0 => processor_model / set_processor_model: u32,
+        0x110 => models_begin / set_models_begin: u32,
+        0x114 => models_end / set_models_end: u32,
+    }
+}
+
+layout! {
+    /// The selected automaton's cell coordinate words, compared without float conversion.
+    struct AttachmentCell {
+        0x26C => x / set_x: u32,
+        0x270 => z / set_z: u32,
+    }
+}
+
 /// Moves the translation by 1.5 times the model's y extent along the stored direction. The first
 /// two direction products are rounded before subtraction; the third stays in an x87 register.
 unsafe fn offset_attachment_transform(bounds: *mut u8, transform: *mut u8, direction: *mut u8) {
@@ -1757,9 +1779,10 @@ unsafe extern "fastcall" fn update_selected_model_attachment(
 ) -> u64 {
     // SAFETY: the original automaton, its services, model interfaces and caller's temporary storage.
     unsafe {
-        let mut result = virtual_call(this.add(4), 0x1C, word(this, 4), entry_edx, &[]);
+        let automaton = AttachmentAutomaton::from_ptr(this);
+        let mut result = virtual_call(this.add(4), 0x1C, automaton.occupant_table(), entry_edx, &[]);
         if result as u32 == 0x496E_5783 {
-            result = virtual_call(this.add(4), 0x1C, result as u32, word(this, 4), &[]);
+            result = virtual_call(this.add(4), 0x1C, result as u32, automaton.occupant_table(), &[]);
             if result as u32 == 0x897F_7EC2 {
                 return result;
             }
@@ -1767,20 +1790,20 @@ unsafe extern "fastcall" fn update_selected_model_attachment(
         let enabled = *attachments_enabled();
         result = (result & !0xFF) | u64::from(enabled);
         if enabled == 0 {
-            return virtual_call(this, 0x1FC, word(this, 0), (result >> 32) as u32, &[]);
+            return virtual_call(this, 0x1FC, automaton.primary_table(), (result >> 32) as u32, &[]);
         }
         let service = *attachment_service();
         result = virtual_call(service, 0x34, result as u32, word(service, 0), &[]);
         let active = result as u8 != 0;
-        result = registers(word(this, 0xCC), (result >> 32) as u32);
+        result = registers(automaton.attached_model(), (result >> 32) as u32);
         if !active {
             return if result as u32 == 0 {
                 result
             } else {
-                virtual_call(this, 0x1FC, word(this, 0), (result >> 32) as u32, &[])
+                virtual_call(this, 0x1FC, automaton.primary_table(), (result >> 32) as u32, &[])
             };
         }
-        if result as u32 == 0 && word(this, 0x110) != word(this, 0x114) {
+        if result as u32 == 0 && automaton.models_begin() != automaton.models_end() {
             let mut queried = 0u32;
             let service = *attachment_service();
             result = virtual_call(
@@ -1809,17 +1832,17 @@ unsafe extern "fastcall" fn update_selected_model_attachment(
                                     coordinates,
                                     0x44,
                                     word(coordinates, 0),
-                                    word(this, 0x40),
+                                    automaton.position_x(),
                                     &[
-                                        word(this, 0x40),
-                                        word(this, 0x48),
+                                        automaton.position_x(),
+                                        automaton.position_z(),
                                         cell.as_mut_ptr() as u32,
                                         cell.as_mut_ptr().add(1) as u32,
                                     ],
                                 );
-                                let x = word(selected, 0x26C);
+                                let x = AttachmentCell::from_ptr(selected).x();
                                 result = registers(x, (result >> 32) as u32);
-                                matched = x == cell[0] && word(selected, 0x270) == cell[1];
+                                matched = x == cell[0] && AttachmentCell::from_ptr(selected).z() == cell[1];
                             }
                         }
                     }
@@ -1828,15 +1851,15 @@ unsafe extern "fastcall" fn update_selected_model_attachment(
                     let interface = queried as *mut u8;
                     result = virtual_call(interface, 8, result as u32, word(interface, 0), &[]);
                 }
-                if matched && word(this, 0xCC) == 0 {
-                    return virtual_call(this, 0x1F8, word(this, 0), (result >> 32) as u32, &[]);
+                if matched && automaton.attached_model() == 0 {
+                    return virtual_call(this, 0x1F8, automaton.primary_table(), (result >> 32) as u32, &[]);
                 }
             }
         }
-        if word(this, 0xCC) == 0 || word(this, 0x110) == word(this, 0x114) {
+        if automaton.attached_model() == 0 || automaton.models_begin() == automaton.models_end() {
             return result;
         }
-        let model = word(word(this, 0x110) as *mut u8, 0) as *mut u8;
+        let model = word(automaton.models_begin() as *mut u8, 0) as *mut u8;
         for (index, value) in [
             0x3F80_0000,
             0,
@@ -1882,7 +1905,7 @@ unsafe extern "fastcall" fn update_selected_model_attachment(
         transform.add(1).write(transform.add(1).read() | 1);
         transform.write(transform.read().wrapping_add(1));
         offset_attachment_transform(bounds, transform, *attachment_direction());
-        let attachment = word(this, 0xCC) as *mut u8;
+        let attachment = automaton.attached_model() as *mut u8;
         let adjustment = word(word(attachment, 4) as *mut u8, 4);
         let interface = attachment.wrapping_add(adjustment as usize).wrapping_add(4);
         result = virtual_call(
@@ -1892,7 +1915,7 @@ unsafe extern "fastcall" fn update_selected_model_attachment(
             transform as u32,
             &[transform as u32],
         );
-        let attachment = word(this, 0xCC) as *mut u8;
+        let attachment = automaton.attached_model() as *mut u8;
         let renderer = *attachment_renderer();
         let target = vslot(renderer, 0x78);
         result = virtual_call(attachment, 0, word(attachment, 0), (result >> 32) as u32, &[]);
@@ -1904,7 +1927,7 @@ unsafe extern "fastcall" fn update_selected_model_attachment(
             (result >> 32) as u32,
             &[result as u32],
         );
-        result = registers(word(this, 0xD0), (result >> 32) as u32);
+        result = registers(automaton.processor_model(), (result >> 32) as u32);
         if result as u32 != 0 {
             result = invoke(
                 Conv::Thiscall,
@@ -2118,8 +2141,9 @@ port! {
                     }
                     result = invoke(Conv::Thiscall, crate::abi::target(0x0041_3E60), (&mut occupants as *mut u32).cast(),
                         result as u32, (result >> 32) as u32, &[]);
+                    let list_header = occupants;
                     let (allocator, mut result) = ensure_source_list_allocator(result);
-                    result = virtual_call(allocator, 16, word(allocator, 0), (result >> 32) as u32, &[occupants]);
+                    result = virtual_call(allocator, 16, word(allocator, 0), (result >> 32) as u32, &[list_header]);
                     if !filter.is_null() { result = virtual_call(filter, 8, result as u32, word(filter, 0), &[]); }
                     result = registers(word(vector, 0), (result >> 32) as u32);
                     if result as u32 != 0 {
@@ -2135,8 +2159,268 @@ port! {
     }
 }
 
+game_fn! { #[allow(dead_code)] fn random_float_range(this: *mut u8, min_low: u32, min_high: u32, max_low: u32, max_high: u32) -> St0 = "thiscall" 0x0091_3A46; }
+game_fn! { #[allow(dead_code)] fn current_motion_tween(this: *mut u8) -> St0 = "thiscall" 0x004F_A960; }
+game_fn! { #[allow(dead_code)] fn construct_motion_string(this: *mut u8, text: *const u8) -> u64 = "thiscall" 0x0040_8480; }
+game_data! { static motion_random: u8 = 0x00B2_1D78; }
+game_data! { static default_motion_parameters: u8 = 0x00B0_9988; }
+game_data! { static motion_time_scale: f32 = 0x00A8_67A4; }
+game_data! { static motion_stop_threshold: f32 = 0x00A8_23A4; }
+game_data! { static motion_duration_epsilon: f32 = 0x00A9_52DC; }
+game_data! { static motion_duration_tolerance: f32 = 0x00A9_52F8; }
+game_data! { static motion_turn_epsilon: f64 = 0x00A9_5620; }
+game_data! { static motion_full_turn: f32 = 0x00A9_52FC; }
+game_data! { static motion_blend_scale: f32 = 0x00A9_561C; }
+game_data! { static motion_unit_length: f32 = 0x00B0_9978; }
+game_data! { static motion_stopped_text: *const u8 = 0x00B0_9954; }
+game_data! { static motion_city: *mut u8 = 0x00B4_3CEC; }
+
+layout! {
+    /// Wandering action state: retained parameters, direction, two timers and the stopped marker.
+    struct WanderingMotion {
+        0x1C => resume_state / set_resume_state: u32,
+        0x24 => parameters / set_parameters: *mut u8,
+        0x28 => direction_x / set_direction_x: f32,
+        0x2C => direction_y / set_direction_y: f32,
+        0x30 => direction_z / set_direction_z: f32,
+        0x34 => turn_timer / set_turn_timer: f32,
+        0x38 => movement_timer / set_movement_timer: f32,
+        0x3C => stopped / set_stopped: u8,
+    }
+}
+
+macro_rules! motion_float_op {
+    ($name:ident, $ty:ty, $instruction:literal) => {
+        fn $name(value: F80, operand: $ty) -> F80 {
+            let input = value.to_bytes();
+            let mut output = [0u8; 10];
+            // SAFETY: local operands cover each value. One x87 value is pushed and popped.
+            unsafe { core::arch::asm!("fld tbyte ptr [{input}]", $instruction, "fstp tbyte ptr [{output}]",
+                input = in(reg) input.as_ptr(), operand = in(reg) &operand, output = in(reg) output.as_mut_ptr(), out("st(0)") _); }
+            F80::from_bytes(output)
+        }
+    };
+}
+motion_float_op!(motion_add, f32, "fadd dword ptr [{operand}]");
+motion_float_op!(motion_subtract, f32, "fsub dword ptr [{operand}]");
+motion_float_op!(motion_subtract_from, f32, "fsubr dword ptr [{operand}]");
+motion_float_op!(motion_multiply, f32, "fmul dword ptr [{operand}]");
+motion_float_op!(motion_divide_into, f32, "fdivr dword ptr [{operand}]");
+motion_float_op!(motion_add_double, f64, "fadd qword ptr [{operand}]");
+motion_float_op!(motion_subtract_double, f64, "fsub qword ptr [{operand}]");
+
+/// Saves the comparison status at the original stack depth, including a pending elapsed time.
+fn motion_compare(value: F80, operand: f32, pending: bool) -> u16 {
+    let input = value.to_bytes();
+    let status: u16;
+    // SAFETY: local float operands; both branches restore the x87 stack depth.
+    unsafe {
+        if pending {
+            core::arch::asm!("fldz", "fld tbyte ptr [{input}]", "fcomp dword ptr [{operand}]", "fnstsw ax", "fstp st(0)",
+                input = in(reg) input.as_ptr(), operand = in(reg) &operand, out("ax") status, out("st(0)") _, out("st(1)") _);
+        } else {
+            core::arch::asm!("fld tbyte ptr [{input}]", "fcomp dword ptr [{operand}]", "fnstsw ax",
+                input = in(reg) input.as_ptr(), operand = in(reg) &operand, out("ax") status, out("st(0)") _);
+        }
+    }
+    status
+}
+
+unsafe fn motion_float(object: *mut u8, offset: usize) -> f32 {
+    // SAFETY: the enclosing port supplies a readable float field.
+    f32::from_bits(unsafe { word(object, offset) })
+}
+
+unsafe fn motion_st0(target: usize, this: *mut u8, eax: u32, edx: u32, args: &[u32]) -> (u64, F80) {
+    let mut call = RawCall::new(Conv::Thiscall, target, this as u32, args);
+    call.eax = eax;
+    call.edx = edx;
+    call.take_st0 = 1;
+    // SAFETY: the enclosing port supplies the original float-returning signature.
+    unsafe {
+        call_raw(&mut call);
+    }
+    (registers(call.eax, call.edx), call.st0)
+}
+
+unsafe fn motion_random_range(minimum: F80, maximum: F80, result: u64) -> (u64, F80) {
+    let maximum = maximum.to_f64().to_bits();
+    let minimum = minimum.to_f64().to_bits();
+    // SAFETY: two double arguments and the game's random source, with its unrounded ST0 result.
+    unsafe {
+        motion_st0(
+            crate::abi::target(0x0091_3A46),
+            motion_random(),
+            result as u32,
+            (result >> 32) as u32,
+            &[
+                minimum as u32,
+                (minimum >> 32) as u32,
+                maximum as u32,
+                (maximum >> 32) as u32,
+            ],
+        )
+    }
+}
+
+port! {
+    /// Advances wandering movement and pause timers, chooses timed direction changes, blends and
+    /// normalizes velocity, projects the new position onto terrain, and sends the original callbacks.
+    /// Every float store retains its original rounding boundary. AL is one; EDX and upper EAX survive.
+    #[port(address = 0x0050_CF90, owner = "shared", name = "UpdateWanderingMotion")]
+    pub unsafe extern "fastcall" fn fc4p_0050cf90(this: *mut u8, entry_edx: u32, elapsed: f32) -> u64 {
+        // SAFETY: the automaton's action state, original parameter block and game services.
+        unsafe {
+            let mut result = virtual_call(this, 0xE0, word(this, 0), entry_edx, &[]);
+            let state = WanderingMotion::from_ptr(result as u32 as *mut u8);
+            let parameters = if state.parameters().is_null() { default_motion_parameters() } else { state.parameters() };
+            let zero = *positive_speed_threshold();
+            let delta = motion_multiply(F80::from_f32(elapsed), *motion_time_scale());
+            let status = motion_compare(F80::from_f32(state.movement_timer()), zero, true);
+            result = (result & !0xFFFF) | u64::from(status);
+            if status & 0x0500 == 0x0100 {
+                let timer = motion_add(delta, state.movement_timer());
+                state.set_movement_timer(timer.to_f32());
+                let status = motion_compare(timer, zero, false);
+                result = (result & !0xFFFF) | u64::from(status);
+                if status & 0x0100 == 0 {
+                    let (registers, duration) = motion_random_range(F80::from_f32(motion_float(parameters, 0x68)),
+                        F80::from_f32(motion_float(parameters, 0x6C)), result);
+                    state.set_movement_timer(duration.to_f32());
+                    result = virtual_call(this, 0x150, registers as u32, word(this, 0), &[parameters as u32]);
+                    let resumed = state.resume_state();
+                    state.set_stopped(0);
+                    result = virtual_call(this, 0x4C, word(this, 0), (result >> 32) as u32, &[resumed]);
+                } else {
+                    result = (result & !0xFF) | u64::from(state.stopped());
+                    if state.stopped() == 0 {
+                        let (returned, speed) = motion_st0(vslot(this, 0x88), this, result as u32, word(this, 0), &[]);
+                        let status = motion_compare(speed, *motion_stop_threshold(), false);
+                        result = (returned & !0xFFFF) | u64::from(status);
+                        if status & 0x0500 == 0x0100 {
+                            let text = *motion_stopped_text();
+                            let mut string = MaybeUninit::<[u32; 5]>::uninit();
+                            let string = string.as_mut_ptr().cast::<u8>();
+                            state.set_stopped(1);
+                            invoke(Conv::Thiscall, crate::abi::target(0x0040_8480), string,
+                                text as u32, (result >> 32) as u32, &[text as u32]);
+                            result = virtual_call(this, 0x54, string as u32, word(this, 0), &[string as u32]);
+                            let buffer = word(string, 4);
+                            store(string, 0, 0x00A8_0810);
+                            result = registers(buffer, (result >> 32) as u32);
+                            if buffer != 0 {
+                                result = invoke(Conv::Cdecl, crate::abi::target(0x0090_CF63), this,
+                                    buffer, (result >> 32) as u32, &[buffer]);
+                            }
+                        }
+                    }
+                }
+                return (result & !0xFF) | 1;
+            }
+            let difference = motion_subtract(F80::from_f32(motion_float(parameters, 0x68)), *motion_duration_epsilon()).abs();
+            let status = motion_compare(difference, *motion_duration_tolerance(), true);
+            result = (result & !0xFFFF) | u64::from(status);
+            if status & 0x0500 != 0x0100 {
+                let timer = F80::from_f32(state.movement_timer()) - delta;
+                state.set_movement_timer(timer.to_f32());
+                let status = motion_compare(timer, zero, true);
+                result = (result & !0xFFFF) | u64::from(status);
+                if matches!(status & 0x4100, 0x0100 | 0x4000) {
+                    let (_, duration) = motion_random_range(F80::from_f32(motion_float(parameters, 0x70)),
+                        F80::from_f32(motion_float(parameters, 0x74)), result);
+                    state.set_movement_timer((-duration).to_f32());
+                    result = virtual_call(this, 0x90, word(parameters, 0x78), word(this, 0), &[0, word(parameters, 0x78)]);
+                    return (result & !0xFF) | 1;
+                }
+            }
+            let timer = motion_subtract_from(delta, state.turn_timer());
+            state.set_turn_timer(timer.to_f32());
+            let status = motion_compare(timer, zero, false);
+            result = (result & !0xFFFF) | u64::from(status);
+            let mut turn = matches!(status & 0x4100, 0x0100 | 0x4000);
+            while turn {
+                let (random_registers, duration) = motion_random_range(F80::from_f32(motion_float(parameters, 0x50)),
+                    F80::from_f32(motion_float(parameters, 0x54)), result);
+                state.set_turn_timer(motion_add(duration, state.turn_timer()).to_f32());
+                let old_x = state.direction_x();
+                let old_z = state.direction_z();
+                let upper = motion_add_double(F80::from_f32(motion_float(parameters, 0x58)), *motion_turn_epsilon());
+                let lower = motion_subtract_double(-F80::from_f32(motion_float(parameters, 0x58)), *motion_turn_epsilon());
+                let (registers, random) = motion_random_range(lower, upper, registers(random_registers as u32, old_z.to_bits()));
+                let angle = F80::from_f32(old_z).atan2(F80::from_f32(old_x))
+                    + motion_multiply(random, *motion_full_turn());
+                let angle = angle.to_f32();
+                let status = motion_compare(random, zero, false);
+                let bias = motion_multiply(F80::from_f32(motion_float(parameters, 0x5C)), *motion_full_turn());
+                let heading = if status & 0x0500 == 0x0100 { motion_subtract_from(bias, angle) } else { motion_add(bias, angle) };
+                state.set_direction_y(0.0);
+                state.set_direction_x(heading.cos().to_f32());
+                state.set_direction_z(heading.sin().to_f32());
+                let status = motion_compare(F80::from_f32(state.turn_timer()), zero, false);
+                result = (registers & !0xFFFF) | u64::from(status);
+                turn = matches!(status & 0x4100, 0x0100 | 0x4000);
+            }
+            let mut direction = [state.direction_x(), state.direction_y(), state.direction_z()];
+            result = virtual_call(this, 0x7C, word(this, 0), direction[2].to_bits(), &[0x4000]);
+            let z = if result as u8 == 0 {
+                direction[0] = motion_add(F80::from_f32(direction[0]), motion_float(this, 0xA4)).to_f32();
+                direction[1] = motion_add(F80::from_f32(direction[1]), motion_float(this, 0xA8)).to_f32();
+                motion_add(F80::from_f32(direction[2]), motion_float(this, 0xAC))
+            } else { F80::from_f32(direction[2]) };
+            let mut position = [motion_float(this, 0x40), motion_float(this, 0x44), motion_float(this, 0x48)];
+            let scale = motion_multiply(F80::from_f32(elapsed), *motion_blend_scale());
+            let x = F80::from_f32(direction[0]) * scale;
+            let y = (F80::from_f32(direction[1]) * scale).to_f32();
+            let z = (z * scale).to_f32();
+            let x = motion_add(x, motion_float(this, 0x58));
+            let y = motion_add(F80::from_f32(y), motion_float(this, 0x5C));
+            let z = motion_add(F80::from_f32(z), motion_float(this, 0x60));
+            let rounded_z = z.to_f32();
+            let length = ((motion_multiply(z, rounded_z) + y * y) + x * x).sqrt();
+            let reciprocal = motion_divide_into(length, *motion_unit_length()).to_f32();
+            direction[0] = motion_multiply(x, reciprocal).to_f32();
+            direction[1] = motion_multiply(y, reciprocal).to_f32();
+            direction[2] = motion_multiply(F80::from_f32(rounded_z), reciprocal).to_f32();
+            let (registers, tween) = motion_st0(crate::abi::target(0x004F_A960), this.add(0x1A0),
+                word(this, 0x48), word(this, 0x44), &[]);
+            let velocity = direction.map(|v| (F80::from_f32(v) * tween).to_f32());
+            let (registers, speed) = motion_st0(vslot(this, 0x1F4), this, registers as u32, word(this, 0), &[]);
+            let x = F80::from_f32(velocity[0]) * speed;
+            let y = (F80::from_f32(velocity[1]) * speed).to_f32();
+            let z = (F80::from_f32(velocity[2]) * speed).to_f32();
+            let x = motion_multiply(x, elapsed);
+            let y = motion_multiply(F80::from_f32(y), elapsed);
+            let z = motion_multiply(F80::from_f32(z), elapsed).to_f32();
+            position[0] = motion_add(x, position[0]).to_f32();
+            position[1] = motion_add(y, position[1]).to_f32();
+            position[2] = motion_add(F80::from_f32(z), position[2]).to_f32();
+            let city = *motion_city();
+            result = virtual_call(city, 0xA0, word(city, 0), (registers >> 32) as u32, &[]);
+            let terrain = result as u32 as *mut u8;
+            result = virtual_call(this, 0x7C, result as u32, word(this, 0), &[0x20000]);
+            if result as u8 == 0 {
+                virtual_call(terrain, 0xB0, word(terrain, 0), (result >> 32) as u32,
+                    &[this.add(0x40) as u32, position.as_mut_ptr() as u32, 0xC49]);
+            } else {
+                result = virtual_call(this, 0x7C, result as u32, word(this, 0), &[0x40000]);
+                if result as u8 == 0 {
+                    let (_, height) = motion_st0(vslot(terrain, 0x48), terrain, word(terrain, 0), position[0].to_bits(),
+                        &[position[0].to_bits(), position[2].to_bits()]);
+                    position[1] = height.to_f32();
+                }
+            }
+            result = virtual_call(this, 0x40, word(this, 0), position.as_mut_ptr() as u32,
+                &[position.as_mut_ptr() as u32, direction.as_mut_ptr() as u32]);
+            result = virtual_call(this, 0x7C, word(this, 0), (result >> 32) as u32, &[0x4000]);
+            if result as u8 == 0 { result = virtual_call(this, 0x1A4, result as u32, word(this, 0), &[]); }
+            (result & !0xFF) | 1
+        }
+    }
+}
+
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
+    fc4p_0050cf90::PORT,
     fc4p_0050f2c0::PORT,
     fc4p_0050afd0::PORT,
     fc4p_0050be90::PORT,
@@ -2184,6 +2468,615 @@ pub const PORTS: &[Port] = &[
 
 #[cfg(test)]
 mod tests {
+    mod wandering {
+        use super::*;
+        use crate::testing::{GameFpu, fake_data};
+        use std::collections::VecDeque;
+
+        #[derive(Default)]
+        struct State {
+            action: u32,
+            terrain: u32,
+            flags: u32,
+            speed: f32,
+            tween: f32,
+            random: VecDeque<F80>,
+            buffer: u32,
+            string: u32,
+            observed: Vec<([u32; 3], [u32; 3])>,
+        }
+        thread_local! { static STATE: RefCell<State> = RefCell::new(State::default()); }
+        extern "thiscall" fn action(this: *mut u8) -> u64 {
+            log(0xE0, this, &[]);
+            registers(STATE.with(|s| s.borrow().action), (RESULT >> 32) as u32)
+        }
+        extern "thiscall" fn flags(this: *mut u8, mask: u32) -> u64 {
+            log(0x7C, this, &[mask]);
+            registers(
+                0xABCD_1200 | u32::from(STATE.with(|s| s.borrow().flags & mask != 0)),
+                (RESULT >> 32) as u32,
+            )
+        }
+        extern "thiscall" fn resume(this: *mut u8, parameters: u32) -> u64 {
+            log(0x150, this, &[parameters]);
+            RESULT
+        }
+        extern "thiscall" fn set_state(this: *mut u8, state: u32) -> u64 {
+            log(0x4C, this, &[state]);
+            RESULT
+        }
+        extern "thiscall" fn stop(this: *mut u8, first: u32, duration: u32) -> u64 {
+            log(0x90, this, &[first, duration]);
+            RESULT
+        }
+        extern "thiscall" fn finish(this: *mut u8) -> u64 {
+            log(0x1A4, this, &[]);
+            RESULT
+        }
+        extern "thiscall" fn terrain(this: *mut u8) -> u64 {
+            log(0xA0, this, &[]);
+            registers(STATE.with(|s| s.borrow().terrain), (RESULT >> 32) as u32)
+        }
+        extern "thiscall" fn project(this: *mut u8, old: *const u32, new: *mut u32, mask: u32) -> u64 {
+            log(0xB0, this, &[unsafe { old.read() }, mask]);
+            unsafe {
+                new.add(1).write(42f32.to_bits());
+            }
+            RESULT
+        }
+        extern "thiscall" fn position(this: *mut u8, position: *const u32, direction: *const u32) -> u64 {
+            let (position, direction) =
+                unsafe { (position.cast::<[u32; 3]>().read(), direction.cast::<[u32; 3]>().read()) };
+            log(0x40, this, &position);
+            STATE.with(|s| s.borrow_mut().observed.push((position, direction)));
+            unsafe {
+                for i in 0..3 {
+                    store(this, 0x40 + i * 4, position[i]);
+                    store(this, 0x58 + i * 4, direction[i]);
+                }
+            }
+            RESULT
+        }
+        extern "thiscall" fn construct_string(this: *mut u8, text: u32) -> u64 {
+            log(0x0040_8480, this, &[text]);
+            STATE.with(|s| {
+                let mut s = s.borrow_mut();
+                s.string = this as u32;
+                unsafe {
+                    store(this, 0, 0xAABB_CCDD);
+                    store(this, 4, s.buffer);
+                    for i in 2..5 {
+                        store(this, i * 4, 0);
+                    }
+                }
+            });
+            RESULT
+        }
+        extern "thiscall" fn stopped_text(this: *mut u8, string: u32) -> u64 {
+            log(0x54, this, &[string]);
+            assert_eq!(unsafe { word(string as *mut u8, 0) }, 0xAABB_CCDD);
+            RESULT
+        }
+        extern "C" fn free_string(buffer: *mut u8) -> u64 {
+            log(0x0090_CF63, buffer, &[]);
+            STATE.with(|s| assert_eq!(unsafe { word(s.borrow().string as *mut u8, 0) }, 0x00A8_0810));
+            RESULT
+        }
+        extern "thiscall" fn value(this: *mut u8, out: *mut F80, id: u32) -> u64 {
+            log(id, this, &[]);
+            let v = STATE.with(|s| {
+                let s = s.borrow();
+                if id == 0x004F_A960 { s.tween } else { s.speed }
+            });
+            unsafe {
+                out.write(F80::from_f32(v));
+            }
+            RESULT
+        }
+        macro_rules! float_fake {
+            ($name:ident, $id:literal) => {
+                #[unsafe(naked)]
+                unsafe extern "C" fn $name() {
+                    core::arch::naked_asm!("sub esp, 12", "push {id}", "lea eax, [esp + 4]", "push eax",
+                        "call {body}", "fld tbyte ptr [esp]", "add esp, 12", "ret", id = const $id, body = sym value);
+                }
+            };
+        }
+        float_fake!(current_tween, 0x004F_A960);
+        float_fake!(speed, 0x1F4);
+        float_fake!(stopped_speed, 0x88);
+        extern "thiscall" fn random_value(
+            this: *mut u8,
+            min_low: u32,
+            min_high: u32,
+            max_low: u32,
+            max_high: u32,
+            out: *mut F80,
+        ) -> u64 {
+            log(0x0091_3A46, this, &[min_low, min_high, max_low, max_high]);
+            unsafe {
+                out.write(STATE.with(|s| s.borrow_mut().random.pop_front().expect("random reply")));
+            }
+            RESULT
+        }
+        #[unsafe(naked)]
+        unsafe extern "C" fn random() {
+            core::arch::naked_asm!("sub esp, 12", "push esp", "push [esp + 32]", "push [esp + 32]",
+                "push [esp + 32]", "push [esp + 32]", "call {body}", "fld tbyte ptr [esp]", "add esp, 12", "ret 16", body = sym random_value);
+        }
+        extern "thiscall" fn height_value(this: *mut u8, x: u32, z: u32, out: *mut F80) -> u64 {
+            log(0x48, this, &[x, z]);
+            unsafe {
+                out.write(F80::from_f32(42.25));
+            }
+            RESULT
+        }
+        #[unsafe(naked)]
+        unsafe extern "C" fn height() {
+            core::arch::naked_asm!("sub esp, 12", "push esp", "push [esp + 24]", "push [esp + 24]",
+                "call {body}", "fld tbyte ptr [esp]", "add esp, 12", "ret 8", body = sym height_value);
+        }
+
+        struct Fixture {
+            object: Object,
+            action: Object,
+            parameters: Object,
+            tables: [Box<[usize; 128]>; 3],
+            city: Object,
+            terrain: Object,
+            constants: Box<[u32; 12]>,
+            epsilon: Box<f64>,
+            parameters_default: Object,
+            random_object: Box<u8>,
+            _fakes: Vec<crate::testing::Fake>,
+        }
+        impl Fixture {
+            fn new() -> Self {
+                let mut f = Self {
+                    object: Object::new(0x1C0),
+                    action: Object::new(0x40),
+                    parameters: Object::new(0x80),
+                    tables: [Box::new([0; 128]), Box::new([0; 128]), Box::new([0; 128])],
+                    city: Object::new(4),
+                    terrain: Object::new(4),
+                    constants: Box::new([0; 12]),
+                    epsilon: Box::new(1e-5),
+                    parameters_default: Object::new(0x80),
+                    random_object: Box::new(0),
+                    _fakes: Vec::new(),
+                };
+                for (slot, function) in [
+                    (0xE0, action as *const ()),
+                    (0x7C, flags as *const ()),
+                    (0x150, resume as *const ()),
+                    (0x4C, set_state as *const ()),
+                    (0x90, stop as *const ()),
+                    (0x1A4, finish as *const ()),
+                    (0x40, position as *const ()),
+                    (0x54, stopped_text as *const ()),
+                    (0x88, stopped_speed as *const ()),
+                    (0x1F4, speed as *const ()),
+                ] {
+                    f.tables[0][slot / 4] = function as usize;
+                }
+                f.tables[1][0xA0 / 4] = terrain as *const () as usize;
+                f.tables[2][0xB0 / 4] = project as *const () as usize;
+                f.tables[2][0x48 / 4] = height as *const () as usize;
+                unsafe {
+                    store(f.object.ptr(), 0, f.tables[0].as_ptr() as u32);
+                    store(f.city.ptr(), 0, f.tables[1].as_ptr() as u32);
+                    store(f.terrain.ptr(), 0, f.tables[2].as_ptr() as u32);
+                    for (offset, float) in [(0x40, 10f32), (0x44, 20.0), (0x48, 30.0), (0x58, 1.0)] {
+                        store(f.object.ptr(), offset, float.to_bits());
+                    }
+                    let state = WanderingMotion::from_ptr(f.action.ptr());
+                    state.set_parameters(f.parameters.ptr());
+                    state.set_direction_x(1.0);
+                    state.set_turn_timer(5.0);
+                    state.set_movement_timer(10.0);
+                    state.set_resume_state(0x1234_5678);
+                    for parameters in [f.parameters.ptr(), f.parameters_default.ptr()] {
+                        for (offset, value) in [
+                            (0x50, 0.5f32),
+                            (0x54, 0.75),
+                            (0x58, 0.25),
+                            (0x5C, 0.0),
+                            (0x68, 10.0),
+                            (0x6C, 20.0),
+                            (0x70, 2.0),
+                            (0x74, 3.0),
+                        ] {
+                            store(parameters, offset, value.to_bits());
+                        }
+                        store(parameters, 0x78, 0xC001_CAFE);
+                    }
+                }
+                STATE.with(|s| {
+                    *s.borrow_mut() = State {
+                        action: f.action.ptr() as u32,
+                        terrain: f.terrain.ptr() as u32,
+                        speed: 0.25,
+                        tween: 3.0,
+                        ..State::default()
+                    }
+                });
+                f.constants.copy_from_slice(&[
+                    0.001f32.to_bits(),
+                    0,
+                    0.01f32.to_bits(),
+                    1e-5f32.to_bits(),
+                    0.0001f32.to_bits(),
+                    core::f32::consts::TAU.to_bits(),
+                    0.002f32.to_bits(),
+                    1f32.to_bits(),
+                    0x1234_5678,
+                    f.city.ptr() as u32,
+                    0,
+                    0,
+                ]);
+                for (i, address) in [
+                    0x00A8_67A4,
+                    0x00A8_1054,
+                    0x00A8_23A4,
+                    0x00A9_52DC,
+                    0x00A9_52F8,
+                    0x00A9_52FC,
+                    0x00A9_561C,
+                    0x00B0_9978,
+                    0x00B0_9954,
+                    0x00B4_3CEC,
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    f._fakes
+                        .push(fake_data(address, unsafe { f.constants.as_mut_ptr().add(i).cast() }));
+                }
+                f._fakes
+                    .push(fake_data(0x00A9_5620, (&mut *f.epsilon as *mut f64).cast()));
+                f._fakes.push(fake_data(0x00B2_1D78, &mut *f.random_object));
+                f._fakes.push(fake_data(0x00B0_9988, f.parameters_default.ptr()));
+                for (a, function) in [
+                    (0x0091_3A46, random as *const ()),
+                    (0x004F_A960, current_tween as *const ()),
+                    (0x0040_8480, construct_string as *const ()),
+                    (0x0090_CF63, free_string as *const ()),
+                ] {
+                    f._fakes.push(fake(a, function as usize));
+                }
+                f
+            }
+            fn state(&mut self) -> WanderingMotion {
+                unsafe { WanderingMotion::from_ptr(self.action.ptr()) }
+            }
+            fn run(&mut self, elapsed: f32) -> u64 {
+                run(
+                    fc4p_0050cf90 as *const (),
+                    self.object.ptr(),
+                    &[elapsed.to_bits()],
+                    0xABCD,
+                    0x1234,
+                )
+            }
+            fn random(&mut self, values: &[f32]) {
+                STATE.with(|s| s.borrow_mut().random.extend(values.iter().map(|&v| F80::from_f32(v))));
+            }
+        }
+
+        #[test]
+        fn pause_and_resume_transitions_store_timers_and_send_the_original_arguments() {
+            let _fpu = GameFpu::new();
+            for paused in [true, false] {
+                let mut f = Fixture::new();
+                let p = f.object.ptr();
+                f.state().set_movement_timer(if paused { 0.25 } else { -0.25 });
+                f.state().set_stopped(1);
+                f.random(&[if paused { 2.0 } else { 4.0 }]);
+                let before = bytes(p, 0x1C0);
+                assert_eq!(f.run(500.0), (RESULT & !0xFF) | 1);
+                let observed = calls();
+                assert_eq!(
+                    observed.iter().map(|c| c.0).collect::<Vec<_>>(),
+                    if paused {
+                        vec![0xE0, 0x0091_3A46, 0x90]
+                    } else {
+                        vec![0xE0, 0x0091_3A46, 0x150, 0x4C]
+                    }
+                );
+                let bounds = if paused { [2f64, 3.0] } else { [10f64, 20.0] };
+                let words: Vec<_> = bounds
+                    .into_iter()
+                    .flat_map(|v| [v.to_bits() as u32, (v.to_bits() >> 32) as u32])
+                    .collect();
+                assert_eq!(
+                    observed[1],
+                    Call(0x0091_3A46, &*f.random_object as *const u8 as usize, words)
+                );
+                assert_eq!(
+                    f.state().movement_timer().to_bits(),
+                    if paused { (-2f32).to_bits() } else { 4f32.to_bits() }
+                );
+                assert_eq!(f.state().stopped(), u8::from(paused));
+                if paused {
+                    assert_eq!(observed[2], Call(0x90, p as usize, vec![0, 0xC001_CAFE]));
+                } else {
+                    assert_eq!(observed[2], Call(0x150, p as usize, vec![f.parameters.ptr() as u32]));
+                    assert_eq!(observed[3], Call(0x4C, p as usize, vec![0x1234_5678]));
+                }
+                assert_eq!(bytes(p, 0x1C0), before);
+            }
+        }
+
+        #[test]
+        fn paused_motion_marks_stopped_only_below_threshold_and_frees_only_nonempty_strings() {
+            let _fpu = GameFpu::new();
+            for (speed, stopped, buffer) in [
+                (0.005f32, 0, 0),
+                (0.005, 0, 0xCAFE_1234),
+                (0.01, 0, 0),
+                (f32::NAN, 0, 0),
+                (f32::NEG_INFINITY, 0, 0),
+                (0.0, 1, 0),
+                (0.5, 0, 0),
+            ] {
+                let mut f = Fixture::new();
+                f.state().set_movement_timer(-1.0);
+                f.state().set_stopped(stopped);
+                STATE.with(|s| {
+                    let mut s = s.borrow_mut();
+                    s.speed = speed;
+                    s.buffer = buffer;
+                });
+                let result = f.run(500.0);
+                let marks = stopped == 0 && speed < 0.01;
+                assert_eq!(f.state().movement_timer(), -0.5);
+                assert_eq!(f.state().stopped(), if marks { 1 } else { stopped });
+                let observed = calls();
+                let mut ids = vec![0xE0];
+                if stopped == 0 {
+                    ids.push(0x88);
+                }
+                if marks {
+                    ids.extend([0x0040_8480, 0x54]);
+                    if buffer != 0 {
+                        ids.push(0x0090_CF63);
+                    }
+                }
+                assert_eq!(observed.iter().map(|c| c.0).collect::<Vec<_>>(), ids);
+                assert_eq!(result as u8, 1);
+                if marks {
+                    assert_eq!(
+                        result,
+                        if buffer == 0 {
+                            RESULT & !0xFFFF_FFFF | 1
+                        } else {
+                            (RESULT & !0xFF) | 1
+                        }
+                    );
+                } else {
+                    let eax = if stopped != 0 {
+                        (f.action.ptr() as u32 & 0xFFFF_0000) | 0x0101
+                    } else {
+                        (RESULT as u32 & 0xFFFF_0000)
+                            | if speed.is_nan() {
+                                0x4501
+                            } else if speed == 0.01 {
+                                0x4001
+                            } else {
+                                1
+                            }
+                    };
+                    assert_eq!(result, registers(eax, (RESULT >> 32) as u32));
+                }
+            }
+        }
+
+        #[test]
+        fn movement_normalizes_then_scales_velocity_and_chooses_each_terrain_route() {
+            let _fpu = GameFpu::new();
+            for mask in [0, 0x20000, 0x60000, 0x64000] {
+                let mut f = Fixture::new();
+                STATE.with(|s| s.borrow_mut().flags = mask);
+                assert_eq!(
+                    f.run(500.0),
+                    if mask & 0x4000 != 0 {
+                        registers(0xABCD_1201, (RESULT >> 32) as u32)
+                    } else {
+                        (RESULT & !0xFF) | 1
+                    }
+                );
+                let observed = calls();
+                let mut ids = vec![0xE0, 0x7C, 0x004F_A960, 0x1F4, 0xA0, 0x7C];
+                if mask & 0x20000 == 0 {
+                    ids.push(0xB0);
+                } else {
+                    ids.push(0x7C);
+                    if mask & 0x40000 == 0 {
+                        ids.push(0x48);
+                    }
+                }
+                ids.extend([0x40, 0x7C]);
+                if mask & 0x4000 == 0 {
+                    ids.push(0x1A4);
+                }
+                assert_eq!(observed.iter().map(|c| c.0).collect::<Vec<_>>(), ids);
+                STATE.with(|s| {
+                    assert_eq!(
+                        s.borrow().observed,
+                        vec![(
+                            [
+                                385f32.to_bits(),
+                                (if mask & 0x20000 == 0 {
+                                    42f32
+                                } else if mask & 0x40000 == 0 {
+                                    42.25
+                                } else {
+                                    20.0
+                                })
+                                .to_bits(),
+                                30f32.to_bits()
+                            ],
+                            [1f32.to_bits(), 0, 0]
+                        )]
+                    )
+                });
+                assert_eq!(f.state().movement_timer(), 9.5);
+                assert_eq!(f.state().turn_timer(), 4.5);
+                assert_eq!(observed[1], Call(0x7C, f.object.ptr() as usize, vec![0x4000]));
+                assert_eq!(observed[2], Call(0x004F_A960, f.object.ptr() as usize + 0x1A0, vec![]));
+            }
+        }
+
+        #[test]
+        fn direction_changes_use_double_bounds_x87_angles_and_repeat_until_the_timer_is_positive() {
+            let _fpu = GameFpu::new();
+            for random in [-0.25f32, 0.0, 0.25] {
+                let mut f = Fixture::new();
+                f.state().set_turn_timer(0.0);
+                f.random(&[0.5, random]);
+                STATE.with(|s| s.borrow_mut().flags = 0x60000);
+                f.run(0.0);
+                let observed = calls();
+                assert_eq!(
+                    &observed.iter().map(|c| c.0).collect::<Vec<_>>()[..3],
+                    &[0xE0, 0x0091_3A46, 0x0091_3A46]
+                );
+                let limits = [f64::from(-0.25001f32), f64::from(0.25001f32)];
+                let expected: Vec<_> = limits
+                    .into_iter()
+                    .flat_map(|v| [v.to_bits() as u32, (v.to_bits() >> 32) as u32])
+                    .collect();
+                assert_eq!(observed[2].2, expected);
+                assert_eq!(
+                    f.state().direction_x().to_bits(),
+                    if random == 0.0 {
+                        1f32.to_bits()
+                    } else {
+                        (-4.371_139e-8f32).to_bits()
+                    }
+                );
+                assert_eq!(
+                    f.state().direction_z(),
+                    if random < 0.0 {
+                        -1.0
+                    } else if random > 0.0 {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                );
+                assert_eq!(f.state().direction_y().to_bits(), 0);
+                assert_eq!(f.state().turn_timer(), 0.5);
+            }
+            let mut f = Fixture::new();
+            f.state().set_turn_timer(-1.25);
+            f.random(&[0.5, 0.0, 0.5, 0.0, 0.5, 0.0]);
+            f.run(0.0);
+            assert_eq!(calls().iter().filter(|c| c.0 == 0x0091_3A46).count(), 6);
+            assert_eq!(f.state().turn_timer(), 0.25);
+            assert_eq!(f.state().direction_x(), 1.0);
+        }
+
+        #[test]
+        fn default_parameters_duration_sentinel_nan_timer_and_zero_length_keep_their_branches() {
+            let _fpu = GameFpu::new();
+            for nan in [false, true] {
+                let mut f = Fixture::new();
+                f.state().set_parameters(core::ptr::null_mut());
+                unsafe {
+                    store(f.parameters_default.ptr(), 0x68, 1e-5f32.to_bits());
+                }
+                f.state().set_movement_timer(if nan { f32::NAN } else { 0.0 });
+                f.run(500.0);
+                assert!(!calls().iter().any(|c| c.0 == 0x0091_3A46));
+                assert_eq!(
+                    f.state().movement_timer().to_bits(),
+                    if nan { f32::NAN.to_bits() } else { 0 }
+                );
+            }
+            let mut f = Fixture::new();
+            unsafe {
+                store(f.object.ptr(), 0x58, 0);
+            }
+            STATE.with(|s| s.borrow_mut().flags = 0x60000);
+            f.run(0.0);
+            calls();
+            STATE.with(|s| {
+                let s = s.borrow();
+                let (position, direction) = s.observed[0];
+                assert!(position.into_iter().all(|v| f32::from_bits(v).is_nan()));
+                assert_eq!(direction, [0xFFC0_0000; 3]);
+            });
+        }
+
+        #[test]
+        fn timer_branches_compare_the_register_value_before_a_store_rounds_it_to_zero() {
+            let _fpu = GameFpu::new();
+            let mut f = Fixture::new();
+            f.state().set_movement_timer(f32::from_bits(0x8000_0001));
+            f.state().set_stopped(1);
+            f.run(f32::from_bits(999));
+            assert_eq!(f.state().movement_timer().to_bits(), 0x8000_0000);
+            assert_eq!(calls().iter().map(|c| c.0).collect::<Vec<_>>(), [0xE0]);
+            for turn_timer in [false, true] {
+                let mut f = Fixture::new();
+                if turn_timer {
+                    f.state().set_turn_timer(f32::from_bits(1));
+                } else {
+                    f.state().set_movement_timer(f32::from_bits(1));
+                }
+                f.run(f32::from_bits(999));
+                let observed = calls();
+                assert!(!observed.iter().any(|c| c.0 == 0x0091_3A46));
+                assert!(observed.iter().any(|c| c.0 == 0x40));
+                assert_eq!(
+                    (if turn_timer {
+                        f.state().turn_timer()
+                    } else {
+                        f.state().movement_timer()
+                    })
+                    .to_bits(),
+                    0
+                );
+            }
+        }
+
+        #[test]
+        fn drift_is_added_before_normalization_and_the_movement_flag_suppresses_it() {
+            let _fpu = GameFpu::new();
+            for suppress in [false, true] {
+                let mut f = Fixture::new();
+                unsafe {
+                    store(f.object.ptr(), 0xA4, (-1f32).to_bits());
+                    store(f.object.ptr(), 0xA8, 1f32.to_bits());
+                }
+                STATE.with(|s| s.borrow_mut().flags = 0x60000 | if suppress { 0x4000 } else { 0 });
+                f.run(500.0);
+                calls();
+                STATE.with(|s| {
+                    let s = s.borrow();
+                    let (position, direction) = s.observed[0];
+                    assert_eq!(
+                        direction,
+                        if suppress {
+                            [1f32.to_bits(), 0, 0]
+                        } else {
+                            [0x3F35_04F3, 0x3F35_04F3, 0]
+                        }
+                    );
+                    assert_eq!(
+                        position,
+                        if suppress {
+                            [385f32.to_bits(), 20f32.to_bits(), 30f32.to_bits()]
+                        } else {
+                            [275.165_04f32.to_bits(), 285.165_04f32.to_bits(), 30f32.to_bits()]
+                        }
+                    );
+                });
+            }
+        }
+    }
+
     mod source_refresh {
         use super::*;
 
@@ -2204,6 +3097,8 @@ mod tests {
             tree_nodes: Vec<u32>,
             collect_index: usize,
             query_success: bool,
+            occupants_word: u32,
+            replace_list_in_allocator_query: bool,
         }
         extern "fastcall" fn flush(this: *mut u8, edx: u32) -> u64 {
             log(0xC0, this, &[edx]);
@@ -2311,6 +3206,14 @@ mod tests {
             unsafe {
                 out.write(STATE.with(|s| s.borrow().allocator));
             }
+            STATE.with(|s| {
+                let s = s.borrow();
+                if s.replace_list_in_allocator_query && s.occupants_word != 0 {
+                    unsafe {
+                        (s.occupants_word as *mut u32).write(0);
+                    }
+                }
+            });
             RESULT
         }
         extern "thiscall" fn release_allocator(this: *mut u8) -> u64 {
@@ -2338,6 +3241,7 @@ mod tests {
             limit: u32,
         ) -> u64 {
             log(0x90, this, &[a, b, filter, limit]);
+            STATE.with(|s| s.borrow_mut().occupants_word = out as u32);
             STATE.with(|s| {
                 let s = s.borrow();
                 unsafe {
@@ -2545,6 +3449,8 @@ mod tests {
                         tree_nodes: tree_nodes.iter_mut().map(|n| n.as_mut_ptr() as u32).collect(),
                         collect_index: 0,
                         query_success: success,
+                        occupants_word: 0,
+                        replace_list_in_allocator_query: empty,
                     }
                 });
                 let _data = [
@@ -2568,6 +3474,9 @@ mod tests {
                 .into_iter()
                 .map(|(a, p)| fake(a, p as usize))
                 .collect();
+                if empty {
+                    mutation(0x0041_3E60, (&mut cached as *mut u32).cast(), 0, 0);
+                }
                 assert_eq!(run(fc4p_0050f2c0 as *const (), m, &[], 0, 0), RESULT);
                 let observed = calls();
                 let mut ids = vec![0x0050_C4C0, 0x004B_0390];
@@ -2596,7 +3505,11 @@ mod tests {
                     }
                     ids.push(0x0090_CF63);
                 }
-                ids.extend([0x0041_3E60, 0x2010]);
+                ids.push(0x0041_3E60);
+                if empty {
+                    ids.extend([0x0087_93EC, 0x14, 0x0041_1870]);
+                }
+                ids.push(0x2010);
                 if allocated_filter {
                     ids.push(8);
                 }
