@@ -75,6 +75,13 @@ unsafe extern "thiscall" fn capture_call(_capture: *mut Capture) {
 }
 
 pub(crate) fn invoke(function: usize, this: *mut u8, args: &mut [u32], cdecl: bool, st0: bool) -> RawCall {
+    let control = crate::x87::control_word();
+    let before_top: u16;
+    let mut before_mxcsr = 0u32;
+    unsafe {
+        core::arch::asm!("fnstsw ax", out("ax") before_top);
+        core::arch::asm!("stmxcsr [{p}]", p = in(reg) &mut before_mxcsr);
+    }
     let mut capture = Capture {
         call: RawCall::new(
             if cdecl { Conv::Cdecl } else { Conv::Thiscall },
@@ -89,6 +96,15 @@ pub(crate) fn invoke(function: usize, this: *mut u8, args: &mut [u32], cdecl: bo
     capture.call.take_st0 = u32::from(st0);
     unsafe { capture_call(&mut capture) };
     assert_eq!(capture.stack_delta, 0, "callee pop count");
+    let after_top: u16;
+    let mut after_mxcsr = 0u32;
+    unsafe {
+        core::arch::asm!("fnstsw ax", out("ax") after_top);
+        core::arch::asm!("stmxcsr [{p}]", p = in(reg) &mut after_mxcsr);
+    }
+    assert_eq!(after_top & 0x3800, before_top & 0x3800, "x87 stack balance");
+    assert_eq!(crate::x87::control_word(), control, "x87 control word");
+    assert_eq!(after_mxcsr, before_mxcsr, "MXCSR");
     capture.call
 }
 

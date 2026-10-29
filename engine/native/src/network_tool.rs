@@ -114,6 +114,7 @@ mod intersection_storage;
 mod construction;
 mod bridge_helpers;
 mod bridge_steps;
+mod suspension;
 
 const COUNT: usize = helpers::PORTS.len()
     + preview::PORTS.len()
@@ -142,7 +143,8 @@ const COUNT: usize = helpers::PORTS.len()
     + intersection_storage::PORTS.len()
     + construction::PORTS.len()
     + bridge_helpers::PORTS.len()
-    + bridge_steps::PORTS.len();
+    + bridge_steps::PORTS.len()
+    + suspension::PORTS.len();
 /// Completed replacements, ordered by original address within each group.
 pub const PORTS: &[Port] = &crate::port::concat::<COUNT>(&[
     helpers::PORTS,
@@ -173,4 +175,5 @@ pub const PORTS: &[Port] = &crate::port::concat::<COUNT>(&[
     construction::PORTS,
     bridge_helpers::PORTS,
     bridge_steps::PORTS,
+    suspension::PORTS,
 ]);
