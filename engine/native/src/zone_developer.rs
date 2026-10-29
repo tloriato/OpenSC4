@@ -49,19 +49,22 @@ layout! {
 }
 
 mod altitude;
-mod creation;
 mod basic;
+mod creation;
 mod deletion;
 mod dezone;
 mod edges;
 mod examine;
 mod face;
+mod jog;
 mod lot;
 mod manager;
 mod network;
 mod occupancy;
+mod parcellize;
 mod parcels;
 mod placement;
+mod plopped;
 mod region;
 mod registers;
 mod remnants;
@@ -99,11 +102,14 @@ pub const PORTS: &[Port] = &crate::port::concat::<
             + network::PORTS.len()
             + occupancy::PORTS.len()
             + parcels::PORTS.len()
+            + parcellize::PORTS.len()
             + altitude::PORTS.len()
             + face::PORTS.len()
+            + jog::PORTS.len()
             + region::PORTS.len()
             + search::PORTS.len()
             + placement::PORTS.len()
+            + plopped::PORTS.len()
             + street::PORTS.len()
             + street_extension::PORTS.len()
             + remnants::PORTS.len()
@@ -120,11 +126,14 @@ pub const PORTS: &[Port] = &crate::port::concat::<
     network::PORTS,
     occupancy::PORTS,
     parcels::PORTS,
+    parcellize::PORTS,
     altitude::PORTS,
     face::PORTS,
+    jog::PORTS,
     region::PORTS,
     search::PORTS,
     placement::PORTS,
+    plopped::PORTS,
     street::PORTS,
     street_extension::PORTS,
     remnants::PORTS,

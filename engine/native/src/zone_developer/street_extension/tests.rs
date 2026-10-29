@@ -45,7 +45,9 @@ extern "thiscall" fn draw(this: *mut u8, x: i32, z: i32, ex: i32, ez: i32, per_c
         let mut s = s.borrow_mut();
         s.calls.push(Call::Draw(this as usize, [x, z, ex, ez], per_cell));
         if let Some(rect) = s.shorten {
-            unsafe { *(rect as *mut i32).add(3) = z; }
+            unsafe {
+                *(rect as *mut i32).add(3) = z;
+            }
         }
     });
 }
@@ -55,21 +57,33 @@ fn run(rect: &mut [i32; 4], state: State) -> (Vec<Call>, usize) {
     let mut obj = Object::new(0x100);
     let mut table = [0usize; 9];
     table[8] = exists as *const () as usize;
-    unsafe { *obj.ptr().cast::<usize>() = table.as_ptr() as usize; }
+    unsafe {
+        *obj.ptr().cast::<usize>() = table.as_ptr() as usize;
+    }
     let mut flags = [0u32; 12];
     flags[3] = 0x1234_5678;
     let _data = fake_data(0x00AB_3680, flags.as_mut_ptr().cast());
     let _connect = fake(0x0072_FE80, connects as *const () as usize);
     let _draw = fake(0x0072_A2A0, draw as *const () as usize);
-    unsafe { fc4p_00730ba0(obj.ptr(), rect.as_ptr(), 3); }
-    (STATE.with(|s| std::mem::take(&mut s.borrow_mut().calls)), obj.ptr() as usize)
+    unsafe {
+        fc4p_00730ba0(obj.ptr(), rect.as_ptr(), 3);
+    }
+    (
+        STATE.with(|s| std::mem::take(&mut s.borrow_mut().calls)),
+        obj.ptr() as usize,
+    )
 }
 
 #[test]
 fn extends_the_core_example_and_reads_the_flag_table() {
-    let (calls, p) = run(&mut [10, 10, 15, 13], State {
-        networks: vec![(12, 10)], connections: vec![(12, 10, 0, 0)], ..State::default()
-    });
+    let (calls, p) = run(
+        &mut [10, 10, 15, 13],
+        State {
+            networks: vec![(12, 10)],
+            connections: vec![(12, 10, 0, 0)],
+            ..State::default()
+        },
+    );
     let mut expected = vec![];
     for x in 10..=15 {
         for z in 10..=13 {
@@ -89,11 +103,22 @@ fn extends_the_core_example_and_reads_the_flag_table() {
 
 #[test]
 fn all_sides_draw_to_the_opposite_edge_and_skip_zero_length() {
-    for (side, end) in [(0, [11, 11, 11, 12]), (1, [11, 11, 10, 11]),
-        (2, [11, 11, 11, 10]), (3, [11, 11, 12, 11])] {
-        let state = || State { networks: vec![(11, 11)], connections: vec![(11, 11, side, 11)], ..State::default() };
+    for (side, end) in [
+        (0, [11, 11, 11, 12]),
+        (1, [11, 11, 10, 11]),
+        (2, [11, 11, 11, 10]),
+        (3, [11, 11, 12, 11]),
+    ] {
+        let state = || State {
+            networks: vec![(11, 11)],
+            connections: vec![(11, 11, side, 11)],
+            ..State::default()
+        };
         let (calls, p) = run(&mut [10, 10, 12, 12], state());
-        assert_eq!(calls.iter().filter(|c| matches!(c, Call::Draw(..))).collect::<Vec<_>>(), [&Call::Draw(p, end, 0)]);
+        assert_eq!(
+            calls.iter().filter(|c| matches!(c, Call::Draw(..))).collect::<Vec<_>>(),
+            [&Call::Draw(p, end, 0)]
+        );
         let (calls, _) = run(&mut [11, 11, 11, 11], state());
         assert!(!calls.iter().any(|c| matches!(c, Call::Draw(..))));
     }
@@ -101,11 +126,14 @@ fn all_sides_draw_to_the_opposite_edge_and_skip_zero_length() {
 
 #[test]
 fn avenue_only_on_odd_cells_and_stops_after_two_sides() {
-    let (calls, p) = run(&mut [10, 10, 10, 12], State {
-        networks: vec![(10, 10), (10, 11)],
-        connections: vec![(10, 10, 0, 6), (10, 11, 0, 6), (10, 11, 1, 10)],
-        ..State::default()
-    });
+    let (calls, p) = run(
+        &mut [10, 10, 10, 12],
+        State {
+            networks: vec![(10, 10), (10, 11)],
+            connections: vec![(10, 10, 0, 6), (10, 11, 0, 6), (10, 11, 1, 10)],
+            ..State::default()
+        },
+    );
     assert!(!calls.iter().any(|c| matches!(c, Call::Connect(_, 10, 10, _, _, 6))));
     assert!(calls.contains(&Call::Connect(p, 10, 11, 0x1234_5678, 0, 6)));
     assert!(!calls.iter().any(|c| matches!(c, Call::Connect(_, 10, 11, _, 2.., _))));
@@ -118,8 +146,12 @@ fn empty_bounds_make_no_calls_and_draw_changes_are_visible() {
         assert!(run(&mut rect, State::default()).0.is_empty());
     }
     let mut rect = [10, 10, 10, 13];
-    let state = State { networks: vec![(10, 10)], connections: vec![(10, 10, 0, 3)],
-        shorten: Some(rect.as_mut_ptr() as usize), ..State::default() };
+    let state = State {
+        networks: vec![(10, 10)],
+        connections: vec![(10, 10, 0, 3)],
+        shorten: Some(rect.as_mut_ptr() as usize),
+        ..State::default()
+    };
     let (calls, _) = run(&mut rect, state);
     assert_eq!(calls.iter().filter(|c| matches!(c, Call::Exists(..))).count(), 1);
     assert_eq!(rect[3], 10);

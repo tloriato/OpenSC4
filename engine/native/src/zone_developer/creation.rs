@@ -29,7 +29,7 @@ port! {
         // SAFETY: the game supplies its lot-manager interface and writable output pointer.
         unsafe {
             write_unaligned(out, core::ptr::null_mut());
-            let checked = super::virtual_registers(this, 0x50, water_allowed, read_unaligned(this.cast()),
+            let checked = super::virtual_registers(this, 0x50, width as u32, read_unaligned(this.cast()),
                 &[x as u32, z as u32, width as u32, height as u32, zone_not_needed,
                     water_allowed, 0]);
             if checked as u32 == 8 {
