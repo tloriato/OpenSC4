@@ -112,6 +112,7 @@ pub const fn concat<const N: usize>(lists: &[&[Port]]) -> [Port; N] {
 }
 
 /// No address is replaced twice.
+#[cfg(test)]
 pub const fn addresses_unique(ports: &[Port]) -> bool {
     let mut i = 0;
     while i < ports.len() {

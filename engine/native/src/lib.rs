@@ -112,7 +112,11 @@ mod table {
         crate::traffic::PORTS,
         crate::zone_developer::PORTS,
     ]);
-    const _: () = assert!(port::addresses_unique(&ALL), "an address has two ports");
+    // Checked in a test: the pairwise check over the whole table is too long for compile-time evaluation.
+    #[test]
+    fn addresses_unique() {
+        assert!(port::addresses_unique(&PORTS), "an address has two ports");
+    }
 
     /// Every port, in the order of the exported table.
     pub static PORTS: [Port; COUNT] = ALL;
