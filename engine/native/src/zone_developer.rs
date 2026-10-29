@@ -56,13 +56,16 @@ mod altitude;
 mod basic;
 mod boundaries;
 mod creation;
+mod cursor;
 mod deletion;
 mod dezone;
+mod dispatch;
 mod edges;
 mod examine;
 mod face;
 mod insert;
 mod jog;
+mod join;
 mod lot;
 mod manager;
 mod message;
@@ -76,8 +79,10 @@ mod region;
 mod registers;
 mod remnants;
 mod search;
+mod sizing;
 mod street;
 mod street_extension;
+mod zoning;
 
 /// Call a virtual method with its incoming scratch-register values and retain EDX:EAX.
 unsafe fn virtual_registers(this: *mut u8, slot: usize, eax: u32, edx: u32, args: &[u32]) -> u64 {
@@ -101,6 +106,8 @@ pub const PORTS: &[Port] = &crate::port::concat::<
         basic::PORTS.len()
             + boundaries::PORTS.len()
             + creation::PORTS.len()
+            + cursor::PORTS.len()
+            + dispatch::PORTS.len()
             + dezone::PORTS.len()
             + deletion::PORTS.len()
             + lot::PORTS.len()
@@ -115,19 +122,24 @@ pub const PORTS: &[Port] = &crate::port::concat::<
             + altitude::PORTS.len()
             + face::PORTS.len()
             + jog::PORTS.len()
+            + join::PORTS.len()
             + insert::PORTS.len()
             + region::PORTS.len()
             + search::PORTS.len()
+            + sizing::PORTS.len()
             + placement::PORTS.len()
             + plopped::PORTS.len()
             + street::PORTS.len()
             + street_extension::PORTS.len()
             + remnants::PORTS.len()
+            + zoning::PORTS.len()
     },
 >(&[
     basic::PORTS,
     boundaries::PORTS,
     creation::PORTS,
+    cursor::PORTS,
+    dispatch::PORTS,
     dezone::PORTS,
     deletion::PORTS,
     lot::PORTS,
@@ -142,12 +154,15 @@ pub const PORTS: &[Port] = &crate::port::concat::<
     altitude::PORTS,
     face::PORTS,
     jog::PORTS,
+    join::PORTS,
     insert::PORTS,
     region::PORTS,
     search::PORTS,
+    sizing::PORTS,
     placement::PORTS,
     plopped::PORTS,
     street::PORTS,
     street_extension::PORTS,
     remnants::PORTS,
+    zoning::PORTS,
 ]);
