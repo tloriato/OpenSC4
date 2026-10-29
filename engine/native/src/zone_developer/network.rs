@@ -195,10 +195,7 @@ port! {
     }
 }
 
-// The lookup and type query remain available for validation outside the installable table.
-const _: [Port; 2] = [fc4p_0072fca0::PORT, fc4p_0072fe10::PORT];
-
-pub(super) const PORTS: &[Port] = &[fc4p_0072fe80::PORT];
+pub(super) const PORTS: &[Port] = &[fc4p_0072fca0::PORT, fc4p_0072fe10::PORT, fc4p_0072fe80::PORT];
 
 #[cfg(test)]
 mod tests;

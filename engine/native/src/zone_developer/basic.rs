@@ -244,11 +244,9 @@ port! {
     }
 }
 
-// The pool allocator remains available for validation outside the installable table.
-const _: Port = fc4p_006bf430::PORT;
-
 pub(super) const PORTS: &[Port] = &[
     fc4p_00458960::PORT,
+    fc4p_006bf430::PORT,
     fc4p_00729eb0::PORT,
     fc4p_00729ec0::PORT,
     fc4p_00729ef0::PORT,
