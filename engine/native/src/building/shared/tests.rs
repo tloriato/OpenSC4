@@ -275,6 +275,23 @@ extern "C" fn construct_range_fake(begin: *mut u8, end: *mut u8, dest: *mut u8, 
     dest.wrapping_add((end as usize).wrapping_sub(begin as usize))
 }
 
+// Pass one stack word to the public thiscall entry and copy its overwritten value back afterwards.
+// Keep the incoming EDX in place. The ordinary pops also check the entry's stack cleanup.
+#[unsafe(naked)]
+unsafe extern "fastcall" fn assign_export(this: *mut u8, entry_edx: u32, source_word: *mut u32) -> u64 {
+    core::arch::naked_asm!(
+        "push ebx",
+        "mov ebx, [esp + 8]",
+        "push dword ptr [ebx]",
+        "call {entry}",
+        "mov ecx, [esp - 4]",
+        "mov [ebx], ecx",
+        "pop ebx",
+        "ret 4",
+        entry = sym fc4p_004e40a0,
+    );
+}
+
 #[test]
 fn allocation_copy_handles_zero_count_and_null_first_destination() {
     let _allocate = fake(0x0090_CF54, allocate_fake as *const () as usize);
@@ -334,7 +351,7 @@ fn vector_assignment_all_capacity_branches_and_return_edx() {
             target.set_end(old.add(length * 12));
             target.set_limit(old.add(capacity * 12));
             let mut source_word = src_ptr as u32;
-            let result = assign_vector(dest_ptr, 0xDEAD_BEEF, &mut source_word, src_ptr);
+            let result = assign_export(dest_ptr, 0xDEAD_BEEF, &mut source_word);
             assert_eq!(source_word, s.add(36) as u32);
             let storage = if capacity < 3 { new } else { old };
             assert_eq!(
@@ -377,16 +394,12 @@ fn vector_assignment_all_capacity_branches_and_return_edx() {
             assert_eq!(events(), expected);
         }
         let before = dest;
-        let args = [dest_ptr as u32];
-        let mut call = crate::abi::RawCall::new(
-            crate::abi::Conv::Thiscall,
-            fc4p_004e40a0 as *const () as usize,
-            dest_ptr as u32,
-            &args,
+        let mut source_word = dest_ptr as u32;
+        assert_eq!(
+            assign_export(dest_ptr, 0xDEAD_BEEF, &mut source_word),
+            (0xDEAD_BEEFu64 << 32) | u64::from(dest_ptr as u32)
         );
-        call.edx = 0xDEAD_BEEF;
-        crate::abi::call_raw(&mut call);
-        assert_eq!((call.eax, call.edx), (dest_ptr as u32, 0xDEAD_BEEF));
+        assert_eq!(source_word, dest_ptr as u32);
         assert_eq!(dest, before);
         assert!(events().is_empty());
         target.set_begin(core::ptr::null_mut());
@@ -394,7 +407,7 @@ fn vector_assignment_all_capacity_branches_and_return_edx() {
         target.set_limit(core::ptr::null_mut());
         source.set_end(s);
         let mut source_word = src_ptr as u32;
-        assign_vector(dest_ptr, 0, &mut source_word, src_ptr);
+        assign_export(dest_ptr, 0, &mut source_word);
         assert_eq!(target.end(), core::ptr::null_mut());
         assert_eq!(
             events(),
