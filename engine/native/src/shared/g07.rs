@@ -1078,33 +1078,37 @@ register_port! { fc4p_006bbc10, 0x006bbc10, "grow_zone_record_vector", 20,
     }
 }
 
-register_port! { fc4p_006e08d0, 0x006e08d0, "station_funding", 12,
-    station_funding(this, entry) {
-        // SAFETY: the budget fills a 32-byte item. Its table is captured before the station callback,
-        // but its object pointer is read again afterwards.
-        unsafe {
-            let department = word(this, 0x74) as *mut u8;
-            let table = word(department, 0) as *mut u8;
-            let purpose = word(this, 0xb0);
-            let station = entry.arg(0) as *mut u8;
-            let mut item = core::mem::MaybeUninit::<[u32; 8]>::uninit();
-            let item_ptr = item.as_mut_ptr().cast::<u8>();
-            put_word(item_ptr, 28, 0);
-            let id = virtual_result(station, 0x18, word(station, 0), purpose, &[purpose]);
-            let args = [id as u32, item_ptr as u32];
-            let mut call = crate::abi::RawCall::new(crate::abi::Conv::Thiscall,
-                word(table, 0xcc) as usize, word(this, 0x74), &args);
-            call.eax = id as u32;
-            call.edx = (id >> 32) as u32;
-            crate::abi::call_raw(&mut call);
-            if call.eax as u8 == 0 { return (u64::from(call.edx) << 32) | u64::from(call.eax); }
-            let funding = entry.arg(2) as *mut u8;
-            if !funding.is_null() { put_word(funding, 0, word(item_ptr, 28)); }
-            let cost = entry.arg(1) as *mut u8;
-            let mut edx = call.edx;
-            if !cost.is_null() { edx = word(item_ptr, 16); put_word(cost, 0, edx); }
-            (u64::from(edx) << 32) | u64::from((cost as u32 & !255) | 1)
-        }
+port! {
+    /// Keep the budget item and both virtual calls at their original stack depths. The game's
+    /// runtime retains a callee's stack address, so these calls precede Rust's own frame.
+    #[port(address = 0x006e08d0, owner = "shared", name = "station_funding", naked)]
+    pub unsafe extern "C" fn fc4p_006e08d0() {
+        // Marshal the pending purpose and item arguments across the argument-free station getter.
+        // Preserve the budget table across that getter, then reload the budget object's pointer.
+        core::arch::naked_asm!(
+            "sub esp, 32", "push esi", "mov esi, ecx",
+            "mov eax, [esi + 0x74]", "mov edx, [esi + 0xb0]", "push edi",
+            "lea ecx, [esp + 8]", "push ecx", "mov ecx, [esp + 0x30]",
+            "mov dword ptr [esp + 0x28], 0", "mov edi, [eax]", "mov eax, [ecx]",
+            "push edx", "call dword ptr [eax + 0x18]",
+            "mov ecx, [esi + 0x74]", "push eax", "call dword ptr [edi + 0xcc]",
+            "pop edi", "pop esi", "mov ecx, esp", "push edx", "mov edx, eax",
+            "call {body}", "add esp, 32", "ret 12",
+            body = sym station_funding,
+        );
+    }
+}
+
+unsafe extern "fastcall" fn station_funding(item_ptr: *mut u8, eax: u32, mut edx: u32) -> u64 {
+    // SAFETY: the entry supplies the budget result and original item above Rust's frame.
+    // The original return address and station, cost, and funding arguments follow the item.
+    unsafe {
+        if eax as u8 == 0 { return (u64::from(edx) << 32) | u64::from(eax); }
+        let funding = word(item_ptr, 44) as *mut u8;
+        if !funding.is_null() { put_word(funding, 0, word(item_ptr, 28)); }
+        let cost = word(item_ptr, 40) as *mut u8;
+        if !cost.is_null() { edx = word(item_ptr, 16); put_word(cost, 0, edx); }
+        (u64::from(edx) << 32) | u64::from((cost as u32 & !255) | 1)
     }
 }
 
@@ -4959,8 +4963,8 @@ mod tests {
             }
         }
     }
-    extern "thiscall" fn station_id(this: *mut u8, purpose: u32) -> u64 {
-        record(this, &[purpose]);
+    extern "thiscall" fn station_holder(this: *mut u8) -> u64 {
+        record(this, &[]);
         // SAFETY: swap the simulator's department so the next call must reload its object pointer.
         unsafe {
             put_word(
@@ -4971,15 +4975,106 @@ mod tests {
         }
         0x11223344_55667788
     }
-    extern "thiscall" fn funding_item(this: *mut u8, id: u32, output: *mut u8) -> u64 {
-        // SAFETY: the caller initialized only the item's final word; the budget writes the rest.
+    extern "thiscall" fn funding_item(this: *mut u8, holder: u32, purpose: u32, output: *mut u8) -> u64 {
+        // SAFETY: the caller initialized the item's final word; the budget supplies cost and funding.
         unsafe {
-            record(this, &[id, word(output, 28)]);
+            record(this, &[holder, purpose, word(output, 28)]);
             put_word(output, 16, ITEM_COST.with(|v| v.get()));
             put_word(output, 20, 1);
             put_word(output, 28, ITEM_FUNDING.with(|v| v.get()));
         }
         (RESULT & 0xffff_ffff_0000_0000) | u64::from(ANSWER.with(|v| v.get()))
+    }
+    thread_local! {
+        static FUNDING_ITEM_SNAPSHOT: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
+    }
+    #[unsafe(naked)]
+    unsafe extern "C" fn snapshot_station_holder() {
+        core::arch::naked_asm!("mov [ecx + 12], esp", "jmp {body}", body = sym station_holder);
+    }
+    #[unsafe(naked)]
+    unsafe extern "C" fn snapshot_funding_item() {
+        core::arch::naked_asm!("mov [ecx + 4], esp", "jmp {body}", body = sym snapshot_funding_item_body);
+    }
+    extern "thiscall" fn snapshot_funding_item_body(this: *mut u8, holder: u32, purpose: u32, output: *mut u8) -> u64 {
+        // SAFETY: the test seeds every byte of the item's original frame slot before entry.
+        unsafe {
+            FUNDING_ITEM_SNAPSHOT.with(|v| {
+                let mut snapshot = v.borrow_mut();
+                snapshot.clear();
+                snapshot.push(output as u32);
+                for offset in (0..32).step_by(4) {
+                    snapshot.push(word(output, offset));
+                }
+            });
+        }
+        funding_item(this, holder, purpose, output)
+    }
+    /// Seed the original item slot and save its address in the test station's second word.
+    #[unsafe(naked)]
+    unsafe extern "C" fn seeded_station_funding() {
+        core::arch::naked_asm!(
+            "sub esp, 32", "mov eax, [esp + 36]", "mov [eax + 4], esp", "mov edx, [eax + 8]",
+            "mov [esp], edx", "inc edx", "mov [esp + 4], edx", "inc edx",
+            "mov [esp + 8], edx", "inc edx", "mov [esp + 12], edx", "inc edx",
+            "mov [esp + 16], edx", "inc edx", "mov [esp + 20], edx", "inc edx",
+            "mov [esp + 24], edx", "inc edx", "mov [esp + 28], edx",
+            "add esp, 32", "jmp {entry}", entry = sym fc4p_006e08d0,
+        );
+    }
+    #[test]
+    fn station_funding_preserves_original_item_slot_and_initializes_only_its_last_word() {
+        ITEM_COST.with(|v| v.set(0x87654321));
+        ITEM_FUNDING.with(|v| v.set(0x7fc12345));
+        let mut simulator = Object::new(0xb4);
+        let p = simulator.ptr();
+        let mut station = Object::new(16);
+        let s = station.ptr();
+        let mut department = Object::new(8);
+        let q = department.ptr();
+        let mut table = [0usize; 52];
+        table[6] = snapshot_station_holder as *const () as usize;
+        table[0xcc / 4] = snapshot_funding_item as *const () as usize;
+        // SAFETY: live station and department share a table with their distinct callback slots.
+        unsafe {
+            put_word(s, 0, table.as_ptr() as u32);
+            put_word(q, 0, table.as_ptr() as u32);
+            put_word(p, 0xb0, 0xea567bc3);
+        }
+        HOLDER.with(|v| v.set(p as u32));
+        NEXT_SERVICE.with(|v| v.set(q as u32));
+        for seed in [0u32, 0x006c2040, 0xa5a5a5a5, u32::MAX] {
+            for answer in [0u32, 0xdeadbe00, 1, 0x12345680] {
+                ANSWER.with(|v| v.set(answer));
+                let mut output = [0xa5a5a5a5u32; 2];
+                let out = output.as_mut_ptr();
+                // SAFETY: restore the service and supply the stack-seeding entry's input word.
+                unsafe {
+                    put_word(p, 0x74, q as u32);
+                    put_word(s, 8, seed);
+                }
+                let result = invoke(seeded_station_funding as *const () as usize, p,
+                    &[s as u32, out as u32, out.wrapping_add(1) as u32]);
+                // SAFETY: the entry saved its original item's address in this live test field.
+                let mut expected = vec![unsafe { word(s, 4) }];
+                // SAFETY: the two callback entries recorded their entry stack pointers.
+                unsafe {
+                    assert_eq!(word(s, 12), expected[0].wrapping_sub(20));
+                    assert_eq!(word(q, 4), expected[0].wrapping_sub(24));
+                }
+                expected.extend((0..7).map(|index| seed.wrapping_add(index)));
+                expected.push(0);
+                FUNDING_ITEM_SNAPSHOT.with(|v| assert_eq!(*v.borrow(), expected));
+                assert_eq!(calls(), vec![(s as u32, vec![]), (q as u32, vec![0x55667788, 0xea567bc3, 0])]);
+                if answer as u8 == 0 {
+                    assert_eq!(result, (answer, (RESULT >> 32) as u32));
+                    assert_eq!(output, [0xa5a5a5a5; 2]);
+                } else {
+                    assert_eq!(result, ((out as u32 & !255) | 1, 0x87654321));
+                    assert_eq!(output, [0x87654321, 0x7fc12345]);
+                }
+            }
+        }
     }
     #[test]
     fn station_funding_uses_saved_table_reloaded_service_optional_outputs_and_low_byte() {
@@ -4996,7 +5091,7 @@ mod tests {
         let mut table = [0usize; 52];
         table[0xcc / 4] = funding_item as *const () as usize;
         let mut station_table = [0usize; 7];
-        station_table[6] = station_id as *const () as usize;
+        station_table[6] = station_holder as *const () as usize;
         // SAFETY: the replacement deliberately has no usable table: the original captured table must be used.
         unsafe {
             put_word(s, 0, station_table.as_ptr() as u32);
@@ -5037,7 +5132,7 @@ mod tests {
                         assert_eq!(result, (answer, (RESULT >> 32) as u32));
                     }
                     assert_eq!(memory(out, 16), expected);
-                    assert_eq!(calls(), vec![(s as u32, vec![0x12]), (q2 as u32, vec![0x55667788, 0])]);
+                    assert_eq!(calls(), vec![(s as u32, vec![]), (q2 as u32, vec![0x55667788, 0x12, 0])]);
                 }
             }
         }
@@ -6199,7 +6294,7 @@ mod tests {
         let mut department = Object::new(4);
         let q = department.ptr();
         let mut table = [0usize; 52];
-        table[6] = station_id as *const () as usize;
+        table[6] = station_holder as *const () as usize;
         table[0xcc / 4] = funding_item as *const () as usize;
         // SAFETY: the station and department use separate slots in the same live table.
         unsafe {
@@ -6221,7 +6316,7 @@ mod tests {
         assert_eq!(output, [5, 0.6f32.to_bits()]);
         assert_eq!(
             calls(),
-            vec![(s as u32, vec![0xea567bc3]), (q as u32, vec![0x55667788, 0])]
+            vec![(s as u32, vec![]), (q as u32, vec![0x55667788, 0xea567bc3, 0])]
         );
     }
 }
