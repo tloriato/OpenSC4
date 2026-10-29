@@ -885,6 +885,7 @@ float_slot!(lot_altitude_float, lot_altitude_body, 0);
 
 mod services;
 mod callbacks;
+mod area_slope;
 mod foundation_bottom;
 mod pick_foundation;
 mod add_foundation;
