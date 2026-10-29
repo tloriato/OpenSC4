@@ -211,4 +211,4 @@ unsafe extern "fastcall" fn read_fields(this: *mut u8, entry_edx: u32, stack: *m
     }
 }
 
-pub const PORTS: &[Port] = &[];
+pub const PORTS: &[Port] = &[fc4p_006f0880::PORT];

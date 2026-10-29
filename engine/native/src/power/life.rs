@@ -188,10 +188,11 @@ unsafe fn register_agent(scheduler: *mut u8, this: *mut u8, phase: u32, name: *m
     // message target and scheduler in the same preserved registers throughout registration.
     unsafe {
         core::arch::asm!(
-            "push ebx", "push 2", "push {name}", "push {phase}", "lea ebx, [esi + 4]",
-            "push ebx", "mov ecx, edi", "mov eax, [edi]", "call dword ptr [eax + 0x4c]", "pop ebx",
+            "push esi", "push ebx", "push 2", "push {name}", "push {phase}",
+            "mov esi, {this}", "lea ebx, [esi + 4]",
+            "push ebx", "mov ecx, edi", "mov eax, [edi]", "call dword ptr [eax + 0x4c]", "pop ebx", "pop esi",
             name = in(reg) name, phase = in(reg) phase,
-            in("esi") this, in("edi") scheduler, clobber_abi("C"),
+            this = in(reg) this, in("edi") scheduler, clobber_abi("C"),
         );
     }
 }
