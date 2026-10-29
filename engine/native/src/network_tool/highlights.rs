@@ -415,7 +415,10 @@ unsafe extern "fastcall" fn highlight_step(
     }
 }
 
-pub const PORTS: &[Port] = &[fc4p_006299a0::PORT];
+pub const PORTS: &[Port] = {
+    let _ = fc4p_006299a0::PORT;
+    &[]
+};
 
 #[cfg(test)]
 mod tests;
