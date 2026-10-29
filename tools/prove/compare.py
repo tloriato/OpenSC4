@@ -2,6 +2,17 @@
 from .machine import st_of_ctx
 
 
+def call_values(a, b):
+    """Compare a pointer into either live frame by its frame role, not its address."""
+    frames = (a['frame'], b['frame'])
+    def value(v):
+        return '<frame>' if any(lo <= v < hi for lo, hi in frames) else v
+    def normal(call):
+        return dict(target=call['target'], registers={n: value(v) for n, v in call['registers'].items()},
+                    arguments=None if call['arguments'] is None else [value(v) for v in call['arguments']])
+    return normal(a), normal(b)
+
+
 def context_result(state):
     f = state['fpu']
     return dict(regs=state['regs'], eflags=state['regs']['eflags'],
@@ -29,11 +40,19 @@ def difference(left, right, parts, a_pages, b_pages, initial, stack):
     for name, mask in (('eflags', 0x400), ('mxcsr', 0xffc0)):
         if left[name] & mask != right[name] & mask:
             return dict(field=name, original=hex(left[name] & mask), ours=hex(right[name] & mask))
-    if left.get('trace') != right.get('trace'):
-        a, b = left.get('trace', []), right.get('trace', [])
-        n = next((i for i, (x, y) in enumerate(zip(a, b)) if x != y), min(len(a), len(b)))
-        return dict(field=f'call[{n}]', original=a[n] if n < len(a) else None,
-                    ours=b[n] if n < len(b) else None)
+    a, b = left.get('trace', []), right.get('trace', [])
+    for n in range(max(len(a), len(b))):
+        x, y = (a[n] if n < len(a) else None), (b[n] if n < len(b) else None)
+        if x is not None and y is not None:
+            if x['target'] == y['target'] and x['registers'] == y['registers'] and x['arguments'] == y['arguments']:
+                continue
+            normalized = call_values(x, y)
+            if normalized[0] == normalized[1]:
+                continue
+            detail = dict(zip(('normalized_original', 'normalized_ours'), normalized))
+        else:
+            detail = {}
+        return dict(field=f'call[{n}]', original=x, ours=y, **detail)
     for p in sorted(a_pages.keys() | b_pages.keys()):
         if stack[0] <= p and p+4096 <= min(stack[1], left['regs']['esp']):
             continue

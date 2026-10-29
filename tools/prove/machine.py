@@ -56,7 +56,8 @@ class Machine:
         uc = self.uc
         uc.hook_add(UC_HOOK_MEM_UNMAPPED, self._unmapped)
         uc.hook_add(UC_HOOK_INSN_INVALID, self._vector_instruction)
-        uc.hook_add(UC_HOOK_BLOCK, self._budget)
+        self.budget_hook = uc.hook_add(UC_HOOK_BLOCK, self._budget)
+        self.quantum = 1_000_000
         self.x87 = x87host.Host(uc, x87_sites)
         for a in sorted(set(clock_sites)):
             uc.hook_add(UC_HOOK_CODE, self._clock, None, a, a)
@@ -128,6 +129,9 @@ class Machine:
     def write(self, addr, data):
         if not self.ensure(addr, len(data)):
             raise Fault(f'{addr:#x} is not captured')
+        observer = getattr(self, 'write_observer', None)
+        if observer:
+            observer(addr, data)
         self.uc.mem_write(addr, data)
 
     def map_image(self, base, image):
@@ -277,7 +281,7 @@ class Machine:
                     self.uc.mem_map(p, PAGE, UC_PROT_ALL)
                     self.entry[p] = ZERO
                     self.commits.add(p)
-            uc.mem_write(args[1], struct.pack('<I', lo)); uc.mem_write(args[3], struct.pack('<I', hi - lo))
+            self.write(args[1], struct.pack('<I', lo)); self.write(args[3], struct.pack('<I', hi - lo))
             self.syscalls.append(('NtAllocateVirtualMemory commit', lo, hi - lo))
             uc.reg_write(UC_X86_REG_EAX, 0)
             uc.reg_write(UC_X86_REG_EIP, struct.unpack('<I', bytes(uc.mem_read(esp, 4)))[0])
@@ -381,7 +385,7 @@ class Machine:
             try:
                 # A block deadline plus an instruction quantum avoids starting
                 # an OS timer thread for each tiny variant replay.
-                uc.emu_start(start, ret, count=1_000_000)
+                uc.emu_start(start, ret, count=self.quantum)
             except UcError as e:
                 kind = 'fault' if self.faults else 'exception'
                 eip_now = uc.reg_read(UC_X86_REG_EIP)

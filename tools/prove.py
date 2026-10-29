@@ -18,13 +18,20 @@ def main():
     cap.add_argument('--replay-timeout', type=float, default=30)
     chk = sub.add_parser('check')
     chk.add_argument('functions')
-    chk.add_argument('--dll', type=Path, default=Path('engine/build-x86/fc4native.dll'))
+    chk.add_argument('--dll', type=Path, default=Path('engine/target/i686-pc-windows-msvc/release/fc4native.dll'))
     chk.add_argument('--variants', type=int, default=1000)
     chk.add_argument('--seed', type=int, default=0xFC4)
     chk.add_argument('--report', type=Path)
     chk.add_argument('--no-proven', action='store_true', help='for deliberately broken self-test DLLs')
+    chk.add_argument('--keep-going', action='store_true', help='test all captures and variants, retaining the first difference')
     sub.add_parser('list')
+    selftest = sub.add_parser('selftest', help='build and check the Rust baseline and seventeen mutations')
+    selftest.add_argument('--variants', type=int, default=1000)
+    selftest.add_argument('--seed', type=int, default=0xFC4)
     args = ap.parse_args()
+    if args.command == 'selftest':
+        from prove.selftest import run
+        return run(args)
     if args.command == 'capture':
         from prove.capture import capture
         if args.hits < 1 or args.timeout < 1:

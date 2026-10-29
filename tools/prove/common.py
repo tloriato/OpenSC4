@@ -338,9 +338,10 @@ def abi_args(target):
     row = abi().get(target)
     if not row:
         return None
+    if row.get('confidence') == 'low':
+        return None  # a low-confidence cleanup attribution is not a known arity
     regs = [r for r in (row.get('reg_args') or '').split(',') if r and r != 'none']
     n = row.get('stack_arg_dwords') or ''
     if not n.isdigit():
-        m = re.search(r'body_stack_dwords=(\d+)', row.get('notes') or '')
-        n = m.group(1) if m else '0'
+        return None
     return regs, int(n)

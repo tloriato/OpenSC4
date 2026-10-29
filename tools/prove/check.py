@@ -13,6 +13,7 @@ from .compare import difference, context_result
 from .pe import Port
 from .replay import Replay
 from .variants import variants
+from .calls import CALL_INPUTS
 
 
 def same(replay, left, right, parts):
@@ -75,6 +76,7 @@ def update_proven(rows):
 
 
 def check(args, targets):
+    keep_going = getattr(args, 'keep_going', False)
     # Copy the input once: a concurrent engine build must not change our image.
     raw = args.dll.read_bytes()
     sha = hashlib.sha256(raw).hexdigest()
@@ -92,23 +94,33 @@ def check(args, targets):
     all_start = time.perf_counter()
     for a in targets:
         start = time.perf_counter()
-        cs = records[a]
+        cs = [c for c in records[a] if c['validation']['valid']]
         parts, evidence = channel(a, [c['ret'] for c in cs])
         result = dict(address=f'{a:08x}', name=name_of(a), owner=owner_of(a), verdict='EXACT',
                       captures=0, variants=0, skipped=0, scenarios='', dll_sha256=sha,
                       return_channel=describe(parts), channel_evidence=evidence, difference=None,
-                      invalid_captures=[], skips=[], seed=args.seed, requested_variants=args.variants)
+                      invalid_captures=[c['_path'] for c in records[a] if not c['validation']['valid']],
+                      skips=[], seed=args.seed, requested_variants=args.variants,
+                      capture_failures=0, variant_failures=0, unattempted_variants=0, unknown_call_targets=[])
         result['available_captures'] = len(cs)
         scenarios = set()
         if a not in port.exports:
             result['difference'] = dict(field='missing export', export=f'fc4p_{a:08x}')
+            result['unattempted_variants'] = args.variants
         if not cs:
             result['difference'] = dict(field='no captures')
+            result['unattempted_variants'] = args.variants
         next_variant = 0
+        unknown_calls = set()
+        progress_time = time.perf_counter()
         for capture_index, rec in enumerate(cs):
-            if result['difference']:
+            if result['difference'] and not keep_going:
+                break
+            if a not in port.exports:
                 break
             ident = str(Path(rec['_path']).relative_to(OUT))
+            quota = args.variants // len(cs) + (capture_index < args.variants % len(cs))
+            next_variant = (args.variants // len(cs))*capture_index + min(capture_index, args.variants % len(cs))
             if not rec['validation']['valid']:
                 result['invalid_captures'].append(ident)
                 result['difference'] = dict(capture=ident, field='invalid capture', detail=rec['validation'])
@@ -117,30 +129,47 @@ def check(args, targets):
             scenarios.add(rec['scenario'])
             r = Replay(rec, store, port, targets)
             original, reads, nondet = twice(r, False, parts, collect=True)
+            unknown_calls.update(c['target'] for c in original[0]['trace'] if c['arguments'] is None)
             if nondet:
-                result['difference'] = dict(capture=ident, field='original replay nondeterminism', detail=nondet)
+                result['difference'] = result['difference'] or dict(capture=ident, field='original replay nondeterminism', detail=nondet)
+                result['capture_failures'] += 1
+                if keep_going:
+                    result['unattempted_variants'] += quota
+                    continue
                 break
             if original[0]['err']:
-                result['difference'] = dict(capture=ident, field='original replay failed', detail=original[0]['err'])
+                result['difference'] = result['difference'] or dict(capture=ident, field='original replay failed', detail=original[0]['err'])
+                result['capture_failures'] += 1
+                if keep_going:
+                    result['unattempted_variants'] += quota
+                    continue
                 break
             invalid = validate_replay(rec, r, original, store)
             if invalid:
-                result['difference'] = dict(capture=ident, field='CPU validation failed with current emulator', detail=invalid)
+                result['difference'] = result['difference'] or dict(capture=ident, field='CPU validation failed with current emulator', detail=invalid)
+                result['capture_failures'] += 1
+                if keep_going:
+                    result['unattempted_variants'] += quota
+                    continue
                 break
             ours, _, nondet = twice(r, True, parts)
             diff = nondet or same(r, original, ours, parts)
             if diff:
-                n = abi_args(a)
-                n = n[1] if n else 4
+                n = CALL_INPUTS.entry_arity(rec)
                 esp = rec['entry']['regs']['esp']
-                words = []
+                words = [] if n == 0 else None
                 if n and r.m.ensure(esp+4, n*4):
                     words = [f'{v:08x}' for v in struct.unpack('<'+'I'*n, r.m.read(esp+4, n*4))]
-                result['difference'] = dict(capture=ident, input=dict(kind='captured', stack_arguments=words,
+                result['capture_failures'] += 1
+                result['difference'] = result['difference'] or dict(capture=ident, input=dict(kind='captured', stack_arguments=words,
                     registers={k: f'{v:08x}' for k, v in rec['entry']['regs'].items()}), **diff)
-                break
-            quota = args.variants // len(cs) + (capture_index < args.variants % len(cs))
+                if not keep_going:
+                    break
             for inp, state, writes in variants(rec, r, reads, quota, args.seed, start=next_variant):
+                if time.perf_counter()-progress_time >= 20:
+                    print(f'{a:08x}: capture {capture_index+1}/{len(cs)}, input {inp["id"]}/{args.variants}; '
+                          f'{result["variants"]} passing, {result["variant_failures"]} different, {result["skipped"]} skipped', flush=True)
+                    progress_time = time.perf_counter()
                 r.m.state = state
                 try:
                     for addr, data in writes:
@@ -162,24 +191,30 @@ def check(args, targets):
                     two = run_variant(False)
                     diff = deterministic_difference(one, two)
                     if diff:
-                        result['difference'] = dict(capture=ident, input=inp, field='original variant nondeterminism', detail=diff)
+                        result['difference'] = result['difference'] or dict(capture=ident, input=inp, field='original variant nondeterminism', detail=diff)
+                        result['variant_failures'] += 1
+                        if keep_going:
+                            continue
                         break
                     ours = run_variant(True)
                     repeated = run_variant(True)
                     diff = deterministic_difference(ours, repeated) or same(r, one, ours, parts)
                     if diff:
-                        result['difference'] = dict(capture=ident, input=inp, **diff)
+                        result['difference'] = result['difference'] or dict(capture=ident, input=inp, **diff)
+                        result['variant_failures'] += 1
+                        if keep_going:
+                            continue
                         break
                     result['variants'] += 1
                 finally:
                     r.m.restore()
                     r.m.state = rec['entry']
-            if result['difference']:
+            if result['difference'] and not keep_going:
                 break
-            next_variant += quota
         if result['difference']:
             result['verdict'] = 'DIFFERENT'
         result['scenarios'] = ','.join(sorted(scenarios))
+        result['unknown_call_targets'] = sorted(unknown_calls)
         result['seconds'] = time.perf_counter()-start
         results.append(result)
         print(json.dumps({k: v for k, v in result.items() if k != 'skips'}), flush=True)
@@ -187,7 +222,8 @@ def check(args, targets):
     report = args.report or OUT / 'checks' / f'{time.strftime("%Y%m%d-%H%M%S")}-{sha[:8]}.json'
     report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text(json.dumps(dict(dll=str(args.dll), sha256=sha, mapped_base=hex(port.base),
-                                     seconds=time.perf_counter()-all_start, results=results), indent=2))
+                                     seconds=time.perf_counter()-all_start, results=results,
+                                     call_input_decisions=CALL_INPUTS.decisions), indent=2))
     if not args.no_proven:
         update_proven(results)
     print(f'report: {report}', flush=True)

@@ -3,7 +3,7 @@ import copy
 import random
 import struct
 
-from .common import abi_args
+from .calls import CALL_INPUTS
 
 # Integer boundaries and float bit patterns, including the 32-bit conversion
 # overflow region where truncating to 64 bits differs from cvttss2si.
@@ -43,8 +43,7 @@ def variants(rec, replay, reads, count, seed, start=0):
         if n == 8 and any(pointer(int.from_bytes(data[i:i+4], 'little')) for i in (0, 4)):
             continue
         fields.append(('memory', addr, n))
-    args = abi_args(rec['function'])
-    nargs = args[1] if args else 4
+    nargs = CALL_INPUTS.entry_arity(rec) or 0
     targets = [('register', name, 4) for name in ('edi', 'esi', 'ebx', 'ebp', 'eax', 'edx', 'ecx')]
     top = (rec['entry']['fpu']['sw'] >> 11) & 7
     if (rec['entry']['fpu']['tw'] >> (top*2)) & 3 != 3:
