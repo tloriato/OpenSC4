@@ -118,8 +118,10 @@ mod table {
         assert!(port::addresses_unique(&PORTS), "an address has two ports");
     }
 
-    /// Every port, in the order of the exported table.
-    pub static PORTS: [Port; COUNT] = ALL;
+    const INSTALLABLE: usize = port::count_installable(&ALL);
+
+    /// Every port the loader can install (see [`port::SHORT`]), in the order of the exported table.
+    pub static PORTS: [Port; INSTALLABLE] = port::installable(&ALL);
 
     /// The table the loader reads (see [`PortTable`]).
     #[no_mangle]

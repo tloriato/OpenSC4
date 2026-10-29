@@ -111,6 +111,71 @@ pub const fn concat<const N: usize>(lists: &[&[Port]]) -> [Port; N] {
     out
 }
 
+/// Entries of the exe's functions that end fewer than 5 bytes before the next function begins, in address order.
+/// The loader's 5-byte jump would overwrite the start of the next function, so their ports stay out of the table
+/// the loader reads; their exports remain for `prove`.
+pub const SHORT: [u32; 112] = [
+    0x0087_524B, 0x0087_5259, 0x0087_5277, 0x0087_527B, 0x0087_527F, 0x0087_5283, 0x0087_5287, 0x0087_528B,
+    0x0087_528F, 0x0087_5784, 0x0087_5788, 0x0087_578C, 0x0087_5790, 0x0087_7815, 0x0087_8C04, 0x0087_93F9,
+    0x0087_B357, 0x0088_FEF8, 0x0089_1D96, 0x0089_6662, 0x0089_6666, 0x008D_2B70, 0x008D_3668, 0x008F_697D,
+    0x0090_06D6, 0x0091_297E, 0x0091_C264, 0x0091_C570, 0x0092_0C3F, 0x0092_53D7, 0x0092_B351, 0x0093_2B83,
+    0x0093_34E3, 0x0093_9792, 0x0093_998F, 0x0093_E47C, 0x0093_E47F, 0x0093_F933, 0x0094_0DA8, 0x0094_595C,
+    0x0094_5E3B, 0x0094_5E3F, 0x0094_5E43, 0x0094_8B85, 0x0094_9ADE, 0x0094_9B47, 0x0094_9B73, 0x0094_A5EA,
+    0x0096_831B, 0x0096_8329, 0x0096_8337, 0x0096_BA27, 0x0096_BC99, 0x0096_BC9D, 0x0096_C061, 0x0096_C470,
+    0x0096_C474, 0x0096_C478, 0x0096_D8B9, 0x0096_E960, 0x0097_9419, 0x0097_B493, 0x0097_B4A1, 0x0097_CE34,
+    0x0097_E89E, 0x0097_F070, 0x0099_35E3, 0x0099_35F8, 0x0099_3660, 0x0099_3673, 0x0099_5D93, 0x0099_5E67,
+    0x0099_9165, 0x0099_B7EE, 0x0099_B951, 0x0099_BCE8, 0x0099_BE4C, 0x0099_BE50, 0x0099_BE66, 0x0099_BEF9,
+    0x0099_BEFD, 0x009C_32AC, 0x009C_48CE, 0x009C_5C96, 0x009C_5E01, 0x009C_879F, 0x009C_87BF, 0x009C_88DE,
+    0x009C_8A3B, 0x009C_DC23, 0x009C_DC27, 0x009C_EC4A, 0x009C_EDE1, 0x009D_4199, 0x009D_419D, 0x009D_41A1,
+    0x009D_41A5, 0x009D_41A9, 0x009D_41AD, 0x009D_449C, 0x009D_4714, 0x009D_7E63, 0x009D_8539, 0x009D_8564,
+    0x009D_858F, 0x009D_AA18, 0x009D_B021, 0x009D_B37A, 0x009D_B663, 0x009D_B800, 0x00A6_D837, 0x00A7_F35F,
+];
+
+/// A jump at `address` stays inside its function (`address` is not in [`SHORT`]).
+pub const fn jump_fits(address: u32) -> bool {
+    let (mut lo, mut hi) = (0, SHORT.len());
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if SHORT[mid] == address {
+            return false;
+        }
+        if SHORT[mid] < address {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    true
+}
+
+/// How many of `ports` the loader can install.
+pub const fn count_installable(ports: &[Port]) -> usize {
+    let mut n = 0;
+    let mut i = 0;
+    while i < ports.len() {
+        if jump_fits(ports[i].address) {
+            n += 1;
+        }
+        i += 1;
+    }
+    n
+}
+
+/// The ports the loader can install, in order (`N` = [`count_installable`]).
+pub const fn installable<const N: usize>(ports: &[Port]) -> [Port; N] {
+    let mut out = [Port::EMPTY; N];
+    let (mut i, mut k) = (0, 0);
+    while i < ports.len() {
+        if jump_fits(ports[i].address) {
+            out[k] = ports[i];
+            k += 1;
+        }
+        i += 1;
+    }
+    assert!(k == N, "installable port count");
+    out
+}
+
 /// No address is replaced twice.
 #[cfg(test)]
 pub const fn addresses_unique(ports: &[Port]) -> bool {
@@ -253,6 +318,13 @@ mod tests {
         assert!(!export_name_matches("fc4p_006BD540", 0x006B_D540));
         assert!(!export_name_matches("fc4p_006bd541", 0x006B_D540));
         assert!(!export_name_matches("fc4p_06bd540", 0x006B_D540));
+    }
+
+    #[test]
+    fn short_functions_sorted_and_left_out() {
+        assert!(SHORT.windows(2).all(|w| w[0] < w[1]));
+        assert!(!jump_fits(0x0096_D8B9) && jump_fits(0x0096_D8B0));
+        assert!(crate::PORTS.iter().all(|p| jump_fits(p.address)));
     }
 
     #[test]
