@@ -23,18 +23,24 @@ layout! {
         0x08 => message_vtable / set_message_vtable: u32,
         0x0C => serializable_vtable / set_serializable_vtable: u32,
         0x14 => references / set_references: i32,
+        0x18 => message_server / set_message_server: *mut u8,
         0x24 => city / set_city: *mut u8,
         0x28 => cells_x / set_cells_x: i32,
         0x2C => cells_z / set_cells_z: i32,
+        0x30 => occupant_manager / set_occupant_manager: *mut u8,
         0x34 => terrain / set_terrain: *mut u8,
         0x38 => renderer / set_renderer: *mut u8,
         0x40 => zone_manager / set_zone_manager: *mut u8,
+        0x44 => dirt_tool / set_dirt_tool: *mut u8,
         0x48 => street_tool / set_street_tool: *mut u8,
         0x4C => road_tool / set_road_tool: *mut u8,
         0x50 => lot_configuration / set_lot_configuration: *mut u8,
         0x99 => real_mode / set_real_mode: u8,
+        0x9A => place_streets / set_place_streets: u8,
         0xA0 => current_zone / set_current_zone: u32,
         0xA4 => restriction / set_restriction: *mut u8,
+        0xCC => orientation_q / set_orientation_q: u32,
+        0xD0 => orientation_d / set_orientation_d: u32,
         0xD8 => virtual_lot_header / set_virtual_lot_header: *mut u8,
         0xDC => virtual_lot_count / set_virtual_lot_count: u32,
         0xE4 => deleted_lot_header / set_deleted_lot_header: *mut u8,
@@ -44,15 +50,21 @@ layout! {
 
 mod altitude;
 mod basic;
+mod deletion;
+mod dezone;
 mod edges;
+mod examine;
 mod face;
 mod lot;
 mod manager;
+mod network;
 mod occupancy;
+mod parcels;
 mod placement;
 mod region;
 mod registers;
 mod remnants;
+mod search;
 mod street;
 
 /// Call a virtual method with its incoming scratch-register values and retain EDX:EAX.
@@ -75,26 +87,38 @@ unsafe fn virtual_registers(this: *mut u8, slot: usize, eax: u32, edx: u32, args
 pub const PORTS: &[Port] = &crate::port::concat::<
     {
         basic::PORTS.len()
+            + dezone::PORTS.len()
+            + deletion::PORTS.len()
             + lot::PORTS.len()
             + edges::PORTS.len()
+            + examine::PORTS.len()
             + manager::PORTS.len()
+            + network::PORTS.len()
             + occupancy::PORTS.len()
+            + parcels::PORTS.len()
             + altitude::PORTS.len()
             + face::PORTS.len()
             + region::PORTS.len()
+            + search::PORTS.len()
             + placement::PORTS.len()
             + street::PORTS.len()
             + remnants::PORTS.len()
     },
 >(&[
     basic::PORTS,
+    dezone::PORTS,
+    deletion::PORTS,
     lot::PORTS,
     edges::PORTS,
+    examine::PORTS,
     manager::PORTS,
+    network::PORTS,
     occupancy::PORTS,
+    parcels::PORTS,
     altitude::PORTS,
     face::PORTS,
     region::PORTS,
+    search::PORTS,
     placement::PORTS,
     street::PORTS,
     remnants::PORTS,
