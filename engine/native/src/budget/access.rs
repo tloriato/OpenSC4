@@ -145,7 +145,7 @@ unsafe extern "fastcall" fn prepare_funding_change(_this: *mut u8, frame: *mut u
 
 #[unsafe(naked)]
 unsafe extern "C" fn finish_funding_change() {
-    core::arch::naked_asm!("pop esi", "ret 4");
+    core::arch::naked_asm!("xor ecx, ecx", "pop esi", "ret 4");
 }
 
 #[unsafe(naked)]
