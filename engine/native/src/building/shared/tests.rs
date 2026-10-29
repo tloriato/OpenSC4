@@ -11,6 +11,7 @@ enum Event {
     BaseConstruct(usize),
     BaseDestroy(usize),
     PoolGrow(usize),
+    PoolGrowRegisters(u32, u32, u32),
     PoolEmpty(usize, usize),
     PoolReorder(usize, usize),
     Allocate(u32),
@@ -77,6 +78,19 @@ extern "thiscall" fn grow_pool(this: *mut u8) -> *mut u8 {
         write_unaligned(active_page(), page as *mut u8);
     }
     result as *mut u8
+}
+
+#[unsafe(naked)]
+unsafe extern "thiscall" fn grow_pool_registers(_this: *mut u8) -> *mut u8 {
+    core::arch::naked_asm!(
+        "push edx", "push ecx", "push eax", "call {body}", "add esp, 12", "ret",
+        body = sym check_grow_registers,
+    );
+}
+
+extern "C" fn check_grow_registers(eax: u32, ecx: u32, edx: u32) -> *mut u8 {
+    record(Event::PoolGrowRegisters(eax, ecx, edx));
+    grow_pool(ecx as *mut u8)
 }
 extern "thiscall" fn empty_pool(this: *mut u8, page: *mut u8) -> u64 {
     record(Event::PoolEmpty(this as usize, page as usize));
@@ -145,7 +159,10 @@ fn pool_allocation_reloads_the_active_page_after_growth() {
         write_unaligned(p1.add(8).cast::<*mut u8>(), first);
         write_unaligned(first.cast::<*mut u8>(), second);
         write_unaligned(p1.add(12).cast::<u32>(), u32::MAX);
-        assert_eq!(fc4p_00458a60(), (u64::from(p1 as u32) << 32) | u64::from(first as u32));
+        assert_eq!(
+            fc4p_00458a60(0, 0),
+            (u64::from(p1 as u32) << 32) | u64::from(first as u32)
+        );
         assert_eq!(read_unaligned(p1.add(8).cast::<*mut u8>()), second);
         assert_eq!(read_unaligned(p1.add(12).cast::<u32>()), 0);
         assert!(events().is_empty());
@@ -157,11 +174,62 @@ fn pool_allocation_reloads_the_active_page_after_growth() {
             s.new_page = p2 as usize;
             s.allocation = grown as usize;
         });
-        assert_eq!(fc4p_00458a60(), (u64::from(p2 as u32) << 32) | u64::from(grown as u32));
+        assert_eq!(
+            fc4p_00458a60(0, 0),
+            (u64::from(p2 as u32) << 32) | u64::from(grown as u32)
+        );
         assert_eq!(current, p2);
         assert_eq!(read_unaligned(p2.add(12).cast::<u32>()), 1);
         assert_eq!(read_unaligned(p2.add(8).cast::<*mut u8>()), p2.add(160));
         assert_eq!(events(), [Event::PoolGrow(&mut context as *mut u8 as usize)]);
+    }
+}
+
+#[test]
+fn pool_growth_receives_null_eax_and_the_callers_edx() {
+    let _grow = fake(0x0090_CF9A, grow_pool_registers as *const () as usize);
+    let mut context = 0u8;
+    let _context = fake_data(0x00B0_7F1C, &mut context);
+    let mut old_page = [0u32; 8];
+    let mut new_page = [0u32; 8];
+    let mut occupant = [0xA5u32; 24];
+    let mut current = old_page.as_mut_ptr().cast::<u8>();
+    let next_page = new_page.as_mut_ptr().cast::<u8>();
+    let item = occupant.as_mut_ptr().cast::<u8>();
+    let _current = fake_data(0x00B0_7F20, (&mut current as *mut *mut u8).cast());
+    STATE.with(|s| {
+        let mut s = s.borrow_mut();
+        s.new_page = next_page as usize;
+        s.allocation = item as usize;
+    });
+    let mut expected = new_page;
+    expected[2] = occupant[0];
+    expected[3] = 1;
+    for entry_edx in [0, 0x1234_5678, u32::MAX] {
+        current = old_page.as_mut_ptr().cast();
+        new_page.fill(0);
+        let mut call = crate::abi::RawCall::new(
+            crate::abi::Conv::Cdecl,
+            fc4p_00458a60 as *const () as usize,
+            0x8765_4321,
+            &[0x5C],
+        );
+        call.eax = 0xABCD_EF12;
+        call.edx = entry_edx;
+        // SAFETY: the allocator ignores the caller-owned size word; both pool headers and the item are live.
+        unsafe { crate::abi::call_raw(&mut call) };
+        assert_eq!((call.eax, call.edx), (item as u32, next_page as u32));
+        assert_eq!(current, next_page);
+        assert_eq!(old_page, [0; 8]);
+        assert_eq!(new_page, expected);
+        assert_eq!(occupant, [0xA5; 24]);
+        assert_eq!(
+            events(),
+            [
+                Event::PoolGrowRegisters(0, &mut context as *mut u8 as u32, entry_edx),
+                Event::PoolGrow(&mut context as *mut u8 as usize),
+            ]
+        );
     }
 }
 
