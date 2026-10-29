@@ -194,6 +194,7 @@ pub mod farm;
 pub mod geometry;
 pub mod growth;
 pub mod listeners;
+pub mod lifecycle;
 pub mod lot_scan;
 pub mod networks;
 pub mod pool;
@@ -209,6 +210,7 @@ pub mod surface;
 pub mod trees;
 
 const COUNT: usize = compatibility::PORTS.len()
+    + lifecycle::PORTS.len()
     + attempts::PORTS.len()
     + cache::PORTS.len()
     + configuration::PORTS.len()
@@ -235,6 +237,7 @@ const COUNT: usize = compatibility::PORTS.len()
     + surface::PORTS.len()
     + trees::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
+    lifecycle::PORTS,
     attempts::PORTS,
     compatibility::PORTS,
     cache::PORTS,
