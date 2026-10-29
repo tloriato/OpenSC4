@@ -37,8 +37,8 @@ def game_in_slot(slot, since=0):
 
 
 def capture(args, targets):
-    if args.slot not in (9, 10):
-        raise ValueError('capture uses only slots 9 and 10')
+    if args.slot not in (9, 10, 11, 12):
+        raise ValueError('capture uses only slots 9 to 12')
     if game_in_slot(args.slot):
         raise ValueError(f'slot {args.slot} already has a game')
     disk = shutil.disk_usage(REPO)

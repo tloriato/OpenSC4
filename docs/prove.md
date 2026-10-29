@@ -166,7 +166,8 @@ that neither permitted slot is already running a game:
 python tools/prove.py capture --functions landvalue,009eef04 --scenario berlin-tegel --hits 8 --slot 10
 ```
 
-Slots 9 and 10 are supported; lanes must use their assigned slot (10 for this work).
+Slots 9 to 12 are supported (the direct-run slots); lanes must use their assigned slot. Slots 11 and 12 share a
+CPU with queue slots 1 and 2, so a capture there slows a queue game on that CPU but does not change its result.
 The isolated harness stages cities outside
 Documents; the installed executable is read only and breakpoints exist in memory.
 Each hit stores contexts, touched pages plus the nearby stack, changed exit pages,

@@ -13,7 +13,7 @@ def main():
     cap.add_argument('--functions', required=True)
     cap.add_argument('--scenario', required=True)
     cap.add_argument('--hits', type=int, default=8)
-    cap.add_argument('--slot', type=int, choices=(9, 10), default=10)
+    cap.add_argument('--slot', type=int, choices=(9, 10, 11, 12), default=10)
     cap.add_argument('--timeout', type=int, default=600)
     cap.add_argument('--replay-timeout', type=float, default=30)
     chk = sub.add_parser('check')
