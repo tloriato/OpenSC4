@@ -994,9 +994,777 @@ register_port! { fc4p_0082af20, 0x0082af20, "ensure_surface_ready", 0,
     }
 }
 
+game_fn! { fn allocate_shared(bytes: u32) -> u64 = "C" 0x0090cf54; }
+game_fn! { fn free_shared(pointer: *mut u8) -> u64 = "C" 0x0090cf63; }
+game_fn! { fn copy_zone_records(first: *mut u8, last: *mut u8, output: *mut u8, stop: *mut u8) -> u64 = "C" 0x006bb5c0; }
+game_fn! { fn repeat_zone_record(output: *mut u8, count: u32, source: *mut u8, stop: *mut u8) -> u64 = "C" 0x006bb120; }
+game_fn! { fn budget_balance(this: *mut u8) -> u64 = "thiscall" 0x006e9210; }
+
+register_port! { fc4p_006bbbc0, 0x006bbbc0, "destroy_landfill_zone", 0,
+    destroy_landfill_zone(this, entry) {
+        // SAFETY: the zone owns a service reference and a contiguous array of 32-byte records.
+        unsafe {
+            put_word(this, 0, 0x00ab1610);
+            let service = word(this, 0x44) as *mut u8;
+            let mut result = entry.result(entry.eax);
+            if !service.is_null() {
+                result = virtual_result(service, 8, word(service, 0), entry.edx, &[]);
+            }
+            let mut record = word(this, 0x1c);
+            let end = word(this, 0x20);
+            while record != end {
+                let p = record as *mut u8;
+                result = virtual_result(p, 0, result as u32, word(p, 0), &[0]);
+                record = record.wrapping_add(0x20);
+            }
+            let allocation = word(this, 0x1c) as *mut u8;
+            if !allocation.is_null() { result = free_shared(allocation); }
+            result
+        }
+    }
+}
+
+register_port! { fc4p_006bbc10, 0x006bbc10, "grow_zone_record_vector", 20,
+    grow_zone_record_vector(this, entry) {
+        // SAFETY: the vector's ranges and caller-owned record are live. The last two argument words
+        // are also the allocation word and stop byte passed to the range helpers.
+        unsafe {
+            let position = entry.arg(0) as *mut u8;
+            let source = entry.arg(1) as *mut u8;
+            let count = entry.arg(3);
+            let size = (word(this, 4).wrapping_sub(word(this, 0)) as i32 >> 5) as u32;
+            let capacity = size.wrapping_add(size.max(count));
+            let allocation = if capacity == 0 { 0 } else { allocate_shared(capacity.wrapping_shl(5)) as u32 };
+            let arguments = (entry as *mut Entry).cast::<u32>().add(4);
+            arguments.add(3).write_unaligned(allocation);
+            let stop = arguments.add(4).cast::<u8>();
+            let mut result = copy_zone_records(word(this, 0) as *mut u8, position, allocation as *mut u8, stop);
+            let mut output = result as u32;
+            if count == 1 {
+                if output != 0 {
+                    let target = output as *mut u8;
+                    put_word(target, 0, 0x00ab15dc);
+                    for offset in [4, 8] { put_word(target, offset, word(source, offset)); }
+                    *target.add(12) = *source.add(12);
+                    *target.add(13) = *source.add(13);
+                    for offset in [16, 20, 24, 28] { put_word(target, offset, word(source, offset)); }
+                    result = (u64::from(word(source, 28)) << 32) | u64::from(source as u32);
+                }
+                output = output.wrapping_add(32);
+            } else {
+                result = repeat_zone_record(output as *mut u8, count, source, stop);
+                output = result as u32;
+            }
+            result = (result & !255) | u64::from(*stop);
+            if *stop == 0 {
+                result = copy_zone_records(position, word(this, 4) as *mut u8, output as *mut u8, stop);
+                output = result as u32;
+            }
+            let mut old = word(this, 0);
+            let end = word(this, 4);
+            while old != end {
+                let p = old as *mut u8;
+                result = virtual_result(p, 0, result as u32, word(p, 0), &[0]);
+                old = old.wrapping_add(32);
+            }
+            let old = word(this, 0) as *mut u8;
+            if !old.is_null() { result = free_shared(old); }
+            put_word(this, 4, output);
+            put_word(this, 0, allocation);
+            let end = allocation.wrapping_add(capacity.wrapping_shl(5));
+            put_word(this, 8, end);
+            (result & 0xffff_ffff_0000_0000) | u64::from(end)
+        }
+    }
+}
+
+register_port! { fc4p_006e08d0, 0x006e08d0, "station_funding", 12,
+    station_funding(this, entry) {
+        // SAFETY: the budget fills a 32-byte item. Its table is captured before the station callback,
+        // but its object pointer is read again afterwards.
+        unsafe {
+            let department = word(this, 0x74) as *mut u8;
+            let table = word(department, 0) as *mut u8;
+            let purpose = word(this, 0xb0);
+            let station = entry.arg(0) as *mut u8;
+            let mut item = core::mem::MaybeUninit::<[u32; 8]>::uninit();
+            let item_ptr = item.as_mut_ptr().cast::<u8>();
+            put_word(item_ptr, 28, 0);
+            let id = virtual_result(station, 0x18, word(station, 0), purpose, &[purpose]);
+            let args = [id as u32, item_ptr as u32];
+            let mut call = crate::abi::RawCall::new(crate::abi::Conv::Thiscall,
+                word(table, 0xcc) as usize, word(this, 0x74), &args);
+            call.eax = id as u32;
+            call.edx = (id >> 32) as u32;
+            crate::abi::call_raw(&mut call);
+            if call.eax as u8 == 0 { return (u64::from(call.edx) << 32) | u64::from(call.eax); }
+            let funding = entry.arg(2) as *mut u8;
+            if !funding.is_null() { put_word(funding, 0, word(item_ptr, 28)); }
+            let cost = entry.arg(1) as *mut u8;
+            let mut edx = call.edx;
+            if !cost.is_null() { edx = word(item_ptr, 16); put_word(cost, 0, edx); }
+            (u64::from(edx) << 32) | u64::from((cost as u32 & !255) | 1)
+        }
+    }
+}
+
+register_port! { fc4p_006f1570, 0x006f1570, "insert_word_list_range", 16,
+    insert_word_list_range(_this, entry) {
+        // SAFETY: each source node holds next, previous, value; new nodes use the game allocator.
+        unsafe {
+            let position = entry.arg(0) as *mut u8;
+            let mut source = entry.arg(1);
+            let end = entry.arg(2);
+            let mut result = entry.result(entry.eax);
+            while source != end {
+                let allocation = allocate_shared(12);
+                let node = allocation as u32 as *mut u8;
+                let value_address = (node as u32).wrapping_add(8);
+                let mut edx = (allocation >> 32) as u32;
+                if value_address != 0 {
+                    edx = word(source as *mut u8, 8);
+                    put_word(value_address as *mut u8, 0, edx);
+                }
+                let previous = word(position, 4) as *mut u8;
+                put_word(node, 0, position as u32);
+                put_word(node, 4, previous as u32);
+                put_word(previous, 0, node as u32);
+                put_word(position, 4, node as u32);
+                entry.ecx = previous as u32;
+                result = (u64::from(edx) << 32) | u64::from(node as u32);
+                source = word(source as *mut u8, 0);
+            }
+            result
+        }
+    }
+}
+
+register_port! { fc4p_00700fa0, 0x00700fa0, "publish_budget_balance", 0,
+    publish_budget_balance(this, entry) {
+        // SAFETY: the budget's optional sink is retained around the balance update.
+        unsafe {
+            let service = word(this, 0x30) as *mut u8;
+            let mut result = virtual_result(service, 0x50, word(service, 0), entry.edx, &[1]);
+            let sink = result as u32 as *mut u8;
+            if !sink.is_null() {
+                virtual_result(sink, 4, sink as u32, word(sink, 0), &[]);
+                let table = word(sink, 0) as *mut u8;
+                let balance = budget_balance(this);
+                let args = [balance as u32, (balance >> 32) as u32];
+                let mut call = crate::abi::RawCall::new(crate::abi::Conv::Thiscall,
+                    word(table, 0x30) as usize, sink as u32, &args);
+                call.eax = balance as u32;
+                call.edx = (balance >> 32) as u32;
+                crate::abi::call_raw(&mut call);
+                result = virtual_result(sink, 8, word(sink, 0), call.edx, &[]);
+            }
+            result
+        }
+    }
+}
+
+register_port! { fc4p_0072a1c0, 0x0072a1c0, "snap_point_and_apply", 4,
+    snap_point_and_apply(this, entry) {
+        // SAFETY: the input supplies x and z; the service may update both stack locals.
+        unsafe {
+            let point = entry.arg(0) as *mut u8;
+            let mut x = word(point, 0);
+            let mut z = word(point, 8);
+            let arguments = (entry as *mut Entry).cast::<u32>().add(4);
+            arguments.write_unaligned(z);
+            let service = word(this, 0x20) as *mut u8;
+            let mut result = virtual_result(service, 0x188, x, word(service, 0), &[x, z]);
+            if result as u8 == 0 { return result & 0xffff_ffff_0000_0000; }
+            let service = word(this, 0x20) as *mut u8;
+            let z_pointer = arguments;
+            vcall!(service, 0x17c => fn(u32, u32, *mut u32, *mut u32) -> u64,
+                word(point, 0), word(point, 8), &mut x, z_pointer);
+            z = z_pointer.read_unaligned();
+            result = virtual_result(this, 0x18, z, word(this, 0), &[x, z, 0]);
+            result
+        }
+    }
+}
+
+register_port! { fc4p_0072b410, 0x0072b410, "grid_object_at_origin", 12,
+    grid_object_at_origin(this, entry) {
+        // SAFETY: valid signed coordinates select one row header and one object slot.
+        unsafe {
+            let x = entry.arg(0) as i32;
+            if x < 0 || x >= word(this, 0x24) as i32 { return entry.result(0); }
+            let z = entry.arg(1) as i32;
+            if z < 0 || z >= word(this, 0x28) as i32 { return entry.result(0); }
+            let rows = word(this, 0x50) as *mut u8;
+            let row = word(rows, (x as usize).wrapping_mul(12));
+            let object = word(row as *mut u8, (z as usize).wrapping_mul(4));
+            if entry.arg(2) as u8 == 0 { return (u64::from(row) << 32) | u64::from(object); }
+            if object == 0 { return u64::from(row) << 32; }
+            let args = (entry as *mut Entry).cast::<u32>().add(4);
+            let result = vcall!(object as *mut u8, 0x54 => fn(*mut u32, *mut u32) -> u64,
+                args.add(2), args);
+            let matches = args.add(2).read_unaligned() == x as u32 && args.read_unaligned() == z as u32;
+            (result & 0xffff_ffff_0000_0000) | u64::from(if matches { object } else { 0 })
+        }
+    }
+}
+
+// These entries transfer the original stack directly to another interface.
+interface_thunk!(
+    fc4p_00793fe0,
+    0x00793fe0,
+    "release_button_secondary_interface",
+    "sub",
+    224,
+    target_00793fe0,
+    0x00793ec0,
+    ()
+);
+
+macro_rules! surface_forward {
+    ($export:ident, $address:literal, $name:literal, $slot:literal) => {
+        port! {
+            #[port(address = $address, owner = "shared", name = $name, naked)]
+            pub unsafe extern "C" fn $export() {
+                core::arch::naked_asm!("mov ecx, [ecx + 0x14]", "mov eax, [ecx]",
+                    "jmp dword ptr [eax + {slot}]", slot = const $slot);
+            }
+        }
+    };
+}
+macro_rules! surface_flag_forward {
+    ($export:ident, $address:literal, $name:literal, $slot:literal, $flag:literal) => {
+        port! {
+            #[port(address = $address, owner = "shared", name = $name, naked)]
+            pub unsafe extern "C" fn $export() {
+                core::arch::naked_asm!("mov byte ptr [ecx + 0x48], {flag}",
+                    "mov ecx, [ecx + 0x14]", "mov eax, [ecx]",
+                    "jmp dword ptr [eax + {slot}]", slot = const $slot, flag = const $flag);
+            }
+        }
+    };
+}
+surface_flag_forward!(fc4p_0082b4b0, 0x0082b4b0, "enable_surface_mode", 0x5c, 1);
+surface_forward!(fc4p_0082b540, 0x0082b540, "query_surface_mode", 0x68);
+surface_flag_forward!(fc4p_0082b550, 0x0082b550, "disable_surface_mode", 0x6c, 0);
+surface_forward!(fc4p_0082b750, 0x0082b750, "forward_surface_operation_94", 0x94);
+surface_forward!(fc4p_0082b760, 0x0082b760, "forward_surface_operation_98", 0x98);
+
+register_port! { fc4p_007a65d0, 0x007a65d0, "edge_direction_components", 0,
+    edge_direction_components(_this, entry) {
+        // SAFETY: the cdecl caller supplies two writable output words, which may alias.
+        unsafe {
+            let direction = entry.arg(0);
+            let distance = entry.arg(1);
+            let x = entry.arg(2) as *mut u8;
+            let z = entry.arg(3) as *mut u8;
+            let (a, b, eax, edx, ecx) = match direction {
+                1 => (distance, u32::MAX, x as u32, z as u32, distance),
+                2 => (u32::MAX, distance.wrapping_neg(), x as u32, z as u32, distance.wrapping_neg()),
+                3 => (distance.wrapping_neg(), 1, distance.wrapping_neg(), z as u32, x as u32),
+                _ => (1, distance, x as u32, distance, z as u32),
+            };
+            put_word(x, 0, a);
+            put_word(z, 0, b);
+            entry.ecx = ecx;
+            (u64::from(edx) << 32) | u64::from(eax)
+        }
+    }
+}
+
+macro_rules! child_value {
+    ($export:ident, $address:literal, $name:literal, $slot:literal, $body:ident) => {
+        register_port! { $export, $address, $name, 0,
+            $body(this, entry) {
+                // SAFETY: this interface has its optional child pointer 32 bytes before it.
+                unsafe {
+                    let child = word(this.wrapping_sub(32), 0) as *mut u8;
+                    if child.is_null() { return entry.result(0); }
+                    virtual_result(child, $slot, word(child, 0), entry.edx, &[])
+                }
+            }
+        }
+    };
+}
+child_value!(fc4p_007b62f0, 0x007b62f0, "child_value_24", 0x24, child_value_24);
+child_value!(fc4p_007b6310, 0x007b6310, "child_value_28", 0x28, child_value_28);
+
+game_fn! { fn set_window_rectangle(this: *mut u8, a: u32, b: u32, c: u32, d: u32) -> u64 = "thiscall" 0x009bc0b8; }
+game_fn! { fn update_window_rectangle(this: *mut u8) -> u64 = "thiscall" 0x007c0390; }
+port! {
+    /// Set the four rectangle words, then refresh the window's dependent geometry.
+    #[port(address = 0x007c07d0, owner = "shared", name = "set_and_update_window_rectangle")]
+    pub unsafe extern "thiscall" fn fc4p_007c07d0(this: *mut u8, a: u32, b: u32, c: u32, d: u32) -> u64 {
+        // SAFETY: forward the original window and complete arguments in order.
+        unsafe { set_window_rectangle(this, a, b, c, d); update_window_rectangle(this) }
+    }
+}
+
+port! {
+    /// Transfer the original direction flag to the Rust body, and restore it before returning.
+    #[port(address = 0x007d2730, owner = "shared", name = "copy_sixteen_embedded_words", naked)]
+    pub unsafe extern "C" fn fc4p_007d2730() {
+        core::arch::naked_asm!(
+            "pushfd", "cld", "push ecx", "push eax", "push edx", "mov edx, esp",
+            "call {body}", "add esp, 8", "pop ecx", "popfd", "ret 4",
+            body = sym copy_sixteen_embedded_words,
+        );
+    }
+}
+unsafe extern "fastcall" fn copy_sixteen_embedded_words(this: *mut u8, saved: *mut Entry) -> u64 {
+    // SAFETY: the entry saved the three registers followed by flags, return address and output pointer.
+    // Rust runs with DF clear; the saved direction controls the word transfers.
+    unsafe {
+        let entry = &mut *saved;
+        let step = if entry.return_address & 0x400 == 0 {
+            4u32
+        } else {
+            0xffff_fffc
+        };
+        let mut source = (this as u32).wrapping_add(0x1ac);
+        let mut output = entry.arg(1);
+        for _ in 0..16 {
+            put_word(output as *mut u8, 0, word(source as *mut u8, 0));
+            source = source.wrapping_add(step);
+            output = output.wrapping_add(step);
+        }
+        entry.ecx = 0;
+        entry.result(entry.eax)
+    }
+}
+
+register_port! { fc4p_0081d200, 0x0081d200, "construct_tree_sentinel", 0,
+    construct_tree_sentinel(this, _entry) {
+        // SAFETY: the game allocator supplies the 56-byte sentinel; only its tag and links are initialized.
+        unsafe {
+            put_word(this, 0, 0);
+            let result = allocate_shared(0x38);
+            put_word(this, 0, result as u32);
+            put_word(this, 4, 0);
+            *(result as u32 as *mut u8) = 0;
+            let sentinel = word(this, 0) as *mut u8;
+            put_word(sentinel, 4, 0);
+            let sentinel = word(this, 0) as *mut u8;
+            put_word(sentinel, 8, sentinel as u32);
+            let sentinel = word(this, 0) as *mut u8;
+            put_word(sentinel, 12, sentinel as u32);
+            (result & 0xffff_ffff_0000_0000) | u64::from(this as u32)
+        }
+    }
+}
+
+register_port! { fc4p_00825c90, 0x00825c90, "pixel_format_color_mask", 0,
+    pixel_format_color_mask(_this, entry) {
+        let result = match entry.eax {
+            4 | 6 => 0x7fff,
+            5 => 0xffff,
+            7 => 0xfff,
+            8 | 9 => 0xffffff,
+            _ => u32::MAX,
+        };
+        entry.result(result)
+    }
+}
+
+register_port! { fc4p_0082abf0, 0x0082abf0, "expand_pixel_color", 4,
+    expand_pixel_color(this, entry) {
+        // SAFETY: the context's format word selects the packed channel arithmetic.
+        unsafe {
+            let format = DrawContextFields::from_ptr(this).format();
+            let pixel = entry.arg(0);
+            let (eax, ecx, edx) = match format {
+                4 | 6 => {
+                    let channels = (pixel & 0x3e0).wrapping_add((pixel & 0x7c00) << 3);
+                    let expanded = ((pixel & 31).wrapping_add(channels << 3)) << 3;
+                    let extra = (expanded >> 5) & 0x70707;
+                    (expanded.wrapping_add(extra).wrapping_add(0xff000000), channels, extra)
+                }
+                5 => {
+                    let expanded = (((pixel & 0xf800) << 5).wrapping_add(pixel & 31)) << 3;
+                    let green = ((pixel & 0x7e0).wrapping_add(0x07f80000)) << 5;
+                    let channels = ((pixel >> 1) & 0x300).wrapping_add(expanded).wrapping_add(green);
+                    (((expanded >> 5) & 0x70007).wrapping_add(channels), channels, green)
+                }
+                7 => {
+                    let channels = (((((pixel & 0xf00) + 0xf0000) << 4) + (pixel & 0xf0)) << 4) + (pixel & 15);
+                    (channels.wrapping_mul(17), channels, pixel & 0xf0)
+                }
+                8 | 9 => (pixel | 0xff000000, format, entry.edx),
+                _ => (0, format, entry.edx),
+            };
+            entry.ecx = ecx;
+            (u64::from(edx) << 32) | u64::from(eax)
+        }
+    }
+}
+
+register_port! { fc4p_0082ad30, 0x0082ad30, "pack_pixel_color", 12,
+    pack_pixel_color(this, entry) {
+        // SAFETY: only the low byte of each input word participates in packing.
+        unsafe {
+            let format = DrawContextFields::from_ptr(this).format();
+            let red = entry.arg(0) & 255;
+            let green = entry.arg(1) & 255;
+            let blue = entry.arg(2) & 255;
+            let (eax, ecx, edx) = match format {
+                4 | 6 => ((blue >> 3) + ((((red & 0xf8) + 0x1e0) << 5) + (green & 0xf8)) * 4, green & 0xf8, blue >> 3),
+                5 => ((blue >> 3) + ((((red & 0xf8) + 0xf0) << 5) + (green & 0xfc)) * 8, green & 0xfc, blue >> 3),
+                7 => ((((red & 0xf0) + 0xf00) << 4) + (green & 0xf0) + (blue >> 4), green & 0xf0, blue >> 4),
+                8 | 9 => ((((red + 0xff00) << 8) + green) << 8 | blue, green, blue),
+                _ => (0, format, entry.edx),
+            };
+            entry.ecx = ecx;
+            (u64::from(edx) << 32) | u64::from(eax)
+        }
+    }
+}
+
+game_fn! { fn expand_color(this: *mut u8, pixel: u32) -> u64 = "thiscall" 0x0082abf0; }
+register_port! { fc4p_0082ae10, 0x0082ae10, "unpack_pixel_channels", 16,
+    unpack_pixel_channels(this, entry) {
+        // SAFETY: the three byte outputs may alias; red, green, blue are stored in that order.
+        unsafe {
+            let result = expand_color(this, entry.arg(0));
+            let pixel = result as u32;
+            let red = entry.arg(1) as *mut u8;
+            let green = entry.arg(2) as *mut u8;
+            let blue = entry.arg(3) as *mut u8;
+            *red = (pixel >> 16) as u8;
+            *green = (pixel >> 8) as u8;
+            *blue = pixel as u8;
+            entry.ecx = blue as u32;
+            (u64::from(green as u32) << 32) | u64::from((pixel & !255) | 1)
+        }
+    }
+}
+
+register_port! { fc4p_0082b200, 0x0082b200, "describe_context_pixel_format", 4,
+    describe_context_pixel_format(this, entry) {
+        // SAFETY: the output owns two words, and may overlap the format field.
+        unsafe {
+            let format = DrawContextFields::from_ptr(this).format();
+            let output = entry.arg(0) as *mut u8;
+            let bits = match format { 2 => 8, 3..=7 => 16, 8 | 9 => 32, _ => 0 };
+            put_word(output, 0, format);
+            put_word(output, 4, bits);
+            entry.ecx = format;
+            (u64::from(output as u32) << 32) | u64::from(bits)
+        }
+    }
+}
+
+register_port! { fc4p_008929e0, 0x008929e0, "set_x87_precision", 0,
+    set_x87_precision(_this, entry) {
+        // SAFETY: the cdecl argument selects precision; all other control bits are retained.
+        let mode = unsafe { entry.arg(0) };
+        let precision = match mode { 1 => 0x200, 2 => 0x300, _ => 0 };
+        crate::x87::set_control_word((crate::x87::control_word() & !0x300) | precision);
+        entry.result(entry.eax)
+    }
+}
+register_port! { fc4p_00892a0a, 0x00892a0a, "get_x87_precision", 0,
+    get_x87_precision(_this, entry) {
+        let mode = match crate::x87::control_word() & 0x300 { 0 => 0, 0x200 => 1, _ => 2 };
+        entry.result(mode)
+    }
+}
+
+game_fn! { fn allocate_word_list_node(value: *mut u8) -> u64 = "stdcall" 0x0094b33a; }
+register_port! { fc4p_00897c8d, 0x00897c8d, "insert_word_list_node", 12,
+    insert_word_list_node(_this, entry) {
+        // SAFETY: the iterator output and position may alias; links are reread after allocation.
+        unsafe {
+            let result = allocate_word_list_node(entry.arg(2) as *mut u8);
+            let node = result as u32 as *mut u8;
+            let position = entry.arg(1) as *mut u8;
+            let previous = word(position, 4) as *mut u8;
+            put_word(node, 0, position as u32);
+            put_word(node, 4, previous as u32);
+            put_word(previous, 0, node as u32);
+            put_word(position, 4, node as u32);
+            let output = entry.arg(0) as *mut u8;
+            put_word(output, 0, node as u32);
+            entry.ecx = output as u32;
+            (u64::from(previous as u32) << 32) | u64::from(output as u32)
+        }
+    }
+}
+
+game_fn! { fn construct_embedded_deque(this: *mut u8) -> u64 = "thiscall" 0x0092e6c9; }
+port! {
+    /// Clear nine words and set the 16-bit capacity before constructing the embedded deque.
+    #[port(address = 0x00897fed, owner = "shared", name = "construct_queued_state")]
+    pub unsafe extern "thiscall" fn fc4p_00897fed(this: *mut u8) -> u64 {
+        // SAFETY: the caller provides the state object and its embedded deque at +0x28.
+        unsafe {
+            for offset in (0..32).step_by(4) { put_word(this, offset, 0); }
+            write_unaligned(this.add(32).cast::<u16>(), 10);
+            put_word(this, 36, 0);
+            let result = construct_embedded_deque(this.add(40));
+            (result & 0xffff_ffff_0000_0000) | u64::from(this as u32)
+        }
+    }
+}
+
+layout! {
+    /// A landfill zone's owned records and retained service.
+    struct LandfillZoneFields {
+        0x00 => table / set_table: u32,
+        0x1c => first / set_first: u32,
+        0x20 => end / set_end: u32,
+        0x44 => service / set_service: *mut u8,
+    }
+}
+layout! {
+    /// Three-word vector header, also used for vectors of pairs and zone records.
+    struct SharedVectorFields {
+        0x00 => first / set_first: u32,
+        0x04 => end / set_end: u32,
+        0x08 => capacity_end / set_capacity_end: u32,
+    }
+}
+layout! {
+    /// A zone record; bytes +0x0e and +0x0f are padding and are not copied by construction.
+    struct ZoneRecordFields {
+        0x00 => table / set_table: u32,
+        0x04 => first / set_first: u32,
+        0x08 => second / set_second: u32,
+        0x0c => first_flag / set_first_flag: u8,
+        0x0d => second_flag / set_second_flag: u8,
+        0x10 => third / set_third: u32,
+        0x14 => fourth / set_fourth: u32,
+        0x18 => fifth / set_fifth: u32,
+        0x1c => sixth / set_sixth: u32,
+    }
+}
+layout! {
+    /// Fire and police budget lookup fields at the shared simulator offsets.
+    struct FundingSimulatorFields {
+        0x74 => department / set_department: *mut u8,
+        0xb0 => purpose / set_purpose: u32,
+    }
+}
+layout! {
+    /// The budget item keeps a 64-bit cost and a funding float copied by its stored bits.
+    struct FundingItemFields {
+        0x10 => cost / set_cost: u64,
+        0x1c => funding_bits / set_funding_bits: u32,
+    }
+}
+layout! {
+    /// Object grid dimensions and the array of three-word row headers.
+    struct ObjectGridFields {
+        0x24 => width / set_width: i32,
+        0x28 => height / set_height: i32,
+        0x50 => rows / set_rows: *mut u8,
+    }
+}
+layout! {
+    /// Header for the tree of 56-byte nodes.
+    struct SharedTreeFields {
+        0x00 => sentinel / set_sentinel: *mut u8,
+        0x04 => count / set_count: u32,
+    }
+}
+layout! {
+    /// Only the tag, parent and two self links of a new sentinel are initialized.
+    struct TreeSentinelFields {
+        0x00 => tag / set_tag: u8,
+        0x04 => parent / set_parent: *mut u8,
+        0x08 => left / set_left: *mut u8,
+        0x0c => right / set_right: *mut u8,
+    }
+}
+layout! {
+    /// The surface adapter owns two interfaces and a separate mode flag.
+    struct SurfaceAdapterFields {
+        0x00 => primary_table / set_primary_table: u32,
+        0x04 => lock_table / set_lock_table: u32,
+        0x0c => drawing_table / set_drawing_table: u32,
+        0x10 => context / set_context: *mut u8,
+        0x14 => surface / set_surface: *mut u8,
+        0x28 => locks / set_locks: u32,
+        0x30 => height / set_height: u32,
+        0x40 => scale / set_scale: u32,
+        0x48 => mode / set_mode: u8,
+    }
+}
+layout! {
+    /// A filter list embedded at +0xe0; the signed count is stored even when nonpositive.
+    struct FilterListFields {
+        0x120 => count / set_count: i32,
+    }
+}
+
+game_fn! { fn allocate_message(bytes: u32) -> u64 = "C" 0x009133da; }
+game_fn! { fn construct_message(this: *mut u8) -> u64 = "thiscall" 0x009134d6; }
+game_data! { static shared_message_server: *mut u8 = 0x00b43ccc; }
+register_port! { fc4p_006cf5c0, 0x006cf5c0, "send_neighbor_change_message", 0,
+    send_neighbor_change_message(this, entry) {
+        // SAFETY: ECX is an optional query interface; two caller-popped words select post/send and code.
+        // Message construction and dispatch retain exactly the references returned by the game.
+        unsafe {
+            let mut retained = 0u32;
+            let mut result = entry.result(entry.eax);
+            let proceed = if this.is_null() { true } else {
+                result = vcall!(this, 0 => fn(u32, *mut u32) -> u64, 1, &mut retained);
+                result as u8 != 0
+            };
+            if proceed {
+                let allocation = allocate_message(0x2c);
+                let constructed = if allocation as u32 == 0 { allocation } else { construct_message(allocation as u32 as *mut u8) };
+                let message = constructed as u32 as *mut u8;
+                let held = if message.is_null() { constructed } else { virtual_result(message, 4, message as u32, word(message, 0), &[]) };
+                virtual_result(message, 0x14, word(message, 0), (held >> 32) as u32, &[0xea418d8f]);
+                let code = entry.arg(1);
+                virtual_result(message, 0x2c, code, word(message, 0), &[code]);
+                result = virtual_result(message, 0x84, retained, word(message, 0), &[retained]);
+                let server = *shared_message_server();
+                if entry.arg(0) as u8 != 0 {
+                    result = virtual_result(server, 0x10, (result as u32 & !255) | (entry.arg(0) & 255), word(server, 0), &[message as u32, 0]);
+                } else {
+                    result = virtual_result(server, 0x0c, word(server, 0), (result >> 32) as u32, &[message as u32]);
+                }
+                result = virtual_result(message, 8, result as u32, word(message, 0), &[]);
+            }
+            if retained != 0 { result = virtual_result(retained as *mut u8, 8, word(retained as *mut u8, 0), (result >> 32) as u32, &[]); }
+            entry.ecx = retained;
+            result
+        }
+    }
+}
+
+game_fn! { fn update_filter_list(this: *mut u8) -> u64 = "thiscall" 0x007a93e0; }
+port! {
+    /// Copy the positive number of filter IDs in order, store the signed count, and refresh the filter.
+    #[port(address = 0x007a97d0, owner = "shared", name = "set_filter_ids")]
+    pub unsafe extern "thiscall" fn fc4p_007a97d0(this: *mut u8, source: *mut u8, count: i32) -> u64 {
+        // SAFETY: the caller supplies enough source and object storage for a positive count.
+        unsafe {
+            let mut index = 0i32;
+            while index < count {
+                let offset = (index as usize).wrapping_mul(4);
+                put_word(this, 0xe0usize.wrapping_add(offset), word(source, offset));
+                index += 1;
+            }
+            FilterListFields::from_ptr(this).set_count(count);
+            update_filter_list(this)
+        }
+    }
+}
+
+register_port! { fc4p_007cec30, 0x007cec30, "allocate_and_copy_word_pairs", 12,
+    allocate_and_copy_word_pairs(_this, entry) {
+        // SAFETY: the source range consists of eight-byte pairs; a null output skips its first pair.
+        unsafe {
+            let count = entry.arg(0);
+            let allocation = if count == 0 { 0 } else { allocate_shared(count.wrapping_shl(3)) as u32 };
+            let mut source = entry.arg(1);
+            let end = entry.arg(2);
+            let mut output = allocation;
+            let edx = if source == end { source } else { source.wrapping_sub(allocation) };
+            while source != end {
+                if output != 0 {
+                    put_word(output as *mut u8, 0, word(source as *mut u8, 0));
+                    put_word(output as *mut u8, 4, word(source as *mut u8, 4));
+                }
+                output = output.wrapping_add(8);
+                source = source.wrapping_add(8);
+            }
+            entry.ecx = output;
+            (u64::from(edx) << 32) | u64::from(allocation)
+        }
+    }
+}
+
+register_port! { fc4p_007ced60, 0x007ced60, "construct_word_pair_vector_copy", 4,
+    construct_word_pair_vector_copy(this, entry) {
+        // SAFETY: both headers are live. The source range is read again after destination setup,
+        // so a source header equal to the destination produces an empty copied range.
+        unsafe {
+            let source = entry.arg(0) as *mut u8;
+            let count = (word(source, 4).wrapping_sub(word(source, 0)) as i32 >> 3) as u32;
+            let vector = SharedVectorFields::from_ptr(this);
+            vector.set_first(0); vector.set_end(0); vector.set_capacity_end(0);
+            let allocation = if count == 0 { 0 } else { allocate_shared(count.wrapping_shl(3)) as u32 };
+            vector.set_first(allocation); vector.set_end(allocation);
+            vector.set_capacity_end(allocation.wrapping_add(count.wrapping_shl(3)));
+            let end = word(source, 4);
+            let mut current = word(source, 0);
+            let mut output = allocation;
+            while current != end {
+                if output != 0 {
+                    put_word(output as *mut u8, 0, word(current as *mut u8, 0));
+                    put_word(output as *mut u8, 4, word(current as *mut u8, 4));
+                }
+                current = current.wrapping_add(8);
+                output = output.wrapping_add(8);
+            }
+            vector.set_end(output);
+            entry.ecx = current;
+            (u64::from(end) << 32) | u64::from(this as u32)
+        }
+    }
+}
+
+game_fn! { fn construct_lock_interface(this: *mut u8) -> u64 = "thiscall" 0x0090d957; }
+game_fn! { fn destroy_lock_interface(this: *mut u8) -> u64 = "thiscall" 0x0090d964; }
+port! {
+    /// Install the three adapter tables and initialize its counters and mode after base construction.
+    #[port(address = 0x0082b780, owner = "shared", name = "construct_surface_adapter")]
+    pub unsafe extern "thiscall" fn fc4p_0082b780(this: *mut u8) -> u64 {
+        // SAFETY: the caller provides the adapter and its embedded interface at +4.
+        unsafe {
+            let adapter = SurfaceAdapterFields::from_ptr(this);
+            adapter.set_primary_table(0x00ac1338);
+            let result = construct_lock_interface(this.add(4));
+            adapter.set_drawing_table(0x00ac14e8);
+            adapter.set_primary_table(0x00ac1550);
+            adapter.set_lock_table(0x00ac1538);
+            adapter.set_drawing_table(0x00ac1510);
+            adapter.set_context(core::ptr::null_mut()); adapter.set_surface(core::ptr::null_mut());
+            adapter.set_locks(0); adapter.set_mode(0); adapter.set_height(0); adapter.set_scale(1);
+            (result & 0xffff_ffff_0000_0000) | u64::from(this as u32)
+        }
+    }
+}
+port! {
+    /// Release the surface, then context, destroy the embedded interface, and optionally free the adapter.
+    #[port(address = 0x0082b7d0, owner = "shared", name = "delete_surface_adapter")]
+    pub unsafe extern "thiscall" fn fc4p_0082b7d0(this: *mut u8, flags: u32) -> u64 {
+        // SAFETY: the adapter owns both references; only bit zero controls freeing the object itself.
+        unsafe {
+            let adapter = SurfaceAdapterFields::from_ptr(this);
+            adapter.set_primary_table(0x00ac1550); adapter.set_lock_table(0x00ac1538); adapter.set_drawing_table(0x00ac1510);
+            if !adapter.surface().is_null() { vcall!(adapter.surface(), 8 => fn() -> u64); }
+            if !adapter.context().is_null() { vcall!(adapter.context(), 8 => fn() -> u64); }
+            let mut result = destroy_lock_interface(this.add(4));
+            if flags & 1 != 0 { result = free_object(this); }
+            (result & 0xffff_ffff_0000_0000) | u64::from(this as u32)
+        }
+    }
+}
+
+layout! {
+    /// Two words in each element of a pair vector.
+    struct SharedWordPairFields {
+        0x00 => first / set_first: u32,
+        0x04 => second / set_second: u32,
+    }
+}
+layout! {
+    /// Eight cleared state words, a 16-bit capacity, and the count before the embedded deque.
+    struct QueuedStateFields {
+        0x00 => parameters / set_parameters: [u32; 8],
+        0x20 => capacity / set_capacity: u16,
+        0x24 => count / set_count: u32,
+    }
+}
+
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
     fc4p_006ba280::PORT,
+    fc4p_006bbbc0::PORT,
+    fc4p_006bbc10::PORT,
     fc4p_006bbd40::PORT,
     fc4p_006bdde0::PORT,
     fc4p_006c2040::PORT,
@@ -1007,6 +1775,7 @@ pub const PORTS: &[Port] = &[
     fc4p_006ce230::PORT,
     fc4p_006ce6f0::PORT,
     fc4p_006ce720::PORT,
+    fc4p_006cf5c0::PORT,
     fc4p_006d5050::PORT,
     fc4p_006d5140::PORT,
     fc4p_006d66f0::PORT,
@@ -1016,17 +1785,22 @@ pub const PORTS: &[Port] = &[
     fc4p_006e0130::PORT,
     fc4p_006e0180::PORT,
     fc4p_006e0200::PORT,
+    fc4p_006e08d0::PORT,
     fc4p_006e17a0::PORT,
     fc4p_006e17f0::PORT,
     fc4p_006e1800::PORT,
     fc4p_006e1820::PORT,
     fc4p_006e9210::PORT,
+    fc4p_006f1570::PORT,
     fc4p_006f7dc0::PORT,
     fc4p_00700e80::PORT,
     fc4p_00700f40::PORT,
+    fc4p_00700fa0::PORT,
     fc4p_00701800::PORT,
     fc4p_00725810::PORT,
     fc4p_007266f0::PORT,
+    fc4p_0072a1c0::PORT,
+    fc4p_0072b410::PORT,
     fc4p_00741740::PORT,
     fc4p_007624d0::PORT,
     fc4p_00762970::PORT,
@@ -1041,20 +1815,29 @@ pub const PORTS: &[Port] = &[
     fc4p_0076b620::PORT,
     fc4p_0076b630::PORT,
     fc4p_0076bb00::PORT,
+    fc4p_00793fe0::PORT,
     fc4p_00798370::PORT,
+    fc4p_007a65d0::PORT,
+    fc4p_007a97d0::PORT,
     fc4p_007b0e40::PORT,
     fc4p_007b0e50::PORT,
+    fc4p_007b62f0::PORT,
+    fc4p_007b6310::PORT,
     fc4p_007be550::PORT,
     fc4p_007be560::PORT,
     fc4p_007be720::PORT,
     fc4p_007bf5c0::PORT,
     fc4p_007bf5d0::PORT,
     fc4p_007bfa00::PORT,
+    fc4p_007c07d0::PORT,
     fc4p_007c1870::PORT,
     fc4p_007c1910::PORT,
     fc4p_007c2740::PORT,
     fc4p_007c9fb0::PORT,
     fc4p_007c9fd0::PORT,
+    fc4p_007cec30::PORT,
+    fc4p_007ced60::PORT,
+    fc4p_007d2730::PORT,
     fc4p_007e56f0::PORT,
     fc4p_007faf40::PORT,
     fc4p_00800640::PORT,
@@ -1070,11 +1853,16 @@ pub const PORTS: &[Port] = &[
     fc4p_0080ae70::PORT,
     fc4p_0080c0f0::PORT,
     fc4p_0080c350::PORT,
+    fc4p_0081d200::PORT,
     fc4p_0081f910::PORT,
+    fc4p_00825c90::PORT,
     fc4p_0082abe0::PORT,
+    fc4p_0082abf0::PORT,
     fc4p_0082ace0::PORT,
     fc4p_0082ad00::PORT,
     fc4p_0082ad20::PORT,
+    fc4p_0082ad30::PORT,
+    fc4p_0082ae10::PORT,
     fc4p_0082ae90::PORT,
     fc4p_0082af20::PORT,
     fc4p_0082af50::PORT,
@@ -1082,9 +1870,21 @@ pub const PORTS: &[Port] = &[
     fc4p_0082b1c0::PORT,
     fc4p_0082b1d0::PORT,
     fc4p_0082b1e0::PORT,
+    fc4p_0082b200::PORT,
+    fc4p_0082b4b0::PORT,
+    fc4p_0082b540::PORT,
+    fc4p_0082b550::PORT,
+    fc4p_0082b750::PORT,
+    fc4p_0082b760::PORT,
+    fc4p_0082b780::PORT,
+    fc4p_0082b7d0::PORT,
     fc4p_0082be80::PORT,
     fc4p_00875aba::PORT,
     fc4p_00891c72::PORT,
+    fc4p_008929e0::PORT,
+    fc4p_00892a0a::PORT,
+    fc4p_00897c8d::PORT,
+    fc4p_00897fed::PORT,
 ];
 
 #[cfg(test)]
@@ -2060,5 +2860,1474 @@ mod tests {
             }
             assert_eq!(before.0[..160], after.0[..160]);
         }
+    }
+
+    thread_local! {
+        static ALLOCATIONS: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
+        static HOLDER: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+        static NEXT_SERVICE: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+        static ANSWER: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    }
+    extern "C" fn allocate_words(bytes: u32) -> u64 {
+        record(core::ptr::null_mut(), &[0xa110, bytes]);
+        let pointer = ALLOCATIONS.with(|a| a.borrow_mut().remove(0));
+        (RESULT & 0xffff_ffff_0000_0000) | u64::from(pointer)
+    }
+    extern "C" fn release_words(pointer: *mut u8) -> u64 {
+        record(pointer, &[0xfee]);
+        RESULT
+    }
+    extern "thiscall" fn destroy_record(this: *mut u8, flags: u32) -> u64 {
+        record(this, &[flags]);
+        RESULT
+    }
+    #[test]
+    fn landfill_destruction_releases_before_reading_range_and_keeps_fields() {
+        let _free = fake(0x0090cf63, release_words as *const () as usize);
+        let mut zone = Object::new(0x50);
+        let p = zone.ptr();
+        let mut records = Object::new(64);
+        let r = records.ptr();
+        let mut service = Object::new(4);
+        let q = service.ptr();
+        let table = [destroy_record as *const () as usize, 0, fake_zero as *const () as usize];
+        // SAFETY: every object has a live table and both records fit their allocation.
+        unsafe {
+            put_word(q, 0, table.as_ptr() as u32);
+            put_word(r, 0, table.as_ptr() as u32);
+            put_word(r, 32, table.as_ptr() as u32);
+        }
+        for present in [false, true] {
+            for count in [0u32, 1, 2] {
+                fill(p, 0x50);
+                let begin = if count == 0 { 0 } else { r as u32 };
+                // SAFETY: set the zone's owned service and record range.
+                unsafe {
+                    put_word(p, 0x44, if present { q as u32 } else { 0 });
+                    put_word(p, 0x1c, begin);
+                    put_word(p, 0x20, begin + count * 32);
+                }
+                let mut expected = memory(p, 0x50);
+                expected_word(&mut expected, 0, 0x00ab1610);
+                let result = invoke(fc4p_006bbbc0 as *const () as usize, p, &[]);
+                assert_eq!(
+                    result,
+                    if present || count != 0 {
+                        (RESULT as u32, (RESULT >> 32) as u32)
+                    } else {
+                        (EAX, EDX)
+                    }
+                );
+                let mut expected_calls = vec![];
+                if present {
+                    expected_calls.push((q as u32, vec![]));
+                }
+                for index in 0..count {
+                    expected_calls.push((begin + index * 32, vec![0]));
+                }
+                if count != 0 {
+                    expected_calls.push((begin, vec![0xfee]));
+                }
+                assert_eq!(calls(), expected_calls);
+                assert_eq!(memory(p, 0x50), expected);
+            }
+        }
+    }
+    extern "C" fn copy_records(first: *mut u8, last: *mut u8, output: *mut u8, stop: *mut u8) -> u64 {
+        // SAFETY: the test supplies whole records and the caller's live stop byte.
+        unsafe {
+            record(first, &[0xc0, last as u32, output as u32, u32::from(*stop)]);
+            let mut source = first;
+            let mut destination = output;
+            while source != last {
+                if !destination.is_null() {
+                    for offset in [0, 4, 8, 16, 20, 24, 28] {
+                        put_word(destination, offset, word(source, offset));
+                    }
+                    *destination.add(12) = *source.add(12);
+                    *destination.add(13) = *source.add(13);
+                }
+                source = source.wrapping_add(32);
+                destination = destination.wrapping_add(32);
+            }
+            (RESULT & 0xffff_ffff_0000_0000) | u64::from(destination as u32)
+        }
+    }
+    extern "C" fn repeat_records(output: *mut u8, count: u32, source: *mut u8, stop: *mut u8) -> u64 {
+        // SAFETY: the output capacity covers count records, and stop remains in the caller's frame.
+        unsafe {
+            record(output, &[0xc1, count, source as u32, u32::from(*stop)]);
+            for index in 0..count {
+                let destination = output.wrapping_add(index as usize * 32);
+                if !destination.is_null() {
+                    core::ptr::copy_nonoverlapping(source, destination, 32);
+                }
+            }
+            (RESULT & 0xffff_ffff_0000_0000) | u64::from((output as u32).wrapping_add(count * 32))
+        }
+    }
+    #[test]
+    fn zone_vector_growth_copies_prefix_insert_suffix_then_destroys_old_records() {
+        let _allocate = fake(0x0090cf54, allocate_words as *const () as usize);
+        let _free = fake(0x0090cf63, release_words as *const () as usize);
+        let _copy = fake(0x006bb5c0, copy_records as *const () as usize);
+        let _repeat = fake(0x006bb120, repeat_records as *const () as usize);
+        let mut header = Object::new(16);
+        let p = header.ptr();
+        let mut old = Object::new(64);
+        let r = old.ptr();
+        let mut output = Object::new(256);
+        let out = output.ptr();
+        let mut value = Object::new(32);
+        let v = value.ptr();
+        let table = [destroy_record as *const () as usize];
+        fill(r, 64);
+        fill(v, 32);
+        // SAFETY: install each record's destructor table and a value with distinct fields.
+        unsafe {
+            for index in [0, 32] {
+                put_word(r, index, table.as_ptr() as u32);
+            }
+            for offset in [4, 8, 16, 20, 24, 28] {
+                put_word(v, offset, 0x7000 + offset as u32);
+            }
+            *v.add(12) = 0x12;
+            *v.add(13) = 0x34;
+        }
+        for size in [0u32, 2] {
+            for count in [0u32, 1, 3] {
+                for skip_suffix in [0u32, 0xabcdef01] {
+                    let begin = if size == 0 { 0 } else { r as u32 };
+                    let position = if size == 0 { 0 } else { begin + 32 };
+                    let capacity = size + size.max(count);
+                    let allocation = if capacity == 0 { 0 } else { out as u32 };
+                    ALLOCATIONS.with(|a| *a.borrow_mut() = if capacity == 0 { vec![] } else { vec![allocation] });
+                    fill(p, 16);
+                    fill(out, 256);
+                    // SAFETY: restore the vector's three words for this independent case.
+                    unsafe {
+                        put_word(p, 0, begin);
+                        put_word(p, 4, begin + size * 32);
+                        put_word(p, 8, begin + size * 32);
+                    }
+                    let result = invoke(
+                        fc4p_006bbc10 as *const () as usize,
+                        p,
+                        &[position, v as u32, 0xdeadbeef, count, skip_suffix],
+                    );
+                    let prefix = u32::from(size != 0);
+                    let length = prefix + count + if skip_suffix == 0 { size - prefix } else { 0 };
+                    // SAFETY: the vector has exactly three written words; the padding word stays intact.
+                    unsafe {
+                        assert_eq!(
+                            [word(p, 0), word(p, 4), word(p, 8), word(p, 12)],
+                            [
+                                allocation,
+                                allocation + length * 32,
+                                allocation + capacity * 32,
+                                0xa5a5a5a5
+                            ]
+                        );
+                    }
+                    let edx = if size == 0 && count == 1 && skip_suffix != 0 {
+                        0x701c
+                    } else {
+                        (RESULT >> 32) as u32
+                    };
+                    assert_eq!(result, (allocation + capacity * 32, edx));
+                    let mut expected = vec![];
+                    if capacity != 0 {
+                        expected.push((0, vec![0xa110, capacity * 32]));
+                    }
+                    expected.push((begin, vec![0xc0, position, allocation, skip_suffix & 255]));
+                    let inserted = allocation + prefix * 32;
+                    if count != 1 {
+                        expected.push((inserted, vec![0xc1, count, v as u32, skip_suffix & 255]));
+                    }
+                    if skip_suffix == 0 {
+                        expected.push((position, vec![0xc0, begin + size * 32, inserted + count * 32, 0]));
+                    }
+                    for index in 0..size {
+                        expected.push((begin + index * 32, vec![0]));
+                    }
+                    if size != 0 {
+                        expected.push((begin, vec![0xfee]));
+                    }
+                    assert_eq!(calls(), expected);
+                    if count == 1 {
+                        let mut record = memory(v, 32);
+                        expected_word(&mut record, 0, 0x00ab15dc);
+                        record[14..16].fill(0xa5);
+                        assert_eq!(memory(inserted as *mut u8, 32), record);
+                    }
+                    assert!(ALLOCATIONS.with(|a| a.borrow().is_empty()));
+                }
+            }
+        }
+    }
+    extern "thiscall" fn station_id(this: *mut u8, purpose: u32) -> u64 {
+        record(this, &[purpose]);
+        // SAFETY: swap the simulator's department so the next call must reload its object pointer.
+        unsafe {
+            put_word(
+                HOLDER.with(|v| v.get()) as *mut u8,
+                0x74,
+                NEXT_SERVICE.with(|v| v.get()),
+            );
+        }
+        0x11223344_55667788
+    }
+    extern "thiscall" fn funding_item(this: *mut u8, id: u32, output: *mut u8) -> u64 {
+        // SAFETY: the caller initialized only the item's final word; the budget writes the rest.
+        unsafe {
+            record(this, &[id, word(output, 28)]);
+            put_word(output, 16, ITEM_COST.with(|v| v.get()));
+            put_word(output, 20, 1);
+            put_word(output, 28, ITEM_FUNDING.with(|v| v.get()));
+        }
+        (RESULT & 0xffff_ffff_0000_0000) | u64::from(ANSWER.with(|v| v.get()))
+    }
+    #[test]
+    fn station_funding_uses_saved_table_reloaded_service_optional_outputs_and_low_byte() {
+        ITEM_COST.with(|v| v.set(0x87654321));
+        ITEM_FUNDING.with(|v| v.set(0x7fc12345));
+        let mut simulator = Object::new(0xb4);
+        let p = simulator.ptr();
+        let mut station = Object::new(4);
+        let s = station.ptr();
+        let mut service = Object::new(4);
+        let q = service.ptr();
+        let mut replacement = Object::new(4);
+        let q2 = replacement.ptr();
+        let mut table = [0usize; 52];
+        table[0xcc / 4] = funding_item as *const () as usize;
+        let mut station_table = [0usize; 7];
+        station_table[6] = station_id as *const () as usize;
+        // SAFETY: the replacement deliberately has no usable table: the original captured table must be used.
+        unsafe {
+            put_word(s, 0, station_table.as_ptr() as u32);
+            put_word(q, 0, table.as_ptr() as u32);
+            put_word(q2, 0, 0);
+            put_word(p, 0xb0, 0x12);
+        }
+        HOLDER.with(|v| v.set(p as u32));
+        NEXT_SERVICE.with(|v| v.set(q2 as u32));
+        let mut output = Object::new(16);
+        let out = output.ptr();
+        for answer in [0u32, 0xdeadbe00, 1, 0x12345680] {
+            for cost in [0u32, out as u32] {
+                for funding in [0u32, out as u32, out as u32 + 4] {
+                    ANSWER.with(|v| v.set(answer));
+                    fill(out, 16);
+                    // SAFETY: restore the department before the station callback swaps it.
+                    unsafe {
+                        put_word(p, 0x74, q as u32);
+                    }
+                    let result = invoke(fc4p_006e08d0 as *const () as usize, p, &[s as u32, cost, funding]);
+                    let mut expected = vec![0xa5; 16];
+                    if answer as u8 != 0 {
+                        if funding != 0 {
+                            expected_word(&mut expected, (funding - out as u32) as usize, 0x7fc12345);
+                        }
+                        if cost != 0 {
+                            expected_word(&mut expected, 0, 0x87654321);
+                        }
+                        assert_eq!(
+                            result,
+                            (
+                                (cost & !255) | 1,
+                                if cost == 0 { (RESULT >> 32) as u32 } else { 0x87654321 }
+                            )
+                        );
+                    } else {
+                        assert_eq!(result, (answer, (RESULT >> 32) as u32));
+                    }
+                    assert_eq!(memory(out, 16), expected);
+                    assert_eq!(calls(), vec![(s as u32, vec![0x12]), (q2 as u32, vec![0x55667788, 0])]);
+                }
+            }
+        }
+    }
+    #[test]
+    fn list_range_insertion_preserves_order_and_empty_registers() {
+        let _allocate = fake(0x0090cf54, allocate_words as *const () as usize);
+        let mut list = Object::new(12);
+        let p = list.ptr();
+        let mut input = Object::new(36);
+        let r = input.ptr();
+        let mut output = Object::new(36);
+        let out = output.ptr();
+        for count in [0u32, 1, 3] {
+            fill(out, 36);
+            // SAFETY: circular sentinels and the specified source node chain are live.
+            unsafe {
+                put_word(p, 0, p as u32);
+                put_word(p, 4, p as u32);
+                for index in 0..3u32 {
+                    put_word(r, index as usize * 12, r as u32 + (index + 1) * 12);
+                    put_word(r, index as usize * 12 + 8, 0x10203040 + index);
+                }
+            }
+            ALLOCATIONS.with(|a| *a.borrow_mut() = (0..count).map(|i| out as u32 + i * 12).collect());
+            let result = invoke(
+                fc4p_006f1570 as *const () as usize,
+                core::ptr::null_mut(),
+                &[p as u32, r as u32, r as u32 + count * 12, 0xdeadbeef],
+            );
+            if count == 0 {
+                assert_eq!(result, (EAX, EDX));
+            } else {
+                assert_eq!(result, (out as u32 + (count - 1) * 12, 0x10203040 + count - 1));
+                // SAFETY: follow only the count newly linked nodes and check both directions.
+                unsafe {
+                    let mut node = word(p, 0);
+                    let mut previous = p as u32;
+                    for index in 0..count {
+                        assert_eq!(node, out as u32 + index * 12);
+                        assert_eq!(word(node as *mut u8, 4), previous);
+                        assert_eq!(word(node as *mut u8, 8), 0x10203040 + index);
+                        previous = node;
+                        node = word(node as *mut u8, 0);
+                    }
+                    assert_eq!(node, p as u32);
+                    assert_eq!(word(p, 4), previous);
+                }
+            }
+            assert_eq!(calls(), vec![(0, vec![0xa110, 12]); count as usize]);
+        }
+    }
+    extern "thiscall" fn balance(this: *mut u8) -> u64 {
+        record(this, &[0xba1]);
+        RESULT
+    }
+    extern "thiscall" fn budget_sink(this: *mut u8, create: u32) -> u64 {
+        record(this, &[create]);
+        (RESULT & 0xffff_ffff_0000_0000) | u64::from(NEXT_SERVICE.with(|v| v.get()))
+    }
+    #[test]
+    fn budget_publish_retains_sets_full_signed_balance_then_releases_optional_sink() {
+        let _balance = fake(0x006e9210, balance as *const () as usize);
+        let mut budget = Object::new(0x34);
+        let p = budget.ptr();
+        let mut service = Object::new(4);
+        let q = service.ptr();
+        let mut sink = Object::new(4);
+        let s = sink.ptr();
+        let mut table = [0usize; 21];
+        table[0x50 / 4] = budget_sink as *const () as usize;
+        table[1] = fake_zero as *const () as usize;
+        table[2] = fake_zero as *const () as usize;
+        table[0x30 / 4] = fake_two as *const () as usize;
+        // SAFETY: the service and optional sink use live callbacks.
+        unsafe {
+            put_word(p, 0x30, q as u32);
+            put_word(q, 0, table.as_ptr() as u32);
+            put_word(s, 0, table.as_ptr() as u32);
+        }
+        for present in [0u32, s as u32] {
+            NEXT_SERVICE.with(|v| v.set(present));
+            let before = memory(p, 0x34);
+            let result = invoke(fc4p_00700fa0 as *const () as usize, p, &[]);
+            assert_eq!(
+                result,
+                (if present == 0 { 0 } else { RESULT as u32 }, (RESULT >> 32) as u32)
+            );
+            assert_eq!(memory(p, 0x34), before);
+            let mut expected = vec![(q as u32, vec![1])];
+            if present != 0 {
+                expected.extend([
+                    (s as u32, vec![]),
+                    (p as u32, vec![0xba1]),
+                    (s as u32, vec![RESULT as u32, (RESULT >> 32) as u32]),
+                    (s as u32, vec![]),
+                ]);
+            }
+            assert_eq!(calls(), expected);
+        }
+    }
+    extern "thiscall" fn point_available(this: *mut u8, x: u32, z: u32) -> u64 {
+        record(this, &[0x188, x, z]);
+        (RESULT & 0xffff_ffff_0000_0000) | u64::from(ANSWER.with(|v| v.get()))
+    }
+    extern "thiscall" fn snap_point(this: *mut u8, x: u32, z: u32, ox: *mut u32, oz: *mut u32) -> u64 {
+        // SAFETY: the caller initialized both local words before the callback.
+        unsafe {
+            record(this, &[0x17c, x, z, *ox, *oz]);
+            *ox = x + 10;
+            *oz = z + 20;
+        }
+        RESULT
+    }
+    extern "thiscall" fn apply_point(this: *mut u8, x: u32, z: u32, flags: u32) -> u64 {
+        record(this, &[0x18, x, z, flags]);
+        RESULT
+    }
+    #[test]
+    fn point_snap_checks_low_byte_and_passes_adjusted_coordinates() {
+        let mut owner = Object::new(0x24);
+        let p = owner.ptr();
+        let mut service = Object::new(4);
+        let q = service.ptr();
+        let mut point = [4u32, 0x12345678, 8];
+        let mut table = [0usize; 99];
+        table[0x188 / 4] = point_available as *const () as usize;
+        table[0x17c / 4] = snap_point as *const () as usize;
+        table[0x18 / 4] = apply_point as *const () as usize;
+        // SAFETY: both owner and service begin with a live table.
+        unsafe {
+            put_word(p, 0, table.as_ptr() as u32);
+            put_word(p, 0x20, q as u32);
+            put_word(q, 0, table.as_ptr() as u32);
+        }
+        for answer in [0u32, 0xdeadbe00, 0x12345601, 0xff] {
+            ANSWER.with(|v| v.set(answer));
+            assert_eq!(
+                invoke(fc4p_0072a1c0 as *const () as usize, p, &[point.as_mut_ptr() as u32]),
+                (if answer as u8 == 0 { 0 } else { RESULT as u32 }, (RESULT >> 32) as u32)
+            );
+            let mut expected = vec![(q as u32, vec![0x188, 4, 8])];
+            if answer as u8 != 0 {
+                expected.extend([(q as u32, vec![0x17c, 4, 8, 4, 8]), (p as u32, vec![0x18, 14, 28, 0])]);
+            }
+            assert_eq!(calls(), expected);
+            assert_eq!(point, [4, 0x12345678, 8]);
+        }
+    }
+    extern "thiscall" fn object_origin(this: *mut u8, x: *mut u32, z: *mut u32) -> u64 {
+        record(this, &[0x54]);
+        // SAFETY: the two outputs are distinct original argument words.
+        unsafe {
+            *x = ANSWER.with(|v| v.get());
+            *z = NEXT_SERVICE.with(|v| v.get());
+        }
+        RESULT
+    }
+    #[test]
+    fn grid_lookup_checks_signed_bounds_and_optional_origin_match() {
+        let mut owner = Object::new(0x54);
+        let p = owner.ptr();
+        let mut object = Object::new(4);
+        let q = object.ptr();
+        let mut cells = [0u32; 4];
+        let mut rows = [0u32; 6];
+        rows[0] = cells.as_mut_ptr() as u32;
+        rows[3] = cells.as_mut_ptr().wrapping_add(2) as u32;
+        let mut table = [0usize; 22];
+        table[0x54 / 4] = object_origin as *const () as usize;
+        // SAFETY: the owner describes a 2 by 2 grid of object pointers.
+        unsafe {
+            put_word(p, 0x24, 2);
+            put_word(p, 0x28, 2);
+            put_word(p, 0x50, rows.as_ptr() as u32);
+            put_word(q, 0, table.as_ptr() as u32);
+        }
+        for x in [-1i32, 0, 1, 2, i32::MIN, i32::MAX] {
+            for z in [-1i32, 0, 1, 2] {
+                for origin in [0u32, 1, 0xdeadbe00, 0xff] {
+                    for present in [0u32, q as u32] {
+                        cells.fill(present);
+                        ANSWER.with(|v| v.set(x as u32));
+                        NEXT_SERVICE.with(|v| v.set(z as u32));
+                        let result = invoke(fc4p_0072b410 as *const () as usize, p, &[x as u32, z as u32, origin]);
+                        let valid = (0..2).contains(&x) && (0..2).contains(&z);
+                        let checked = valid && present != 0 && origin as u8 != 0;
+                        assert_eq!(
+                            result,
+                            (
+                                if valid { present } else { 0 },
+                                if checked {
+                                    (RESULT >> 32) as u32
+                                } else if valid {
+                                    rows[x as usize * 3]
+                                } else {
+                                    EDX
+                                }
+                            )
+                        );
+                        assert_eq!(calls(), if checked { vec![(q as u32, vec![0x54])] } else { vec![] });
+                    }
+                }
+            }
+        }
+        cells.fill(q as u32);
+        for (ox, oz) in [(0u32, 1u32), (1, 0), (2, 2)] {
+            ANSWER.with(|v| v.set(ox));
+            NEXT_SERVICE.with(|v| v.set(oz));
+            assert_eq!(
+                invoke(fc4p_0072b410 as *const () as usize, p, &[0, 0, 1]),
+                (0, (RESULT >> 32) as u32)
+            );
+            assert_eq!(calls(), vec![(q as u32, vec![0x54])]);
+        }
+    }
+
+    fn invoke_cdecl(function: usize, this: *mut u8, args: &[u32], eax: u32) -> (u32, u32) {
+        let mut call = RawCall::new(Conv::Cdecl, function, this as u32, args);
+        call.eax = eax;
+        call.edx = EDX;
+        // SAFETY: every use describes a cdecl entry and its complete argument list.
+        unsafe {
+            call_raw(&mut call);
+        }
+        (call.eax, call.edx)
+    }
+    thunk_test!(button_secondary_release, fc4p_00793fe0, -224, 0x00793ec0, fake_zero, []);
+    #[test]
+    fn edge_direction_components_wrap_negation_and_write_aliases_in_order() {
+        let mut output = [0u32; 4];
+        let p = output.as_mut_ptr().cast::<u8>();
+        for direction in [0u32, 1, 2, 3, 4, u32::MAX] {
+            for distance in [0u32, 1, 0x80000000, u32::MAX] {
+                for alias in [false, true] {
+                    output.fill(0xa5a5a5a5);
+                    let z = p.wrapping_add(if alias { 0 } else { 4 });
+                    let (xv, zv, eax, edx) = match direction {
+                        1 => (distance, u32::MAX, p as u32, z as u32),
+                        2 => (u32::MAX, 0u32.wrapping_sub(distance), p as u32, z as u32),
+                        3 => (0u32.wrapping_sub(distance), 1, 0u32.wrapping_sub(distance), z as u32),
+                        _ => (1, distance, p as u32, distance),
+                    };
+                    assert_eq!(
+                        invoke_cdecl(
+                            fc4p_007a65d0 as *const () as usize,
+                            core::ptr::null_mut(),
+                            &[direction, distance, p as u32, z as u32],
+                            EAX
+                        ),
+                        (eax, edx)
+                    );
+                    assert_eq!(
+                        output,
+                        if alias {
+                            [zv, 0xa5a5a5a5, 0xa5a5a5a5, 0xa5a5a5a5]
+                        } else {
+                            [xv, zv, 0xa5a5a5a5, 0xa5a5a5a5]
+                        }
+                    );
+                }
+            }
+        }
+    }
+    #[test]
+    fn optional_child_values_forward_only_when_present() {
+        let mut owner = Object::new(48);
+        let p = owner.ptr();
+        let mut child = Object::new(4);
+        let q = child.ptr();
+        let mut table = [0usize; 11];
+        table[9] = fake_zero as *const () as usize;
+        table[10] = fake_zero as *const () as usize;
+        // SAFETY: install the live child table; the interface is 32 bytes into the owner.
+        unsafe {
+            put_word(q, 0, table.as_ptr() as u32);
+        }
+        for function in [fc4p_007b62f0 as *const () as usize, fc4p_007b6310 as *const () as usize] {
+            for pointer in [0u32, q as u32] {
+                // SAFETY: set only the optional child field.
+                unsafe {
+                    put_word(p, 0, pointer);
+                }
+                let before = memory(p, 48);
+                assert_eq!(
+                    invoke(function, p.wrapping_add(32), &[]),
+                    if pointer == 0 {
+                        (0, EDX)
+                    } else {
+                        (RESULT as u32, (RESULT >> 32) as u32)
+                    }
+                );
+                assert_eq!(calls(), if pointer == 0 { vec![] } else { vec![(q as u32, vec![])] });
+                assert_eq!(memory(p, 48), before);
+            }
+        }
+    }
+    extern "thiscall" fn rectangle_set(this: *mut u8, a: u32, b: u32, c: u32, d: u32) -> u64 {
+        record(this, &[a, b, c, d]);
+        RESULT
+    }
+    #[test]
+    fn window_rectangle_set_precedes_geometry_update() {
+        let _set = fake(0x009bc0b8, rectangle_set as *const () as usize);
+        let _update = fake(0x007c0390, fake_zero as *const () as usize);
+        let mut owner = Object::new(4);
+        let p = owner.ptr();
+        let args = [0u32, u32::MAX, 0x80000000, 0x12345678];
+        assert_eq!(
+            invoke(fc4p_007c07d0 as *const () as usize, p, &args),
+            (RESULT as u32, (RESULT >> 32) as u32)
+        );
+        assert_eq!(calls(), vec![(p as u32, args.to_vec()), (p as u32, vec![])]);
+    }
+    #[test]
+    fn embedded_word_copy_handles_identity_and_overlapping_outputs_sequentially() {
+        let mut owner = Object::new(0x240);
+        let p = owner.ptr();
+        for displacement in [-8i32, -4, 0, 4, 8, 64] {
+            fill(p, 0x240);
+            // SAFETY: the source covers sixteen distinct initialized words.
+            unsafe {
+                for i in 0..16usize {
+                    put_word(p, 0x1ac + i * 4, 0xabc000 + i as u32);
+                }
+            }
+            let mut expected = memory(p, 0x240);
+            let target = (0x1aci32 + displacement) as usize;
+            for i in 0..16usize {
+                let value = u32::from_le_bytes(expected[0x1ac + i * 4..0x1b0 + i * 4].try_into().unwrap());
+                expected_word(&mut expected, target + i * 4, value);
+            }
+            assert_eq!(
+                invoke(fc4p_007d2730 as *const () as usize, p, &[p.wrapping_add(target) as u32]),
+                (EAX, EDX)
+            );
+            assert_eq!(memory(p, 0x240), expected);
+        }
+    }
+    extern "C" fn allocate_sentinel(bytes: u32) -> u64 {
+        // SAFETY: observe the header before allocation; its first word is already cleared.
+        unsafe {
+            record(
+                HOLDER.with(|v| v.get()) as *mut u8,
+                &[bytes, word(HOLDER.with(|v| v.get()) as *mut u8, 0)],
+            );
+        }
+        (RESULT & 0xffff_ffff_0000_0000) | u64::from(NEXT_SERVICE.with(|v| v.get()))
+    }
+    #[test]
+    fn tree_constructor_initializes_only_tag_parent_links_and_header() {
+        let _allocate = fake(0x0090cf54, allocate_sentinel as *const () as usize);
+        let mut owner = Object::new(16);
+        let p = owner.ptr();
+        let mut sentinel = Object::new(56);
+        let q = sentinel.ptr();
+        fill(p, 16);
+        fill(q, 56);
+        HOLDER.with(|v| v.set(p as u32));
+        NEXT_SERVICE.with(|v| v.set(q as u32));
+        assert_eq!(
+            invoke(fc4p_0081d200 as *const () as usize, p, &[]),
+            (p as u32, (RESULT >> 32) as u32)
+        );
+        let mut expected_owner = vec![0xa5; 16];
+        expected_word(&mut expected_owner, 0, q as u32);
+        expected_word(&mut expected_owner, 4, 0);
+        let mut expected_sentinel = vec![0xa5; 56];
+        expected_sentinel[0] = 0;
+        expected_word(&mut expected_sentinel, 4, 0);
+        expected_word(&mut expected_sentinel, 8, q as u32);
+        expected_word(&mut expected_sentinel, 12, q as u32);
+        assert_eq!(memory(p, 16), expected_owner);
+        assert_eq!(memory(q, 56), expected_sentinel);
+        assert_eq!(calls(), vec![(p as u32, vec![56, 0])]);
+    }
+    #[test]
+    fn format_color_masks_take_the_format_in_eax() {
+        for format in (0u32..32).chain([0x80000000, u32::MAX]) {
+            let mask = match format {
+                4 | 6 => 0x7fff,
+                5 => 0xffff,
+                7 => 0xfff,
+                8 | 9 => 0xffffff,
+                _ => u32::MAX,
+            };
+            assert_eq!(
+                invoke_cdecl(fc4p_00825c90 as *const () as usize, core::ptr::null_mut(), &[], format),
+                (mask, EDX)
+            );
+        }
+    }
+    #[test]
+    fn pixel_expansion_exhausts_sixteen_bit_colors_and_checks_full_words() {
+        let mut context = Object::new(0x30);
+        let p = context.ptr();
+        for format in (0u32..12).chain([u32::MAX]) {
+            // SAFETY: the format word fits in the context.
+            unsafe {
+                put_word(p, 0x2c, format);
+            }
+            let before = memory(p, 0x30);
+            for pixel in (0u32..=0xffff).chain([0x80000000, 0xdeadbeef, u32::MAX]) {
+                let scale5 = |v: u32| (v << 3) | (v >> 2);
+                let scale6 = |v: u32| (v << 2) | (v >> 4);
+                let (expected, edx) = match format {
+                    4 | 6 => {
+                        let r = scale5((pixel >> 10) & 31);
+                        let g = scale5((pixel >> 5) & 31);
+                        let b = scale5(pixel & 31);
+                        (
+                            0xff000000 | r << 16 | g << 8 | b,
+                            (((pixel >> 10) & 31) >> 2) << 16 | (((pixel >> 5) & 31) >> 2) << 8 | ((pixel & 31) >> 2),
+                        )
+                    }
+                    5 => (
+                        0xff000000
+                            | scale5((pixel >> 11) & 31) << 16
+                            | scale6((pixel >> 5) & 63) << 8
+                            | scale5(pixel & 31),
+                        0xff000000u32.wrapping_add((pixel & 0x7e0) << 5),
+                    ),
+                    7 => (
+                        0xff000000
+                            | (((pixel >> 8) & 15) * 17) << 16
+                            | (((pixel >> 4) & 15) * 17) << 8
+                            | ((pixel & 15) * 17),
+                        pixel & 0xf0,
+                    ),
+                    8 | 9 => (pixel | 0xff000000, EDX),
+                    _ => (0, EDX),
+                };
+                assert_eq!(
+                    invoke(fc4p_0082abf0 as *const () as usize, p, &[pixel]),
+                    (expected, edx),
+                    "format {format}, pixel {pixel:08x}"
+                );
+            }
+            assert_eq!(memory(p, 0x30), before);
+        }
+    }
+    #[test]
+    fn pixel_packing_keeps_format_additions_and_uses_only_argument_bytes() {
+        let mut context = Object::new(0x30);
+        let p = context.ptr();
+        for format in (0u32..12).chain([u32::MAX]) {
+            // SAFETY: the format word fits in the context.
+            unsafe {
+                put_word(p, 0x2c, format);
+            }
+            let before = memory(p, 0x30);
+            for red in [0u32, 7, 8, 15, 16, 127, 128, 248, 255] {
+                for green in [0u32, 3, 4, 7, 8, 15, 16, 252, 255] {
+                    for blue in [0u32, 7, 8, 15, 16, 128, 255] {
+                        let (expected, edx) = match format {
+                            4 | 6 => (
+                                0xf000 + ((red >> 3) << 10) + ((green >> 3) << 5) + (blue >> 3),
+                                blue >> 3,
+                            ),
+                            5 => (
+                                0xf000 + ((red >> 3) << 11) + ((green >> 2) << 5) + (blue >> 3),
+                                blue >> 3,
+                            ),
+                            7 => (
+                                0xf000 | ((red >> 4) << 8) | ((green >> 4) << 4) | (blue >> 4),
+                                blue >> 4,
+                            ),
+                            8 | 9 => (0xff000000 | red << 16 | green << 8 | blue, blue),
+                            _ => (0, EDX),
+                        };
+                        assert_eq!(
+                            invoke(
+                                fc4p_0082ad30 as *const () as usize,
+                                p,
+                                &[red | 0xdeadbe00, green | 0x12345600, blue | 0x87654300]
+                            ),
+                            (expected, edx)
+                        );
+                    }
+                }
+            }
+            assert_eq!(memory(p, 0x30), before);
+        }
+    }
+    extern "thiscall" fn expand_test_color(this: *mut u8, color: u32) -> u64 {
+        record(this, &[color]);
+        RESULT
+    }
+    #[test]
+    fn channel_unpack_calls_expand_address_and_writes_three_bytes_in_order() {
+        let _expand = fake(0x0082abf0, expand_test_color as *const () as usize);
+        let mut context = Object::new(4);
+        let p = context.ptr();
+        let mut output = [0xa5u8; 12];
+        let out = output.as_mut_ptr();
+        for offsets in [[1usize, 4, 8], [1, 1, 1], [1, 4, 1], [4, 1, 1]] {
+            output.fill(0xa5);
+            let pointers = offsets.map(|offset| out.wrapping_add(offset) as u32);
+            let mut expected = [0xa5; 12];
+            for (offset, value) in offsets.into_iter().zip([0x34, 0x56, 0x78]) {
+                expected[offset] = value;
+            }
+            assert_eq!(
+                invoke(
+                    fc4p_0082ae10 as *const () as usize,
+                    p,
+                    &[0xabcdef01, pointers[0], pointers[1], pointers[2]]
+                ),
+                ((RESULT as u32 & !255) | 1, pointers[1])
+            );
+            assert_eq!(output, expected);
+            assert_eq!(calls(), vec![(p as u32, vec![0xabcdef01])]);
+        }
+    }
+    #[test]
+    fn context_format_description_writes_raw_format_and_depth_with_aliasing() {
+        let mut context = Object::new(0x40);
+        let p = context.ptr();
+        for format in (0u32..12).chain([0x80000000, u32::MAX]) {
+            for offset in [0x18usize, 0x2c] {
+                fill(p, 0x40);
+                // SAFETY: both possible outputs and the context format fit.
+                unsafe {
+                    put_word(p, 0x2c, format);
+                }
+                let out = p.wrapping_add(offset);
+                let bits = match format {
+                    2 => 8,
+                    3..=7 => 16,
+                    8 | 9 => 32,
+                    _ => 0,
+                };
+                let mut expected = memory(p, 0x40);
+                expected_word(&mut expected, offset, format);
+                expected_word(&mut expected, offset + 4, bits);
+                assert_eq!(
+                    invoke(fc4p_0082b200 as *const () as usize, p, &[out as u32]),
+                    (bits, out as u32)
+                );
+                assert_eq!(memory(p, 0x40), expected);
+            }
+        }
+    }
+    extern "thiscall" fn surface_mode_forward(this: *mut u8, a: u32, b: u32) -> u64 {
+        // SAFETY: the holder's mode byte must already be updated before transfer to the surface.
+        unsafe {
+            record(
+                this,
+                &[a, b, u32::from(*(HOLDER.with(|v| v.get()) as *mut u8).add(0x48))],
+            );
+        }
+        RESULT
+    }
+    #[test]
+    fn surface_entries_forward_original_stack_and_update_only_the_mode_byte() {
+        let mut holder = Object::new(0x50);
+        let p = holder.ptr();
+        let mut surface = Object::new(4);
+        let q = surface.ptr();
+        HOLDER.with(|v| v.set(p as u32));
+        let mut table = [0usize; 39];
+        for slot in [0x5c, 0x68, 0x6c, 0x94, 0x98] {
+            table[slot / 4] = surface_mode_forward as *const () as usize;
+        }
+        // SAFETY: every forwarding slot accepts the exact two words used by the test.
+        unsafe {
+            put_word(q, 0, table.as_ptr() as u32);
+        }
+        for (function, flag) in [
+            (fc4p_0082b4b0 as *const () as usize, 1),
+            (fc4p_0082b540 as *const () as usize, 0xa5),
+            (fc4p_0082b550 as *const () as usize, 0),
+            (fc4p_0082b750 as *const () as usize, 0xa5),
+            (fc4p_0082b760 as *const () as usize, 0xa5),
+        ] {
+            fill(p, 0x50);
+            // SAFETY: restore the holder's surface pointer without altering its mode byte.
+            unsafe {
+                put_word(p, 0x14, q as u32);
+            }
+            let mut expected = memory(p, 0x50);
+            expected[0x48] = flag;
+            assert_eq!(
+                invoke(function, p, &[0x12345678, 0xdeadbeef]),
+                (RESULT as u32, (RESULT >> 32) as u32)
+            );
+            assert_eq!(calls(), vec![(q as u32, vec![0x12345678, 0xdeadbeef, u32::from(flag)])]);
+            assert_eq!(memory(p, 0x50), expected);
+        }
+    }
+    #[test]
+    fn x87_precision_controls_preserve_other_control_bits_stack_status_and_mxcsr() {
+        let _fpu = GameFpu::new();
+        #[repr(C, align(16))]
+        struct State([u8; 512]);
+        for control in [0x007fu16, 0x027f, 0x037f, 0x017f, 0x0c7f, 0x087f] {
+            for mode in [0u32, 1, 2, 3, u32::MAX] {
+                crate::x87::set_control_word(control);
+                let mut before = State([0; 512]);
+                let mut after = State([0; 512]);
+                // SAFETY: one free x87 slot and two aligned save buffers.
+                unsafe {
+                    core::arch::asm!("fldpi", "fxsave [{state}]", state = in(reg) &mut before, out("st(0)") _);
+                }
+                let result = invoke_cdecl(fc4p_008929e0 as *const () as usize, core::ptr::null_mut(), &[mode], EAX);
+                // SAFETY: record the environment and pop exactly the test value pushed above.
+                unsafe {
+                    core::arch::asm!("fxsave [{state}]", "fstp st(0)", state = in(reg) &mut after, out("st(0)") _);
+                }
+                let expected = (control & !0x300)
+                    | match mode {
+                        1 => 0x200,
+                        2 => 0x300,
+                        _ => 0,
+                    };
+                assert_eq!(result, (EAX, EDX));
+                assert_eq!(crate::x87::control_word(), expected);
+                before.0[..2].copy_from_slice(&expected.to_le_bytes());
+                assert_eq!(before.0[..160], after.0[..160]);
+                assert_eq!(
+                    invoke_cdecl(fc4p_00892a0a as *const () as usize, core::ptr::null_mut(), &[], EAX),
+                    (
+                        match expected & 0x300 {
+                            0 => 0,
+                            0x200 => 1,
+                            _ => 2,
+                        },
+                        EDX
+                    )
+                );
+            }
+            crate::x87::set_control_word(control);
+            assert_eq!(
+                invoke_cdecl(fc4p_00892a0a as *const () as usize, core::ptr::null_mut(), &[], EAX),
+                (
+                    match control & 0x300 {
+                        0 => 0,
+                        0x200 => 1,
+                        _ => 2,
+                    },
+                    EDX
+                )
+            );
+        }
+    }
+    extern "stdcall" fn allocate_single_node(value: *mut u8) -> u64 {
+        // SAFETY: the payload pointer is valid for one word, and the fake supplies a complete node.
+        unsafe {
+            record(value, &[word(value, 0)]);
+            let node = NEXT_SERVICE.with(|v| v.get()) as *mut u8;
+            put_word(node, 8, word(value, 0));
+            (RESULT & 0xffff_ffff_0000_0000) | u64::from(node as u32)
+        }
+    }
+    #[test]
+    fn single_node_insertion_links_then_writes_iterator_even_when_it_aliases_position() {
+        let _allocate = fake(0x0094b33a, allocate_single_node as *const () as usize);
+        let mut position = Object::new(12);
+        let p = position.ptr();
+        let mut node = Object::new(12);
+        let q = node.ptr();
+        let mut payload = 0x98765432u32;
+        let mut iterator = 0u32;
+        NEXT_SERVICE.with(|v| v.set(q as u32));
+        for alias in [false, true] {
+            fill(q, 12);
+            // SAFETY: restore an empty circular list and a separate iterator output when requested.
+            unsafe {
+                put_word(p, 0, p as u32);
+                put_word(p, 4, p as u32);
+            }
+            let output = if alias { p } else { (&mut iterator as *mut u32).cast() };
+            assert_eq!(
+                invoke(
+                    fc4p_00897c8d as *const () as usize,
+                    core::ptr::null_mut(),
+                    &[output as u32, p as u32, &mut payload as *mut u32 as u32]
+                ),
+                (output as u32, p as u32)
+            );
+            assert_eq!(calls(), vec![(&mut payload as *mut u32 as u32, vec![payload])]);
+            // SAFETY: inspect only the two live link headers and payload word.
+            unsafe {
+                assert_eq!([word(q, 0), word(q, 4), word(q, 8)], [p as u32, p as u32, payload]);
+                assert_eq!([word(p, 0), word(p, 4)], [q as u32, q as u32]);
+                assert_eq!(word(output, 0), q as u32);
+            }
+        }
+    }
+    extern "thiscall" fn construct_test_deque(this: *mut u8) -> u64 {
+        let base = this.wrapping_sub(40);
+        record(this, &memory(base, 40).into_iter().map(u32::from).collect::<Vec<_>>());
+        // SAFETY: the fake writes only the embedded deque's first word.
+        unsafe {
+            put_word(this, 0, 0xfedcba98);
+        }
+        RESULT
+    }
+    #[test]
+    fn queued_state_constructor_leaves_padding_and_initializes_before_embedded_constructor() {
+        let _construct = fake(0x0092e6c9, construct_test_deque as *const () as usize);
+        let mut owner = Object::new(64);
+        let p = owner.ptr();
+        fill(p, 64);
+        let mut expected = vec![0xa5; 64];
+        expected[..32].fill(0);
+        expected[32..34].copy_from_slice(&10u16.to_le_bytes());
+        expected[36..40].fill(0);
+        let at_call = expected[..40].iter().copied().map(u32::from).collect();
+        expected_word(&mut expected, 40, 0xfedcba98);
+        assert_eq!(
+            invoke(fc4p_00897fed as *const () as usize, p, &[]),
+            (p as u32, (RESULT >> 32) as u32)
+        );
+        assert_eq!(calls(), vec![(p.wrapping_add(40) as u32, at_call)]);
+        assert_eq!(memory(p, 64), expected);
+    }
+    #[test]
+    fn embedded_word_copy_obeys_and_preserves_backward_direction() {
+        let mut owner = Object::new(0x240);
+        let p = owner.ptr();
+        fill(p, 0x240);
+        // SAFETY: the backwards source spans sixteen live words ending at +0x1ac.
+        unsafe {
+            for i in 0..16usize {
+                put_word(p, 0x1ac - i * 4, 0xabc000 + i as u32);
+            }
+        }
+        let mut expected = memory(p, 0x240);
+        for i in 0..16usize {
+            let value = u32::from_le_bytes(expected[0x1ac - i * 4..0x1b0 - i * 4].try_into().unwrap());
+            expected_word(&mut expected, 0x1a8 - i * 4, value);
+        }
+        let mut registers = [EAX, EDX, 0, p.wrapping_add(0x1a8) as u32, p as u32];
+        // SAFETY: the output spans sixteen words backwards. DF is cleared immediately after saving it,
+        // before control returns to any Rust code; the port uses a direction-aware ABI entry.
+        unsafe {
+            core::arch::asm!(
+                "std", "push dword ptr [edi + 12]", "mov ecx, [edi + 16]",
+                "mov eax, [edi]", "mov edx, [edi + 4]", "call {function}",
+                "pushfd", "pop ecx", "cld", "mov [edi], eax", "mov [edi + 4], edx",
+                "mov [edi + 8], ecx", function = sym fc4p_007d2730,
+                in("edi") registers.as_mut_ptr(), clobber_abi("C"),
+            );
+        }
+        assert_eq!(registers[..2], [EAX, EDX]);
+        assert_ne!(registers[2] & 0x400, 0);
+        assert_eq!(memory(p, 0x240), expected);
+    }
+
+    thread_local! {
+        static RETAINED: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+        static ITEM_COST: std::cell::Cell<u32> = const { std::cell::Cell::new(0x87654321) };
+        static ITEM_FUNDING: std::cell::Cell<u32> = const { std::cell::Cell::new(0x7fc12345) };
+    }
+    extern "thiscall" fn query_message_source(this: *mut u8, id: u32, output: *mut u32) -> u64 {
+        // SAFETY: the query output is initialized to zero in the caller's frame.
+        unsafe {
+            record(this, &[0, id, *output]);
+            *output = RETAINED.with(|v| v.get());
+        }
+        (RESULT & 0xffff_ffff_0000_0000) | u64::from(ANSWER.with(|v| v.get()))
+    }
+    extern "thiscall" fn new_message(this: *mut u8) -> u64 {
+        record(this, &[0xc70]);
+        (RESULT & 0xffff_ffff_0000_0000) | u64::from(this as u32)
+    }
+    extern "thiscall" fn message_add_ref(this: *mut u8) -> u64 {
+        record(this, &[4]);
+        RESULT
+    }
+    extern "thiscall" fn message_release(this: *mut u8) -> u64 {
+        record(this, &[8]);
+        RESULT
+    }
+    extern "thiscall" fn message_type(this: *mut u8, value: u32) -> u64 {
+        record(this, &[0x14, value]);
+        RESULT
+    }
+    extern "thiscall" fn message_code(this: *mut u8, value: u32) -> u64 {
+        record(this, &[0x2c, value]);
+        RESULT
+    }
+    extern "thiscall" fn message_payload(this: *mut u8, value: u32) -> u64 {
+        record(this, &[0x84, value]);
+        RESULT
+    }
+    extern "thiscall" fn message_send(this: *mut u8, message: u32) -> u64 {
+        record(this, &[0x0c, message]);
+        RESULT
+    }
+    extern "thiscall" fn message_post(this: *mut u8, message: u32, priority: u32) -> u64 {
+        record(this, &[0x10, message, priority]);
+        RESULT
+    }
+    #[test]
+    fn neighbor_message_queries_optional_source_dispatches_and_releases_in_order() {
+        use crate::testing::fake_data;
+        let _allocate = fake(0x009133da, allocate_words as *const () as usize);
+        let _new = fake(0x009134d6, new_message as *const () as usize);
+        let mut source = Object::new(4);
+        let source_pointer = source.ptr();
+        let mut held = Object::new(4);
+        let held_pointer = held.ptr();
+        let mut message = Object::new(44);
+        let message_pointer = message.ptr();
+        let mut server = Object::new(4);
+        let server_pointer = server.ptr();
+        let mut global_server = server_pointer;
+        let _data = fake_data(0x00b43ccc, (&mut global_server as *mut *mut u8).cast());
+        let mut table = [0usize; 34];
+        table[0] = query_message_source as *const () as usize;
+        table[1] = message_add_ref as *const () as usize;
+        table[2] = message_release as *const () as usize;
+        table[3] = message_send as *const () as usize;
+        table[4] = message_post as *const () as usize;
+        table[5] = message_type as *const () as usize;
+        table[0x2c / 4] = message_code as *const () as usize;
+        table[0x84 / 4] = message_payload as *const () as usize;
+        // SAFETY: all four test interfaces have the same live callback table.
+        unsafe {
+            for p in [source_pointer, held_pointer, message_pointer, server_pointer] {
+                put_word(p, 0, table.as_ptr() as u32);
+            }
+        }
+        for source in [0u32, source_pointer as u32] {
+            for answer in [0u32, 0x12345600, 0x12345601] {
+                for retained in [0u32, held_pointer as u32] {
+                    for post in [0u32, 1, 0x12345600, 0xff] {
+                        ANSWER.with(|v| v.set(answer));
+                        RETAINED.with(|v| v.set(retained));
+                        let proceed = source == 0 || answer as u8 != 0;
+                        let held = if source == 0 { 0 } else { retained };
+                        ALLOCATIONS
+                            .with(|a| *a.borrow_mut() = if proceed { vec![message_pointer as u32] } else { vec![] });
+                        let before = memory(message_pointer, 44);
+                        assert_eq!(
+                            invoke_cdecl(
+                                fc4p_006cf5c0 as *const () as usize,
+                                source as *mut u8,
+                                &[post, 0x87654321],
+                                EAX
+                            ),
+                            (
+                                if proceed || held != 0 { RESULT as u32 } else { answer },
+                                (RESULT >> 32) as u32
+                            )
+                        );
+                        let mut expected = vec![];
+                        if source != 0 {
+                            expected.push((source, vec![0, 1, 0]));
+                        }
+                        if proceed {
+                            expected.extend([
+                                (0, vec![0xa110, 44]),
+                                (message_pointer as u32, vec![0xc70]),
+                                (message_pointer as u32, vec![4]),
+                                (message_pointer as u32, vec![0x14, 0xea418d8f]),
+                                (message_pointer as u32, vec![0x2c, 0x87654321]),
+                                (message_pointer as u32, vec![0x84, held]),
+                                (
+                                    server_pointer as u32,
+                                    if post as u8 == 0 {
+                                        vec![0x0c, message_pointer as u32]
+                                    } else {
+                                        vec![0x10, message_pointer as u32, 0]
+                                    },
+                                ),
+                                (message_pointer as u32, vec![8]),
+                            ]);
+                        }
+                        if held != 0 {
+                            expected.push((held, vec![8]));
+                        }
+                        assert_eq!(calls(), expected);
+                        assert_eq!(memory(message_pointer, 44), before);
+                        assert!(ALLOCATIONS.with(|a| a.borrow().is_empty()));
+                    }
+                }
+            }
+        }
+    }
+    extern "thiscall" fn refresh_ids(this: *mut u8) -> u64 {
+        // SAFETY: the copied list count and its first ID belong to the owner's live fields.
+        unsafe {
+            record(this, &[word(this, 0x120), word(this, 0xe0)]);
+        }
+        RESULT
+    }
+    #[test]
+    fn filter_ids_copy_sequentially_and_keep_nonpositive_counts() {
+        let _refresh = fake(0x007a93e0, refresh_ids as *const () as usize);
+        let mut owner = Object::new(0x150);
+        let p = owner.ptr();
+        for count in [i32::MIN, -1, 0, 1, 16, 17] {
+            for source_offset in [0x40usize, 0xdc, 0xe0, 0xe4] {
+                fill(p, 0x150);
+                // SAFETY: all tested input ranges and outputs fit this allocation.
+                unsafe {
+                    for i in 0..18usize {
+                        put_word(p, source_offset + i * 4, 0x12340000 + i as u32);
+                    }
+                }
+                let mut expected = memory(p, 0x150);
+                for i in 0..count.max(0) as usize {
+                    let value = u32::from_le_bytes(
+                        expected[source_offset + i * 4..source_offset + i * 4 + 4]
+                            .try_into()
+                            .unwrap(),
+                    );
+                    expected_word(&mut expected, 0xe0 + i * 4, value);
+                }
+                expected_word(&mut expected, 0x120, count as u32);
+                let first = u32::from_le_bytes(expected[0xe0..0xe4].try_into().unwrap());
+                assert_eq!(
+                    invoke(
+                        fc4p_007a97d0 as *const () as usize,
+                        p,
+                        &[p.wrapping_add(source_offset) as u32, count as u32]
+                    ),
+                    (RESULT as u32, (RESULT >> 32) as u32)
+                );
+                assert_eq!(calls(), vec![(p as u32, vec![count as u32, first])]);
+                assert_eq!(memory(p, 0x150), expected);
+            }
+        }
+    }
+    #[test]
+    fn pair_allocation_copies_each_word_preserves_unused_capacity_and_returns_base() {
+        let _allocate = fake(0x0090cf54, allocate_words as *const () as usize);
+        let mut source = Object::new(48);
+        let r = source.ptr();
+        let mut output = Object::new(64);
+        let out = output.ptr();
+        // SAFETY: six pairs of distinct source words fit.
+        unsafe {
+            for i in 0..12usize {
+                put_word(r, i * 4, 0x12340000 + i as u32);
+            }
+        }
+        for (capacity, count) in [(0u32, 0u32), (0, 1), (1, 0), (1, 1), (6, 3), (6, 6)] {
+            fill(out, 64);
+            let allocation = if capacity == 0 { 0 } else { out as u32 };
+            ALLOCATIONS.with(|a| *a.borrow_mut() = if capacity == 0 { vec![] } else { vec![allocation] });
+            assert_eq!(
+                invoke(
+                    fc4p_007cec30 as *const () as usize,
+                    core::ptr::null_mut(),
+                    &[capacity, r as u32, r as u32 + count * 8]
+                ),
+                (
+                    allocation,
+                    if count == 0 {
+                        r as u32
+                    } else {
+                        (r as u32).wrapping_sub(allocation)
+                    }
+                )
+            );
+            let mut expected = vec![0xa5; 64];
+            if allocation != 0 {
+                expected[..count as usize * 8].copy_from_slice(&memory(r, count as usize * 8));
+            }
+            assert_eq!(memory(out, 64), expected);
+            assert_eq!(
+                calls(),
+                if capacity == 0 {
+                    vec![]
+                } else {
+                    vec![(0, vec![0xa110, capacity * 8])]
+                }
+            );
+        }
+    }
+    #[test]
+    fn pair_vector_copy_reloads_source_after_header_initialization_including_self_copy() {
+        let _allocate = fake(0x0090cf54, allocate_words as *const () as usize);
+        let mut source_header = Object::new(16);
+        let r = source_header.ptr();
+        let mut destination_header = Object::new(16);
+        let p = destination_header.ptr();
+        let mut source = Object::new(24);
+        let values = source.ptr();
+        let mut output = Object::new(24);
+        let out = output.ptr();
+        // SAFETY: three source pairs contain distinct words.
+        unsafe {
+            for i in 0..6usize {
+                put_word(values, i * 4, 0x76540000 + i as u32);
+            }
+        }
+        for count in [0u32, 1, 3] {
+            for self_copy in [false, true] {
+                for null_allocation in [false, true] {
+                    if null_allocation && count > 1 {
+                        continue;
+                    }
+                    fill(p, 16);
+                    fill(r, 16);
+                    fill(out, 24);
+                    let source = if self_copy { p } else { r };
+                    // SAFETY: both possible source headers describe the live source pairs.
+                    unsafe {
+                        put_word(source, 0, values as u32);
+                        put_word(source, 4, values as u32 + count * 8);
+                        put_word(source, 8, values as u32 + count * 8);
+                    }
+                    let allocation = if count == 0 || null_allocation { 0 } else { out as u32 };
+                    ALLOCATIONS.with(|a| *a.borrow_mut() = if count == 0 { vec![] } else { vec![allocation] });
+                    let result = invoke(fc4p_007ced60 as *const () as usize, p, &[source as u32]);
+                    let copied = if self_copy { 0 } else { count };
+                    let end = allocation + copied * 8;
+                    assert_eq!(
+                        result,
+                        (
+                            p as u32,
+                            if self_copy {
+                                allocation
+                            } else {
+                                values as u32 + count * 8
+                            }
+                        )
+                    );
+                    let mut expected = vec![0xa5; 16];
+                    expected_word(&mut expected, 0, allocation);
+                    expected_word(&mut expected, 4, end);
+                    expected_word(&mut expected, 8, allocation + count * 8);
+                    assert_eq!(memory(p, 16), expected);
+                    let mut expected_output = vec![0xa5; 24];
+                    if allocation != 0 {
+                        expected_output[..copied as usize * 8].copy_from_slice(&memory(values, copied as usize * 8));
+                    }
+                    assert_eq!(memory(out, 24), expected_output);
+                    assert_eq!(
+                        calls(),
+                        if count == 0 {
+                            vec![]
+                        } else {
+                            vec![(0, vec![0xa110, count * 8])]
+                        }
+                    );
+                }
+            }
+        }
+    }
+    extern "thiscall" fn construct_adapter_base(this: *mut u8) -> u64 {
+        let owner = this.wrapping_sub(4);
+        // SAFETY: observe the primary table at base construction and change an otherwise untouched field.
+        unsafe {
+            record(this, &[0xc0, word(owner, 0)]);
+            put_word(owner, 0x1c, 0x76543210);
+        }
+        RESULT
+    }
+    extern "thiscall" fn destroy_adapter_base(this: *mut u8) -> u64 {
+        record(this, &[0xd0]);
+        RESULT
+    }
+    extern "thiscall" fn adapter_release(this: *mut u8) -> u64 {
+        // SAFETY: the adapter has already installed its final primary table before either release.
+        unsafe {
+            record(this, &[8, word(HOLDER.with(|v| v.get()) as *mut u8, 0)]);
+        }
+        RESULT
+    }
+    #[test]
+    fn surface_adapter_constructor_initializes_only_named_fields_after_base() {
+        let _base = fake(0x0090d957, construct_adapter_base as *const () as usize);
+        let mut owner = Object::new(0x50);
+        let p = owner.ptr();
+        fill(p, 0x50);
+        let mut expected = memory(p, 0x50);
+        for (offset, value) in [
+            (0, 0x00ac1550),
+            (4, 0x00ac1538),
+            (12, 0x00ac1510),
+            (16, 0),
+            (20, 0),
+            (0x1c, 0x76543210),
+            (0x28, 0),
+            (0x30, 0),
+            (0x40, 1),
+        ] {
+            expected_word(&mut expected, offset, value);
+        }
+        expected[0x48] = 0;
+        assert_eq!(
+            invoke(fc4p_0082b780 as *const () as usize, p, &[]),
+            (p as u32, (RESULT >> 32) as u32)
+        );
+        assert_eq!(calls(), vec![(p.wrapping_add(4) as u32, vec![0xc0, 0x00ac1338])]);
+        assert_eq!(memory(p, 0x50), expected);
+    }
+    #[test]
+    fn surface_adapter_delete_releases_surface_context_then_base_and_optional_allocation() {
+        let _base = fake(0x0090d964, destroy_adapter_base as *const () as usize);
+        let _free = fake(0x005e5620, fake_free as *const () as usize);
+        let mut owner = Object::new(0x50);
+        let p = owner.ptr();
+        let mut surface = Object::new(4);
+        let a = surface.ptr();
+        let mut context = Object::new(4);
+        let b = context.ptr();
+        let table = [0usize, 0, adapter_release as *const () as usize];
+        // SAFETY: both retained interfaces have a live release slot.
+        unsafe {
+            put_word(a, 0, table.as_ptr() as u32);
+            put_word(b, 0, table.as_ptr() as u32);
+        }
+        HOLDER.with(|v| v.set(p as u32));
+        for flags in [0u32, 1, 2, 0x100, 0x101, u32::MAX] {
+            for surface in [0u32, a as u32] {
+                for context in [0u32, b as u32] {
+                    fill(p, 0x50);
+                    // SAFETY: set optional references without touching adjacent fields.
+                    unsafe {
+                        put_word(p, 0x14, surface);
+                        put_word(p, 0x10, context);
+                    }
+                    let mut expected = memory(p, 0x50);
+                    for (offset, value) in [(0, 0x00ac1550), (4, 0x00ac1538), (12, 0x00ac1510)] {
+                        expected_word(&mut expected, offset, value);
+                    }
+                    assert_eq!(
+                        invoke(fc4p_0082b7d0 as *const () as usize, p, &[flags]),
+                        (
+                            p as u32,
+                            if flags & 1 != 0 {
+                                0xfedcba98
+                            } else {
+                                (RESULT >> 32) as u32
+                            }
+                        )
+                    );
+                    let mut expected_calls = vec![];
+                    for pointer in [surface, context] {
+                        if pointer != 0 {
+                            expected_calls.push((pointer, vec![8, 0x00ac1550]));
+                        }
+                    }
+                    expected_calls.push((p.wrapping_add(4) as u32, vec![0xd0]));
+                    if flags & 1 != 0 {
+                        expected_calls.push((p as u32, vec![0xf0, 0x00ac1550]));
+                    }
+                    assert_eq!(calls(), expected_calls);
+                    assert_eq!(memory(p, 0x50), expected);
+                }
+            }
+        }
+    }
+    #[test]
+    fn station_funding_keeps_low_cost_word_and_float_bits_from_core_budget_example() {
+        ITEM_COST.with(|v| v.set(5));
+        ITEM_FUNDING.with(|v| v.set(0.6f32.to_bits()));
+        let mut simulator = Object::new(0xb4);
+        let p = simulator.ptr();
+        let mut station = Object::new(4);
+        let s = station.ptr();
+        let mut department = Object::new(4);
+        let q = department.ptr();
+        let mut table = [0usize; 52];
+        table[6] = station_id as *const () as usize;
+        table[0xcc / 4] = funding_item as *const () as usize;
+        // SAFETY: the station and department use separate slots in the same live table.
+        unsafe {
+            put_word(s, 0, table.as_ptr() as u32);
+            put_word(q, 0, table.as_ptr() as u32);
+            put_word(p, 0x74, q as u32);
+            put_word(p, 0xb0, 0xea567bc3);
+        }
+        HOLDER.with(|v| v.set(p as u32));
+        NEXT_SERVICE.with(|v| v.set(q as u32));
+        ANSWER.with(|v| v.set(1));
+        let mut output = [0u32; 2];
+        let out = output.as_mut_ptr();
+        invoke(
+            fc4p_006e08d0 as *const () as usize,
+            p,
+            &[s as u32, out as u32, out.wrapping_add(1) as u32],
+        );
+        assert_eq!(output, [5, 0.6f32.to_bits()]);
+        assert_eq!(
+            calls(),
+            vec![(s as u32, vec![0xea567bc3]), (q as u32, vec![0x55667788, 0])]
+        );
     }
 }
