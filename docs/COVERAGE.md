@@ -5,7 +5,7 @@ status, weighted by the bytes of the original machine code. The statuses are tho
 Specified, Implemented, Exact-replaced and Reach. It writes [coverage-report.md](coverage-report.md);
 rerun it after every merge and commit the report. Same inputs, same report, byte for byte, in the main checkout
 (`core.autocrlf=true`, CRLF working files) and in an LF worktree alike: text inputs are hashed with CRLF normalised to
-LF, the text as git stores it (a UTF-16 file as its UTF-8 text); only the exe is hashed as raw bytes.
+LF, the text as git stores it (a UTF-16 file as its UTF-8 text); the exe and native DLLs are hashed as raw bytes.
 
 This is an RE-side tool: it reads the exe's analysis (function sizes, names, call graph). Engine lanes never read it
 or the report's owner lists; they work from docs/specs only.
@@ -20,10 +20,8 @@ or the report's owner lists; they work from docs/specs only.
   `tools/coverage-libs.tsv` (C runtime and STLport, Lua 5.0, FreeType, libpng, libjpeg, zlib, EA sound, GIMEX, EH
   funclets and static-initialisation stubs, DLL import thunks). Those are reported on their own lines, never in a
   percentage: we link or replace libraries, we do not reimplement them.
-- **Matching decompilation projects** count a function as done when their compiled C matches its bytes. FreeCity4 is
-  clean-room, so nothing is matched byte for byte; instead every function is attributed to an *owner* (a class, or a
-  free function) and the owner gets the statuses of its subsystem. The percentages are therefore exact sums under
-  stated rules, at class granularity.
+- **Statuses.** Every function is attributed to an *owner* (a class, or a free function), which gets the specified
+  and implemented statuses of its subsystem. Exact-replaced is measured per function by the native proof rule below.
 
 ## Attribution rules (in this order; the first that applies wins)
 
@@ -70,8 +68,21 @@ catch-all row matches, the candidates for a new row.
 |---|---|
 | specified | the row names at least one spec and every named `docs/specs/<file>` exists; a spec counts only for the classes that are its subject |
 | implemented | the row names at least one core path and every `engine/<path>` exists |
-| exact-replaced | the owner is switched off in corpus runs (our code runs instead, replace mode) and every checkpoint of every scenario that reaches it is identical to the original's reference under the fixed schedule (docs/NEXT_STEPS.md sections 2 and 3). **Not measured** until the reference store and `check` exist (NEXT_STEPS step 2); the report says so |
+| exact-replaced | `docs/proven.tsv` says EXACT from at least three distinct scenarios, and `docs/native-checks.tsv` records a whole-game check with identical == scenarios (at least one run) for its port-table owner and the same DLL SHA-256 |
 | reach (the ceiling) | game code with positive, unskipped original entry counters (`<scenario>.reach.tsv`) in at least one clean, completed scenario of the census named by `--suite` (default `build-runs/suite/CURRENT`). Shared and unattributed code counts too. The report also gives reach among implemented owners, the most Exact-replaced can reach with today's corpus |
+
+`tools/prove.py check` writes `proven.tsv`; the coordinator writes `native-checks.tsv` with owner, dll_sha256,
+scenarios, identical, checked date and notes. Owners come from the exported `fc4native_ports` table of the hash-verified
+`build-runs/prove/dlls/<dll_sha256>.dll`, never from the proof's class name or the coverage map. Credited bytes use the
+same function body sizes as the denominator; skipped variants earn no additional credit. The report shows proof
+counts, port counts, whole-game results and credited bytes per owner/DLL. Replace-mode credit runs earn no native credit.
+
+Reach also accepts original reference counters from a scenario manifest (`--references`, with `--credit` retained as
+an alias for this Reach input), taking precedence over census counters when complete. To reproduce the committed
+report's 176 references and 39.8% Reach, run
+`python tools/coverage.py --reference-dll 1a5cc76994ca56e841a1e86e175221d775489b62f61c021b9e05f4a2b0b2f3a7`.
+This selects stored reference metadata and counters by their pinned DLL; the latest local manifest belongs to a newer,
+smaller reference set. Reference selection affects Reach alone.
 
 Nothing else is a coverage number. House-city "verified", "strict" suite verification, single-method credit,
 shadow-based credit and "replaced" from the house regress run were deleted on 2026-10-27; a shadow
@@ -110,7 +121,7 @@ reached and hatches the code the corpus reaches.
 ## Moving the numbers honestly
 
 - A new spec or core module: edit the subsystem's row in `coverage-map.tsv`. Exact-replaced moves only through
-  `check` results (NEXT_STEPS step 3), never by a map edit.
+  native function proofs and whole-game checks (NEXT_STEPS sections 1-3), never by a map edit.
 - Reach: add or fix scenarios (NEXT_STEPS step 5) and rerun the census; never shorten a scenario without measuring it.
 - Unattributed or shared bytes: name functions (a manual file in `re/symbols/` with evidence, then
   `python tools/symport/merge_names.py` regenerates `re/names_windows.tsv` and `re/labels_windows.tsv`), add vtables to
