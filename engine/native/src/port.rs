@@ -216,12 +216,39 @@ pub const fn jump_fits(address: u32) -> bool {
     true
 }
 
+// Ports kept out of the table until the prove check finds them EXACT, sorted (engine/native/held.tsv): the
+// whole-game check switches on an owner's table entries, so only proven ports go into it. Their exports remain
+// for `prove`.
+include!(concat!(env!("OUT_DIR"), "/held.rs"));
+
+/// `address` is in [`HELD`].
+pub const fn held(address: u32) -> bool {
+    let (mut lo, mut hi) = (0, HELD.len());
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if HELD[mid] == address {
+            return true;
+        }
+        if HELD[mid] < address {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    false
+}
+
+/// The loader installs a port at `address`: its jump fits and it is not held.
+pub const fn installs(address: u32) -> bool {
+    jump_fits(address) && !held(address)
+}
+
 /// How many of `ports` the loader can install.
 pub const fn count_installable(ports: &[Port]) -> usize {
     let mut n = 0;
     let mut i = 0;
     while i < ports.len() {
-        if jump_fits(ports[i].address) {
+        if installs(ports[i].address) {
             n += 1;
         }
         i += 1;
@@ -234,7 +261,7 @@ pub const fn installable<const N: usize>(ports: &[Port]) -> [Port; N] {
     let mut out = [Port::EMPTY; N];
     let (mut i, mut k) = (0, 0);
     while i < ports.len() {
-        if jump_fits(ports[i].address) {
+        if installs(ports[i].address) {
             out[k] = ports[i];
             k += 1;
         }

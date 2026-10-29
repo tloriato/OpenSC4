@@ -168,7 +168,7 @@ mod table {
 
     const INSTALLABLE: usize = port::count_installable(&ALL);
 
-    /// Every port the loader can install (see [`port::SHORT`]), in the order of the exported table.
+    /// Every port the loader can install (see [`port::SHORT`] and [`port::HELD`]), in the order of the exported table.
     pub static PORTS: [Port; INSTALLABLE] = port::installable(&ALL);
 
     /// The table the loader reads (see [`PortTable`]).
