@@ -3664,6 +3664,133 @@ register_port!(
     }
 );
 
+layout! {
+    /// File handle, logical positions, and buffering mode used by size, seek and flush.
+    #[allow(dead_code)]
+    struct BufferedFile {
+        0x18 => open / set_open: u8,
+        0x1C => handle / set_handle: u32,
+        0x48 => logical_position / set_logical_position: u32,
+        0x4C => native_position / set_native_position: u32,
+        0x7C => mode / set_mode: u32,
+    }
+}
+layout! {
+    /// Shared state behind the thread interface's pointer at +4.
+    #[allow(dead_code)]
+    struct NativeThreadState {
+        0x00 => result / set_result: u32,
+        0x04 => handle / set_handle: u32,
+        0x08 => id / set_id: u32,
+        0x0C => priority / set_priority: u32,
+    }
+}
+layout! {
+    /// Circular-list links and the queued enable, subscriber and event words.
+    #[allow(dead_code)]
+    struct SubscriptionChange {
+        0x00 => next / set_next: u32,
+        0x04 => previous / set_previous: u32,
+        0x08 => enabled / set_enabled: u8,
+        0x0C => subscriber / set_subscriber: u32,
+        0x10 => event / set_event: u32,
+    }
+}
+layout! {
+    /// Start data is captured before the thread releases this four-word allocation.
+    #[allow(dead_code)]
+    struct ThreadStartData {
+        0x00 => callback / set_callback: u32,
+        0x04 => argument / set_argument: u32,
+        0x08 => thread / set_thread: u32,
+        0x0C => state / set_state: u32,
+    }
+}
+layout! {
+    /// A native event handle and its pulse-versus-persistent selection word.
+    #[allow(dead_code)]
+    struct NativeEventState {
+        0x00 => handle / set_handle: u32,
+        0x04 => persistent / set_persistent: u32,
+    }
+}
+layout! {
+    /// The holder owns two independent lists and a trailing byte option.
+    #[allow(dead_code)]
+    struct ConstructedStringHolder {
+        0x00 => vtable / set_vtable: u32,
+        0x04 => references / set_references: u32,
+        0x08 => first_list / set_first_list: u32,
+        0x0C => second_list / set_second_list: u32,
+        0x10 => capacity / set_capacity: u32,
+        0x14 => option / set_option: u8,
+    }
+}
+layout! {
+    /// Service fields following its synchronization member at +0x20.
+    #[allow(dead_code)]
+    struct SubscriptionService {
+        0x64 => deferred / set_deferred: u32,
+        0x68 => changes / set_changes: u32,
+        0x6C => subscribers / set_subscribers: u32,
+    }
+}
+layout! {
+    /// Links common to the ordered trees; value words follow at +0x10 and +0x14.
+    #[allow(dead_code)]
+    struct OrderedLinks {
+        0x04 => parent / set_parent: u32,
+        0x08 => left / set_left: u32,
+        0x0C => right / set_right: u32,
+    }
+}
+layout! {
+    /// Hash storage is a vector of bucket pointers and a wrapping element count.
+    #[allow(dead_code)]
+    struct BucketTable {
+        0x04 => begin / set_begin: u32,
+        0x08 => end / set_end: u32,
+        0x10 => count / set_count: u32,
+    }
+}
+layout! {
+    /// A resource buffer has a start and three initially equal end positions.
+    #[allow(dead_code)]
+    struct ResourceBuffer {
+        0x68 => begin / set_begin: u32,
+        0x6C => end / set_end: u32,
+        0x70 => limit / set_limit: u32,
+        0x74 => cursor / set_cursor: u32,
+    }
+}
+layout! {
+    /// Packed-file metadata around its stream member at +0x40.
+    #[allow(dead_code)]
+    struct PackedFileState {
+        0x1C => flags / set_flags: u32,
+        0xC0 => header_position / set_header_position: u32,
+        0xD0 => directory_count / set_directory_count: u32,
+        0xE4 => header / set_header: [u32; 24],
+        0x144 => reuse_flags / set_reuse_flags: u8,
+        0x14C => free_ranges / set_free_ranges: u32,
+    }
+}
+layout! {
+    /// Primary input-server fields; its message interface lies +0x90 from this base.
+    #[allow(dead_code)]
+    struct InputMethodState {
+        0x2C => service / set_service: u32,
+        0x40 => position / set_position: u32,
+        0x44 => language / set_language: u32,
+        0x48 => text_begin / set_text_begin: u32,
+        0x4C => text_end / set_text_end: u32,
+        0x50 => text_limit / set_text_limit: u32,
+        0x60 => committed / set_committed: u8,
+        0x61 => composing / set_composing: u8,
+        0x70 => mirrored_language / set_mirrored_language: u32,
+    }
+}
+
 game_fn! { #[allow(dead_code)] fn find_reverse_word(output: u32, end: u32, begin: u32, value: u32, tag: u32) -> u32 = "C" 0x0091_8731; }
 game_fn! { #[allow(dead_code)] fn find_reverse_word_adapter(output: u32, end: u32, begin: u32, value: u32) -> u32 = "C" 0x0091_8828; }
 game_fn! { #[allow(dead_code)] fn allocate_wide_buffer(this: u32, count: u32) -> u32 = "thiscall" 0x0079_C7C0; }
@@ -4344,14 +4471,18 @@ register_port!(
         unsafe {
             let file = r.ecx;
             let mut size = u32::MAX;
-            if (file as *const u8).add(0x18).read() != 0 {
-                r.indirect_call(get_file_size_entry().read(), &[word(file, 0x1C), 0], false);
+            if BufferedFile::from_ptr(file as *mut u8).open() != 0 {
+                r.indirect_call(
+                    get_file_size_entry().read(),
+                    &[BufferedFile::from_ptr(file as *mut u8).handle(), 0],
+                    false,
+                );
                 size = r.eax;
                 if size == u32::MAX {
                     r.ecx = file;
                     r.direct_call(0x0091_8577, &[], false);
-                } else if word(file, 0x7C) != 0 {
-                    size = size.max(word(file, 0x48));
+                } else if BufferedFile::from_ptr(file as *mut u8).mode() != 0 {
+                    size = size.max(BufferedFile::from_ptr(file as *mut u8).logical_position());
                 }
             }
             r.eax = size;
@@ -4363,7 +4494,7 @@ register_port!(0x0091895a, fc4p_0091895a, seek_file, "SeekFile", 8, |r| {
     // SAFETY: the file supplies its original handle and position fields; argument zero is caller-owned.
     unsafe {
         let file = r.ecx;
-        if (file as *const u8).add(0x18).read() == 0 {
+        if BufferedFile::from_ptr(file as *mut u8).open() == 0 {
             r.eax = u32::MAX;
             return;
         }
@@ -4371,8 +4502,8 @@ register_port!(0x0091895a, fc4p_0091895a, seek_file, "SeekFile", 8, |r| {
         let origin = match r.eax {
             0 => 0,
             1 => {
-                r.eax = word(file, 0x48);
-                if word(file, 0x4C) == r.eax {
+                r.eax = BufferedFile::from_ptr(file as *mut u8).logical_position();
+                if BufferedFile::from_ptr(file as *mut u8).native_position() == r.eax {
                     1
                 } else {
                     let value = r.argument(0).wrapping_add(r.eax);
@@ -4391,17 +4522,30 @@ register_port!(0x0091895a, fc4p_0091895a, seek_file, "SeekFile", 8, |r| {
         r.ecx = file;
         r.direct_call(0x0091_87B1, &[], false);
         let seek = set_file_pointer_entry().read();
-        r.indirect_call(seek, &[word(file, 0x1C), r.argument(0), 0, origin], false);
+        r.indirect_call(
+            seek,
+            &[
+                BufferedFile::from_ptr(file as *mut u8).handle(),
+                r.argument(0),
+                0,
+                origin,
+            ],
+            false,
+        );
         let result = r.eax;
         if result == u32::MAX {
-            r.indirect_call(seek, &[word(file, 0x1C), 0, 0, 1], false);
+            r.indirect_call(
+                seek,
+                &[BufferedFile::from_ptr(file as *mut u8).handle(), 0, 0, 1],
+                false,
+            );
             r.ecx = file;
-            put_word(file, 0x4C, r.eax);
-            put_word(file, 0x48, r.eax);
+            BufferedFile::from_ptr(file as *mut u8).set_native_position(r.eax);
+            BufferedFile::from_ptr(file as *mut u8).set_logical_position(r.eax);
             r.direct_call(0x0091_8577, &[], false);
         } else {
-            put_word(file, 0x4C, result);
-            put_word(file, 0x48, result);
+            BufferedFile::from_ptr(file as *mut u8).set_native_position(result);
+            BufferedFile::from_ptr(file as *mut u8).set_logical_position(result);
         }
         r.eax = result;
     }
@@ -4411,15 +4555,19 @@ register_port!(0x009189e2, fc4p_009189e2, flush_open_file, "FlushOpenFile", 0, |
     // SAFETY: the file owns its open flag, signed mode word and handle.
     unsafe {
         let file = r.ecx;
-        if (file as *const u8).add(0x18).read() == 0 {
+        if BufferedFile::from_ptr(file as *mut u8).open() == 0 {
             r.eax &= !255;
             return;
         }
-        let flush = (word(file, 0x7C) as i32) > 0;
+        let flush = (BufferedFile::from_ptr(file as *mut u8).mode() as i32) > 0;
         r.direct_call(0x0091_87B1, &[], false);
         let mut result = 1;
         if flush {
-            r.indirect_call(flush_file_entry().read(), &[word(file, 0x1C)], false);
+            r.indirect_call(
+                flush_file_entry().read(),
+                &[BufferedFile::from_ptr(file as *mut u8).handle()],
+                false,
+            );
             result = r.eax;
             if result == 0 {
                 r.ecx = file;
@@ -4764,8 +4912,627 @@ register_port!(
     }
 );
 
+fn signed_integer_quotient(numerator: i32, denominator: i32) -> i32 {
+    let result: i32;
+    // SAFETY: IDIV retains the original signed quotient, including its hardware faults for invalid divisors.
+    unsafe {
+        core::arch::asm!("cdq", "idiv {divisor}", divisor = in(reg) denominator,
+            inlateout("eax") numerator => result, out("edx") _, options(nomem, nostack));
+    }
+    result
+}
+
+unsafe fn line_outcode(r: &Registers, x: i32, y: i32) -> u32 {
+    // SAFETY: the clipping entry has four original rectangle-bound argument words.
+    unsafe {
+        u32::from(x < r.argument(4) as i32) * 4
+            + u32::from(x > r.argument(6) as i32) * 8
+            + u32::from(y < r.argument(5) as i32)
+            + u32::from(y > r.argument(7) as i32) * 2
+    }
+}
+
+register_port!(
+    0x00930f70,
+    fc4p_00930f70,
+    clip_integer_line,
+    "ClipIntegerLine",
+    0,
+    |r| {
+        // SAFETY: the four endpoint pointers are writable integers; the first, third and fourth argument words are scratch.
+        unsafe {
+            let entry_ecx = r.ecx;
+            let x0 = r.argument(0);
+            let y0 = r.argument(1);
+            let x1 = r.argument(2);
+            let y1 = r.argument(3);
+            let mut first = line_outcode(r, word(x0, 0) as i32, word(y0, 0) as i32);
+            r.argument_pointer(0).write_unaligned(first);
+            let second = line_outcode(r, word(x1, 0) as i32, word(y1, 0) as i32);
+            r.argument_pointer(2).write_unaligned(second);
+            r.eax = y0;
+            loop {
+                r.edx = r.argument(2) | first;
+                if r.edx == 0 {
+                    r.eax = (r.eax & !255) | 1;
+                    break;
+                }
+                r.edx = r.argument(2);
+                if r.edx & first != 0 {
+                    r.eax &= !255;
+                    break;
+                }
+                let selected = if first != 0 { first } else { r.edx };
+                r.argument_pointer(3).write_unaligned(selected);
+                let (x, y);
+                if selected & 3 != 0 {
+                    let bound = r.argument(if selected & 1 != 0 { 5 } else { 7 }) as i32;
+                    let source_y = word(y0, 0) as i32;
+                    let source_x = word(x0, 0) as i32;
+                    let product = bound
+                        .wrapping_sub(source_y)
+                        .wrapping_mul((word(x1, 0) as i32).wrapping_sub(source_x));
+                    x = signed_integer_quotient(product, (word(y1, 0) as i32).wrapping_sub(source_y))
+                        .wrapping_add(source_x);
+                    y = bound;
+                } else {
+                    let bound = r.argument(if selected & 8 != 0 { 6 } else { 4 }) as i32;
+                    let source_y = word(y0, 0) as i32;
+                    let source_x = word(x0, 0) as i32;
+                    let product = bound
+                        .wrapping_sub(source_x)
+                        .wrapping_mul((word(y1, 0) as i32).wrapping_sub(source_y));
+                    y = signed_integer_quotient(product, (word(x1, 0) as i32).wrapping_sub(source_x))
+                        .wrapping_add(source_y);
+                    x = bound;
+                }
+                r.eax = y as u32;
+                if selected == r.argument(0) {
+                    put_word(x0, 0, x as u32);
+                    put_word(y0, 0, r.eax);
+                    first = line_outcode(r, word(x0, 0) as i32, y);
+                    r.argument_pointer(0).write_unaligned(first);
+                } else {
+                    put_word(x1, 0, x as u32);
+                    put_word(y1, 0, r.eax);
+                    r.edx = line_outcode(r, word(x1, 0) as i32, y);
+                    r.argument_pointer(2).write_unaligned(r.edx);
+                    first = r.argument(0);
+                }
+            }
+            r.ecx = entry_ecx;
+        }
+    }
+);
+
+game_fn! { #[allow(dead_code)] fn insert_key_with_hint(this: u32, output: u32, hint: u32, parent: u32, value: u32, side: u32) -> u32 = "thiscall" 0x0089_20A7; }
+game_fn! { #[allow(dead_code)] fn insert_key_without_hint(this: u32, output: u32, value: u32) -> u32 = "thiscall" 0x0094_950A; }
+
+unsafe fn insert_at_key_hint(r: &mut Registers, tree: u32, hint: u32, parent: u32, value: u32, side: u32) {
+    // SAFETY: the caller has selected the original insertion slot and supplies the caller's output word.
+    unsafe {
+        r.ecx = tree;
+        r.direct_call(0x0089_20A7, &[r.argument(0), hint, parent, value, side], false);
+        r.eax = r.argument(0);
+    }
+}
+
+unsafe fn insert_without_key_hint(r: &mut Registers, tree: u32, value: u32) {
+    // SAFETY: the ordinary insertion method fills its temporary result and returns a readable result pointer.
+    unsafe {
+        let mut result = core::mem::MaybeUninit::<[u32; 2]>::uninit();
+        r.eax = result.as_mut_ptr() as u32;
+        r.ecx = tree;
+        r.direct_call(0x0094_950A, &[r.eax, value], false);
+        r.ecx = word(r.eax, 0);
+        r.eax = r.argument(0);
+        put_word(r.eax, 0, r.ecx);
+    }
+}
+
+register_port!(
+    0x00981404,
+    fc4p_00981404,
+    insert_ordered_key_hint,
+    "InsertOrderedKeyHint",
+    12,
+    |r| {
+        // SAFETY: the hint belongs to the tree; keys are the unsigned word at node +0x10.
+        unsafe {
+            let tree = r.ecx;
+            let hint = r.argument(1);
+            let value = r.argument(2);
+            r.eax = word(tree, 0);
+            if hint == word(r.eax, 8) {
+                if word(tree, 4) == 0 {
+                    insert_without_key_hint(r, tree, value);
+                    return;
+                }
+                r.eax = word(value, 0);
+                r.ecx = word(hint, 0x10);
+                if r.ecx > r.eax {
+                    insert_at_key_hint(r, tree, hint, hint, value, 0);
+                    return;
+                }
+                if r.ecx == r.eax {
+                    r.eax = r.argument(0);
+                    put_word(r.eax, 0, hint);
+                    return;
+                }
+                r.direct_call(0x0040_D4C0, &[hint], true);
+                r.ecx = hint;
+                if r.eax == word(tree, 0) {
+                    insert_at_key_hint(r, tree, 0, hint, value, hint);
+                    return;
+                }
+                r.ecx = word(value, 0);
+                if r.ecx < word(r.eax, 0x10) {
+                    let next = r.eax;
+                    r.ecx = 0;
+                    if word(hint, 0x0C) == 0 {
+                        insert_at_key_hint(r, tree, 0, hint, value, hint);
+                    } else {
+                        insert_at_key_hint(r, tree, next, next, value, 0);
+                    }
+                    return;
+                }
+            } else if hint == r.eax {
+                r.eax = word(r.eax, 0x0C);
+                r.edx = word(r.eax, 0x10);
+                r.ecx = value;
+                if r.edx < word(value, 0) {
+                    insert_at_key_hint(r, tree, 0, r.eax, value, hint);
+                    return;
+                }
+            } else {
+                r.direct_call(0x0040_D500, &[hint], true);
+                r.ecx = value;
+                let key = word(value, 0);
+                let less = key < word(hint, 0x10);
+                (r.argument_pointer(1) as *mut u8).add(3).write(u8::from(less));
+                if less && word(r.eax, 0x10) < key {
+                    let previous = r.eax;
+                    r.edx = 0;
+                    if word(previous, 0x0C) == 0 {
+                        insert_at_key_hint(r, tree, 0, previous, value, previous);
+                    } else {
+                        insert_at_key_hint(r, tree, hint, hint, value, 0);
+                    }
+                    return;
+                }
+                r.direct_call(0x0040_D4C0, &[hint], true);
+                r.ecx = (hint & !255) | u32::from(!less);
+                if !less {
+                    let greater = word(hint, 0x10) < key;
+                    r.ecx = (r.ecx & !255) | u32::from(greater);
+                    if !greater {
+                        r.eax = r.argument(0);
+                        put_word(r.eax, 0, hint);
+                        return;
+                    }
+                    if r.eax == word(tree, 0) || key < word(r.eax, 0x10) {
+                        let next = r.eax;
+                        r.ecx = 0;
+                        if word(hint, 0x0C) == 0 {
+                            insert_at_key_hint(r, tree, 0, hint, value, hint);
+                        } else {
+                            insert_at_key_hint(r, tree, next, next, value, 0);
+                        }
+                        return;
+                    }
+                }
+            }
+            insert_without_key_hint(r, tree, value);
+        }
+    }
+);
+
+game_fn! { #[allow(dead_code)] fn lookup_subscriber_list(this:u32,output:u32,key:u32)->u32="thiscall" 0x006F_1530; }
+game_fn! { #[allow(dead_code)] fn insert_subscriber_list(this:u32,output:u32,pair:u32)->u32="thiscall" 0x0092_FDD8; }
+game_fn! { #[allow(dead_code)] fn append_subscriber(this:u32,value:u32)->u32="thiscall" 0x007E_98C0; }
+game_fn! { #[allow(dead_code)] fn find_subscriber(output:u32,begin:u32,end:u32,value:u32)->u32="C" 0x004D_C710; }
+game_fn! { #[allow(dead_code)] fn remove_subscriber(this:u32,value:u32)->u32="thiscall" 0x0091_E008; }
+game_fn! { #[allow(dead_code)] fn destroy_subscriber_list(this:u32)->u32="thiscall" 0x0042_7670; }
+game_fn! { #[allow(dead_code)] fn erase_subscriber_key(this:u32,key:u32)->u32="thiscall" 0x0092_F5A0; }
+game_fn! { #[allow(dead_code)] fn clear_subscriber_changes(this:u32)->u32="thiscall" 0x0092_DA64; }
+
+register_port!(
+    0x0092e8b5,
+    fc4p_0092e8b5,
+    apply_subscriber_changes,
+    "ApplySubscriberChanges",
+    0,
+    |r| {
+        // SAFETY: queued changes and subscriber lists belong to the service's original circular containers.
+        unsafe {
+            let object = r.ecx;
+            let changes = object.wrapping_add(0x68);
+            let map = object.wrapping_add(0x6C);
+            r.edx = changes;
+            r.eax = word(changes, 0);
+            if word(r.eax, 0) == r.eax {
+                return;
+            }
+            let mut node = word(r.eax, 0);
+            while node != word(changes, 0) {
+                let adding = (node as *const u8).add(8).read() != 0;
+                let mut result = core::mem::MaybeUninit::<[u32; 2]>::uninit();
+                r.ecx = map;
+                r.eax = result.as_mut_ptr() as u32;
+                r.direct_call(0x006F_1530, &[r.eax, node.wrapping_add(0x10)], false);
+                r.eax = result.as_ptr().cast::<u32>().read();
+                if r.eax == 0 && adding {
+                    r.direct_call(0x005E_55E0, &[4], true);
+                    let list = r.eax;
+                    r.ecx = 4;
+                    if list != 0 {
+                        let mut tag = core::mem::MaybeUninit::<u8>::uninit();
+                        r.eax = tag.as_mut_ptr() as u32;
+                        r.ecx = list;
+                        r.direct_call(0x004F_5A00, &[r.eax], false);
+                    }
+                    let mut pair = [word(node, 0x10), list];
+                    r.ecx = map;
+                    r.eax = result.as_mut_ptr() as u32;
+                    r.direct_call(0x0092_FDD8, &[r.eax, pair.as_mut_ptr() as u32], false);
+                    r.ecx = list;
+                    r.eax = node.wrapping_add(0x0C);
+                    r.direct_call(0x007E_98C0, &[r.eax], false);
+                } else if r.eax != 0 {
+                    let list = word(r.eax, 8);
+                    let header = word(list, 0);
+                    let mut found = core::mem::MaybeUninit::<u32>::uninit();
+                    r.ecx = word(header, 0);
+                    r.eax = found.as_mut_ptr() as u32;
+                    r.direct_call(0x004D_C710, &[r.eax, r.ecx, header, node.wrapping_add(0x0C)], true);
+                    let present = word(r.eax, 0) != header;
+                    if adding && !present {
+                        r.ecx = list;
+                        r.eax = node.wrapping_add(0x0C);
+                        r.direct_call(0x007E_98C0, &[r.eax], false);
+                    } else if !adding && present {
+                        r.eax = node.wrapping_add(0x0C);
+                        r.ecx = list;
+                        r.direct_call(0x0091_E008, &[r.eax], false);
+                        r.eax = word(list, 0);
+                        if word(r.eax, 0) == r.eax {
+                            r.ecx = list;
+                            r.direct_call(0x0042_7670, &[], false);
+                            r.direct_call(0x005E_5620, &[list], true);
+                            r.ecx = map;
+                            r.eax = node.wrapping_add(0x10);
+                            r.direct_call(0x0092_F5A0, &[r.eax], false);
+                        }
+                    }
+                }
+                node = word(node, 0);
+                r.edx = changes;
+            }
+            r.ecx = r.edx;
+            r.direct_call(0x0092_DA64, &[], false);
+        }
+    }
+);
+
+game_fn! { #[allow(dead_code)] fn query_wide_extension(this:u32,value:u32,start:u32)->u32="thiscall" 0x0091_8A25; }
+game_fn! { #[allow(dead_code)] fn compare_wide_suffix(value:u32,suffix:u32)->u32="C" 0x00A6_E64E; }
+game_fn! { #[allow(dead_code)] fn assign_wide_path(this:u32,value:u32)->u32="thiscall" 0x0099_6433; }
+game_data! {static shortcut_suffix:[u16;1]=0x00AC_F0C0;}
+game_data! {static shortcut_library_name:[u8;1]=0x00AC_EFF8;}
+game_data! {static shortcut_initialize_name:[u8;1]=0x00AC_EFE8;}
+game_data! {static shortcut_uninitialize_name:[u8;1]=0x00AC_EFD8;}
+game_data! {static shortcut_create_name:[u8;1]=0x00AC_EFC4;}
+game_data! {static shortcut_class_id:[u8;16]=0x00AC_27F4;}
+game_data! {static shortcut_interface_id:[u8;16]=0x00AC_27D4;}
+game_data! {static persistent_file_interface_id:[u8;16]=0x00AC_2804;}
+game_data! {static load_library_entry:usize=0x00A8_00D0;}
+game_data! {static get_library_proc_entry:usize=0x00A8_00CC;}
+game_data! {static free_library_entry:usize=0x00A8_00D4;}
+
+register_port!(
+    0x009198f3,
+    fc4p_009198f3,
+    resolve_shortcut_path,
+    "ResolveShortcutPath",
+    0,
+    |r| {
+        // SAFETY: the source/destination are wide strings; dynamically obtained COM entries use stdcall words.
+        unsafe {
+            let source = r.argument(0);
+            r.ecx = source;
+            r.direct_call(0x0091_8A25, &[0x2E, u32::MAX], false);
+            let mut success = false;
+            if r.eax != u32::MAX {
+                r.ecx = word(source, 0);
+                r.eax = r.ecx.wrapping_add(r.eax.wrapping_mul(2));
+                let suffix = shortcut_suffix() as u32;
+                r.direct_call(0x00A6_E64E, &[r.eax, suffix], true);
+                r.ecx = suffix;
+                if r.eax == 0 {
+                    let mut shell = 0u32;
+                    let mut persistent = 0u32;
+                    let mut path = core::mem::MaybeUninit::<[u16; 272]>::uninit();
+                    let mut find_data = core::mem::MaybeUninit::<[u8; 592]>::uninit();
+                    path.as_mut_ptr().cast::<u16>().write(0);
+                    find_data
+                        .as_mut_ptr()
+                        .cast::<u8>()
+                        .add(44)
+                        .cast::<u16>()
+                        .write_unaligned(0);
+                    r.indirect_call(load_library_entry().read(), &[shortcut_library_name() as u32], false);
+                    let library = r.eax;
+                    if library != 0 {
+                        let get_proc = get_library_proc_entry().read();
+                        r.indirect_call(get_proc, &[library, shortcut_initialize_name() as u32], false);
+                        let initialize = r.eax;
+                        r.indirect_call(get_proc, &[library, shortcut_uninitialize_name() as u32], false);
+                        let uninitialize = r.eax;
+                        r.indirect_call(get_proc, &[library, shortcut_create_name() as u32], false);
+                        let create = r.eax;
+                        if initialize != 0 && uninitialize != 0 && create != 0 {
+                            r.indirect_call(initialize as usize, &[0], false);
+                            if r.eax as i32 >= 0 {
+                                r.eax = &mut shell as *mut u32 as u32;
+                                r.indirect_call(
+                                    create as usize,
+                                    &[shortcut_class_id() as u32, 0, 1, shortcut_interface_id() as u32, r.eax],
+                                    false,
+                                );
+                                if r.eax as i32 >= 0 {
+                                    r.eax = shell;
+                                    r.ecx = word(shell, 0);
+                                    r.edx = &mut persistent as *mut u32 as u32;
+                                    r.indirect_call(
+                                        word(r.ecx, 0) as usize,
+                                        &[shell, persistent_file_interface_id() as u32, r.edx],
+                                        false,
+                                    );
+                                    if r.eax as i32 >= 0 {
+                                        r.eax = word(source, 0);
+                                        r.ecx = persistent;
+                                        r.edx = word(persistent, 0);
+                                        r.indirect_call(word(r.edx, 0x14) as usize, &[persistent, r.eax, 0], false);
+                                        if r.eax as i32 >= 0 {
+                                            r.eax = shell;
+                                            r.ecx = word(shell, 0);
+                                            r.indirect_call(word(r.ecx, 0x4C) as usize, &[shell, 0, 1], false);
+                                            if r.eax as i32 >= 0 {
+                                                r.eax = shell;
+                                                r.ecx = word(shell, 0);
+                                                r.edx = path.as_mut_ptr() as u32;
+                                                r.indirect_call(
+                                                    word(r.ecx, 0x0C) as usize,
+                                                    &[shell, r.edx, 0x105, find_data.as_mut_ptr() as u32, 0],
+                                                    false,
+                                                );
+                                                if r.eax == 0 {
+                                                    r.ecx = r.argument(1);
+                                                    r.eax = path.as_mut_ptr() as u32;
+                                                    r.direct_call(0x0099_6433, &[r.eax], false);
+                                                    success = true;
+                                                }
+                                            }
+                                        }
+                                        r.eax = persistent;
+                                        r.ecx = word(persistent, 0);
+                                        r.indirect_call(word(r.ecx, 8) as usize, &[persistent], false);
+                                    }
+                                    r.eax = shell;
+                                    r.ecx = word(shell, 0);
+                                    r.indirect_call(word(r.ecx, 8) as usize, &[shell], false);
+                                }
+                                r.indirect_call(uninitialize as usize, &[], false);
+                            }
+                        }
+                        r.indirect_call(free_library_entry().read(), &[library], false);
+                    }
+                }
+            }
+            r.eax = (r.eax & !255) | u32::from(success);
+        }
+    }
+);
+
+game_data! {static default_window_proc_entry:usize=0x00A8_04F4;}
+game_fn! {#[allow(dead_code)] fn acquire_language_service(this:u32)->u32="thiscall" 0x0061_0800;}
+game_fn! {#[allow(dead_code)] fn release_language_service(this:u32)->u32="thiscall" 0x0061_0830;}
+game_fn! {#[allow(dead_code)] fn reset_input_composition(this:u32)->u32="thiscall" 0x0099_52C1;}
+game_fn! {#[allow(dead_code)] fn clear_input_candidates(this:u32)->u32="thiscall" 0x0099_5D3D;}
+game_fn! {#[allow(dead_code)] fn copy_composition_string(this:u32,source:u32)->u32="thiscall" 0x0091_8EBA;}
+game_fn! {#[allow(dead_code)] fn update_input_composition(this:u32,window:u32,message:u32,wparam:u32,lparam:u32)->u32="thiscall" 0x0099_6453;}
+game_fn! {#[allow(dead_code)] fn compare_composition_strings(first:u32,second:u32)->u32="C" 0x0099_623C;}
+game_fn! {#[allow(dead_code)] fn deliver_input_character(this:u32,window:u32,value:u32,first:u32,second:u32)->u32="thiscall" 0x0099_62D9;}
+game_fn! {#[allow(dead_code)] fn update_input_candidates(this:u32,window:u32,message:u32,wparam:u32,lparam:u32)->u32="thiscall" 0x0099_68A6;}
+
+unsafe fn send_input_event(r: &mut Registers, object: u32, event: &mut [u32; 4], set_edx: bool) {
+    // SAFETY: this interface owns the event service at -0x64 and accepts one synchronous event pointer.
+    unsafe {
+        r.ecx = word(object.wrapping_sub(0x64), 0);
+        let pointer = event.as_mut_ptr() as u32;
+        if set_edx {
+            r.edx = pointer;
+        }
+        r.eax = word(r.ecx, 0);
+        r.virtual_call(r.ecx, 0x0C, &[pointer]);
+    }
+}
+
+register_port!(
+    0x009969dd,
+    fc4p_009969dd,
+    handle_input_method_message,
+    "HandleInputMethodMessage",
+    20,
+    |r| {
+        // SAFETY: this is the input server's message interface; its fields lie before this adjusted interface pointer.
+        unsafe {
+            let object = r.ecx;
+            let sender = object.wrapping_sub(0x5C);
+            let candidates = object.wrapping_sub(0x2C);
+            r.ecx = r.argument(1);
+            r.eax = 0x282;
+            let message = r.ecx;
+            let handled = r.argument(4) as *mut u8;
+            handled.write(0);
+            if message > 0x282 {
+                r.ecx = message.wrapping_sub(0x284);
+                if r.ecx == 0 {
+                    handled.write(1);
+                    r.eax = 1;
+                    return;
+                }
+                r.ecx = r.ecx.wrapping_sub(2);
+                if r.ecx == 0 {
+                    handled.write(1);
+                    r.eax = 1;
+                    return;
+                }
+                r.ecx = r.ecx.wrapping_sub(10);
+                if r.ecx != 0 {
+                    r.ecx = r.ecx.wrapping_sub(1);
+                }
+                r.eax = 0;
+                return;
+            }
+            match message {
+                0x51 => {
+                    r.ecx = r.argument_pointer(0) as u32;
+                    r.direct_call(0x0061_0800, &[], false);
+                    r.ecx = r.argument(0);
+                    if r.ecx != 0 {
+                        r.eax = word(r.ecx, 0);
+                        r.virtual_call(r.ecx, 0x30, &[r.argument(3)]);
+                        put_word(object.wrapping_sub(0x4C), 0, r.eax);
+                        put_word(object.wrapping_sub(0x20), 0, r.eax);
+                    }
+                    r.ecx = r.argument_pointer(0) as u32;
+                    r.direct_call(0x0061_0830, &[], false);
+                    r.eax = 0;
+                }
+                0x10D => {
+                    if (object as *const u8).wrapping_sub(0x2F).read() == 0 {
+                        r.ecx = sender;
+                        r.direct_call(0x0099_52C1, &[], false);
+                        (object as *mut u8).wrapping_sub(0x2F).write(1);
+                        r.argument_pointer(3).write_unaligned(1);
+                        let mut event = [0x2AC4_4C0E, sender, r.argument_pointer(3) as u32, 0];
+                        send_input_event(r, object, &mut event, false);
+                    }
+                    handled.write(1);
+                    r.eax = 1;
+                }
+                0x10E => {
+                    let committed = (object as *const u8).wrapping_sub(0x30).read() != 0;
+                    let mut event = [0x2AC4_4C11, sender, u32::from(committed), 0];
+                    send_input_event(r, object, &mut event, true);
+                    r.ecx = sender;
+                    r.direct_call(0x0099_52C1, &[], false);
+                    (object as *mut u8).wrapping_sub(0x2F).write(0);
+                    handled.write(1);
+                    r.eax = 1;
+                }
+                0x10F => {
+                    r.eax = word(object.wrapping_sub(0x50), 0);
+                    r.argument_pointer(1).write_unaligned(r.eax);
+                    let string = object.wrapping_sub(0x48);
+                    let mut previous = core::mem::MaybeUninit::<[u32; 3]>::uninit();
+                    r.ecx = previous.as_mut_ptr() as u32;
+                    r.direct_call(0x0091_8EBA, &[string], false);
+                    r.ecx = object.wrapping_sub(0x90);
+                    r.direct_call(
+                        0x0099_6453,
+                        &[r.argument(0), 0x10F, r.argument(2), r.argument(3)],
+                        false,
+                    );
+                    r.eax = previous.as_mut_ptr() as u32;
+                    r.direct_call(0x0099_623C, &[r.eax, string], true);
+                    r.ecx = string;
+                    if r.eax as u8 == 0 {
+                        let mut event = [0x2AC4_4C14, sender, 0, 0];
+                        send_input_event(r, object, &mut event, true);
+                    }
+                    r.eax = r.argument(1);
+                    if r.eax != word(object.wrapping_sub(0x50), 0) {
+                        let mut event = [0x2AC4_4C1A, sender, 0, 0];
+                        send_input_event(r, object, &mut event, true);
+                    }
+                    if (object as *const u8).wrapping_sub(0x30).read() != 0 {
+                        let count = (word(string, 4).wrapping_sub(word(string, 0)) as i32) >> 1;
+                        r.argument_pointer(3).write_unaligned(0);
+                        while (r.argument(3) as i32) < count {
+                            r.eax = word(string, 0);
+                            r.ecx = r.argument(3);
+                            r.eax =
+                                u32::from((r.eax.wrapping_add(r.ecx.wrapping_mul(2)) as *const u16).read_unaligned());
+                            r.ecx = object.wrapping_sub(0x90);
+                            r.direct_call(0x0099_62D9, &[r.argument(0), r.eax, 0, 0], false);
+                            r.argument_pointer(3).write_unaligned(r.argument(3).wrapping_add(1));
+                        }
+                        let mut event = [0x2AC4_4C1B, sender, 0, 0];
+                        send_input_event(r, object, &mut event, true);
+                        (object as *mut u8).wrapping_sub(0x30).write(0);
+                    }
+                    r.eax = r.argument(4);
+                    (r.eax as *mut u8).write(1);
+                    let allocation = previous.as_ptr().cast::<u32>().read();
+                    if allocation != 0 {
+                        r.direct_call(0x0090_CF63, &[allocation], true);
+                        r.ecx = allocation;
+                    }
+                    r.eax = 1;
+                }
+                0x281 => {
+                    r.eax = r.argument(3) & 0x7FFF_FFFF;
+                    handled.write(1);
+                    r.indirect_call(
+                        default_window_proc_entry().read(),
+                        &[r.argument(0), 0x281, r.argument(2), r.eax],
+                        false,
+                    );
+                }
+                0x282 => {
+                    r.ecx = r.argument(2);
+                    r.edx = r.ecx.wrapping_sub(1);
+                    handled.write(1);
+                    match r.ecx {
+                        3 | 5 => {
+                            let kind = r.ecx;
+                            r.ecx = object.wrapping_sub(0x90);
+                            r.direct_call(0x0099_68A6, &[r.argument(0), 0x282, kind, r.argument(3)], false);
+                            let mut event = [0x2AC4_4ED1, 0, 0, 0];
+                            if kind == 5 {
+                                send_input_event(r, object, &mut event, true);
+                            }
+                            event[0] = 0x2AC4_4ED8;
+                            event[1] = candidates;
+                            send_input_event(r, object, &mut event, true);
+                        }
+                        4 => {
+                            let mut event = [0x2AC4_4ED4, candidates, 0, 0];
+                            send_input_event(r, object, &mut event, true);
+                            r.ecx = candidates;
+                            r.direct_call(0x0099_5D3D, &[], false);
+                        }
+                        _ => {}
+                    }
+                    r.eax = 1;
+                }
+                _ => {
+                    r.eax = 0;
+                }
+            }
+        }
+    }
+);
+
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
+    fc4p_009969dd::PORT,
+    fc4p_009198f3::PORT,
+    fc4p_0092e8b5::PORT,
+    fc4p_00930f70::PORT,
+    fc4p_00981404::PORT,
     fc4p_0096f4ce::PORT,
     fc4p_0097554f::PORT,
     fc4p_0096ee20::PORT,
@@ -5109,11 +5876,49 @@ mod tests {
         service_fake!(next_node, 0x0040_D4C0, 1, 0);
         service_fake!(erase_file_range, 0x0092_7CF8, 1, 4);
         service_fake!(virtual_five, 0xFFFF_1005, 5, 20);
+        service_fake!(insert_key_hint, 0x0089_20A7, 5, 20);
+        service_fake!(insert_key, 0x0094_950A, 2, 8);
+        service_fake!(lookup_subscribers, 0x006F_1530, 2, 8);
+        service_fake!(insert_subscribers, 0x0092_FDD8, 2, 8);
+        service_fake!(append_subscription, 0x007E_98C0, 1, 4);
+        service_fake!(find_subscription, 0x004D_C710, 4, 0);
+        service_fake!(remove_subscription, 0x0091_E008, 1, 4);
+        service_fake!(destroy_subscriptions, 0x0042_7670, 0, 0);
+        service_fake!(erase_subscription_key, 0x0092_F5A0, 1, 4);
+        service_fake!(clear_changes, 0x0092_DA64, 0, 0);
+        service_fake!(extension_index, 0x0091_8A25, 2, 8);
+        service_fake!(compare_suffix, 0x00A6_E64E, 2, 0);
+        service_fake!(assign_path, 0x0099_6433, 1, 4);
+        service_fake!(library_load, 0x00A8_00D0, 1, 4);
+        service_fake!(library_proc, 0x00A8_00CC, 2, 8);
+        service_fake!(library_free, 0x00A8_00D4, 1, 4);
+        service_fake!(com_init, 0xFFFF_1020, 1, 4);
+        service_fake!(com_uninit, 0xFFFF_1021, 0, 0);
+        service_fake!(com_create, 0xFFFF_1022, 5, 20);
+        service_fake!(com_query, 0xFFFF_1023, 3, 12);
+        service_fake!(com_load, 0xFFFF_1024, 3, 12);
+        service_fake!(com_resolve, 0xFFFF_1025, 3, 12);
+        service_fake!(com_path, 0xFFFF_1026, 5, 20);
+        service_fake!(com_release, 0xFFFF_1027, 1, 4);
+        service_fake!(default_window, 0x00A8_04F4, 4, 16);
+        service_fake!(language_acquire, 0x0061_0800, 0, 0);
+        service_fake!(language_release, 0x0061_0830, 0, 0);
+        service_fake!(composition_reset, 0x0099_52C1, 0, 0);
+        service_fake!(candidates_clear, 0x0099_5D3D, 0, 0);
+        service_fake!(composition_copy, 0x0091_8EBA, 1, 4);
+        service_fake!(composition_update, 0x0099_6453, 4, 16);
+        service_fake!(composition_compare, 0x0099_623C, 2, 0);
+        service_fake!(composition_character, 0x0099_62D9, 4, 16);
+        service_fake!(candidates_update, 0x0099_68A6, 4, 16);
 
         fn setup() -> (Box<[usize]>, Vec<crate::testing::Fake>) {
             reset();
             completed();
             let apis = [
+                (0x00A8_04F4, default_window as *const ()),
+                (0x00A8_00D0, library_load as *const ()),
+                (0x00A8_00CC, library_proc as *const ()),
+                (0x00A8_00D4, library_free as *const ()),
                 (0x00A8_02B0, size_api as *const ()),
                 (0x00A8_02AC, seek_api as *const ()),
                 (0x00A8_02A0, flush_api as *const ()),
@@ -5177,6 +5982,28 @@ mod tests {
                 (0x0040_D500, previous_node as *const ()),
                 (0x0040_D4C0, next_node as *const ()),
                 (0x0092_7CF8, erase_file_range as *const ()),
+                (0x0089_20A7, insert_key_hint as *const ()),
+                (0x0094_950A, insert_key as *const ()),
+                (0x006F_1530, lookup_subscribers as *const ()),
+                (0x0092_FDD8, insert_subscribers as *const ()),
+                (0x007E_98C0, append_subscription as *const ()),
+                (0x004D_C710, find_subscription as *const ()),
+                (0x0091_E008, remove_subscription as *const ()),
+                (0x0042_7670, destroy_subscriptions as *const ()),
+                (0x0092_F5A0, erase_subscription_key as *const ()),
+                (0x0092_DA64, clear_changes as *const ()),
+                (0x0091_8A25, extension_index as *const ()),
+                (0x00A6_E64E, compare_suffix as *const ()),
+                (0x0099_6433, assign_path as *const ()),
+                (0x0061_0800, language_acquire as *const ()),
+                (0x0061_0830, language_release as *const ()),
+                (0x0099_52C1, composition_reset as *const ()),
+                (0x0099_5D3D, candidates_clear as *const ()),
+                (0x0091_8EBA, composition_copy as *const ()),
+                (0x0099_6453, composition_update as *const ()),
+                (0x0099_623C, composition_compare as *const ()),
+                (0x0099_62D9, composition_character as *const ()),
+                (0x0099_68A6, candidates_update as *const ()),
             ] {
                 guards.push(crate::testing::fake(address, entry as usize));
             }
@@ -5505,6 +6332,53 @@ mod tests {
                         }
                     }
                 }
+            }
+        }
+
+        #[test]
+        fn vector_growth_skips_free_for_a_null_original_allocation() {
+            let (_slots, _guards) = setup();
+            for record in [false, true] {
+                let mut vector = [0u32, 0, 0, 0xA5A5_A5A5];
+                let this = vector.as_mut_ptr() as u32;
+                let end = if record { 0x201C } else { 0x2004 };
+                expect(
+                    if record { 0x0093_3516 } else { 0x009D_B998 },
+                    Some(this + 8),
+                    &[Some(1)],
+                    0x2000,
+                );
+                expect(
+                    if record { 0x0090_990F } else { 0x0040_7A50 },
+                    None,
+                    &if record {
+                        vec![Some(0), Some(0), Some(0x2000), None]
+                    } else {
+                        vec![Some(0), Some(0), Some(0x2000)]
+                    },
+                    0x2000,
+                );
+                if record {
+                    expect(0x009A_7610, Some(RESULT_ECX), &[Some(0x2000), Some(0x1234)], RESULT_EAX);
+                } else {
+                    expect(
+                        0x009C_FF7A,
+                        Some(RESULT_ECX),
+                        &[Some(0x2000), Some(1), Some(0x1234)],
+                        end,
+                    );
+                }
+                let entry = if record {
+                    fc4p_00933663 as *const ()
+                } else {
+                    fc4p_00994d77 as *const ()
+                };
+                assert_eq!(
+                    run(entry as usize, this, &[0, 0x1234, 0xDEADBEEF, 1, 1]),
+                    [if record { 0x2000 } else { end }, end, RESULT_EDX]
+                );
+                assert_eq!(vector, [0x2000, end, end, 0xA5A5_A5A5]);
+                completed();
             }
         }
 
@@ -6162,6 +7036,790 @@ mod tests {
                                 ]
                             );
                             completed();
+                        }
+                    }
+                }
+            }
+        }
+
+        #[test]
+        fn integer_clipping_preserves_inclusive_edges_ordered_truncation_and_argument_scratch() {
+            let cases = [
+                ([1, 2, 8, 9], [1, 2, 8, 9], true, None),
+                ([-2, 3, -1, 8], [-2, 3, -1, 8], false, None),
+                ([-5, 5, 15, 5], [0, 5, 10, 5], true, Some(8)),
+                ([5, -5, 5, 15], [5, 0, 5, 10], true, Some(2)),
+                ([-5, -5, 15, 15], [0, 0, 10, 10], true, Some(10)),
+                ([-5, 2, 15, 9], [0, 3, 10, 7], true, Some(8)),
+                ([15, 9, -5, 2], [10, 8, 0, 4], true, Some(4)),
+                ([-5, 12, 15, -2], [0, 8, 10, 2], true, Some(8)),
+                ([0, 0, 0, 0], [0, 0, 0, 0], true, None),
+                ([10, 0, 10, 10], [10, 0, 10, 10], true, None),
+                ([1, 12, 9, 11], [1, 12, 9, 11], false, None),
+            ];
+            for (input, expected, accepted, last) in cases {
+                let mut endpoints = input;
+                let p = endpoints.as_mut_ptr() as u32;
+                let args = [p, p + 4, p + 8, p + 12, 0, 0, 10, 10];
+                let result = invoke(
+                    fc4p_00930f70 as *const () as usize,
+                    0x12345678,
+                    &args,
+                    ENTRY_EAX,
+                    ENTRY_EDX,
+                    true,
+                );
+                let eax = if last.is_none() {
+                    (p + 4) & !255
+                } else {
+                    (expected[3] as u32) & !255
+                };
+                assert_eq!(result[0], eax | u32::from(accepted));
+                assert_eq!(result[1], 0x12345678);
+                assert_eq!(endpoints, expected);
+                endpoints = input;
+                let mut frame = [
+                    ENTRY_EAX,
+                    0x12345678,
+                    ENTRY_EDX,
+                    0,
+                    p,
+                    p + 4,
+                    p + 8,
+                    p + 12,
+                    0,
+                    0,
+                    10,
+                    10,
+                ];
+                unsafe {
+                    clip_integer_line(frame.as_mut_ptr().cast());
+                }
+                assert_eq!(endpoints, expected);
+                if accepted {
+                    assert_eq!(frame[4], 0);
+                    assert_eq!(frame[6], 0);
+                }
+                if let Some(last) = last {
+                    assert_eq!(frame[7], last);
+                } else {
+                    assert_eq!(frame[7], p + 12);
+                }
+            }
+            let mut endpoints = [-1200i32, -750, -300, -750];
+            let p = endpoints.as_mut_ptr() as u32;
+            let result = invoke(
+                fc4p_00930f70 as *const () as usize,
+                0x12345678,
+                &[
+                    p,
+                    p + 4,
+                    p + 8,
+                    p + 12,
+                    (-1000i32) as u32,
+                    (-1000i32) as u32,
+                    (-500i32) as u32,
+                    (-500i32) as u32,
+                ],
+                ENTRY_EAX,
+                ENTRY_EDX,
+                true,
+            );
+            assert_eq!(endpoints, [-1000, -750, -500, -750]);
+            assert_eq!(result, [((-750i32) as u32 & !255) | 1, 0x12345678, 0]);
+        }
+
+        #[test]
+        fn hinted_key_insertion_uses_neighbors_extremes_duplicates_or_general_search() {
+            let (_slots, _guards) = setup();
+            let mut head = [0u32; 5];
+            let h = head.as_mut_ptr() as u32;
+            let mut low = [0u32; 5];
+            let a = low.as_mut_ptr() as u32;
+            let mut mid = [0u32; 5];
+            let b = mid.as_mut_ptr() as u32;
+            let mut high = [0u32; 5];
+            let c = high.as_mut_ptr() as u32;
+            head = [0, b, a, c, 0];
+            low = [0, b, 0, 0, 10];
+            mid = [0, h, a, c, 20];
+            high = [0, b, 0, 0, 30];
+            let mut tree = [h, 3];
+            let this = tree.as_mut_ptr() as u32;
+            // A route is (insertion hint, parent, side); None requests ordinary search.
+            for (hint, key, previous, next, route, duplicate, linked) in [
+                (a, 5, 0, 0, Some((a, a, 0)), false, false),
+                (a, 10, 0, 0, None, true, false),
+                (a, 15, 0, b, Some((0, a, a)), false, false),
+                (a, 15, 0, b, Some((b, b, 0)), false, true),
+                (a, 25, 0, b, None, false, false),
+                (h, 35, 0, 0, Some((0, c, h)), false, false),
+                (h, 30, 0, 0, None, false, false),
+                (b, 15, a, 0, Some((0, a, a)), false, false),
+                (b, 15, a, 0, Some((b, b, 0)), false, true),
+                (b, 10, a, c, None, false, false),
+                (b, 20, a, c, None, true, false),
+                (b, 25, a, c, Some((0, b, b)), false, false),
+                (b, 25, a, c, Some((c, c, 0)), false, true),
+                (b, 35, a, c, None, false, false),
+                (c, 35, b, h, Some((0, c, c)), false, false),
+                (c, 30, b, h, None, true, false),
+            ] {
+                low[3] = if linked { b } else { 0 };
+                mid[3] = if linked { c } else { 0 };
+                let mut value = [key];
+                let v = value.as_mut_ptr() as u32;
+                let mut output = [0xA5A5_A5A5u32; 2];
+                let out = output.as_mut_ptr() as u32;
+                if previous != 0 {
+                    expect(0x0040_D500, Some(this), &[Some(hint)], previous);
+                }
+                if next != 0 {
+                    expect(0x0040_D4C0, None, &[Some(hint)], next);
+                }
+                if let Some((node, parent, side)) = route {
+                    expect(
+                        0x0089_20A7,
+                        Some(this),
+                        &[Some(out), Some(node), Some(parent), Some(v), Some(side)],
+                        RESULT_EAX,
+                    );
+                    effect(move |_| unsafe {
+                        put_word(out, 0, 0x87654321);
+                    });
+                } else if !duplicate {
+                    expect(0x0094_950A, Some(this), &[None, Some(v)], 0);
+                    let returned = std::rc::Rc::new([0x87654321u32]);
+                    let p = returned.as_ptr() as u32;
+                    STEPS.with(|s| s.borrow_mut().back_mut().unwrap().result[0] = p);
+                    effect(move |r| unsafe {
+                        assert_eq!(r.eax, r.argument(0));
+                    });
+                    assert_eq!(run(fc4p_00981404 as *const () as usize, this, &[out, hint, v])[0], out);
+                    assert_eq!(output, [0x87654321, 0xA5A5_A5A5]);
+                    completed();
+                    continue;
+                }
+                assert_eq!(run(fc4p_00981404 as *const () as usize, this, &[out, hint, v])[0], out);
+                assert_eq!(output, [if duplicate { hint } else { 0x87654321 }, 0xA5A5_A5A5]);
+                completed();
+            }
+            tree[1] = 0;
+            head[2] = h;
+            let mut value = [10u32];
+            let v = value.as_mut_ptr() as u32;
+            let mut output = [0u32; 2];
+            let out = output.as_mut_ptr() as u32;
+            expect(0x0094_950A, Some(this), &[None, Some(v)], out);
+            effect(move |_| unsafe {
+                put_word(out, 0, 0x87654321);
+            });
+            assert_eq!(run(fc4p_00981404 as *const () as usize, this, &[out, h, v])[0], out);
+            completed();
+            assert_eq!(high, [0, b, 0, 0, 30]);
+            assert_eq!(tree[1], 0);
+            assert_eq!(head[2], h);
+        }
+
+        #[test]
+        fn subscription_changes_create_deduplicate_remove_and_release_only_empty_lists() {
+            let (_slots, _guards) = setup();
+            let mut sentinel = [0u32; 2];
+            let h = sentinel.as_mut_ptr() as u32;
+            let mut node = [h, h, 0, 0x11223344, 0x55667788];
+            let n = node.as_mut_ptr() as u32;
+            let mut header = [0x1234u32, 0];
+            let lh = header.as_mut_ptr() as u32;
+            let mut list = [lh];
+            let l = list.as_mut_ptr() as u32;
+            let mut entry = [0, 0, l];
+            let e = entry.as_mut_ptr() as u32;
+            let mut object = [0xA5A5_A5A5u32; 29];
+            let this = object.as_mut_ptr() as u32;
+            object[26] = h;
+            sentinel[0] = h;
+            assert_eq!(
+                run(fc4p_0092e8b5 as *const () as usize, this, &[]),
+                [h, this, this + 0x68]
+            );
+            for adding in [false, true] {
+                for existing in [false, true] {
+                    for present in [false, true] {
+                        for empty_after in [false, true] {
+                            sentinel[0] = n;
+                            node[2] = u32::from(adding) * 0x80;
+                            header[0] = 0x1234;
+                            expect(0x006F_1530, Some(this + 0x6C), &[None, Some(n + 16)], RESULT_EAX);
+                            effect(move |r| unsafe {
+                                assert_eq!(r.eax, r.argument(0));
+                                put_word(r.argument(0), 0, if existing { e } else { 0 });
+                            });
+                            if adding && !existing {
+                                expect(0x005E_55E0, Some(RESULT_ECX), &[Some(4)], l);
+                                expect(0x004F_5A00, Some(l), &[None], RESULT_EAX);
+                                expect(0x0092_FDD8, Some(this + 0x6C), &[None, None], RESULT_EAX);
+                                effect(move |r| unsafe {
+                                    assert_eq!(r.eax, r.argument(0));
+                                    assert_eq!([word(r.argument(1), 0), word(r.argument(1), 4)], [0x55667788, l]);
+                                });
+                                expect(0x007E_98C0, Some(l), &[Some(n + 12)], RESULT_EAX);
+                            } else if existing {
+                                let result = std::rc::Rc::new([if present { 0x1234u32 } else { lh }]);
+                                let result_ptr = result.as_ptr() as u32;
+                                expect(
+                                    0x004D_C710,
+                                    Some(0x1234),
+                                    &[None, Some(0x1234), Some(lh), Some(n + 12)],
+                                    result_ptr,
+                                );
+                                if adding && !present {
+                                    expect(0x007E_98C0, Some(l), &[Some(n + 12)], RESULT_EAX);
+                                } else if !adding && present {
+                                    expect(0x0091_E008, Some(l), &[Some(n + 12)], RESULT_EAX);
+                                    effect(move |_| unsafe {
+                                        put_word(lh, 0, if empty_after { lh } else { 0x1234 });
+                                    });
+                                    if empty_after {
+                                        expect(0x0042_7670, Some(l), &[], RESULT_EAX);
+                                        expect(0x005E_5620, Some(RESULT_ECX), &[Some(l)], RESULT_EAX);
+                                        expect(0x0092_F5A0, Some(this + 0x6C), &[Some(n + 16)], RESULT_EAX);
+                                    }
+                                }
+                                expect(0x0092_DA64, Some(this + 0x68), &[], RESULT_EAX);
+                                assert_eq!(
+                                    run(fc4p_0092e8b5 as *const () as usize, this, &[]),
+                                    [RESULT_EAX, RESULT_ECX, RESULT_EDX]
+                                );
+                                completed();
+                                continue;
+                            }
+                            expect(0x0092_DA64, Some(this + 0x68), &[], RESULT_EAX);
+                            assert_eq!(
+                                run(fc4p_0092e8b5 as *const () as usize, this, &[]),
+                                [RESULT_EAX, RESULT_ECX, RESULT_EDX]
+                            );
+                            completed();
+                        }
+                    }
+                }
+            }
+            assert_eq!(entry, [0, 0, l]);
+            assert_eq!(list, [lh]);
+            assert_eq!(object[27..], [0xA5A5_A5A5; 2]);
+        }
+
+        #[test]
+        fn shortcut_resolution_checks_hresult_stages_and_releases_acquired_com_objects_in_order() {
+            let (_slots, _guards) = setup();
+            let _constants: Vec<_> = [
+                0x00ACF0C0u32,
+                0x00ACEFF8,
+                0x00ACEFE8,
+                0x00ACEFD8,
+                0x00ACEFC4,
+                0x00AC27F4,
+                0x00AC27D4,
+                0x00AC2804,
+            ]
+            .into_iter()
+            .map(|address| crate::testing::fake_data(address, address as *mut u8))
+            .collect();
+            let mut shell_table = [0usize; 20];
+            shell_table[0] = com_query as *const () as usize;
+            shell_table[2] = com_release as *const () as usize;
+            shell_table[3] = com_path as *const () as usize;
+            shell_table[19] = com_resolve as *const () as usize;
+            let st = shell_table.as_mut_ptr() as u32;
+            let mut shell = [st];
+            let s = shell.as_mut_ptr() as u32;
+            let mut persistent_table = [0usize; 6];
+            persistent_table[2] = com_release as *const () as usize;
+            persistent_table[5] = com_load as *const () as usize;
+            let pt = persistent_table.as_mut_ptr() as u32;
+            let mut persistent = [pt];
+            let p = persistent.as_mut_ptr() as u32;
+            let mut source = [0x1000u32, 0x1100, 0x1200];
+            let src = source.as_mut_ptr() as u32;
+            for failure in 0..=12 {
+                source[0] = 0x1000;
+                expect(
+                    0x0091_8A25,
+                    Some(src),
+                    &[Some(0x2E), Some(u32::MAX)],
+                    if failure == 0 { u32::MAX } else { 5 },
+                );
+                if failure != 0 {
+                    expect(
+                        0x00A6_E64E,
+                        Some(0x1000),
+                        &[Some(0x100A), Some(0x00ACF0C0)],
+                        if failure == 1 { 0x11223304 } else { 0 },
+                    );
+                    if failure != 1 {
+                        expect(
+                            0x00A8_00D0,
+                            Some(0x00ACF0C0),
+                            &[Some(0x00ACEFF8)],
+                            if failure == 2 { 0 } else { 0x1234 },
+                        );
+                        if failure != 2 {
+                            for (i, name, target) in [
+                                (3, 0x00ACEFE8, com_init as *const ()),
+                                (4, 0x00ACEFD8, com_uninit as *const ()),
+                                (5, 0x00ACEFC4, com_create as *const ()),
+                            ] {
+                                expect(
+                                    0x00A8_00CC,
+                                    Some(RESULT_ECX),
+                                    &[Some(0x1234), Some(name)],
+                                    if failure == i { 0 } else { target as u32 },
+                                );
+                            }
+                            if failure >= 6 {
+                                expect(
+                                    0xFFFF_1020,
+                                    Some(RESULT_ECX),
+                                    &[Some(0)],
+                                    if failure == 6 { 0x80000000 } else { 1 },
+                                );
+                                if failure >= 7 {
+                                    expect(
+                                        0xFFFF_1022,
+                                        Some(RESULT_ECX),
+                                        &[Some(0x00AC27F4), Some(0), Some(1), Some(0x00AC27D4), None],
+                                        if failure == 7 { 0x80000000 } else { 0 },
+                                    );
+                                    effect(move |r| unsafe {
+                                        assert_eq!(r.eax, r.argument(4));
+                                        assert_eq!(word(r.argument(4), 0), 0);
+                                        put_word(r.argument(4), 0, s);
+                                    });
+                                    if failure >= 8 {
+                                        expect(
+                                            0xFFFF_1023,
+                                            Some(st),
+                                            &[Some(s), Some(0x00AC2804), None],
+                                            if failure == 8 { 0x80000000 } else { 0 },
+                                        );
+                                        effect(move |r| unsafe {
+                                            assert_eq!(r.edx, r.argument(2));
+                                            assert_eq!(word(r.argument(2), 0), 0);
+                                            put_word(r.argument(2), 0, p);
+                                            put_word(src, 0, 0x2000);
+                                        });
+                                        if failure >= 9 {
+                                            expect(
+                                                0xFFFF_1024,
+                                                Some(p),
+                                                &[Some(p), Some(0x2000), Some(0)],
+                                                if failure == 9 { 0x80000000 } else { 0 },
+                                            );
+                                            if failure >= 10 {
+                                                expect(
+                                                    0xFFFF_1025,
+                                                    Some(st),
+                                                    &[Some(s), Some(0), Some(1)],
+                                                    if failure == 10 { 0x80000000 } else { 1 },
+                                                );
+                                                if failure >= 11 {
+                                                    expect(
+                                                        0xFFFF_1026,
+                                                        Some(st),
+                                                        &[Some(s), None, Some(0x105), None, Some(0)],
+                                                        if failure == 11 { 1 } else { 0 },
+                                                    );
+                                                    effect(move |r| unsafe {
+                                                        assert_eq!(r.edx, r.argument(1));
+                                                        assert_eq!((r.argument(1) as *const u16).read(), 0);
+                                                        assert_eq!(
+                                                            (r.argument(3) as *const u8)
+                                                                .add(44)
+                                                                .cast::<u16>()
+                                                                .read_unaligned(),
+                                                            0
+                                                        );
+                                                        (r.argument(1) as *mut u16).write(0x41);
+                                                        (r.argument(1) as *mut u16).add(1).write(0);
+                                                    });
+                                                    if failure == 12 {
+                                                        expect(0x0099_6433, Some(0x87654321), &[None], RESULT_EAX);
+                                                        effect(move |r| unsafe {
+                                                            assert_eq!(r.eax, r.argument(0));
+                                                            assert_eq!(
+                                                                core::slice::from_raw_parts(
+                                                                    r.argument(0) as *const u16,
+                                                                    2
+                                                                ),
+                                                                [0x41, 0]
+                                                            );
+                                                        });
+                                                    }
+                                                }
+                                            }
+                                            expect(0xFFFF_1027, Some(pt), &[Some(p)], RESULT_EAX);
+                                        }
+                                        expect(0xFFFF_1027, Some(st), &[Some(s)], RESULT_EAX);
+                                    }
+                                    expect(0xFFFF_1021, Some(RESULT_ECX), &[], RESULT_EAX);
+                                }
+                            }
+                            expect(0x00A8_00D4, Some(RESULT_ECX), &[Some(0x1234)], 0x55667788);
+                        }
+                    }
+                }
+                let expected = match failure {
+                    0 => 0xFFFFFF00,
+                    1 => 0x11223300,
+                    2 => 0,
+                    _ => 0x55667700 | u32::from(failure == 12),
+                };
+                assert_eq!(
+                    invoke(
+                        fc4p_009198f3 as *const () as usize,
+                        0xCAFEBABE,
+                        &[src, 0x87654321],
+                        ENTRY_EAX,
+                        ENTRY_EDX,
+                        true
+                    )[0],
+                    expected
+                );
+                completed();
+            }
+        }
+
+        fn expect_input_event(service: u32, words: [u32; 4]) {
+            expect(0xFFFF_1001, Some(service), &[None], RESULT_EAX);
+            effect(move |r| unsafe {
+                assert_eq!(core::slice::from_raw_parts(r.argument(0) as *const u32, 4), words);
+                assert_eq!(r.edx, r.argument(0));
+            });
+        }
+
+        #[test]
+        fn input_messages_handle_simple_codes_and_forward_default_window_result() {
+            let (_slots, _guards) = setup();
+            let mut object = [0xA5u8; 0xA0];
+            let base = object.as_mut_ptr() as u32;
+            let this = base + 0x90;
+            let mut handled = [0xA5u8; 2];
+            let out = handled.as_mut_ptr() as u32;
+            for message in [
+                0u32,
+                0x50,
+                0x52,
+                0x10C,
+                0x110,
+                0x280,
+                0x283,
+                0x284,
+                0x285,
+                0x286,
+                0x287,
+                0x290,
+                0x291,
+                u32::MAX,
+            ] {
+                let result = run(
+                    fc4p_009969dd as *const () as usize,
+                    this,
+                    &[0x1234, message, 0x5678, 0x87654321, out],
+                );
+                let accepted = message == 0x284 || message == 0x286;
+                assert_eq!(result[0], u32::from(accepted));
+                assert_eq!(handled, [u8::from(accepted), 0xA5]);
+                assert_eq!(result[2], ENTRY_EDX);
+                assert_eq!(object, [0xA5; 0xA0]);
+                completed();
+            }
+            for lparam in [0u32, 1, 0x80000000, u32::MAX] {
+                expect(
+                    0x00A8_04F4,
+                    Some(0x281),
+                    &[Some(0x1234), Some(0x281), Some(0x5678), Some(lparam & 0x7FFFFFFF)],
+                    0x89ABCDEF,
+                );
+                effect(move |r| unsafe {
+                    assert_eq!(r.eax, lparam & 0x7FFFFFFF);
+                    assert_eq!((out as *const u8).read(), 1);
+                });
+                assert_eq!(
+                    run(
+                        fc4p_009969dd as *const () as usize,
+                        this,
+                        &[0x1234, 0x281, 0x5678, lparam, out]
+                    ),
+                    [0x89ABCDEF, RESULT_ECX, RESULT_EDX]
+                );
+                completed();
+            }
+        }
+
+        #[test]
+        fn language_change_reuses_the_window_argument_for_the_service_and_mirrors_its_result() {
+            let (_slots, _guards) = setup();
+            let mut table = [0usize; 13];
+            table[12] = virtual_one as *const () as usize;
+            let mut language = [table.as_mut_ptr() as u32];
+            let l = language.as_mut_ptr() as u32;
+            let mut object = [0xA5A5_A5A5u32; 40];
+            let base = object.as_mut_ptr() as u32;
+            let this = base + 0x90;
+            for service in [0, l] {
+                let argument = std::rc::Rc::new(std::cell::Cell::new(0));
+                let a = argument.clone();
+                expect(0x0061_0800, None, &[], RESULT_EAX);
+                effect(move |r| unsafe {
+                    a.set(r.ecx);
+                    assert_eq!(word(r.ecx, 0), 0x1234);
+                    put_word(r.ecx, 0, service);
+                });
+                if service != 0 {
+                    expect(0xFFFF_1001, Some(service), &[Some(0x87654321)], 0xF1234567);
+                }
+                expect(0x0061_0830, None, &[], RESULT_EAX);
+                effect(move |r| unsafe {
+                    assert_eq!(r.ecx, argument.get());
+                    assert_eq!(word(r.ecx, 0), service);
+                });
+                let mut handled = [0xA5u8; 2];
+                let out = handled.as_mut_ptr() as u32;
+                assert_eq!(
+                    run(
+                        fc4p_009969dd as *const () as usize,
+                        this,
+                        &[0x1234, 0x51, 0, 0x87654321, out]
+                    )[0],
+                    0
+                );
+                assert_eq!(handled, [0, 0xA5]);
+                if service != 0 {
+                    assert_eq!(object[17], 0xF1234567);
+                    assert_eq!(object[28], 0xF1234567);
+                }
+                completed();
+            }
+        }
+
+        #[test]
+        fn composition_begin_end_and_candidate_notifications_preserve_event_payload_and_order() {
+            let (_slots, _guards) = setup();
+            let mut table = [0usize; 4];
+            table[3] = virtual_one as *const () as usize;
+            let mut service = [table.as_mut_ptr() as u32];
+            let s = service.as_mut_ptr() as u32;
+            let mut object = [0u32; 40];
+            let base = object.as_mut_ptr() as u32;
+            let this = base + 0x90;
+            object[11] = s;
+            let sender = base + 0x34;
+            let candidates = base + 0x64;
+            let mut handled = [0xA5u8; 2];
+            let out = handled.as_mut_ptr() as u32;
+            for active in [0u8, 0x80] {
+                unsafe {
+                    (base as *mut u8).add(0x61).write(active);
+                }
+                if active == 0 {
+                    expect(0x0099_52C1, Some(sender), &[], RESULT_EAX);
+                    expect(0xFFFF_1001, Some(s), &[None], RESULT_EAX);
+                    effect(move |r| unsafe {
+                        let event = r.argument(0);
+                        assert_eq!(
+                            [word(event, 0), word(event, 4), word(event, 12)],
+                            [0x2AC44C0E, sender, 0]
+                        );
+                        assert_eq!(word(word(event, 8), 0), 1);
+                        assert_eq!((base as *const u8).add(0x61).read(), 1);
+                        assert_eq!(r.edx, RESULT_EDX);
+                    });
+                }
+                assert_eq!(
+                    run(
+                        fc4p_009969dd as *const () as usize,
+                        this,
+                        &[0x1234, 0x10D, 0x5678, 0x9988, out]
+                    )[0],
+                    1
+                );
+                assert_eq!(handled, [1, 0xA5]);
+                completed();
+                unsafe {
+                    (base as *mut u8).add(0x60).write(active);
+                }
+                expect_input_event(s, [0x2AC44C11, sender, u32::from(active != 0), 0]);
+                expect(0x0099_52C1, Some(sender), &[], RESULT_EAX);
+                assert_eq!(
+                    run(
+                        fc4p_009969dd as *const () as usize,
+                        this,
+                        &[0x1234, 0x10E, 0x5678, 0x9988, out]
+                    )[0],
+                    1
+                );
+                unsafe {
+                    assert_eq!((base as *const u8).add(0x61).read(), 0);
+                }
+                completed();
+            }
+            for kind in (0u32..=15).chain([u32::MAX]) {
+                if kind == 3 || kind == 5 {
+                    expect(
+                        0x0099_68A6,
+                        Some(base),
+                        &[Some(0x1234), Some(0x282), Some(kind), Some(0x9988)],
+                        RESULT_EAX,
+                    );
+                    let pointer = std::rc::Rc::new(std::cell::Cell::new(0));
+                    let p = pointer.clone();
+                    if kind == 5 {
+                        expect(0xFFFF_1001, Some(s), &[None], RESULT_EAX);
+                        effect(move |r| unsafe {
+                            let e = r.argument(0);
+                            p.set(e);
+                            assert_eq!([word(e, 0), word(e, 4), word(e, 8), word(e, 12)], [0x2AC44ED1, 0, 0, 0]);
+                            put_word(e, 8, 0x1122);
+                            put_word(e, 12, 0x3344);
+                        });
+                    }
+                    expect(0xFFFF_1001, Some(s), &[None], RESULT_EAX);
+                    effect(move |r| unsafe {
+                        let e = r.argument(0);
+                        assert_eq!(
+                            [word(e, 0), word(e, 4), word(e, 8), word(e, 12)],
+                            [
+                                0x2AC44ED8,
+                                candidates,
+                                if kind == 5 { 0x1122 } else { 0 },
+                                if kind == 5 { 0x3344 } else { 0 }
+                            ]
+                        );
+                        if kind == 5 {
+                            assert_eq!(e, pointer.get());
+                        }
+                    });
+                } else if kind == 4 {
+                    expect_input_event(s, [0x2AC44ED4, candidates, 0, 0]);
+                    expect(0x0099_5D3D, Some(candidates), &[], RESULT_EAX);
+                }
+                assert_eq!(
+                    run(
+                        fc4p_009969dd as *const () as usize,
+                        this,
+                        &[0x1234, 0x282, kind, 0x9988, out]
+                    )[0],
+                    1
+                );
+                assert_eq!(handled, [1, 0xA5]);
+                completed();
+            }
+            assert_eq!(object[11], s);
+        }
+
+        #[test]
+        fn composition_update_reports_changes_reloads_each_character_and_frees_its_previous_string_last() {
+            let (_slots, _guards) = setup();
+            let mut table = [0usize; 4];
+            table[3] = virtual_one as *const () as usize;
+            let mut service = [table.as_mut_ptr() as u32];
+            let s = service.as_mut_ptr() as u32;
+            let mut text = [0x0041u16, 0xD834];
+            let t = text.as_mut_ptr() as u32;
+            let mut replacement = [0x0042u16, 0xDC00];
+            let replacement_ptr = replacement.as_mut_ptr() as u32;
+            for compared in [0xAABB_CC00u32, 0xAABB_CC80] {
+                for changed in [false, true] {
+                    for committed in [false, true] {
+                        for count in [-1i32, 0, 2] {
+                            for allocation in [0u32, 0x12345678] {
+                                let mut object = [0xA5A5_A5A5u32; 40];
+                                let base = object.as_mut_ptr() as u32;
+                                let this = base + 0x90;
+                                let sender = base + 0x34;
+                                let string = base + 0x48;
+                                object[11] = s;
+                                object[16] = 11;
+                                object[18] = t;
+                                object[19] = t.wrapping_add((count as u32).wrapping_mul(2));
+                                unsafe {
+                                    (base as *mut u8).add(0x60).write(if committed { 0x80 } else { 0 });
+                                }
+                                let previous = std::rc::Rc::new(std::cell::Cell::new(0));
+                                let p = previous.clone();
+                                expect(0x0091_8EBA, None, &[Some(string)], RESULT_EAX);
+                                effect(move |r| unsafe {
+                                    p.set(r.ecx);
+                                    put_word(r.ecx, 0, allocation);
+                                    put_word(r.ecx, 4, allocation.wrapping_add(4));
+                                    put_word(r.ecx, 8, allocation.wrapping_add(8));
+                                });
+                                expect(
+                                    0x0099_6453,
+                                    Some(base),
+                                    &[Some(0x1122), Some(0x10F), Some(0x3344), Some(0x5566)],
+                                    RESULT_EAX,
+                                );
+                                effect(move |_| unsafe {
+                                    if changed {
+                                        put_word(base, 0x40, 22);
+                                    }
+                                });
+                                expect(0x0099_623C, Some(RESULT_ECX), &[None, Some(string)], compared);
+                                effect(move |r| unsafe {
+                                    assert_eq!(r.argument(0), previous.get());
+                                    assert_eq!(r.eax, r.argument(0));
+                                    assert_eq!(word(r.argument(0), 0), allocation);
+                                });
+                                if compared as u8 == 0 {
+                                    expect_input_event(s, [0x2AC44C14, sender, 0, 0]);
+                                }
+                                if changed {
+                                    expect_input_event(s, [0x2AC44C1A, sender, 0, 0]);
+                                }
+                                if committed {
+                                    if count > 0 {
+                                        expect(
+                                            0x0099_62D9,
+                                            Some(base),
+                                            &[Some(0x1122), Some(0x41), Some(0), Some(0)],
+                                            RESULT_EAX,
+                                        );
+                                        effect(move |_| unsafe {
+                                            put_word(string, 0, replacement_ptr);
+                                        });
+                                        expect(
+                                            0x0099_62D9,
+                                            Some(base),
+                                            &[Some(0x1122), Some(0xDC00), Some(0), Some(0)],
+                                            RESULT_EAX,
+                                        );
+                                    }
+                                    expect_input_event(s, [0x2AC44C1B, sender, 0, 0]);
+                                }
+                                let mut handled = [0xA5u8; 2];
+                                let out = handled.as_mut_ptr() as u32;
+                                if allocation != 0 {
+                                    expect(0x0090_CF63, None, &[Some(allocation)], RESULT_EAX);
+                                    effect(move |_| unsafe {
+                                        assert_eq!((out as *const u8).read(), 1);
+                                    });
+                                }
+                                assert_eq!(
+                                    run(
+                                        fc4p_009969dd as *const () as usize,
+                                        this,
+                                        &[0x1122, 0x10F, 0x3344, 0x5566, out]
+                                    )[0],
+                                    1
+                                );
+                                assert_eq!(handled, [1, 0xA5]);
+                                unsafe {
+                                    assert_eq!((base as *const u8).add(0x60).read(), 0);
+                                    assert_eq!((base as *const u8).add(0x61).read(), 0xA5);
+                                }
+                                assert_eq!(object[16], if changed { 22 } else { 11 });
+                                completed();
+                            }
                         }
                     }
                 }
