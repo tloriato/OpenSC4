@@ -1887,6 +1887,18 @@ game_fn! { fn rewind_solved_heights(this: *mut u8) -> u64 = "thiscall" 0x0065_EF
 game_fn! { fn next_solved_height(this: *mut u8, vertex: *mut u32, height: *mut u32) -> u64 = "thiscall" 0x0065_EB50; }
 game_fn! { fn grow_vertex_vector(this: *mut u8, at: *mut u8, value: *const u32, cookie: *mut u32, count: u32, mode: u32) -> u64 = "thiscall" 0x0051_CA60; }
 
+/// Unsigned division retains the CPU's divide fault for a zero divisor.
+fn divide_unsigned(mut numerator: u32, denominator: u32) -> (u32, u32) {
+    let remainder: u32;
+    unsafe {
+        core::arch::asm!(
+            "xor edx, edx", "div {denominator}", denominator = in(reg) denominator,
+            inout("eax") numerator, out("edx") remainder, options(nomem, nostack),
+        );
+    }
+    (numerator, remainder)
+}
+
 register_entry!(
     0x0064_4530,
     fc4p_00644530,
@@ -1922,8 +1934,8 @@ unsafe extern "fastcall" fn apply_solved_terrain_heights(this: *mut u8, frame: *
                 }
                 // The iterator's vertex slot can be changed by vector growth.
                 cookie = vertex.read_unaligned();
-                let x = cookie % word(this, 0x248);
-                let z = cookie / word(this, 0x24C);
+                let x = divide_unsigned(cookie, word(this, 0x248)).1;
+                let z = divide_unsigned(cookie, word(this, 0x24C)).0;
                 if (x as i32) < rect[0] as i32 {
                     rect[0] = x;
                 }
@@ -2706,7 +2718,7 @@ unsafe extern "fastcall" fn refresh_underground_corner_heights(this: *mut u8, fr
                 let key = word(cell, 4).wrapping_shl(16).wrapping_add(word(cell, 0));
                 let first = pointer(this, 0xA8);
                 let count = (word(this, 0xAC).wrapping_sub(first as u32) as i32 >> 2) as u32;
-                let mut node = pointer(first, (key % count).wrapping_mul(4) as usize);
+                let mut node = pointer(first, divide_unsigned(key, count).1.wrapping_mul(4) as usize);
                 while !node.is_null() && word(node, 4) != key {
                     node = pointer(node, 0);
                 }
