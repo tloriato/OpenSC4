@@ -11,11 +11,13 @@ game_fn! { #[allow(dead_code)] fn matches_network() -> u32 = "C" 0x0072_9F90; }
 game_data! { static broad_network_match: u8 = 0x00B4_B391; }
 
 /// The predicate receives its object in ESI, with no stack arguments.
-unsafe fn matches(network: *mut u8) -> u32 {
+unsafe fn matches(network: *mut u8, call: &mut crate::abi::RawCall) -> u32 {
     let result: u32;
     unsafe {
-        core::arch::asm!("push esi", "mov esi, ecx", "call edx", "pop esi",
-            in("ecx") network, in("edx") crate::abi::target(0x0072_9F90),
+        call.target = crate::abi::target(0x0072_9F90);
+        core::arch::asm!("push esi", "mov esi, ecx", "mov eax, [edi + 4]",
+            "mov ecx, [edi + 8]", "mov edx, [edi + 12]", "call dword ptr [edi]", "pop esi",
+            in("ecx") network, in("edi") call,
             lateout("eax") result, clobber_abi("C"));
     }
     result
@@ -75,8 +77,12 @@ port! {
                 (x.wrapping_sub(1), z), (x, z.wrapping_sub(1)),
                 (x.wrapping_add(1), z), (x, z.wrapping_add(1)),
             ].into_iter().enumerate() {
-                let neighbor = network_at(this, nx, nz, 0xC09);
-                if neighbor.is_null() || matches(neighbor) as u8 == 0 { continue; }
+                let args = [nx as u32, nz as u32, 0xC09];
+                let mut lookup = crate::abi::RawCall::new(crate::abi::Conv::Thiscall,
+                    crate::abi::target(0x0072_FCA0), this as u32, &args);
+                super::registers::call(&mut lookup);
+                let neighbor = lookup.eax as *mut u8;
+                if neighbor.is_null() || matches(neighbor, &mut lookup) as u8 == 0 { continue; }
                 let mut count = 0u32;
                 let mut last = [u32::MAX; 3];
                 for edge in 0..4 {

@@ -34,17 +34,17 @@ fn cursor_allocation_initialization_and_registration() {
     let _append = fake(0x0072_BA10, append_fake as *const () as usize);
     let mut memory = Object::new(0x100);
     let primary = memory.ptr();
-    let mut position = 0x8765_4321usize as *mut u8;
     for thunk in [false, true] {
-        for has_storage in [false, true] {
+        for has_position in [false, true] {
             unsafe {
-                let grid = primary.add(0x60);
-                let owner = CursorOwner::from_ptr(grid);
-                owner.set_storage(if has_storage {
-                    &mut position
+                let mut position = if has_position {
+                    0x8765_4321usize as *mut u8
                 } else {
                     core::ptr::null_mut()
-                });
+                };
+                let grid = primary.add(0x60);
+                let owner = CursorOwner::from_ptr(grid);
+                owner.set_storage(&mut position);
                 owner.set_cursors(0x2345_6789usize as *mut u8);
                 let snapshot = core::slice::from_raw_parts(primary, 0x100).to_vec();
                 let result = if thunk {
@@ -54,10 +54,7 @@ fn cursor_allocation_initialization_and_registration() {
                 };
                 ALLOCATION.with(|allocation| {
                     assert_eq!(result, allocation.as_ptr() as u32);
-                    assert_eq!(
-                        *allocation.borrow(),
-                        [if has_storage { position as u32 } else { 0xA5A5_A5A5 }, grid as u32]
-                    );
+                    assert_eq!(*allocation.borrow(), [position as u32, grid as u32]);
                 });
                 assert_eq!(core::slice::from_raw_parts(primary, 0x100), snapshot);
                 CALLS.with(|calls| {

@@ -38,22 +38,20 @@ port! {
 }
 
 port! {
-    /// Allocate eight bytes, attach the grid, and copy its first position when storage is present.
-    /// An absent storage pointer leaves the position word untouched. Register the cursor before
-    /// the list's stored header and return the allocated cursor.
+    /// Allocate eight bytes, attach the grid, and copy its first position when the owner is nonnull.
+    /// The owner's storage is dereferenced without a separate check. Register the cursor before the
+    /// list's stored header and return the allocated cursor.
     #[port(address = 0x0073_4860, owner = "zonedeveloper", name = "CreateRegisteredLotCursor")]
     pub unsafe extern "thiscall" fn fc4p_00734860(this: *mut u8) -> *mut u8 {
         unsafe {
             let owner = CursorOwner::from_ptr(this);
             let cursor = allocate(8);
             Cursor::from_ptr(cursor).set_owner(this);
-            let storage = owner.storage();
-            if !storage.is_null() {
-                Cursor::from_ptr(cursor).set_position(read_unaligned(storage));
+            if !this.is_null() {
+                Cursor::from_ptr(cursor).set_position(read_unaligned(owner.storage()));
             }
             let mut node = core::mem::MaybeUninit::<*mut u8>::uninit();
             append_cursor(this.add(4), node.as_mut_ptr(), owner.cursors(), &cursor);
-            // The helper may use its pointer-to-cursor argument as scratch storage.
             read_unaligned(&cursor)
         }
     }

@@ -126,11 +126,19 @@ extern "thiscall" fn lookup(_this: *mut u8, x: i32, z: i32, mask: u32) -> *mut u
 }
 
 #[unsafe(naked)]
-unsafe extern "C" fn match_stub() {
-    core::arch::naked_asm!("mov ecx, esi", "jmp {}", sym match_body);
+unsafe extern "C" fn lookup_stub() {
+    core::arch::naked_asm!("push dword ptr [esp + 12]", "push dword ptr [esp + 12]",
+        "push dword ptr [esp + 12]", "call {}", "mov ecx, 0x11223344", "mov edx, 0x55667788", "ret 12",
+        sym lookup);
 }
 
-extern "thiscall" fn match_body(this: *mut Network) -> u32 {
+#[unsafe(naked)]
+unsafe extern "C" fn match_stub() {
+    core::arch::naked_asm!("push eax", "push edx", "push ecx", "mov ecx, esi", "call {}", "ret", sym match_body);
+}
+
+extern "thiscall" fn match_body(this: *mut Network, ecx: u32, edx: u32, eax: u32) -> u32 {
+    assert_eq!((ecx, edx, eax), (0x1122_3344, 0x5566_7788, this as u32));
     unsafe {
         log(Call::Matches((*this).id));
         u32::from((*this).matches)
@@ -190,7 +198,7 @@ impl World {
         let mode_ptr = (&mut *mode) as *mut u8;
         MODE.with(|slot| *slot.borrow_mut() = mode_ptr);
         let fakes = vec![
-            fake(0x0072_FCA0, lookup as *const () as usize),
+            fake(0x0072_FCA0, lookup_stub as *const () as usize),
             fake(0x0072_9F90, match_stub as *const () as usize),
             fake_data(0x00B4_B391, mode_ptr),
         ];
