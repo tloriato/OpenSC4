@@ -416,11 +416,12 @@ game_data! { static demand_manager: *mut u8 = 0x00B4_3D74; }
 
 port! {
     /// Receives the message interface at primary +4 and preserves the live message argument slot.
+    /// Queue iterators occupy the 32 bytes below the saved registers, above the Rust body's own frame.
     #[port(address = 0x006C_D940, owner = "lotdeveloper", name = "cSC4LotDeveloper::DoMessage", naked)]
     pub unsafe extern "C" fn fc4p_006cd940() {
         core::arch::naked_asm!(
             "sub esp, 0x40", "push ebx", "push ebp", "push esi", "push edi",
-            "push edx", "lea edx, [esp + 4]", "call {}", "add esp, 4",
+            "sub esp, 64", "mov [esp + 60], edx", "lea edx, [esp + 64]", "call {}", "add esp, 64",
             "pop edi", "pop esi", "pop ebp", "pop ebx", "add esp, 0x40", "ret 4",
             sym do_message,
         );

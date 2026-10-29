@@ -729,7 +729,16 @@ fn messages_lighting_immediate_posts_and_deferred_shuffles_and_stores_all_cursor
                     RETURN,
                 );
                 expect(queue, "queue_first", vec![out(&next)], RETURN);
-                let returned = world.invoke();
+                let (eax, edx) = unsafe {
+                    call_thiscall_with_eax(
+                        fc4p_006cd940 as *const () as usize,
+                        world.dev.ptr().add(4),
+                        &[world.message.ptr() as u32],
+                        0x1234_5678,
+                    )
+                };
+                finished();
+                let returned = u64::from(eax) | u64::from(edx) << 32;
                 assert_eq!(returned as u8, 1);
                 assert_eq!(returned >> 32, u64::from(next[if mode == 1 { 2 } else { 3 }]));
                 unsafe {
