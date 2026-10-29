@@ -272,7 +272,10 @@ unsafe extern "fastcall" fn update_designates(this: *mut u8, entry_edx: u32, arg
                         search = OccupantNode::from_ptr(search).next();
                     }
                     absent = search == sentinel;
-                    arguments.cast::<u8>().write(u8::from(absent));
+                    arguments.cast::<u8>().write_volatile(1);
+                    if !absent {
+                        arguments.cast::<u8>().write_volatile(0);
+                    }
                     call = virtual_call(designate, 8, &[], call.eax, table(designate), false);
                 } else {
                     arguments.cast::<u8>().write(0);
