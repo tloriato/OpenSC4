@@ -10,34 +10,50 @@ The denominator is the game's own code: **5,584,344 bytes in 29,535 functions** 
 |---|---|---:|---:|---:|---|
 | **Specified** | a clean-room spec in docs/specs describes the owning class | **91.9%** | 5,132,879 | 25,599 | - |
 | **Implemented** | our clean-room code in engine/ implements the owning class | **63.0%** | 3,520,534 | 15,906 | 0.0% implemented without a spec |
-| **Exact-replaced** | the function is EXACT in prove from at least three distinct scenarios, and its port-table owner has a fully identical whole-game check on the same DLL | **1.0%** | 56,643 | 225 | - |
+| **Exact-replaced** | the function is EXACT in prove from at least three distinct scenarios, and its port-table owner has a fully identical whole-game check on the same DLL | **1.5%** | 84,915 | 368 | - |
 | Reach (the ceiling) | the corpus executes the code at all in the original (the fixed-schedule references of 13 scenarios) | **35.4%** | 1,977,317 | 8,920 | - |
 
 Native evidence from `docs/proven.tsv` and `docs/native-checks.tsv`, joined by DLL hash and exported owner. One row per owner/DLL; the in-game column shows the latest successful check, or the latest check if none passed.
 
 | Owner | Functions EXACT (three scenarios) | Functions in the port table | In-game check (identical / run, DLL) | Bytes credited |
 |---|---:|---:|---|---:|
+| budget | 10 | 11 | 62 / 62, 957b1502 | 444 |
 | building | 2 | 83 | not checked, 07ab0cb8 | 0 |
+| building | 0 | 15 | 62 / 62, 957b1502 | 0 |
 | crt | 1 | 1 | not checked, 90aa88b5 | 0 |
+| crt | 0 | 1 | 62 / 62, 957b1502 | 0 |
 | demand | 0 | 34 | 62 / 62, 07ab0cb8 | 0 |
-| demand | 12 | 34 | 62 / 62, 1ef0974b | 5,929 |
-| demand | 1 | 13 | not checked, 957b1502 | 0 |
+| demand | 0 | 34 | 62 / 62, 1ef0974b | 0 |
+| demand | 13 | 13 | 62 / 62, 957b1502 | 7,046 |
 | landvalue | 0 | 27 | 62 / 62, 07ab0cb8 | 0 |
-| landvalue | 18 | 27 | 62 / 62, 1ef0974b | 2,632 |
+| landvalue | 0 | 27 | 62 / 62, 1ef0974b | 0 |
+| landvalue | 18 | 18 | 62 / 62, 957b1502 | 2,632 |
 | landvalue | 0 | 27 | 62 / 62, e574f663 | 0 |
+| lotdeveloper | 21 | 34 | 62 / 62, 957b1502 | 4,810 |
 | neighbors | 0 | 43 | 62 / 62, 07ab0cb8 | 0 |
-| neighbors | 22 | 43 | 62 / 62, 1ef0974b | 7,409 |
-| neighbors | 2 | 24 | not checked, 957b1502 | 0 |
+| neighbors | 0 | 43 | 62 / 62, 1ef0974b | 0 |
+| neighbors | 24 | 24 | 62 / 62, 957b1502 | 8,033 |
 | networktool | 0 | 60 | 62 / 62, 07ab0cb8 | 0 |
-| networktool | 49 | 81 | 62 / 62, 1ef0974b | 15,661 |
+| networktool | 20 | 81 | 62 / 62, 1ef0974b | 8,652 |
+| networktool | 29 | 52 | 62 / 62, 957b1502 | 7,009 |
+| pathfinder | 2 | 2 | 62 / 62, 957b1502 | 14 |
+| pathinfo | 11 | 11 | 62 / 62, 957b1502 | 733 |
+| plumbing | 13 | 13 | 62 / 62, 957b1502 | 384 |
 | pollution | 0 | 63 | 62 / 62, 07ab0cb8 | 0 |
-| pollution | 47 | 63 | 62 / 62, 1ef0974b | 10,907 |
+| pollution | 19 | 63 | 62 / 62, 1ef0974b | 8,329 |
+| pollution | 28 | 48 | 62 / 62, 957b1502 | 2,578 |
+| power | 17 | 20 | 62 / 62, 957b1502 | 6,760 |
 | residential | 0 | 71 | 62 / 62, 07ab0cb8 | 0 |
-| residential | 23 | 72 | 62 / 62, 1ef0974b | 4,011 |
-| residential | 7 | 31 | not checked, 957b1502 | 0 |
-| traffic | 31 | 82 | 62 / 62, 07ab0cb8 | 6,267 |
+| residential | 0 | 72 | 62 / 62, 1ef0974b | 0 |
+| residential | 30 | 31 | 62 / 62, 957b1502 | 4,667 |
+| terrain | 15 | 15 | 62 / 62, 957b1502 | 1,079 |
+| tractdeveloper | 8 | 15 | 62 / 62, 957b1502 | 1,362 |
+| traffic | 8 | 82 | 62 / 62, 07ab0cb8 | 2,676 |
+| traffic | 48 | 72 | 62 / 62, 957b1502 | 12,337 |
+| trafficnetwork | 8 | 8 | 62 / 62, 957b1502 | 746 |
 | zonedeveloper | 0 | 52 | 62 / 62, 07ab0cb8 | 0 |
-| zonedeveloper | 23 | 64 | 62 / 62, 1ef0974b | 3,827 |
+| zonedeveloper | 2 | 64 | 62 / 62, 1ef0974b | 446 |
+| zonedeveloper | 24 | 31 | 62 / 62, 957b1502 | 4,178 |
 
 Of the implemented owners' code, the corpus reaches 39.7% (1,398,272 of 3,520,534 bytes), so Exact-replaced cannot exceed 25.0% of game code until the corpus reaches more.
 
@@ -59,7 +75,7 @@ Share of each area's bytes at each step. Shared helpers and unattributed code ha
 
 | Area | Functions | Bytes | % of game | Specified | Implemented | Exact-replaced | Reach |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| simulation | 8,748 | 1,978,253 | 35.4% | 100.0% | 84.3% | 2.9% | 50.5% |
+| simulation | 8,748 | 1,978,253 | 35.4% | 100.0% | 84.3% | 4.3% | 50.5% |
 | framework | 4,912 | 637,923 | 11.4% | 96.6% | 78.7% | 0.0% | 19.5% |
 | renderer | 5,244 | 1,222,529 | 21.9% | 99.2% | 70.7% | 0.0% | 37.7% |
 | ui | 5,210 | 1,124,610 | 20.1% | 87.7% | 38.3% | 0.0% | 22.7% |
@@ -68,7 +84,7 @@ Share of each area's bytes at each step. Shared helpers and unattributed code ha
 | other | 187 | 17,873 | 0.3% | 68.4% | 0.0% | 0.0% | 47.7% |
 | shared | 2,005 | 189,808 | 3.4% | 0.0% | 0.0% | 0.0% | 45.8% |
 | unattributed | 831 | 85,977 | 1.5% | 0.0% | 0.0% | 0.0% | 11.9% |
-| **all game code** | **29,535** | **5,584,344** | 100.0% | **91.9%** | **63.0%** | **1.0%** | **35.4%** |
+| **all game code** | **29,535** | **5,584,344** | 100.0% | **91.9%** | **63.0%** | **1.5%** | **35.4%** |
 
 ## By subsystem
 
@@ -77,11 +93,11 @@ One line per subsystem of `tools/coverage-map.tsv`, by area, then by size; each 
 | Area | Subsystem | Owners | Bytes | Specified | Implemented | Exact-replaced | Reach |
 |---|---|---:|---:|---:|---:|---:|---:|
 | simulation | automata (vehicles, animation) | 33 | 231,259 | 100.0% (100.0%) | 26.1% (28.7%) | - | 26.4% (27.7%) |
-| simulation | traffic | 9 | 162,482 | 100.0% (100.0%) | 100.0% (100.0%) | 3.9% (7.0%) | 66.3% (63.4%) |
+| simulation | traffic | 9 | 162,482 | 100.0% (100.0%) | 100.0% (100.0%) | 10.2% (17.4%) | 66.3% (63.4%) |
 | simulation | network tools | 12 | 150,282 | 100.0% (100.0%) | 94.3% (93.1%) | 10.4% (12.5%) | 74.6% (71.2%) |
 | simulation | network occupants | 28 | 123,459 | 100.0% (100.0%) | 48.3% (50.5%) | - | 52.0% (38.5%) |
 | simulation | automata (managers, records) | 13 | 121,603 | 100.0% (100.0%) | 99.5% (99.0%) | - | 31.8% (32.7%) |
-| simulation | terrain | 5 | 84,631 | 100.0% (100.0%) | 99.6% (99.4%) | - | 43.1% (46.7%) |
+| simulation | terrain | 5 | 84,631 | 100.0% (100.0%) | 99.6% (99.4%) | 1.3% (4.6%) | 43.1% (46.7%) |
 | simulation | mysims | 8 | 80,498 | 100.0% (100.0%) | 100.0% (100.0%) | - | 9.4% (14.5%) |
 | simulation | advisors | 18 | 71,970 | 100.0% (100.0%) | 99.2% (97.6%) | - | 60.5% (37.8%) |
 | simulation | occupants and props | 38 | 70,035 | 100.0% (100.0%) | 37.9% (16.1%) | - | 57.8% (50.8%) |
@@ -89,19 +105,19 @@ One line per subsystem of `tools/coverage-map.tsv`, by area, then by size; each 
 | simulation | disasters | 17 | 46,988 | 100.0% (100.0%) | 100.0% (100.0%) | - | 48.9% (38.3%) |
 | simulation | network manager | 6 | 41,985 | 100.0% (100.0%) | 99.2% (98.2%) | - | 34.5% (34.7%) |
 | simulation | city situation | 1 | 41,919 | 100.0% (100.0%) | 100.0% (100.0%) | - | 16.9% (23.9%) |
-| simulation | zone developer / lot manager | 1 | 41,866 | 100.0% (100.0%) | 100.0% (100.0%) | 9.1% (22.5%) | 70.6% (57.8%) |
-| simulation | residential | 1 | 40,490 | 100.0% (100.0%) | 100.0% (100.0%) | 9.9% (19.5%) | 64.6% (56.8%) |
-| simulation | lot developer | 1 | 40,458 | 100.0% (100.0%) | 100.0% (100.0%) | - | 69.8% (72.5%) |
-| simulation | tract developer | 1 | 36,811 | 100.0% (100.0%) | 100.0% (100.0%) | - | 67.8% (48.7%) |
+| simulation | zone developer / lot manager | 1 | 41,866 | 100.0% (100.0%) | 100.0% (100.0%) | 11.0% (25.5%) | 70.6% (57.8%) |
+| simulation | residential | 1 | 40,490 | 100.0% (100.0%) | 100.0% (100.0%) | 11.5% (25.4%) | 64.6% (56.8%) |
+| simulation | lot developer | 1 | 40,458 | 100.0% (100.0%) | 100.0% (100.0%) | 11.9% (14.1%) | 69.8% (72.5%) |
+| simulation | tract developer | 1 | 36,811 | 100.0% (100.0%) | 100.0% (100.0%) | 3.7% (6.8%) | 67.8% (48.7%) |
 | simulation | city and save file | 11 | 35,103 | 100.0% (100.0%) | 78.2% (79.3%) | - | 46.2% (59.5%) |
-| simulation | budget | 3 | 30,911 | 100.0% (100.0%) | 100.0% (100.0%) | - | 44.9% (46.8%) |
-| simulation | demand | 2 | 29,573 | 100.0% (100.0%) | 100.0% (100.0%) | 20.0% (11.9%) | 62.1% (48.5%) |
-| simulation | neighbours | 3 | 26,974 | 100.0% (100.0%) | 100.0% (100.0%) | 27.5% (17.5%) | 76.9% (69.0%) |
-| simulation | power | 1 | 26,475 | 100.0% (100.0%) | 100.0% (100.0%) | - | 72.5% (58.0%) |
+| simulation | budget | 3 | 30,911 | 100.0% (100.0%) | 100.0% (100.0%) | 1.4% (5.8%) | 44.9% (46.8%) |
+| simulation | demand | 2 | 29,573 | 100.0% (100.0%) | 100.0% (100.0%) | 23.8% (12.9%) | 62.1% (48.5%) |
+| simulation | neighbours | 3 | 26,974 | 100.0% (100.0%) | 100.0% (100.0%) | 29.8% (19.0%) | 76.9% (69.0%) |
+| simulation | power | 1 | 26,475 | 100.0% (100.0%) | 100.0% (100.0%) | 25.5% (21.0%) | 72.5% (58.0%) |
 | simulation | lots and lot records | 5 | 24,896 | 100.0% (100.0%) | 100.0% (100.0%) | - | 84.5% (77.0%) |
 | simulation | pollution | 1 | 24,357 | 100.0% (100.0%) | 100.0% (100.0%) | 44.8% (45.2%) | 63.9% (54.8%) |
 | simulation | protection | 3 | 23,130 | 100.0% (100.0%) | 100.0% (100.0%) | - | 53.0% (41.3%) |
-| simulation | plumbing | 1 | 20,057 | 100.0% (100.0%) | 100.0% (100.0%) | - | 70.8% (57.4%) |
+| simulation | plumbing | 1 | 20,057 | 100.0% (100.0%) | 100.0% (100.0%) | 1.9% (24.1%) | 70.8% (57.4%) |
 | simulation | prop / lot configuration managers | 2 | 19,551 | 100.0% (100.0%) | 100.0% (100.0%) | - | 38.4% (39.7%) |
 | simulation | network rules | 8 | 19,340 | 100.0% (100.0%) | 94.0% (90.2%) | - | 94.5% (88.5%) |
 | simulation | landfill | 3 | 19,083 | 100.0% (100.0%) | 100.0% (100.0%) | - | 64.8% (58.3%) |
@@ -313,8 +329,8 @@ Text inputs are hashed with CRLF line endings normalised to LF (the text as git 
 | tools/coverage-noncode-refs.tsv | b4c00fa8a9729a29 | |
 | tools/coverage-map.tsv | 60e13f4cdca84dd0 | |
 | engine/plugin/FC4Subsystems.cpp | f1ad09613056d771 | |
-| docs/proven.tsv | 21ace9dfa743a3c1 | |
-| docs/native-checks.tsv | 06a804b49dc45af9 | |
+| docs/proven.tsv | 1e4f15a996b82c06 | |
+| docs/native-checks.tsv | 3c12f6c1e3e32e92 | |
 | build-runs/prove/dlls/07ab0cb84e87663f9d9d33e4e0a3030faf81cc7101a87402d381729a19a4f33d.dll | 07ab0cb84e87663f | native port table |
 | build-runs/prove/dlls/1ef0974bfae835fe2cad60b3d2968782786c23ea60e8a0045c8765f37944172a.dll | 1ef0974bfae835fe | native port table |
 | build-runs/prove/dlls/90aa88b52ec3cfb8543587c293a01da7692c38ce0670e47cfedc359bcc6ca9db.dll | 90aa88b52ec3cfb8 | native port table |
