@@ -14,6 +14,16 @@ game_data! { static level_sentinel: f32 = 0x00AB_1B00; }
 game_data! { static level_slope_limit: f32 = 0x00A8_FAF0; }
 game_data! { static foundation_terrain: *mut u8 = 0x00B4_3CF4; }
 game_data! { static foundation_half: f32 = 0x00A8_4D2C; }
+game_fn! { #[allow(dead_code)] fn line_length(first: *const f32, second: *const f32) -> St0 = "C" 0x005D_76A0; }
+game_data! { static slope_zero: f32 = 0x00A8_1054; }
+game_data! { static slope_six: f32 = 0x00A9_0900; }
+game_data! { static slope_quarter: f32 = 0x00A8_821C; }
+game_data! { static slope_five: f32 = 0x00A8_4D28; }
+game_data! { static slope_three_tenths: f32 = 0x00A9_7D74; }
+game_data! { static slope_four: f32 = 0x00A8_E17C; }
+game_data! { static slope_seven_twentieths: f32 = 0x00A9_8FC0; }
+game_data! { static slope_three: f32 = 0x00A8_5074; }
+game_data! { static slope_two_fifths: f32 = 0x00A9_49E0; }
 
 /// The entry adapter retains the integer results as well as the unrounded floating result.
 #[repr(C)]
@@ -544,7 +554,100 @@ unsafe extern "fastcall" fn foundation_bottom(this: *mut u8, stack: *mut u32, ou
     }
 }
 
+float_port!(0x006C_5DC0, fc4p_006c5dc0, "cSC4LotDeveloper::GetAreaSlope", area_slope, 8);
+
+/// Compares a distance with zero while retaining the distance below the two comparison operands.
+fn distance_is_zero(value: F80, zero: f32) -> u16 {
+    let status: u16;
+    unsafe {
+        core::arch::asm!(
+            "fld tbyte ptr [{value}]", "fld dword ptr [{zero}]", "fld st(1)", "fucompp",
+            "fnstsw ax", "fstp st(0)", value = in(reg) &value, zero = in(reg) &zero,
+            out("ax") status, out("st(0)") _, out("st(1)") _, out("st(2)") _,
+        );
+    }
+    status
+}
+
+/// Scans all vertices in x-major order, retaining the first strict minimum and maximum. The distance
+/// between their stored coordinates is scaled by successive strict thresholds before dividing the rise.
+/// The first caller argument holds the inner loop counter; untouched coordinate words remain untouched.
+unsafe extern "fastcall" fn area_slope(this: *mut u8, stack: *mut u32, output: *mut FloatReturn) {
+    unsafe {
+        let rect = stack.add(1).read_unaligned() as *const i32;
+        let mut x = rect.read_unaligned();
+        let z0 = rect.add(1).read_unaligned();
+        let x1 = rect.add(2).read_unaligned().wrapping_add(1);
+        let z1 = rect.add(3).read_unaligned().wrapping_add(1);
+        let minimum = stack.cast::<u8>().sub(0x24).cast::<f32>();
+        let maximum = stack.cast::<u8>().sub(0x28).cast::<f32>();
+        minimum.write_unaligned(f32::MAX);
+        maximum.write_unaligned(-f32::MAX);
+        let min_position = stack.cast::<u8>().sub(0x18).cast::<f32>();
+        let max_position = stack.cast::<u8>().sub(0x20).cast::<f32>();
+        let mut edx = (*output).edx;
+        while x <= x1 {
+            let mut z = z0;
+            stack.add(1).write_unaligned(z as u32);
+            while z <= z1 {
+                let call = virtual_call(this, 0x3C, &[x as u32, z as u32, stack.add(2).read_unaligned()], table(this), edx, true);
+                edx = call.edx;
+                let lower = F80::from_f32(minimum.read_unaligned()).compare(call.st0);
+                if !lower.less() && !lower.equal() && !lower.unordered() {
+                    minimum.write_unaligned(call.st0.to_f32());
+                    min_position.write_unaligned(F80::from_i32(x).to_f32());
+                    min_position.add(1).write_unaligned(F80::from_i32(stack.add(1).read_unaligned() as i32).to_f32());
+                }
+                if F80::from_f32(maximum.read_unaligned()).compare(call.st0).less() {
+                    maximum.write_unaligned(call.st0.to_f32());
+                    max_position.write_unaligned(F80::from_i32(x).to_f32());
+                    max_position.add(1).write_unaligned(F80::from_i32(stack.add(1).read_unaligned() as i32).to_f32());
+                }
+                z = z.wrapping_add(1);
+                stack.add(1).write_unaligned(z as u32);
+            }
+            x = x.wrapping_add(1);
+        }
+        let args = [min_position as u32, max_position as u32];
+        let mut call = RawCall::new(Conv::Cdecl, crate::abi::target(0x005D_76A0), x1 as u32, &args);
+        call.eax = min_position as u32;
+        call.edx = max_position as u32;
+        call.take_st0 = 1;
+        call_raw(&mut call);
+        let mut distance = call.st0;
+        let status = distance_is_zero(distance, slope_zero().read());
+        call.eax = call.eax & 0xFFFF_0000 | u32::from(status);
+        if status & 0x4400 == 0x4000 {
+            finish(output, call, F80::from_f32(slope_zero().read()));
+            return;
+        }
+        for (threshold, factor) in [(slope_six(), slope_quarter()), (slope_five(), slope_three_tenths())] {
+            let status = compare_stored_altitude(distance, threshold.read());
+            call.eax = call.eax & 0xFFFF_0000 | u32::from(status);
+            if status & 0x4100 == 0 { distance = multiply_float(distance, factor.read()); }
+        }
+        let status = compare_stored_altitude(distance, slope_four().read());
+        call.eax = call.eax & 0xFFFF_0000 | u32::from(status);
+        if status & 0x4100 == 0 {
+            distance = multiply_float(distance, slope_seven_twentieths().read());
+        } else {
+            let status = compare_stored_altitude(distance, slope_three().read());
+            call.eax = call.eax & 0xFFFF_0000 | u32::from(status);
+            if status & 0x4100 == 0 { distance = multiply_float(distance, slope_two_fifths().read()); }
+        }
+        let mut answer = F80::ZERO;
+        core::arch::asm!(
+            "fld tbyte ptr [{distance}]", "fld dword ptr [{maximum}]", "fsub dword ptr [{minimum}]",
+            "fdivrp st(1), st(0)", "fstp tbyte ptr [{answer}]", distance = in(reg) &distance,
+            maximum = in(reg) maximum, minimum = in(reg) minimum, answer = in(reg) &mut answer,
+            out("st(0)") _, out("st(1)") _,
+        );
+        finish(output, call, answer);
+    }
+}
+
 pub const PORTS: &[Port] = &[
+    fc4p_006c5dc0::PORT,
     fc4p_006c4310::PORT,
     fc4p_006c4360::PORT,
     fc4p_006c43d0::PORT,

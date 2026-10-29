@@ -72,6 +72,7 @@ fn result(call: RawCall) -> u64 {
 }
 
 pub mod checks;
+pub mod callbacks;
 pub mod containers;
 pub mod foundation;
 pub mod io;
@@ -81,6 +82,7 @@ pub mod operations;
 pub mod objects;
 pub mod props;
 pub mod queue;
+pub mod services;
 pub mod small;
 pub mod terrain;
 
@@ -94,7 +96,9 @@ const ALL: [Port;
         + operations::PORTS.len()
         + props::PORTS.len()
         + queue::PORTS.len()
+        + services::PORTS.len()
         + checks::PORTS.len()
+        + callbacks::PORTS.len()
         + containers::PORTS.len()
         + objects::PORTS.len()] = crate::port::concat(&[
     objects::PORTS,
@@ -108,7 +112,9 @@ const ALL: [Port;
     operations::PORTS,
     props::PORTS,
     queue::PORTS,
+    services::PORTS,
     checks::PORTS,
+    callbacks::PORTS,
 ]);
 
 /// This module's replacements.
