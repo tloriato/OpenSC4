@@ -117,6 +117,8 @@ def last_message(d):
                 e = json.loads(line)
             except ValueError:
                 continue
+            if not isinstance(e, dict):
+                continue  # a bare JSON value (a lane's tool output can land on its own line)
             item = e.get('item') or {}
             if item.get('type') == 'agent_message':
                 text = item.get('text', '')
