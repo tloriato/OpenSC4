@@ -520,6 +520,15 @@ fn core_capacity_and_depth_range_vectors_use_game_arithmetic() {
 }
 
 #[test]
+fn unsigned_remainders_keep_all_thirty_two_bits() {
+    for dividend in [0, 1, 2, 3, 4, 31, 32, 0x7FFF_FFFF, 0x8000_0000, u32::MAX] {
+        for divisor in [1, 2, 3, 8, 100, 0x8000_0000, u32::MAX] {
+            assert_eq!(unsigned_remainder(dividend, divisor), dividend % divisor);
+        }
+    }
+}
+
+#[test]
 fn developer_selection_ties_signed_desirability_truncated_demand_and_wrapping_centers() {
     for zone in [1, 2, 3, 4, 5, 6] {
         let mut world = World::new(zone);

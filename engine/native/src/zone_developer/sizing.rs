@@ -52,10 +52,14 @@ fn midpoint(a: i32, b: i32) -> i32 {
     a.wrapping_add(b) / 2
 }
 
-// Keep the unsigned remainder operation, including its zero-divisor failure.
-#[allow(clippy::manual_is_multiple_of)]
-fn divides(width: u32, divisor: u32) -> bool {
-    width % divisor == 0
+/// Unsigned CPU division also retains the original divide-error behaviour for a zero divisor.
+fn unsigned_remainder(value: u32, divisor: u32) -> u32 {
+    let remainder: u32;
+    unsafe {
+        core::arch::asm!("xor edx, edx", "div ecx", inout("eax") value => _,
+            in("ecx") divisor, out("edx") remainder, options(nostack));
+    }
+    remainder
 }
 
 fn adjust_range(settings: Settings) {
@@ -100,7 +104,7 @@ unsafe fn next_node(table: Table, node: *mut u8, pointer_keys: bool) -> *mut u8 
         }
         let bucket_count = ((table.end() as u32).wrapping_sub(table.buckets() as u32) as i32 >> 2) as u32;
         let value = read_unaligned(node.add(4).cast::<u32>());
-        let mut bucket = (if pointer_keys { value >> 2 } else { value }) % bucket_count;
+        let mut bucket = unsigned_remainder(if pointer_keys { value >> 2 } else { value }, bucket_count);
         let mut result = null_mut();
         loop {
             bucket = bucket.wrapping_add(1);
@@ -300,7 +304,7 @@ port! {
                 let (mut width, mut depth) = (MaybeUninit::<u32>::uninit(), MaybeUninit::<u32>::uninit());
                 vcall!(configuration, 0x1C => fn(*mut u32, *mut u32), width.as_mut_ptr(), depth.as_mut_ptr());
                 let (width, depth) = (width.assume_init(), depth.assume_init());
-                if divides(settings.width(), width) {
+                if unsigned_remainder(settings.width(), width) == 0 {
                     if depth < settings.minimum() { settings.set_minimum(depth); }
                     if depth > settings.maximum() { settings.set_maximum(depth); }
                 }
