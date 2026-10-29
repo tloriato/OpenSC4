@@ -138,6 +138,8 @@ def status(_):
 
 
 def main():
+    # Task messages carry any Unicode; the Windows console code page cannot print all of it.
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest='cmd', required=True)
     s = sub.add_parser('start')
