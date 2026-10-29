@@ -209,6 +209,9 @@ mod altitudes;
 mod planting;
 mod daily;
 mod position;
+mod connections;
+mod lot_update;
+mod lighting_transition;
 
 #[test]
 fn record_initializers_retain_every_padding_byte() {
@@ -889,6 +892,8 @@ float_slot!(area_slope_float, area_slope_body, 2, rect, water);
 float_slot!(curve_float, curve_body, 1, input);
 float_slot!(lowest_area_float, lowest_area_body, 3, rect, lowest, water);
 float_slot!(lot_altitude_float, lot_altitude_body, 0);
+mod area_altitude;
+mod rubble;
 mod construction;
 mod business;
 mod power_changes;

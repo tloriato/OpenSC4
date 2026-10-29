@@ -24,6 +24,8 @@ game_data! { static slope_four: f32 = 0x00A8_E17C; }
 game_data! { static slope_seven_twentieths: f32 = 0x00A9_8FC0; }
 game_data! { static slope_three: f32 = 0x00A8_5074; }
 game_data! { static slope_two_fifths: f32 = 0x00A9_49E0; }
+game_data! { static vertex_spacing: f32 = 0x00A8_D45C; }
+game_data! { static extent_inset: f32 = 0x00A8_C950; }
 
 /// The entry adapter retains the integer results as well as the unrounded floating result.
 #[repr(C)]
@@ -646,7 +648,154 @@ unsafe extern "fastcall" fn area_slope(this: *mut u8, stack: *mut u32, output: *
     }
 }
 
+float_port!(
+    0x006C_56C0,
+    fc4p_006c56c0,
+    "cSC4LotDeveloper::GetLowestOrHighestAreaAltitude(metres)",
+    extreme_altitude_metres,
+    12
+);
+
+/// A comparison with a stored single, popping its sole register operand.
+fn compare_single(value: F80, operand: f32) -> u16 {
+    let status: u16;
+    unsafe {
+        core::arch::asm!(
+            "fld tbyte ptr [{value}]", "fcomp dword ptr [{operand}]", "fnstsw ax",
+            value = in(reg) &value, operand = in(reg) &operand, out("ax") status, out("st(0)") _,
+        );
+    }
+    status
+}
+
+fn status_less(status: u16) -> bool {
+    status & 0x0500 == 0x0100
+}
+
+unsafe fn keep_extreme(stack: *mut u32, call: &mut RawCall, sample: F80) {
+    unsafe {
+        let accumulator = f32::from_bits(stack.add(1).read_unaligned());
+        let cmp = F80::from_f32(accumulator).compare(sample);
+        let status = with_live_value(cmp.status_word());
+        call.eax = (call.eax & 0xFFFF_0000) | u32::from(status);
+        let replace = if stack.add(2).read_unaligned() as u8 != 0 {
+            status & 0x4100 == 0
+        } else {
+            status_less(status)
+        };
+        if replace { stack.add(1).write_unaligned(sample.to_f32().to_bits()); }
+    }
+}
+
+/// Each edge has its own register inputs. Terrain is rounded before a possible water query; water
+/// stays extended until selected into the accumulator. The end point is sampled once after a short step.
+unsafe fn altitude_edge(
+    this: *mut u8, stack: *mut u32, call: &mut RawCall,
+    bounds: &[f32; 4], edge: usize, water: u32,
+) {
+    unsafe {
+        let along_x = edge & 1 == 0;
+        let start = bounds[if along_x { 0 } else { 1 }];
+        let end = bounds[if along_x { 2 } else { 3 }];
+        if along_x { call.eax = start.to_bits(); } else { call.edx = start.to_bits(); }
+        stack.add(3).write_unaligned(start.to_bits());
+        let status = compare_single(F80::from_f32(start), end);
+        call.eax = call.eax & 0xFFFF_0000 | u32::from(status);
+        if !status_less(status) { return; }
+        loop {
+            let t = stack.add(3).read_unaligned();
+            let (x, z) = match edge {
+                0 => (t, bounds[1].to_bits()),
+                1 => (bounds[2].to_bits(), t),
+                2 => (t, bounds[3].to_bits()),
+                _ => (bounds[0].to_bits(), t),
+            };
+            let terrain = LotDeveloper::from_ptr(this).terrain();
+            *call = virtual_call(terrain, 0x34, &[x, z],
+                if along_x { call.eax } else { table(terrain) },
+                if along_x { table(terrain) } else { call.edx }, true);
+            let altitude = call.st0.to_f32();
+            let mut sample = F80::from_f32(altitude);
+            if water as u8 != 0 {
+                let terrain = LotDeveloper::from_ptr(this).terrain();
+                *call = virtual_call(terrain, 0x78, &[x, z],
+                    if along_x { table(terrain) } else { call.eax },
+                    if along_x { call.edx } else { table(terrain) }, true);
+                let status = compare_stored_altitude(call.st0, altitude);
+                call.eax = call.eax & 0xFFFF_0000 | u32::from(status);
+                if status & 0x4100 == 0 { sample = call.st0; }
+            }
+            keep_extreme(stack, call, sample);
+            let current = f32::from_bits(stack.add(3).read_unaligned());
+            let status = compare_single(F80::from_f32(current), end);
+            call.eax = call.eax & 0xFFFF_0000 | u32::from(status);
+            if status_less(status) {
+                let next = add_float(F80::from_f32(current), slope_four().read());
+                let status = compare_single(next, end);
+                call.eax = call.eax & 0xFFFF_0000 | u32::from(status);
+                if status & 0x0100 == 0 {
+                    if !along_x { call.eax = end.to_bits(); }
+                    stack.add(3).write_unaligned(end.to_bits());
+                    continue;
+                }
+            }
+            let next = add_float(F80::from_f32(current), slope_four().read());
+            stack.add(3).write_unaligned(next.to_f32().to_bits());
+            let status = compare_single(next, end);
+            call.eax = call.eax & 0xFFFF_0000 | u32::from(status);
+            if !status_less(status) { return; }
+        }
+    }
+}
+
+unsafe extern "fastcall" fn extreme_altitude_metres(this: *mut u8, stack: *mut u32, output: *mut FloatReturn) {
+    unsafe {
+        let rect = stack.add(1).read_unaligned() as *const f32;
+        let mut bounds = [rect.read_unaligned(), rect.add(1).read_unaligned(),
+            rect.add(2).read_unaligned(), rect.add(3).read_unaligned()];
+        let developer = LotDeveloper::from_ptr(this);
+        for minimum in &mut bounds[..2] {
+            if status_less(compare_single(F80::from_f32(*minimum), slope_zero().read())) { *minimum = 0.0; }
+        }
+        for (i, extent) in [developer.extent_x_bits(), developer.extent_z_bits()].into_iter().enumerate() {
+            let extent = f32::from_bits(extent);
+            if compare_single(F80::from_f32(bounds[2 + i]), extent) & 0x0100 == 0 {
+                bounds[2 + i] = subtract_float(F80::from_f32(extent), extent_inset().read()).to_f32();
+            }
+        }
+        stack.add(1).write_unaligned(if stack.add(2).read_unaligned() as u8 != 0 { 0x7F7F_FFFF } else { 0xFF7F_FFFF });
+        let first = |v| multiply_float(add_float(F80::from_f32(v), vertex_spacing().read()), slope_scale().read()).ftol() as i32;
+        let last = |v| multiply_float(F80::from_f32(v), slope_scale().read()).ftol();
+        let x0 = first(bounds[0]);
+        let z0 = first(bounds[1]);
+        let x1 = last(bounds[2]) as i32;
+        let z_last = last(bounds[3]);
+        let z1 = z_last as i32;
+        let water = stack.add(3).read_unaligned();
+        let mut call = RawCall::new(Conv::Thiscall, 0, this as u32, &[]);
+        call.eax = z1 as u32;
+        call.edx = (z_last as u64 >> 32) as u32;
+        let mut x = x0;
+        if x1 >= x0 && z1 >= z0 {
+            while x <= x1 {
+                let mut z = z0;
+                while z <= z1 {
+                    call = virtual_call(this, 0x3C, &[x as u32, z as u32, water], call.eax, table(this), true);
+                    let sample = call.st0;
+                    keep_extreme(stack, &mut call, sample);
+                    call.eax = z1 as u32;
+                    z = z.wrapping_add(1);
+                }
+                x = x.wrapping_add(1);
+            }
+        }
+        for edge in 0..4 { altitude_edge(this, stack, &mut call, &bounds, edge, water); }
+        finish(output, call, F80::from_f32(f32::from_bits(stack.add(1).read_unaligned())));
+    }
+}
+
 pub const PORTS: &[Port] = &[
+    fc4p_006c56c0::PORT,
     fc4p_006c5dc0::PORT,
     fc4p_006c4310::PORT,
     fc4p_006c4360::PORT,
