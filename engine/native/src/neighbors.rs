@@ -27,9 +27,12 @@ layout! {
         0x18 => message_server / set_message_server: *mut u8,
         0x1C => connections / set_connections: *mut u8,
         0x20 => deals / set_deals: *mut u8,
+        0x24 => pending_removals / set_pending_removals: *mut u8,
         0x28 => exemplar / set_exemplar: *mut u8,
         0x3C => deals_dirty / set_deals_dirty: u8,
         0x3D => stats_dirty / set_stats_dirty: u8,
+        0x3E => ui_disabled / set_ui_disabled: u8,
+        0x3F => busy / set_busy: u8,
     }
 }
 
@@ -50,8 +53,9 @@ mod queries;
 mod regional;
 mod removal;
 mod selection;
-mod surface;
+mod simulation;
 mod statistics;
+mod surface;
 mod terrain;
 
 const COUNT: usize = surface::PORTS.len()
@@ -68,6 +72,7 @@ const COUNT: usize = surface::PORTS.len()
     + removal::PORTS.len()
     + regional::PORTS.len()
     + selection::PORTS.len()
+    + simulation::PORTS.len()
     + geometry::PORTS.len()
     + terrain::PORTS.len()
     + operations::PORTS.len()
@@ -89,6 +94,7 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     removal::PORTS,
     regional::PORTS,
     selection::PORTS,
+    simulation::PORTS,
     geometry::PORTS,
     terrain::PORTS,
     operations::PORTS,
