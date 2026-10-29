@@ -21,6 +21,7 @@ layout! {
     /// The lot developer, measured from its primary interface. The object occupies 0x108 bytes.
     pub struct LotDeveloper {
         0x10 => references / set_references: i32,
+        0x14 => message_server / set_message_server: *mut u8,
         0x18 => building_development / set_building_development: *mut u8,
         0x1C => city / set_city: *mut u8,
         0x20 => demolition / set_demolition: *mut u8,
@@ -32,7 +33,10 @@ layout! {
         0x44 => extent_x_bits / set_extent_x_bits: u32,
         0x48 => extent_z_bits / set_extent_z_bits: u32,
         0x5C => force_empty / set_force_empty: u8,
+        0x5D => networks_dirty / set_networks_dirty: u8,
         0x5E => business_units_dirty / set_business_units_dirty: u8,
+        0x5F => can_check_commute / set_can_check_commute: u8,
+        0x60 => no_zot_until_day / set_no_zot_until_day: u32,
         0x64 => night_begin / set_night_begin: queue::QueueIterator,
         0x74 => night_end / set_night_end: queue::QueueIterator,
         0x8C => night_cursor / set_night_cursor: queue::QueueIterator,
@@ -45,6 +49,8 @@ layout! {
         0xD4 => foundation_slope / set_foundation_slope: f32,
         0xD8 => lot_foundation_type / set_lot_foundation_type: u32,
         0xDC => building_foundation_type / set_building_foundation_type: u32,
+        0xE0 => attempt_level / set_attempt_level: u8,
+        0xE1 => attempt_internal_level / set_attempt_internal_level: u8,
         0xE4 => level_delta / set_level_delta: f32,
         0xE8 => level_max_slope / set_level_max_slope: f32,
     }
@@ -100,9 +106,11 @@ pub mod connections;
 pub mod lot_update;
 pub mod lighting_transition;
 pub mod rubble;
+pub mod entrypoints;
 
 const ALL: [Port;
-    rubble::PORTS.len()
+    entrypoints::PORTS.len()
+        + rubble::PORTS.len()
         + lighting_transition::PORTS.len()
         + lot_update::PORTS.len()
         + connections::PORTS.len()
@@ -132,6 +140,7 @@ const ALL: [Port;
         + daily::PORTS.len()
         + position::PORTS.len()] = crate::port::concat(&[
     rubble::PORTS,
+    entrypoints::PORTS,
     lighting_transition::PORTS,
     lot_update::PORTS,
     connections::PORTS,

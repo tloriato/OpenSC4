@@ -42,7 +42,7 @@ macro_rules! transition_port {
 transition_port!(0x006C_DA13, fc4p_006cda13, "BeginDeferredDayLighting", begin_day, 1);
 transition_port!(0x006C_DAD7, fc4p_006cdad7, "BeginDeferredNightLighting", begin_night, 2);
 
-unsafe fn transition(interface: *mut u8, frame: *mut u8, registers: [u32; 2], mode: u32) -> u64 {
+pub(super) unsafe fn transition(interface: *mut u8, frame: *mut u8, registers: [u32; 2], mode: u32) -> u64 {
     unsafe {
         let queue = interface.add(0x60);
         interface.add(0x98).cast::<u32>().write_unaligned(mode);
