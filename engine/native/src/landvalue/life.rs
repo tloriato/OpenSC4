@@ -16,6 +16,10 @@
 use super::*;
 use core::ptr::{null_mut, read_unaligned, write_unaligned};
 
+game_fn! {
+    fn histogram_resize(this: *mut u8, count: u32, value: *const u32) -> u32 = "thiscall" 0x006B_DF10;
+}
+
 const CHANGES: [u32; 5] = [0x99EF_1142, 0x99EF_1143, 0x678E_6E3A, 0x278E_6003, 0x0769_9455];
 
 // All accesses below are to the live game objects supplied to the enclosing port.
@@ -231,68 +235,128 @@ unsafe fn iterator_bounds(this: *mut u8, grid_offset: usize, iterator_offset: us
 port! {
     /// Retain services, read tuning, create missing grids and iterators, size the histogram, and register messages.
     /// Restored grids skip construction and setup. AL is one; EAX's upper bytes retain the last call result.
-    #[port(address = 0x006B_E3B0, owner = "landvalue", name = "cSC4LandValueSimulator::Init", entry_eax)]
-    pub unsafe extern "thiscall" fn fc4p_006be3b0(this: *mut u8, [entry_eax: u32]) -> u32 {
-        unsafe {
-            let lv = LandValueSim::from_ptr(this);
-            if lv.initialized() != 0 { return (entry_eax & !0xFF) | 1; }
-            if *game::land_value_started() == 0 { *game::land_value_started() = 1; }
-            if lv.city().is_null() {
-                lv.set_city(*game::city());
-                vcall!(lv.city(), 4 => fn() -> u32);
-            }
-            if lv.zone_manager().is_null() {
-                lv.set_zone_manager(*game::zone_manager());
-                vcall!(lv.zone_manager(), 4 => fn() -> u32);
-            }
-            if lv.terrain().is_null() {
-                lv.set_terrain(*game::terrain());
-                vcall!(lv.terrain(), 4 => fn() -> u32);
-            }
-            game::land_value_tuning(this);
-            for (offset, id) in [(0x24, 0x89D5_BB39), (0x28, 0x89D5_BB51), (0x2C, 0x89D5_BB60), (0x30, 0x49D5_BB6F)] {
-                if pointer(this, offset).is_null() {
-                    let grid = game::allocate(0x44);
-                    if !grid.is_null() { construct_grid(grid, offset == 0x30); }
-                    store_pointer(this, offset, grid);
-                    vcall!(grid, 4 => fn() -> u32);
-                    vcall!(pointer(this, offset), 0x0C => fn() -> u32);
-                    let size = if offset == 0x30 { 8 } else { u32::from(lv.tract_size()) };
-                    vcall!(pointer(this, offset), 0x24 => fn(u32) -> u32, size);
-                    vcall!(pointer(this, offset), 0x18 => fn(u32) -> u32, id);
-                }
-            }
-            lv.set_state(0);
-            iterator_bounds(this, 0x24, 0x3C);
-            iterator_bounds(this, 0x30, 0x40);
-            lv.set_histogram_shift(5);
-            let height = vcall_st0!(lv.terrain(), 0x60);
-            let bins = (height.ftol() as i32).wrapping_shr(lv.histogram_shift());
-            game::histogram_resize(this.add(0x50), bins as u32, &0);
-            let mut eax = vcall!(*game::history(), 0x34 => fn(u32, u32) -> u32, 0x6A66_3AC8, 1);
-            let sim = *game::simulator();
-            if !sim.is_null() {
-                let mut name = [0u32; 6];
-                game::string_from_cstr(name.as_mut_ptr().cast(), game::land_value_agent_name());
-                for level in [0, 10, 4, 6] {
-                    vcall!(sim, 0x4C => fn(*mut u8, u32, *mut u8, u32) -> u32,
-                        this.add(4), level, name.as_mut_ptr().cast(), 2);
-                }
-                eax = name[1];
-                core::ptr::write_volatile(name.as_mut_ptr(), 0x00A8_0810);
-                if eax != 0 { eax = game::free_array(eax as *mut u8); }
-            }
-            if lv.message_server().is_null() {
-                lv.set_message_server(*game::message_server());
-                vcall!(lv.message_server(), 4 => fn() -> u32);
-                for id in CHANGES {
-                    eax = vcall!(lv.message_server(), 0x14 => fn(*mut u8, u32) -> u32, this.add(4), id);
-                }
-            }
-            lv.set_initialized(1);
-            (eax & !0xFF) | 1
-        }
+    #[port(address = 0x006B_E3B0, owner = "landvalue", name = "cSC4LandValueSimulator::Init", naked)]
+    pub unsafe extern "C" fn fc4p_006be3b0() {
+        core::arch::naked_asm!(
+            "mov edx, eax", "mov eax, esp",
+            "push ebx", "push ebp", "push esi", "push edi", "sub esp, 0x18",
+            "mov esi, ecx", "push eax", "call {body}", "jmp edx", body = sym initialize,
+        )
     }
+}
+
+// Return the value in EAX and the next frame-marshaling continuation in EDX.
+unsafe extern "fastcall" fn initialize(this: *mut u8, entry_eax: u32, stack: *mut u8) -> u64 {
+    unsafe {
+        let lv = LandValueSim::from_ptr(this);
+        if lv.initialized() != 0 {
+            return (u64::from(initialize_return as *const () as u32) << 32) | u64::from((entry_eax & !0xFF) | 1);
+        }
+        if *game::land_value_started() == 0 {
+            *game::land_value_started() = 1;
+        }
+        if lv.city().is_null() {
+            lv.set_city(*game::city());
+            vcall!(lv.city(), 4 => fn() -> u32);
+        }
+        if lv.zone_manager().is_null() {
+            lv.set_zone_manager(*game::zone_manager());
+            vcall!(lv.zone_manager(), 4 => fn() -> u32);
+        }
+        if lv.terrain().is_null() {
+            lv.set_terrain(*game::terrain());
+            vcall!(lv.terrain(), 4 => fn() -> u32);
+        }
+        game::land_value_tuning(this);
+        for (offset, id) in [
+            (0x24, 0x89D5_BB39),
+            (0x28, 0x89D5_BB51),
+            (0x2C, 0x89D5_BB60),
+            (0x30, 0x49D5_BB6F),
+        ] {
+            if pointer(this, offset).is_null() {
+                let grid = game::allocate(0x44);
+                if !grid.is_null() {
+                    construct_grid(grid, offset == 0x30);
+                }
+                store_pointer(this, offset, grid);
+                vcall!(grid, 4 => fn() -> u32);
+                vcall!(pointer(this, offset), 0x0C => fn() -> u32);
+                let size = if offset == 0x30 { 8 } else { u32::from(lv.tract_size()) };
+                vcall!(pointer(this, offset), 0x24 => fn(u32) -> u32, size);
+                vcall!(pointer(this, offset), 0x18 => fn(u32) -> u32, id);
+            }
+        }
+        lv.set_state(0);
+        iterator_bounds(this, 0x24, 0x3C);
+        iterator_bounds(this, 0x30, 0x40);
+        lv.set_histogram_shift(5);
+        let height = vcall_st0!(lv.terrain(), 0x60);
+        let bins = (height.ftol() as i32).wrapping_shr(lv.histogram_shift());
+        // The histogram fill word belongs at entry ESP - 0x18, within the reserved frame.
+        let zero = stack.sub(0x18).cast::<u32>();
+        zero.write(0);
+        histogram_resize(this.add(0x50), bins as u32, zero);
+        let mut eax = vcall!(*game::history(), 0x34 => fn(u32, u32) -> u32, 0x6A66_3AC8, 1);
+        let sim = *game::simulator();
+        if !sim.is_null() {
+            let mut name = [0u32; 6];
+            game::string_from_cstr(name.as_mut_ptr().cast(), game::land_value_agent_name());
+            for level in [0, 10, 4, 6] {
+                vcall!(sim, 0x4C => fn(*mut u8, u32, *mut u8, u32) -> u32,
+                        this.add(4), level, name.as_mut_ptr().cast(), 2);
+            }
+            eax = name[1];
+            core::ptr::write_volatile(name.as_mut_ptr(), 0x00A8_0810);
+            if eax != 0 {
+                eax = game::free_array(eax as *mut u8);
+            }
+        }
+        let continuation = if lv.message_server().is_null() {
+            lv.set_message_server(*game::message_server());
+            initialize_subscribe as *const () as u32
+        } else {
+            initialize_finish as *const () as u32
+        };
+        (u64::from(continuation) << 32) | u64::from(eax)
+    }
+}
+
+// Subscription may allocate. Keep each call at entry ESP - 0x28 so retained frame
+// addresses agree with the other callers of the message server.
+#[unsafe(naked)]
+unsafe extern "C" fn initialize_subscribe() {
+    core::arch::naked_asm!(
+        "mov ecx, [esi + 0x14]", "mov eax, [ecx]", "call dword ptr [eax + 4]",
+        "lea edi, [esi + 4]",
+        "push {change0}", "push edi", "mov ecx, [esi + 0x14]", "mov eax, [ecx]", "call dword ptr [eax + 0x14]",
+        "push {change1}", "push edi", "mov ecx, [esi + 0x14]", "mov eax, [ecx]", "call dword ptr [eax + 0x14]",
+        "push {change2}", "push edi", "mov ecx, [esi + 0x14]", "mov eax, [ecx]", "call dword ptr [eax + 0x14]",
+        "push {change3}", "push edi", "mov ecx, [esi + 0x14]", "mov eax, [ecx]", "call dword ptr [eax + 0x14]",
+        "push {change4}", "push edi", "mov ecx, [esi + 0x14]", "mov eax, [ecx]", "call dword ptr [eax + 0x14]",
+        "jmp {finish}", finish = sym initialize_finish,
+        change0 = const CHANGES[0], change1 = const CHANGES[1], change2 = const CHANGES[2],
+        change3 = const CHANGES[3], change4 = const CHANGES[4],
+    )
+}
+
+#[unsafe(naked)]
+unsafe extern "C" fn initialize_finish() {
+    core::arch::naked_asm!(
+        "mov ecx, esi", "mov edx, eax", "call {mark}", "jmp {done}",
+        mark = sym mark_initialized, done = sym initialize_return,
+    )
+}
+
+unsafe extern "fastcall" fn mark_initialized(this: *mut u8, eax: u32) -> u32 {
+    // SAFETY: the entry keeps the simulator live until every subscription has completed.
+    unsafe { LandValueSim::from_ptr(this) }.set_initialized(1);
+    (eax & !0xFF) | 1
+}
+
+#[unsafe(naked)]
+unsafe extern "C" fn initialize_return() {
+    core::arch::naked_asm!("add esp, 0x18", "pop edi", "pop esi", "pop ebp", "pop ebx", "ret",)
 }
 
 port! {
@@ -376,6 +440,8 @@ mod tests {
         curves_present: [bool; 2],
         null_curve_allocation: bool,
         max_height: f32,
+        histogram_fill_address: usize,
+        subscription_frames: Vec<usize>,
         message_kind: u32,
         message_budget: u32,
     }
@@ -400,6 +466,8 @@ mod tests {
                 map: BTreeMap::new(),
                 curves_present: [false; 2],
                 null_curve_allocation: false,
+                histogram_fill_address: 0,
+                subscription_frames: Vec::new(),
                 max_height: 2500.0,
                 message_kind: 0,
                 message_budget: 0,
@@ -464,7 +532,13 @@ mod tests {
         vc(this, 0x4C, &[target as u32, level, flags]);
         0x8877_6601
     }
-    extern "thiscall" fn subscribe(this: *mut u8, target: *mut u8, id: u32) -> u32 {
+    #[unsafe(naked)]
+    unsafe extern "thiscall" fn subscribe(_this: *mut u8, _target: *mut u8, _id: u32) -> u32 {
+        core::arch::naked_asm!("mov edx, esp", "jmp {body}", body = sym subscribe_at)
+    }
+
+    extern "fastcall" fn subscribe_at(this: *mut u8, frame: usize, target: *mut u8, id: u32) -> u32 {
+        STATE.with(|s| s.borrow_mut().subscription_frames.push(frame));
         vc(this, 0x14, &[target as u32, id]);
         0x9988_7701
     }
@@ -551,6 +625,7 @@ mod tests {
         this
     }
     extern "thiscall" fn histogram(this: *mut u8, count: u32, value: *const u32) -> u32 {
+        STATE.with(|s| s.borrow_mut().histogram_fill_address = value as usize);
         record(Call::Histogram(this as usize, count, unsafe { *value }));
         1
     }
@@ -1177,6 +1252,39 @@ mod tests {
         }
     }
 
+    #[unsafe(naked)]
+    unsafe extern "thiscall" fn invoke_init(_this: *mut u8, _entry_stack: *mut usize) -> u32 {
+        core::arch::naked_asm!(
+            "mov eax, [esp + 4]", "lea edx, [esp - 4]", "mov [eax], edx",
+            "call {entry}", "ret 4", entry = sym fc4p_006be3b0,
+        )
+    }
+
+    #[test]
+    fn histogram_fill_uses_a_zero_word_at_entry_stack_minus_24() {
+        let _fpu = GameFpu::new();
+        let mut f = Fixture::new();
+        f.tuning(false);
+        f.init_services(false);
+        let grid = f.grid(2, 2);
+        let lv = f.view();
+        lv.set_intrinsic_grid(grid);
+        lv.set_total_grid(grid);
+        lv.set_scratch_grid(grid);
+        lv.set_slope_grid(grid);
+        let mut entry_stack = 0;
+        // SAFETY: the fixture supplies the retained grids and services; the helper records entry ESP.
+        unsafe {
+            invoke_init(f.lv.ptr(), &mut entry_stack);
+        }
+        STATE.with(|s| {
+            let s = s.borrow();
+            assert_eq!(s.histogram_fill_address, entry_stack - 0x18);
+            assert_eq!(s.subscription_frames, [entry_stack - 0x34; 5]);
+        });
+        assert!(calls().iter().any(|c| matches!(c, Call::Histogram(_, _, 0))));
+    }
+
     #[test]
     fn restored_grids_skip_setup_iterators_clamp_bounds_and_histogram_uses_x87_truncation() {
         for (x, z, height, bins) in [
@@ -1198,12 +1306,11 @@ mod tests {
             lv.set_state(9);
             lv.set_dirty(1);
             STATE.with(|s| s.borrow_mut().max_height = height);
+            let mut entry_stack = 0;
             unsafe {
-                assert_eq!(
-                    call_thiscall_with_eax(fc4p_006be3b0 as *const () as usize, f.lv.ptr(), &[], 0).0,
-                    0x9988_7701
-                );
+                assert_eq!(invoke_init(f.lv.ptr(), &mut entry_stack), 0x9988_7701);
             }
+            STATE.with(|s| assert_eq!(s.borrow().histogram_fill_address, entry_stack - 0x18));
             assert_eq!(lv.state(), 0);
             assert_eq!(lv.dirty(), 1);
             assert_eq!(lv.initialized(), 1);
