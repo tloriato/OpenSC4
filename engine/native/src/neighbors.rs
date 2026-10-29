@@ -35,10 +35,13 @@ layout! {
 
 mod accounting;
 mod cities;
+mod creation;
 mod deletion;
 mod geometry;
 mod graph;
 mod lists;
+mod messages;
+mod operations;
 mod pricing;
 mod proposal;
 mod proposals;
@@ -65,7 +68,10 @@ const COUNT: usize = surface::PORTS.len()
     + regional::PORTS.len()
     + selection::PORTS.len()
     + geometry::PORTS.len()
-    + terrain::PORTS.len();
+    + terrain::PORTS.len()
+    + operations::PORTS.len()
+    + creation::PORTS.len()
+    + messages::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
     deletion::PORTS,
     graph::PORTS,
@@ -83,6 +89,9 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     selection::PORTS,
     geometry::PORTS,
     terrain::PORTS,
+    operations::PORTS,
+    creation::PORTS,
+    messages::PORTS,
 ]);
 pub const PORTS: &[Port] = &ALL;
 
