@@ -273,6 +273,29 @@ fn no_valid_spans_only_clears_highlights() {
     assert_eq!(w.tool().region(), null_mut());
 }
 
+#[unsafe(naked)]
+unsafe extern "C" fn clear_preserving_edx() {
+    core::arch::naked_asm!("mov eax, 0x12345678", "ret");
+}
+
+#[test]
+fn empty_pass_supplies_entry_edx_to_a_clear_callback_that_preserves_it() {
+    let mut w = World::new(vec![], vec![], vec![]);
+    w._vtable[17] = clear_preserving_edx as *const () as usize;
+    let arguments = [17u32];
+    let mut c = RawCall::new(
+        Conv::Thiscall,
+        fc4p_006299a0 as *const () as usize,
+        w.object.ptr() as u32,
+        &arguments,
+    );
+    c.edx = 0xAABB_CCDD;
+    unsafe {
+        call_raw(&mut c);
+    }
+    assert_eq!((c.eax, c.edx), (0, 0xAABB_CCDD));
+}
+
 #[test]
 fn ordered_candidates_keep_duplicates_and_filter_only_byte_56() {
     let mut w = World::new(

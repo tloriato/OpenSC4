@@ -84,6 +84,7 @@ macro_rules! register_port {
 mod clear;
 mod control;
 mod cost;
+mod drag_placement;
 mod geometry;
 mod highlights;
 mod helpers;
@@ -109,6 +110,7 @@ const COUNT: usize = helpers::PORTS.len()
     + occupants::PORTS.len()
     + storage::PORTS.len()
     + cost::PORTS.len()
+    + drag_placement::PORTS.len()
     + placement::PORTS.len()
     + records::PORTS.len()
     + control::PORTS.len()
@@ -130,6 +132,7 @@ pub const PORTS: &[Port] = &crate::port::concat::<COUNT>(&[
     occupants::PORTS,
     storage::PORTS,
     cost::PORTS,
+    drag_placement::PORTS,
     placement::PORTS,
     records::PORTS,
     control::PORTS,

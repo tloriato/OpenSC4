@@ -4,6 +4,7 @@
 //! Candidate cells and demolition highlights for a solved drag.
 
 use super::*;
+use crate::abi::{call_raw, vslot, Conv, RawCall};
 use core::ptr::null_mut;
 
 layout! {
@@ -91,18 +92,22 @@ port! {
     #[port(address = 0x0062_99A0, owner = "networktool", name = "cSC4NetworkTool::UpdateOccupantHighlights", naked)]
     pub unsafe extern "C" fn fc4p_006299a0() {
         core::arch::naked_asm!(
-            "lea edx, [esp + 4]", "call {body}", "ret 4",
+            "push edx", "mov edx, esp", "call {body}", "add esp, 4", "ret 4",
             body = sym update,
         );
     }
 }
 
-unsafe extern "fastcall" fn update(this: *mut u8, argument: *mut u32) -> u64 {
+unsafe extern "fastcall" fn update(this: *mut u8, frame: *mut u32) -> u64 {
     unsafe {
+        let argument = frame.add(2);
         let tool = HighlightTool::from_ptr(this);
         if tool.span_count() == 0 {
-            let result = vcall!(this, 0x44 => fn() -> u64);
-            return result & 0xFFFF_FFFF_0000_0000;
+            let mut call = RawCall::new(Conv::Thiscall, vslot(this, 0x44), this as u32, &[]);
+            call.eax = read(this, 0);
+            call.edx = frame.read();
+            call_raw(&mut call);
+            return registers(0, call.edx);
         }
         let mut cells = CellVector {
             begin: null_mut(),

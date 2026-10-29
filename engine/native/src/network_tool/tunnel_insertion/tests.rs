@@ -484,6 +484,41 @@ fn diagonal_span_stops_before_allocating_or_visiting_later_spans() {
 }
 
 #[test]
+fn equal_endpoints_use_direction_three_and_the_opposite_direction_one() {
+    let mut w = World::new(vec![[1, 2]], vec![[0, 0, 0], [0, 0, 0]], vec![[0, 0, 0, 1]], true);
+    w.run(0);
+    let log = calls();
+    assert_eq!(
+        log.iter().filter(|c| matches!(c, Call::Portal(..))).collect::<Vec<_>>(),
+        [&Call::Portal(0xABCD_EF03, 0, w.cell(0)), &Call::Portal(1, 0, w.cell(0)),]
+    );
+}
+
+#[test]
+fn invalid_later_span_keeps_the_previous_pass_edx_and_stops() {
+    for real in [false, true] {
+        let mut w = World::new(
+            vec![[1, 2], [3, 2]],
+            vec![[0, 0, 0], [1, 1, 0]],
+            vec![[0, 0, 0, 1], [0, 0, 0, 2]],
+            real,
+        );
+        let (eax, edx) = w.run(0);
+        assert_eq!(eax, 2);
+        assert_eq!(edx, if real { 0xAABB_CCDD } else { w.records.as_ptr() as u32 });
+        let log = calls();
+        assert_eq!(
+            log.iter().filter(|c| matches!(c, Call::Portal(..))).count(),
+            if real { 2 } else { 0 }
+        );
+        assert_eq!(
+            log.iter().filter(|c| matches!(c, Call::Selection(..))).count(),
+            if real { 0 } else { 2 }
+        );
+    }
+}
+
+#[test]
 fn real_flag_is_rechecked_after_lookup_and_unpaired_nodes_are_freed() {
     let mut w = World::one_pair(true);
     STATE.with(|s| s.borrow_mut().stop_real_after = 1);
@@ -523,6 +558,32 @@ unsafe extern "C" fn seeded_entry() {
         "push eax", "lea eax, [esp]", "and eax, -8", "mov dword ptr [eax - 0x18], 0x87654321", "pop eax",
         "jmp {entry}", entry = sym fc4p_006287d0,
     );
+}
+
+#[unsafe(naked)]
+unsafe extern "C" fn seeded_entry_shifted() {
+    core::arch::naked_asm!(
+        "push 0", "push dword ptr [esp + 8]", "call {seeded}", "add esp, 4", "ret 4",
+        seeded = sym seeded_entry,
+    );
+}
+
+#[test]
+fn direction_storage_is_preserved_at_the_other_entry_stack_alignment() {
+    let mut w = World::one_pair(true);
+    let args = [3u32];
+    let mut c = RawCall::new(
+        Conv::Thiscall,
+        seeded_entry_shifted as *const () as usize,
+        w.object.ptr() as u32,
+        &args,
+    );
+    c.edx = 0x1234_5678;
+    unsafe {
+        call_raw(&mut c);
+    }
+    assert_eq!(c.edx, 0xAABB_CCDD);
+    assert!(calls().contains(&Call::Portal(0x8765_4301, 0, w.cell(0))));
 }
 
 #[test]
