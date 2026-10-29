@@ -11,7 +11,7 @@ game_fn! { #[allow(dead_code)] fn occupant_query(this: *mut u8, iid: u32, out: *
 game_fn! { #[allow(dead_code)] fn occupant_delete(this: *mut u8, flags: u32) -> u64 = "thiscall" 0x0045_8F80; }
 game_fn! { fn base_construct(this: *mut u8) -> u64 = "thiscall" 0x005E_9220; }
 game_fn! { fn base_destroy(this: *mut u8) -> u64 = "thiscall" 0x005E_8C40; }
-game_fn! { fn pool_grow(this: *mut u8) -> *mut u8 = "thiscall" 0x0090_CF9A; }
+game_fn! { #[allow(dead_code)] fn pool_grow(this: *mut u8) -> *mut u8 = "thiscall" 0x0090_CF9A; }
 game_fn! { fn pool_empty(this: *mut u8, page: *mut u8) -> u64 = "thiscall" 0x0090_D031; }
 game_fn! { fn pool_reorder(this: *mut u8, page: *mut u8) -> u64 = "thiscall" 0x0090_CFF9; }
 game_fn! { fn allocate(size: u32) -> *mut u8 = "C" 0x0090_CF54; }
@@ -96,13 +96,21 @@ port! {
 
 port! {
     /// Takes a free occupant from the current pool page, growing the pool when needed.
+    /// Growth receives zero in EAX and the caller's EDX; the caller retains its ignored size word.
     #[port(address = 0x0045_8A60, owner = "building", name = "AllocateResourceOccupant")]
-    pub unsafe extern "C" fn fc4p_00458a60() -> u64 {
+    pub unsafe extern "fastcall" fn fc4p_00458a60(_entry_ecx: u32, entry_edx: u32) -> u64 {
         // SAFETY: these globals describe the game's pool pages and free-list objects.
         unsafe {
             let page = read_unaligned(active_page());
             let mut item = read_unaligned(page.add(8).cast::<*mut u8>());
-            if item.is_null() { item = pool_grow(pool_context()); }
+            if item.is_null() {
+                let mut call = crate::abi::RawCall::new(
+                    crate::abi::Conv::Thiscall, crate::abi::target(0x0090_CF9A), pool_context() as u32, &[],
+                );
+                call.edx = entry_edx;
+                crate::abi::call_raw(&mut call);
+                item = call.eax as *mut u8;
+            }
             let next = read_unaligned(item.cast::<*mut u8>());
             let page = read_unaligned(active_page());
             write_unaligned(page.add(8).cast::<*mut u8>(), next);
