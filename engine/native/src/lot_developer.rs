@@ -85,6 +85,7 @@ pub mod queue;
 pub mod services;
 pub mod small;
 pub mod terrain;
+pub mod updates;
 
 const ALL: [Port;
     foundation::PORTS.len()
@@ -100,7 +101,9 @@ const ALL: [Port;
         + checks::PORTS.len()
         + callbacks::PORTS.len()
         + containers::PORTS.len()
-        + objects::PORTS.len()] = crate::port::concat(&[
+        + objects::PORTS.len()
+        + updates::PORTS.len()] = crate::port::concat(&[
+    updates::PORTS,
     objects::PORTS,
     containers::PORTS,
     small::PORTS,
