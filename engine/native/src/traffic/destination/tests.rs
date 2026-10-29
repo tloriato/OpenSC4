@@ -313,7 +313,7 @@ fn neighbor_arrivals_read_or_create_property_then_mirror_capacity_and_clear_boun
                     assert_eq!(
                         cells[6],
                         if holder != 0 {
-                            0xFF & !(1u32.wrapping_shl(kind) as u8)
+                            !(1u32.wrapping_shl(kind) as u8)
                         } else {
                             0xFF
                         }

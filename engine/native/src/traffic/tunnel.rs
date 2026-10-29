@@ -8,6 +8,13 @@ use super::late_passes::virtual_call;
 use super::*;
 use crate::abi::Conv;
 
+layout! {
+    /// City service used to convert portal positions to cell coordinates.
+    pub struct TunnelSim {
+        0x14 => city / set_city: *mut u8,
+    }
+}
+
 game_fn! {#[allow(dead_code)] fn paired_portal(this:*mut u8)->*mut u8="thiscall" 0x0064_7570;}
 game_fn! {#[allow(dead_code)] fn erase(this:*mut u8,key:*const u32)="thiscall" 0x0071_0910;}
 game_fn! {#[allow(dead_code)] fn entry(this:*mut u8,key:*const u32)->*mut u8="thiscall" 0x0071_3D60;}
@@ -41,7 +48,7 @@ unsafe extern "fastcall" fn changed(this: *mut u8, frame: *mut u8, occupant: *mu
         r.eax = word(occupant, 4);
         r.edx = position as u32;
         virtual_call(occupant.add(4), 0x20, &[position as u32], &mut r);
-        let city = word(this, 0x14) as *mut u8;
+        let city = TunnelSim::from_ptr(this).city();
         r.eax = word(city, 0);
         r.edx = x as u32;
         virtual_call(
@@ -79,7 +86,7 @@ unsafe extern "fastcall" fn changed(this: *mut u8, frame: *mut u8, occupant: *mu
         r.edx = word(other, 0);
         r.ecx = other_position as u32;
         virtual_call(other, 0x20, &[other_position as u32], &mut r);
-        let city = word(this, 0x14) as *mut u8;
+        let city = TunnelSim::from_ptr(this).city();
         r.edx = word(city, 0);
         r.eax = other_x as u32;
         virtual_call(

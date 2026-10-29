@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::testing::{fake, fake_data, GameFpu, Object};
-use crate::traffic::test_support::{bytes, invoke, table};
+use crate::traffic::test_support::{bytes, float_environment, invoke, table};
 use std::cell::RefCell;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -256,8 +256,8 @@ fn occupant_counts_resize_then_search_unsigned_keys_in_each_subnetwork() {
         headers[1][1] = nodes[0].as_mut_ptr() as u32;
         headers[2][1] = nodes[1].as_mut_ptr() as u32;
         headers[3][1] = nodes[2].as_mut_ptr() as u32;
-        for i in 0..4 {
-            store(rp, i * 28, headers[i].as_mut_ptr() as u32);
+        for (i, header) in headers.iter_mut().enumerate() {
+            store(rp, i * 28, header.as_mut_ptr() as u32);
         }
         let mut output = [0xCAFEu32; 4];
         let mut vector = [output.as_mut_ptr() as u32, 0, 0];
@@ -294,6 +294,49 @@ fn occupant_counts_resize_then_search_unsigned_keys_in_each_subnetwork() {
                     assert_eq!((r.eax, r.edx), (0xAABB_CCDD, 0x9988_7766));
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn switch_reduction_retains_signed_zero_nan_payloads_and_the_callers_float_environment() {
+    unsafe {
+        let _begin = fake(0x004B_0390, begin_fake as *const () as usize);
+        let _fpu = GameFpu::new();
+        let mut sim = Object::new(0xD60);
+        let p = sim.ptr();
+        PassSim::from_ptr(p).set_density_reduction(0.0);
+        let mut node = [0u32; 4];
+        let n = node.as_mut_ptr().cast::<u8>();
+        let mut buckets = [n as u32];
+        let mut hash = [0u32, buckets.as_mut_ptr() as u32, buckets.as_mut_ptr().add(1) as u32];
+        let h = hash.as_mut_ptr().cast::<u8>();
+        STATE.with(|s| {
+            let mut s = s.borrow_mut();
+            s.first = n as u32;
+            s.table = h as u32;
+        });
+        for (input, output) in [
+            (8.0f32.to_bits(), 0u32),
+            ((-5.0f32).to_bits(), 0x8000_0000),
+            (f32::INFINITY.to_bits(), 0xFFC0_0000),
+            (f32::NEG_INFINITY.to_bits(), 0xFFC0_0000),
+            (0x7FC1_2345, 0x7FC1_2345),
+            (0x7FA1_2345, 0x7FE1_2345),
+        ] {
+            store(n, 12, input);
+            let existing = F80::from_f32(1.25);
+            core::arch::asm!("fld tbyte ptr [{value}]", value = in(reg) &existing, out("st(0)") _);
+            let before = float_environment();
+            let r = invoke(fc4p_00713750 as *const () as usize, p, &[0], 0, 0, false);
+            let after = float_environment();
+            let mut retained = F80::ZERO;
+            core::arch::asm!("fstp tbyte ptr [{value}]", value = in(reg) &mut retained, out("st(0)") _);
+            assert_eq!(before, after);
+            assert_eq!(retained, existing);
+            assert_eq!(word(n, 12), output, "input {input:08X}");
+            assert_eq!((r.eax, r.ecx), (1, h as u32));
+            assert_eq!(take(), [Call::Begin(p.add(0x70C) as u32)]);
         }
     }
 }

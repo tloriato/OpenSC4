@@ -42,7 +42,8 @@ game_fn! { #[allow(dead_code)] fn free(memory: *mut u8) = "C" 0x0090_CF63; }
 game_fn! { #[allow(dead_code)] fn erase_tree(this: *mut u8, root: *mut u8) = "thiscall" 0x0042_6A60; }
 game_fn! { #[allow(dead_code)] fn assign_tree(this: *mut u8, source: *mut u8) = "thiscall" 0x0071_0FF0; }
 game_fn! { #[allow(dead_code)] fn construct_tree(this: *mut u8, source: *mut u8) = "thiscall" 0x0071_2280; }
-game_fn! { #[allow(dead_code)] fn walk_range(a: u32, b: u32, c: u32, d: u32, e: u32, f: u32, g: u32, h: u32, scratch: *mut u8) = "C" 0x0070_FEC0; }
+// Two four-word iterators are passed by value, followed by the scratch-byte pointer.
+game_fn! { #[allow(dead_code, clippy::too_many_arguments)] fn walk_range(a: u32, b: u32, c: u32, d: u32, e: u32, f: u32, g: u32, h: u32, scratch: *mut u8) = "C" 0x0070_FEC0; }
 game_fn! { #[allow(dead_code)] fn release_blocks(this: *mut u8, begin: u32, end: u32) = "thiscall" 0x006D_A8D0; }
 
 layout! {

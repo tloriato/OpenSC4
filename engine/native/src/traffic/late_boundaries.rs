@@ -69,14 +69,16 @@ unsafe extern "fastcall" fn prune_pools(this: *mut u8, out: *mut Registers) {
         store(header, 12, header as u32);
         for side in 0..4 {
             let mut index = 0i32;
+            r.eax = sim.max_cell_x() as u32;
             while index < sim.max_cell_x() {
                 let base = word(this, 0x88 + side * 12) as *mut u8;
+                r.ecx = base as u32;
                 let key = base
                     .wrapping_offset(index.wrapping_mul(8).wrapping_add(2) as isize)
                     .cast::<u16>();
+                r.eax = key as u32;
                 if key.read_unaligned() != 0 {
                     let mut result = core::mem::MaybeUninit::<[u32; 2]>::uninit();
-                    r.eax = key as u32;
                     r.edx = result.as_mut_ptr() as u32;
                     r.ecx = temp.as_mut_ptr() as u32;
                     call(0x0071_09B0, Conv::Thiscall, &[r.edx, key as u32], &mut r);
