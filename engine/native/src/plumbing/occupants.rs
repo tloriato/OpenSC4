@@ -22,11 +22,17 @@ unsafe fn changed(this: *mut u8, entry_edx: u32, slot: *mut *mut u8, inserted: u
         if c.eax != 0xC772_BF98 {
             return (u64::from(c.edx) << 32) | u64::from(c.eax);
         }
+        let table = occupant.cast::<u32>().read_unaligned();
         slot.write_unaligned(core::ptr::null_mut());
         let args = [0x49C0_5B9F, slot as u32];
-        c = RawCall::new(Conv::Thiscall, vslot(occupant, 0), occupant as u32, &args);
+        c = RawCall::new(
+            Conv::Thiscall,
+            (table as *const usize).read_unaligned(),
+            occupant as u32,
+            &args,
+        );
         c.eax = slot as u32;
-        c.edx = occupant.cast::<u32>().read_unaligned();
+        c.edx = table;
         call_raw(&mut c);
         if c.eax as u8 != 0 {
             let network = slot.read_unaligned();
