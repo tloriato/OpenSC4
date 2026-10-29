@@ -783,8 +783,454 @@ port! {
     }
 }
 
+game_fn! { #[allow(dead_code)] fn allocate_object(size: u32) -> u64 = "C" 0x005E_55E0; }
+game_fn! { #[allow(dead_code)] fn construct_action_eleven(this: *mut u8) -> u64 = "thiscall" 0x0050_5BF0; }
+game_fn! { #[allow(dead_code)] fn construct_action_eight(this: *mut u8) -> u64 = "thiscall" 0x0050_5290; }
+game_fn! { #[allow(dead_code)] fn construct_action_fifteen(this: *mut u8) -> u64 = "thiscall" 0x0050_5C40; }
+game_fn! { #[allow(dead_code)] fn construct_action_fourteen(this: *mut u8) -> u64 = "thiscall" 0x0050_5C70; }
+game_fn! { #[allow(dead_code)] fn construct_action_sixteen(this: *mut u8) -> u64 = "thiscall" 0x0050_6370; }
+game_fn! { #[allow(dead_code)] fn construct_action_seventeen(this: *mut u8) -> u64 = "thiscall" 0x0050_5CA0; }
+game_fn! { #[allow(dead_code)] fn construct_action_twenty(this: *mut u8) -> u64 = "thiscall" 0x0050_52D0; }
+game_fn! { #[allow(dead_code)] fn construct_action_nineteen(this: *mut u8) -> u64 = "thiscall" 0x0050_9A20; }
+game_fn! { #[allow(dead_code)] fn construct_action_fifty_two(this: *mut u8) -> u64 = "thiscall" 0x0050_6420; }
+game_fn! { #[allow(dead_code)] fn construct_action_twenty_one(this: *mut u8) -> u64 = "thiscall" 0x0050_6330; }
+game_fn! { #[allow(dead_code)] fn destroy_automaton_tree(this: *mut u8) -> u64 = "thiscall" 0x0051_3E00; }
+game_fn! { #[allow(dead_code)] fn clear_lot_list(this: *mut u8) -> u64 = "thiscall" 0x0047_3EC0; }
+game_fn! { #[allow(dead_code)] fn destroy_model_processor(this: *mut u8) -> u64 = "thiscall" 0x0080_30A0; }
+game_fn! { #[allow(dead_code)] fn destroy_triple_vector(this: *mut u8) -> u64 = "thiscall" 0x005E_8C40; }
+game_fn! { #[allow(dead_code)] fn erase_eight_byte_range(this: *mut u8, first: u32, last: u32) -> u64 = "thiscall" 0x0071_0B40; }
+game_fn! { #[allow(dead_code)] fn insert_eight_byte_values(this: *mut u8, position: u32, count: u32, value: *mut u8) -> u64 = "thiscall" 0x0063_8E80; }
+
+port! {
+    /// Allocates an action of the selected kind, runs its constructor, and sets its kind field.
+    /// Other kinds use the base action, whose three padding bytes after +0x14 remain untouched.
+    #[port(address = 0x0050_B7F0, owner = "shared", name = "CreateAction")]
+    pub unsafe extern "fastcall" fn fc4p_0050b7f0(entry_ecx: *mut u8, entry_edx: u32, kind: u32) -> u64 {
+        let (size, constructor) = match kind {
+            8 => (0x34, 0x0050_5290),
+            11 => (0x40, 0x0050_5BF0),
+            14 => (0x40, 0x0050_5C70),
+            15 => (0x30, 0x0050_5C40),
+            16 => (0x274, 0x0050_6370),
+            17 => (0x58, 0x0050_5CA0),
+            19 => (0x34, 0x0050_9A20),
+            20 => (0x2C, 0x0050_52D0),
+            21 => (0x44, 0x0050_6330),
+            52 => (0x2C, 0x0050_6420),
+            _ => (0x28, 0),
+        };
+        // SAFETY: allocation and construction use the game's entries and layouts.
+        unsafe {
+            let mut result = invoke(Conv::Cdecl, crate::abi::target(0x005E_55E0), entry_ecx,
+                kind.wrapping_sub(8), entry_edx, &[size]);
+            let allocation = result as u32 as *mut u8;
+            if allocation.is_null() { return result; }
+            if constructor != 0 {
+                result = invoke(Conv::Thiscall, crate::abi::target(constructor), allocation,
+                    allocation as u32, (result >> 32) as u32, &[]);
+            } else {
+                store(allocation, 0, 0x00A9_5384);
+                for offset in [4, 8, 12, 16, 24, 28, 32, 36] { store(allocation, offset, 0); }
+                allocation.add(0x14).write(0);
+            }
+            if result as u32 != 0 { store(result as u32 as *mut u8, 4, kind); }
+            result
+        }
+    }
+}
+
+port! {
+    /// Restores the automaton's six interface tables, destroys embedded containers and processors,
+    /// and releases retained interfaces. Pointer fields retain their values throughout destruction.
+    #[port(address = 0x0051_3E60, owner = "shared", name = "DestroyAutomaton")]
+    pub unsafe extern "fastcall" fn fc4p_00513e60(this: *mut u8, entry_edx: u32) -> u64 {
+        // SAFETY: the game's complete automaton, embedded objects, and retained interfaces.
+        unsafe {
+            for (offset, table) in [(0, 0x00A9_5AC0), (4, 0x00A9_5A38), (8, 0x00A9_5A1C),
+                (12, 0x00A9_59B8), (0x20, 0x00A9_59A0), (0x38, 0x00A9_5990)] {
+                store(this, offset, table);
+            }
+            let buffer = word(this, 0x1C8);
+            let mut result = registers(buffer, entry_edx);
+            if buffer != 0 {
+                result = invoke(Conv::Cdecl, crate::abi::target(0x0090_CF63), this,
+                    buffer, entry_edx, &[buffer]);
+            }
+            result = invoke(Conv::Thiscall, crate::abi::target(0x0051_3E00), this.add(0x18C),
+                result as u32, (result >> 32) as u32, &[]);
+            result = invoke(Conv::Thiscall, crate::abi::target(0x0047_3EC0), this.add(0x188),
+                result as u32, (result >> 32) as u32, &[]);
+            let buffer = word(this, 0x188);
+            if buffer != 0 {
+                result = invoke(Conv::Cdecl, crate::abi::target(0x0090_CF63), this.add(0x188),
+                    result as u32, (result >> 32) as u32, &[buffer]);
+            }
+            for (processor, buffer) in [(0x12C, 0x110), (0xD0, 0xCC)] {
+                result = invoke(Conv::Thiscall, crate::abi::target(0x0080_30A0), this.add(processor),
+                    result as u32, (result >> 32) as u32, &[]);
+                let value = word(this, buffer);
+                result = registers(value, (result >> 32) as u32);
+                if value != 0 {
+                    if buffer == 0xCC {
+                        let adjustment = word(word(value as *mut u8, 4) as *mut u8, 4);
+                        let base = value.wrapping_add(adjustment).wrapping_add(4) as *mut u8;
+                        result = virtual_call(base, 8, word(base, 0), adjustment, &[]);
+                    } else {
+                        result = invoke(Conv::Cdecl, crate::abi::target(0x0090_CF63), this.add(processor),
+                            value, (result >> 32) as u32, &[value]);
+                    }
+                }
+            }
+            for offset in [0xC0, 0xB4] {
+                let buffer = word(this, offset);
+                result = registers(buffer, (result >> 32) as u32);
+                if buffer != 0 {
+                    result = invoke(Conv::Cdecl, crate::abi::target(0x0090_CF63), this,
+                        buffer, (result >> 32) as u32, &[buffer]);
+                }
+            }
+            for offset in [0xB0, 0x98] {
+                let retained = word(this, offset) as *mut u8;
+                if !retained.is_null() {
+                    let table = word(retained, 0);
+                    result = if offset == 0xB0 {
+                        virtual_call(retained, 8, result as u32, table, &[])
+                    } else { virtual_call(retained, 8, table, (result >> 32) as u32, &[]) };
+                }
+            }
+            invoke(Conv::Thiscall, crate::abi::target(0x005E_8C40), this.add(4),
+                result as u32, (result >> 32) as u32, &[])
+        }
+    }
+}
+
+port! {
+    /// Shrinks eight-byte entries by erasing a suffix, or inserts the requested number at the end.
+    /// The insertion value is an uninitialized eight-byte temporary supplied to the original helper.
+    #[port(address = 0x0051_FC30, owner = "shared", name = "ResizeEightByteVector", naked)]
+    pub unsafe extern "C" fn fc4p_0051fc30() {
+        // Keep the temporary at its original stack address, including the bytes left by the caller.
+        core::arch::naked_asm!("sub esp, 8", "mov edx, esp", "push [esp + 12]", "call {body}",
+            "add esp, 8", "ret 4", body = sym resize_eight_byte_vector);
+    }
+}
+
+unsafe extern "fastcall" fn resize_eight_byte_vector(this: *mut u8, value: *mut u8, count: u32) -> u64 {
+    // SAFETY: the original vector fields and range/insert signatures. The temporary is never read here.
+    unsafe {
+        let begin = word(this, 0);
+        let end = word(this, 4);
+        let size = (end.wrapping_sub(begin) as i32 >> 3) as u32;
+        if count < size {
+            let first = begin.wrapping_add(count.wrapping_mul(8));
+            invoke(
+                Conv::Thiscall,
+                crate::abi::target(0x0071_0B40),
+                this,
+                first,
+                begin,
+                &[first, end],
+            )
+        } else {
+            let additional = count.wrapping_sub(size);
+            invoke(
+                Conv::Thiscall,
+                crate::abi::target(0x0063_8E80),
+                this,
+                additional,
+                begin,
+                &[end, additional, value as u32],
+            )
+        }
+    }
+}
+
+game_fn! { #[allow(dead_code)] fn erase_unsigned_tree(this: *mut u8, root: u32) -> u64 = "thiscall" 0x0046_F820; }
+game_fn! { #[allow(dead_code)] fn reserve_bucket_vector(this: *mut u8, count: u32) -> u64 = "thiscall" 0x0045_D4F0; }
+game_fn! { #[allow(dead_code)] fn insert_bucket_values(this: *mut u8, position: u32, count: u32, value: *const u32) -> u64 = "thiscall" 0x004F_BA20; }
+game_fn! { #[allow(dead_code)] fn lower_bound_bucket_count(first: *const u32, last: *const u32, key: *const u32, hint: u32, comparator: u32) -> u64 = "C" 0x0079_FA90; }
+game_fn! { #[allow(dead_code)] fn construct_bucket_vector(this: *mut u8, count: u32, value: *const u32, allocator: *const u32) -> u64 = "thiscall" 0x0051_C950; }
+game_data! { static bucket_prime_first: u32 = 0x00A8_29B0; }
+game_data! { static bucket_prime_last: u32 = 0x00A8_2A20; }
+
+/// The successor links use +4 for parent, +8 for left, and +12 for right. The header participates
+/// in the parent chain, so the final right-link comparison also handles the largest element.
+unsafe fn unsigned_tree_successor(node: u32) -> u32 {
+    // SAFETY: the caller supplies a live node in the game's unsigned-key tree.
+    unsafe {
+        let mut node = node;
+        let mut next = word(node as *mut u8, 12);
+        if next != 0 {
+            node = next;
+            while word(node as *mut u8, 8) != 0 {
+                node = word(node as *mut u8, 8);
+            }
+        } else {
+            next = word(node as *mut u8, 4);
+            while node == word(next as *mut u8, 12) {
+                node = next;
+                next = word(next as *mut u8, 4);
+            }
+            if word(node as *mut u8, 12) != next {
+                node = next;
+            }
+        }
+        node
+    }
+}
+
+port! {
+    /// Collects an object's unsigned keys into a temporary tree, increments existing source counts,
+    /// destroys the temporary tree, and returns one in AL while keeping the final free's upper bytes.
+    #[port(address = 0x0050_C6A0, owner = "shared", name = "CountObjectSourceKeys")]
+    pub unsafe extern "thiscall" fn fc4p_0050c6a0(this: *mut u8, object: *mut u8) -> u64 {
+        // SAFETY: the original object, key collector, unsigned-key tree, and source-count hash table.
+        unsafe {
+            let header = allocate_array(20);
+            let mut tree = [header as u32, 0u32];
+            header.write(0);
+            store(header, 4, 0);
+            store(header, 8, header as u32);
+            store(header, 12, header as u32);
+            let keys = virtual_call(object, 12, header as u32, word(object, 0), &[]);
+            let keys = keys as u32 as *mut u8;
+            let collected = virtual_call(keys, 0x60, keys as u32, word(keys, 0), &[tree.as_mut_ptr() as u32]);
+            if collected as u8 != 0 {
+                let sentinel = tree[0];
+                let mut node = word(sentinel as *mut u8, 8);
+                while node != sentinel {
+                    let begin = word(this, 0xA68);
+                    let buckets = (word(this, 0xA6C).wrapping_sub(begin) as i32 >> 2) as u32;
+                    let key = word(node as *mut u8, 16);
+                    let bucket = unsigned_remainder(key, buckets);
+                    let mut entry = word(begin.wrapping_add(bucket.wrapping_mul(4)) as *mut u8, 0);
+                    while entry != 0 && word(entry as *mut u8, 4) != key {
+                        entry = word(entry as *mut u8, 0);
+                    }
+                    if entry != 0 { store(entry as *mut u8, 8, word(entry as *mut u8, 8).wrapping_add(1)); }
+                    node = unsigned_tree_successor(node);
+                }
+            }
+            let mut result = collected;
+            if tree[1] != 0 {
+                result = invoke(Conv::Thiscall, crate::abi::target(0x0046_F820), tree.as_mut_ptr().cast(),
+                    result as u32, word(tree[0] as *mut u8, 4), &[word(tree[0] as *mut u8, 4)]);
+                store(tree[0] as *mut u8, 8, tree[0]);
+                store(tree[0] as *mut u8, 4, 0);
+                store(tree[0] as *mut u8, 12, tree[0]);
+                tree[1] = 0;
+            }
+            result = registers(tree[0], (result >> 32) as u32);
+            if tree[0] != 0 {
+                result = invoke(Conv::Cdecl, crate::abi::target(0x0090_CF63), this,
+                    tree[0], (result >> 32) as u32, &[tree[0]]);
+            }
+            (result & !0xFF) | 1
+        }
+    }
+}
+
+port! {
+    /// Copies a four-byte payload hash table, keeping chain order and allocating eight bytes per node.
+    /// Existing bucket storage is reset and reserved through its original vector helpers.
+    #[port(address = 0x0050_DA70, owner = "shared", name = "CopyWordHashTable")]
+    pub unsafe extern "fastcall" fn fc4p_0050da70(this: *mut u8, entry_edx: u32, source: *mut u8) -> u64 {
+        // SAFETY: the original two hash tables, vector helpers, and eight-byte node allocator.
+        unsafe {
+            store(this, 8, word(this, 4));
+            let size = (word(source, 8).wrapping_sub(word(source, 4)) as i32 >> 2) as u32;
+            invoke(Conv::Thiscall, crate::abi::target(0x0045_D4F0), this.add(4),
+                size, entry_edx, &[size]);
+            let count = (word(source, 8).wrapping_sub(word(source, 4)) as i32 >> 2) as u32;
+            let zero = 0u32;
+            let end = word(this, 8);
+            let mut result = invoke(Conv::Thiscall, crate::abi::target(0x004F_BA20), this.add(4),
+                end, count, &[end, count, &zero as *const u32 as u32]);
+            let mut count = (word(source, 8).wrapping_sub(word(source, 4)) as i32 >> 2) as u32;
+            let mut index = 0u32;
+            while index < count {
+                let mut node = word(word(source, 4).wrapping_add(index.wrapping_mul(4)) as *mut u8, 0);
+                let mut previous = 0u32;
+                while node != 0 {
+                    result = invoke(Conv::Cdecl, crate::abi::target(0x0090_CF54), this,
+                        result as u32, (result >> 32) as u32, &[8]);
+                    let allocation = result as u32;
+                    store(allocation as *mut u8, 0, 0);
+                    if allocation.wrapping_add(4) != 0 {
+                        store(allocation as *mut u8, 4, word(node as *mut u8, 4));
+                    }
+                    if previous == 0 {
+                        store(word(this, 4).wrapping_add(index.wrapping_mul(4)) as *mut u8, 0, allocation);
+                    } else { store(previous as *mut u8, 0, allocation); }
+                    previous = allocation;
+                    node = word(node as *mut u8, 0);
+                }
+                count = (word(source, 8).wrapping_sub(word(source, 4)) as i32 >> 2) as u32;
+                index = index.wrapping_add(1);
+            }
+            let elements = word(source, 16);
+            store(this, 16, elements);
+            if count == 0 { registers(elements, (result >> 32) as u32) }
+                else { registers(count, this as u32) }
+        }
+    }
+}
+
+port! {
+    /// Grows a byte-key hash table to the selected prime bucket count. Moves existing nodes by
+    /// prepending them to new chains, empties old buckets, and frees only the old bucket array.
+    #[port(address = 0x0051_CE70, owner = "shared", name = "GrowByteKeyHashTable")]
+    pub unsafe extern "fastcall" fn fc4p_0051ce70(this: *mut u8, entry_edx: u32, requested: u32) -> u64 {
+        // SAFETY: the original table, prime range, vector constructor, and chained byte-key nodes.
+        unsafe {
+            let old_count = (word(this, 8).wrapping_sub(word(this, 4)) as i32 >> 2) as u32;
+            if requested <= old_count { return registers(requested, entry_edx); }
+            let mut requested = requested;
+            let first = bucket_prime_first();
+            let last = bucket_prime_last();
+            let result = invoke(Conv::Cdecl, crate::abi::target(0x0079_FA90), (&mut requested as *mut u32).cast(),
+                requested, entry_edx, &[first as u32, last as u32, &requested as *const u32 as u32, requested, 0]);
+            let selected = result as u32 as *mut u32;
+            requested = if selected == last { 0xFFFF_FFFB } else { selected.read_unaligned() };
+            if requested <= old_count { return registers(requested, (result >> 32) as u32); }
+            let zero = 0u32;
+            let mut temporary = MaybeUninit::<[u32; 3]>::uninit();
+            construct_bucket_vector(temporary.as_mut_ptr().cast(), requested, &zero, &requested);
+            let temporary = temporary.assume_init();
+            let new_begin = temporary[0];
+            for index in 0..old_count {
+                let mut old_bucket = word(this, 4).wrapping_add(index.wrapping_mul(4)) as *mut u8;
+                let mut node = word(old_bucket, 0);
+                while node != 0 {
+                    let key = (node as *const u8).add(4).read();
+                    let bucket = unsigned_remainder(u32::from(key), requested);
+                    store(old_bucket, 0, word(node as *mut u8, 0));
+                    let new_bucket = new_begin.wrapping_add(bucket.wrapping_mul(4)) as *mut u8;
+                    store(node as *mut u8, 0, word(new_bucket, 0));
+                    store(new_bucket, 0, node);
+                    old_bucket = word(this, 4).wrapping_add(index.wrapping_mul(4)) as *mut u8;
+                    node = word(old_bucket, 0);
+                }
+            }
+            let old_begin = word(this, 4);
+            store(this, 4, temporary[0]);
+            store(this, 8, temporary[1]);
+            store(this, 12, temporary[2]);
+            if old_begin == 0 { registers(0, temporary[1]) } else {
+                invoke(Conv::Cdecl, crate::abi::target(0x0090_CF63), temporary[2] as *mut u8,
+                    old_begin, temporary[1], &[old_begin])
+            }
+        }
+    }
+}
+
+game_fn! { #[allow(dead_code)] fn update_automata(this: *mut u8) -> u64 = "thiscall" 0x0050_F2C0; }
+
+port! {
+    /// Updates the manager, then refreshes each automaton's source interface, cached item and
+    /// optional primary interface. Replacements retain the new pointer before storing and releasing.
+    #[port(address = 0x0054_F7B0, owner = "shared", name = "RefreshAutomatonInterfaces", naked)]
+    pub unsafe extern "C" fn fc4p_0054f7b0() {
+        core::arch::naked_asm!("push eax", "call {body}", "ret", body = sym refresh_automaton_interfaces);
+    }
+}
+
+unsafe extern "fastcall" fn refresh_automaton_interfaces(this: *mut u8, entry_edx: u32, entry_eax: u32) -> u64 {
+    // SAFETY: the original manager's list, automata and reference-counted interfaces.
+    unsafe {
+        let mut result = invoke(
+            Conv::Thiscall,
+            crate::abi::target(0x0050_F2C0),
+            this,
+            entry_eax,
+            entry_edx,
+            &[],
+        );
+        let active = this.add(0x10).read();
+        result = (result & !0xFF) | u64::from(active);
+        if active == 0 {
+            return result;
+        }
+        let header = word(this, 0x44);
+        result = registers(header, (result >> 32) as u32);
+        let mut node = word(header as *mut u8, 0);
+        while node != word(this, 0x44) {
+            let automaton = word(node as *mut u8, 8) as *mut u8;
+            let source = word(automaton, 0x1EC) as *mut u8;
+            if !source.is_null() {
+                result = virtual_call(source, 0xC4, word(source, 0), (result >> 32) as u32, &[]);
+                let replacement = result as u32;
+                let previous = word(automaton, 0x1F0);
+                if replacement != previous {
+                    if replacement != 0 {
+                        result = virtual_call(
+                            replacement as *mut u8,
+                            4,
+                            replacement,
+                            word(replacement as *mut u8, 0),
+                            &[],
+                        );
+                    }
+                    store(automaton, 0x1F0, replacement);
+                    if previous != 0 {
+                        result = virtual_call(
+                            previous as *mut u8,
+                            8,
+                            word(previous as *mut u8, 0),
+                            (result >> 32) as u32,
+                            &[],
+                        );
+                    }
+                }
+                let retained = word(automaton, 0x1F0) as *mut u8;
+                if !retained.is_null() {
+                    let key = word(automaton, 0x1F4);
+                    result = virtual_call(retained, 12, key, word(retained, 0), &[key, 0]);
+                    store(automaton, 0x1F8, result as u32);
+                }
+            }
+            result = virtual_call(automaton, 0x258, result as u32, word(automaton, 0), &[]);
+            if result as u8 != 0 {
+                result = virtual_call(automaton, 0x250, word(automaton, 0), (result >> 32) as u32, &[]);
+                let replacement = result as u32;
+                let previous = word(automaton, 0xB0);
+                if replacement != previous {
+                    if replacement != 0 {
+                        result = virtual_call(
+                            replacement as *mut u8,
+                            4,
+                            replacement,
+                            word(replacement as *mut u8, 0),
+                            &[],
+                        );
+                    }
+                    store(automaton, 0xB0, replacement);
+                    if previous != 0 {
+                        result = virtual_call(
+                            previous as *mut u8,
+                            8,
+                            word(previous as *mut u8, 0),
+                            (result >> 32) as u32,
+                            &[],
+                        );
+                    }
+                }
+            }
+            node = word(node as *mut u8, 0);
+        }
+        result
+    }
+}
+
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
+    fc4p_0050b7f0::PORT,
+    fc4p_00513e60::PORT,
+    fc4p_0051fc30::PORT,
+    fc4p_0050c6a0::PORT,
+    fc4p_0050da70::PORT,
+    fc4p_0051ce70::PORT,
+    fc4p_0054f7b0::PORT,
     fc4p_0050b290::PORT,
     fc4p_0050b540::PORT,
     fc4p_0050bcb0::PORT,
@@ -819,6 +1265,971 @@ pub const PORTS: &[Port] = &[
 
 #[cfg(test)]
 mod tests {
+    #[unsafe(naked)]
+    unsafe extern "C" fn update_preserving_registers() {
+        core::arch::naked_asm!("ret");
+    }
+    #[unsafe(naked)]
+    unsafe extern "C" fn absent_interface_preserving_upper_eax() {
+        core::arch::naked_asm!("mov al, 0", "ret");
+    }
+
+    #[test]
+    fn interface_refresh_preserves_partial_eax_results_and_the_last_edx() {
+        let _update = fake(0x0050_F2C0, update_preserving_registers as *const () as usize);
+        let mut manager = Object::new(0x50);
+        let m = manager.ptr();
+        assert_eq!(
+            run(fc4p_0054f7b0 as *const (), m, &[], 0xFEDC_BA98, 0x1234_5678),
+            registers(0xFEDC_BA00, 0x1234_5678)
+        );
+        let mut table = [0usize; 0x25C / 4];
+        table[0x258 / 4] = absent_interface_preserving_upper_eax as *const () as usize;
+        let mut automaton = Object::new(0x210);
+        let a = automaton.ptr();
+        let mut header = [0u32; 3];
+        let mut node = [header.as_mut_ptr() as u32, 0, a as u32];
+        header[0] = node.as_mut_ptr() as u32;
+        unsafe {
+            m.add(0x10).write(1);
+            store(m, 0x44, header.as_mut_ptr() as u32);
+            store(a, 0, table.as_ptr() as u32);
+        }
+        assert_eq!(
+            run(fc4p_0054f7b0 as *const (), m, &[], 0xFEDC_BA98, 0x1234_5678),
+            registers(header.as_ptr() as u32 & !0xFF, table.as_ptr() as u32)
+        );
+    }
+
+    #[test]
+    fn interface_refresh_rereads_list_links_and_the_sentinel_after_callbacks() {
+        let _update = fake(0x0050_F2C0, manager_update as *const () as usize);
+        let mut table = [0usize; 0x25C / 4];
+        table[0x258 / 4] = has_primary_interface as *const () as usize;
+        for change in [0, 1, 2] {
+            let mut manager = Object::new(0x50);
+            let m = manager.ptr();
+            let mut first = Object::new(0x210);
+            let mut second = Object::new(0x210);
+            let a = first.ptr();
+            let b = second.ptr();
+            let mut header = [0u32; 3];
+            let mut last_node = [header.as_mut_ptr() as u32, 0, b as u32];
+            let mut first_node = [last_node.as_mut_ptr() as u32, 0, a as u32];
+            header[0] = first_node.as_mut_ptr() as u32;
+            unsafe {
+                m.add(0x10).write(1);
+                store(m, 0x44, header.as_mut_ptr() as u32);
+                store(a, 0, table.as_ptr() as u32);
+                store(b, 0, table.as_ptr() as u32);
+                store(a, 0x200, 0x1234_5600);
+                store(b, 0x200, 0xABCD_EF00);
+            }
+            if change == 1 {
+                mutation(0x258, first_node.as_mut_ptr().cast(), 0, header.as_mut_ptr() as u32);
+            }
+            if change == 2 {
+                mutation(0x258, m, 0x44, last_node.as_mut_ptr() as u32);
+            }
+            let expected_result = registers(if change == 0 { 0xABCD_EF00 } else { 0x1234_5600 }, 0x8765_4333);
+            assert_eq!(run(fc4p_0054f7b0 as *const (), m, &[], 0, 0), expected_result);
+            let mut expected = vec![Call(0x0050_F2C0, m as usize, vec![]), Call(0x258, a as usize, vec![])];
+            if change == 0 {
+                expected.push(Call(0x258, b as usize, vec![]));
+            }
+            assert_eq!(calls(), expected);
+        }
+    }
+
+    type ReferenceCheck = (u32, *mut u8, usize, u32);
+    thread_local! {
+        static REFERENCE_CHECKS: RefCell<std::collections::VecDeque<ReferenceCheck>> = const { RefCell::new(std::collections::VecDeque::new()) };
+    }
+
+    extern "thiscall" fn manager_update(this: *mut u8) -> u64 {
+        log(0x0050_F2C0, this, &[]);
+        RESULT
+    }
+    extern "thiscall" fn get_source_interface(this: *mut u8) -> u64 {
+        log(0xC4, this, &[]);
+        registers(unsafe { word(this, 4) }, 0x1234_ABCD)
+    }
+    fn check_reference_field(id: u32) {
+        REFERENCE_CHECKS.with(|q| {
+            if let Some((expected_id, owner, offset, expected_value)) = q.borrow_mut().pop_front() {
+                assert_eq!(id, expected_id);
+                assert_eq!(unsafe { word(owner, offset) }, expected_value);
+            }
+        });
+    }
+    extern "thiscall" fn refresh_retain(this: *mut u8) -> u64 {
+        check_reference_field(4);
+        log(4, this, &[]);
+        registers(0xABCD_1234, 0x5432_1000)
+    }
+    extern "thiscall" fn refresh_release(this: *mut u8) -> u64 {
+        check_reference_field(8);
+        log(8, this, &[]);
+        registers(0xBCDE_2345, 0x6543_2111)
+    }
+    extern "thiscall" fn get_cached_item(this: *mut u8, key: u32, unused: u32) -> u64 {
+        log(12, this, &[key, unused]);
+        registers(0xCDEF_3456, 0x7654_3222)
+    }
+    extern "thiscall" fn has_primary_interface(this: *mut u8) -> u64 {
+        log(0x258, this, &[]);
+        registers(unsafe { word(this, 0x200) }, 0x8765_4333)
+    }
+    extern "thiscall" fn get_primary_interface(this: *mut u8) -> u64 {
+        log(0x250, this, &[]);
+        registers(unsafe { word(this, 0x204) }, 0x9876_5444)
+    }
+
+    #[test]
+    fn interface_refresh_runs_update_before_checking_active_and_handles_an_empty_list() {
+        let _update = fake(0x0050_F2C0, manager_update as *const () as usize);
+        let mut header = [0u32; 3];
+        header[0] = header.as_mut_ptr() as u32;
+        let mut manager = Object::new(0x50);
+        let p = manager.ptr();
+        unsafe {
+            store(p, 0x44, header.as_mut_ptr() as u32);
+        }
+        for active in [0u8, 1, 0xFF] {
+            unsafe {
+                p.add(0x10).write(active);
+            }
+            let before = bytes(p, 0x50);
+            let expected = if active == 0 {
+                RESULT & !0xFF
+            } else {
+                registers(header.as_ptr() as u32, (RESULT >> 32) as u32)
+            };
+            assert_eq!(run(fc4p_0054f7b0 as *const (), p, &[], 0x1234, 0x5678), expected);
+            assert_eq!(calls(), [Call(0x0050_F2C0, p as usize, vec![])]);
+            assert_eq!(bytes(p, 0x50), before);
+        }
+        unsafe {
+            p.add(0x10).write(0);
+        }
+        mutation(0x0050_F2C0, p, 0x10, 1);
+        assert_eq!(
+            run(fc4p_0054f7b0 as *const (), p, &[], 0, 0),
+            registers(header.as_ptr() as u32, (RESULT >> 32) as u32)
+        );
+        assert_eq!(calls(), [Call(0x0050_F2C0, p as usize, vec![])]);
+    }
+
+    #[test]
+    fn interface_refresh_handles_null_equal_and_replaced_interfaces_with_retain_store_release_order() {
+        let _update = fake(0x0050_F2C0, manager_update as *const () as usize);
+        let mut source_table = [0usize; 0xC8 / 4];
+        source_table[0xC4 / 4] = get_source_interface as *const () as usize;
+        let reference_table = [
+            0usize,
+            refresh_retain as *const () as usize,
+            refresh_release as *const () as usize,
+            get_cached_item as *const () as usize,
+        ];
+        let mut automaton_table = [0usize; 0x25C / 4];
+        automaton_table[0x258 / 4] = has_primary_interface as *const () as usize;
+        automaton_table[0x250 / 4] = get_primary_interface as *const () as usize;
+        let mut old_source = [reference_table.as_ptr() as u32];
+        let mut new_source = [reference_table.as_ptr() as u32];
+        let mut old_primary = [reference_table.as_ptr() as u32];
+        let mut new_primary = [reference_table.as_ptr() as u32];
+        let old_s = old_source.as_mut_ptr() as u32;
+        let new_s = new_source.as_mut_ptr() as u32;
+        let old_p = old_primary.as_mut_ptr() as u32;
+        let new_p = new_primary.as_mut_ptr() as u32;
+        for source_present in [false, true] {
+            for previous_s in [0, old_s] {
+                for replacement_s in [0, old_s, new_s] {
+                    for previous_p in [0, old_p] {
+                        for replacement_p in [0, old_p, new_p] {
+                            for flag in [0xAAAA_BB00u32, 0xAAAA_BB01] {
+                                let mut source = [source_table.as_ptr() as u32, replacement_s];
+                                let mut automaton = Object::new(0x210);
+                                let a = automaton.ptr();
+                                unsafe {
+                                    store(a, 0, automaton_table.as_ptr() as u32);
+                                    store(a, 0x1EC, if source_present { source.as_mut_ptr() as u32 } else { 0 });
+                                    store(a, 0x1F0, previous_s);
+                                    store(a, 0x1F4, 0xFEDC_BA98);
+                                    store(a, 0x1F8, 0x1357_9BDF);
+                                    store(a, 0xB0, previous_p);
+                                    store(a, 0x200, flag);
+                                    store(a, 0x204, replacement_p);
+                                }
+                                let mut manager = Object::new(0x50);
+                                let m = manager.ptr();
+                                let mut header = [0u32; 3];
+                                let mut node = [header.as_mut_ptr() as u32, 0, a as u32];
+                                header[0] = node.as_mut_ptr() as u32;
+                                unsafe {
+                                    m.add(0x10).write(1);
+                                    store(m, 0x44, header.as_mut_ptr() as u32);
+                                }
+                                let manager_before = bytes(m, 0x50);
+                                let mut expected_bytes = bytes(a, 0x210);
+                                let mut expected_calls = vec![Call(0x0050_F2C0, m as usize, vec![])];
+                                let mut checks = std::collections::VecDeque::new();
+                                let mut result = registers(header.as_ptr() as u32, (RESULT >> 32) as u32);
+                                if source_present {
+                                    expected_calls.push(Call(0xC4, source.as_ptr() as usize, vec![]));
+                                    result = registers(replacement_s, 0x1234_ABCD);
+                                    if replacement_s != previous_s {
+                                        if replacement_s != 0 {
+                                            expected_calls.push(Call(4, replacement_s as usize, vec![]));
+                                            checks.push_back((4, a, 0x1F0, previous_s));
+                                            result = registers(0xABCD_1234, 0x5432_1000);
+                                        }
+                                        expected_bytes[0x1F0..0x1F4].copy_from_slice(&replacement_s.to_le_bytes());
+                                        if previous_s != 0 {
+                                            expected_calls.push(Call(8, previous_s as usize, vec![]));
+                                            checks.push_back((8, a, 0x1F0, replacement_s));
+                                            result = registers(0xBCDE_2345, 0x6543_2111);
+                                        }
+                                    }
+                                    if replacement_s != 0 {
+                                        expected_calls.push(Call(12, replacement_s as usize, vec![0xFEDC_BA98, 0]));
+                                        expected_bytes[0x1F8..0x1FC].copy_from_slice(&0xCDEF_3456u32.to_le_bytes());
+                                    }
+                                }
+                                // The flag getter replaces both caller-saved result registers.
+                                let _ = result;
+                                result = registers(flag, 0x8765_4333);
+                                expected_calls.push(Call(0x258, a as usize, vec![]));
+                                if flag as u8 != 0 {
+                                    expected_calls.push(Call(0x250, a as usize, vec![]));
+                                    result = registers(replacement_p, 0x9876_5444);
+                                    if replacement_p != previous_p {
+                                        if replacement_p != 0 {
+                                            expected_calls.push(Call(4, replacement_p as usize, vec![]));
+                                            checks.push_back((4, a, 0xB0, previous_p));
+                                            result = registers(0xABCD_1234, 0x5432_1000);
+                                        }
+                                        expected_bytes[0xB0..0xB4].copy_from_slice(&replacement_p.to_le_bytes());
+                                        if previous_p != 0 {
+                                            expected_calls.push(Call(8, previous_p as usize, vec![]));
+                                            checks.push_back((8, a, 0xB0, replacement_p));
+                                            result = registers(0xBCDE_2345, 0x6543_2111);
+                                        }
+                                    }
+                                }
+                                REFERENCE_CHECKS.with(|q| *q.borrow_mut() = checks);
+                                assert_eq!(run(fc4p_0054f7b0 as *const (), m, &[], 0, 0), result);
+                                assert_eq!(calls(), expected_calls);
+                                assert!(REFERENCE_CHECKS.with(|q| q.borrow().is_empty()));
+                                assert_eq!(bytes(a, 0x210), expected_bytes);
+                                assert_eq!(bytes(m, 0x50), manager_before);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    thread_local! {
+        static ALLOCATIONS: RefCell<std::collections::VecDeque<(u32, u32)>> = const { RefCell::new(std::collections::VecDeque::new()) };
+        static COLLECTED_NODES: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
+        static COLLECT_SUCCESS: RefCell<bool> = const { RefCell::new(true) };
+        static NEW_BUCKETS: RefCell<[u32; 3]> = const { RefCell::new([0; 3]) };
+    }
+
+    extern "C" fn queued_allocate(size: u32) -> u64 {
+        log(0x0090_CF54, core::ptr::null_mut(), &[size]);
+        let (expected_size, output) = ALLOCATIONS.with(|queue| queue.borrow_mut().pop_front().unwrap());
+        assert_eq!(size, expected_size);
+        registers(output, 0x1357_2468)
+    }
+
+    extern "thiscall" fn get_key_service(this: *mut u8) -> *mut u8 {
+        log(12, this, &[]);
+        // SAFETY: the fixture supplies its service pointer after the vtable.
+        unsafe { word(this, 4) as *mut u8 }
+    }
+
+    extern "thiscall" fn collect_keys(this: *mut u8, tree: *mut u8) -> u64 {
+        // SAFETY: the original temporary starts with a header pointer and a zero count.
+        unsafe {
+            let header = word(tree, 0);
+            assert_eq!(word(tree, 4), 0);
+            assert_eq!((header as *mut u8).read(), 0);
+            assert_eq!(word(header as *mut u8, 4), 0);
+            assert_eq!(word(header as *mut u8, 8), header);
+            assert_eq!(word(header as *mut u8, 12), header);
+            log(0x60, this, &[header]);
+            COLLECTED_NODES.with(|nodes| {
+                let nodes = nodes.borrow();
+                if !nodes.is_empty() {
+                    store(header as *mut u8, 4, nodes[nodes.len() / 2]);
+                    store(header as *mut u8, 8, nodes[0]);
+                    store(header as *mut u8, 12, nodes[nodes.len() - 1]);
+                    store(tree, 4, nodes.len() as u32);
+                }
+            });
+            registers(
+                0xAABB_CC00 | u32::from(COLLECT_SUCCESS.with(|v| *v.borrow())),
+                0x1234_5678,
+            )
+        }
+    }
+
+    extern "thiscall" fn erase_key_tree(this: *mut u8, root: u32) -> u64 {
+        log(0x0046_F820, core::ptr::null_mut(), &[root]);
+        // SAFETY: the tree still owns its populated root while erasure is in progress.
+        assert_eq!(unsafe { word(word(this, 0) as *mut u8, 4) }, root);
+        RESULT
+    }
+
+    #[test]
+    fn source_key_counting_visits_tree_successors_matches_collision_chains_and_wraps_counts() {
+        let _fakes = [
+            fake(0x0090_CF54, queued_allocate as *const () as usize),
+            fake(0x0090_CF63, free_array as *const () as usize),
+            fake(0x0046_F820, erase_key_tree as *const () as usize),
+        ];
+        let object_table = [0usize, 0, 0, get_key_service as *const () as usize];
+        let mut key_table = [0usize; 25];
+        key_table[24] = collect_keys as *const () as usize;
+        let mut service = [key_table.as_ptr() as u32];
+        let mut object = [object_table.as_ptr() as u32, service.as_mut_ptr() as u32];
+        for (nonempty, success) in [(false, true), (false, false), (true, false), (true, true)] {
+            let mut header = [0xA5u8; 20];
+            let h = header.as_mut_ptr() as u32;
+            let mut nodes = [[0u32; 5]; 7];
+            let pointers: Vec<u32> = nodes.iter_mut().map(|n| n.as_mut_ptr() as u32).collect();
+            for (index, key) in [1u32, 3, 6, 8, 9, 12, u32::MAX].into_iter().enumerate() {
+                nodes[index][4] = key;
+            }
+            for (index, parent, left, right) in [
+                (3, h, Some(1), Some(5)),
+                (1, pointers[3], Some(0), Some(2)),
+                (5, pointers[3], Some(4), Some(6)),
+                (0, pointers[1], None, None),
+                (2, pointers[1], None, None),
+                (4, pointers[5], None, None),
+                (6, pointers[5], None, None),
+            ] {
+                nodes[index][1] = parent;
+                nodes[index][2] = left.map_or(0, |i| pointers[i]);
+                nodes[index][3] = right.map_or(0, |i| pointers[i]);
+            }
+            let mut counts = [[0u32, 3, u32::MAX], [0, 8, 0], [0, 12, 19], [0, u32::MAX, 5]];
+            let mut buckets = [0u32; 3];
+            for node in &mut counts {
+                let bucket = node[1] % 3;
+                node[0] = buckets[bucket as usize];
+                buckets[bucket as usize] = node.as_mut_ptr() as u32;
+            }
+            let before_nodes = nodes;
+            let mut expected_counts = counts;
+            if nonempty && success {
+                for n in &mut expected_counts {
+                    n[2] = n[2].wrapping_add(1);
+                }
+            }
+            let mut owner = Object::new(0xA80);
+            let p = owner.ptr();
+            unsafe {
+                store(p, 0xA68, buckets.as_mut_ptr() as u32);
+                store(p, 0xA6C, buckets.as_mut_ptr() as u32 + 12);
+            }
+            let owner_before = bytes(p, 0xA80);
+            COLLECTED_NODES.with(|v| *v.borrow_mut() = if nonempty { pointers.clone() } else { vec![] });
+            COLLECT_SUCCESS.with(|v| *v.borrow_mut() = success);
+            ALLOCATIONS.with(|q| q.borrow_mut().push_back((20, h)));
+            assert_eq!(
+                run(fc4p_0050c6a0 as *const (), p, &[object.as_mut_ptr() as u32], 0, 0),
+                (RESULT & !0xFF) | 1
+            );
+            let mut expected = vec![
+                Call(0x0090_CF54, 0, vec![20]),
+                Call(12, object.as_ptr() as usize, vec![]),
+                Call(0x60, service.as_ptr() as usize, vec![h]),
+            ];
+            if nonempty {
+                expected.push(Call(0x0046_F820, 0, vec![pointers[3]]));
+            }
+            expected.push(Call(0x0090_CF63, h as usize, vec![]));
+            assert_eq!(calls(), expected);
+            assert_eq!(counts, expected_counts);
+            assert_eq!(nodes, before_nodes);
+            assert_eq!(bytes(p, 0xA80), owner_before);
+            let mut expected_header = [0xA5u8; 20];
+            expected_header[0] = 0;
+            expected_header[4..8].copy_from_slice(&0u32.to_le_bytes());
+            expected_header[8..12].copy_from_slice(&h.to_le_bytes());
+            expected_header[12..16].copy_from_slice(&h.to_le_bytes());
+            assert_eq!(header, expected_header);
+        }
+    }
+
+    extern "thiscall" fn bucket_reserve(this: *mut u8, count: u32) -> u64 {
+        // SAFETY: the destination end has already been reset to its begin pointer.
+        assert_eq!(unsafe { word(this, 0) }, unsafe { word(this, 4) });
+        log(0x0045_D4F0, this, &[count]);
+        RESULT
+    }
+    extern "thiscall" fn bucket_insert(this: *mut u8, position: u32, count: u32, value: *const u32) -> u64 {
+        // SAFETY: the port supplies its zero initializer and the fixture supplies enough buckets.
+        unsafe {
+            assert_eq!(value.read(), 0);
+            log(0x004F_BA20, this, &[position, count, 0]);
+            for i in 0..count {
+                store(position.wrapping_add(i * 4) as *mut u8, 0, 0);
+            }
+            store(this, 4, position.wrapping_add(count * 4));
+        }
+        RESULT
+    }
+
+    #[test]
+    fn word_hash_copy_keeps_chain_order_skips_empty_buckets_and_only_sets_live_storage() {
+        let _fakes = [
+            fake(0x0045_D4F0, bucket_reserve as *const () as usize),
+            fake(0x004F_BA20, bucket_insert as *const () as usize),
+            fake(0x0090_CF54, queued_allocate as *const () as usize),
+        ];
+        for count in [0usize, 5] {
+            let mut source_nodes = [[0u32, 0xFFFF_1234], [0, 7], [0, 0x8000_0000]];
+            source_nodes[0][0] = source_nodes[1].as_mut_ptr() as u32;
+            let mut source_buckets = [
+                source_nodes[0].as_mut_ptr() as u32,
+                0,
+                0,
+                source_nodes[2].as_mut_ptr() as u32,
+                0,
+            ];
+            let mut destination_buckets = [0xAAAA_BBBBu32; 6];
+            let mut allocated = [[0xCCCC_DDDDu32; 2]; 3];
+            let mut source = [
+                0x1234u32,
+                source_buckets.as_mut_ptr() as u32,
+                source_buckets.as_mut_ptr() as u32 + count as u32 * 4,
+                0x5678,
+                if count == 0 { 0 } else { 3 },
+            ];
+            let mut destination = [
+                0x9ABCu32,
+                destination_buckets.as_mut_ptr() as u32,
+                0xEEEE_FFFF,
+                destination_buckets.as_mut_ptr() as u32 + 24,
+                99,
+            ];
+            let p = destination.as_mut_ptr().cast();
+            let before_source = source;
+            let before_nodes = source_nodes;
+            let before_buckets = source_buckets;
+            if count != 0 {
+                ALLOCATIONS.with(|q| {
+                    q.borrow_mut()
+                        .extend(allocated.iter_mut().map(|n| (8, n.as_mut_ptr() as u32)))
+                });
+            }
+            run(fc4p_0050da70 as *const (), p, &[source.as_mut_ptr() as u32], 0, 0);
+            let mut expected = vec![
+                Call(0x0045_D4F0, p as usize + 4, vec![count as u32]),
+                Call(
+                    0x004F_BA20,
+                    p as usize + 4,
+                    vec![destination_buckets.as_ptr() as u32, count as u32, 0],
+                ),
+            ];
+            if count != 0 {
+                expected.extend((0..3).map(|_| Call(0x0090_CF54, 0, vec![8])));
+            }
+            assert_eq!(calls(), expected);
+            assert_eq!(source, before_source);
+            assert_eq!(source_nodes, before_nodes);
+            assert_eq!(source_buckets, before_buckets);
+            assert_eq!(
+                destination,
+                [
+                    0x9ABC,
+                    destination_buckets.as_ptr() as u32,
+                    destination_buckets.as_ptr() as u32 + count as u32 * 4,
+                    destination_buckets.as_ptr() as u32 + 24,
+                    source[4]
+                ]
+            );
+            if count == 0 {
+                assert_eq!(destination_buckets, [0xAAAA_BBBB; 6]);
+            } else {
+                assert_eq!(
+                    destination_buckets,
+                    [
+                        allocated[0].as_ptr() as u32,
+                        0,
+                        0,
+                        allocated[2].as_ptr() as u32,
+                        0,
+                        0xAAAA_BBBB
+                    ]
+                );
+                assert_eq!(allocated[0], [allocated[1].as_ptr() as u32, 0xFFFF_1234]);
+                assert_eq!(allocated[1], [0, 7]);
+                assert_eq!(allocated[2], [0, 0x8000_0000]);
+            }
+        }
+    }
+
+    extern "C" fn choose_bucket_count(first: u32, last: u32, key: *const u32, hint: u32, comparator: u32) -> u64 {
+        // SAFETY: key is the port's requested-count local.
+        log(
+            0x0079_FA90,
+            core::ptr::null_mut(),
+            &[first, last, unsafe { key.read() }, hint, comparator],
+        );
+        registers(FOUND.with(|p| *p.borrow()), 0x1122_3344)
+    }
+    extern "thiscall" fn bucket_vector_new(this: *mut u8, count: u32, zero: *const u32, allocator: *const u32) {
+        // SAFETY: the port supplies the zero value and selected count; all fixture bucket cells exist.
+        unsafe {
+            assert_eq!(zero.read(), 0);
+            assert_eq!(allocator.read(), count);
+            log(0x0051_C950, core::ptr::null_mut(), &[count]);
+            NEW_BUCKETS.with(|v| {
+                let v = *v.borrow();
+                for (i, value) in v.into_iter().enumerate() {
+                    store(this, i * 4, value);
+                }
+                // The maximum-count boundary deliberately supplies no storage and no old nodes.
+                if v[0] != 0 {
+                    for i in 0..count {
+                        store(v[0].wrapping_add(i * 4) as *mut u8, 0, 0);
+                    }
+                }
+            });
+        }
+    }
+
+    #[test]
+    fn byte_hash_growth_reverses_colliding_chains_uses_only_the_key_byte_and_preserves_payloads() {
+        let _fakes = [
+            fake(0x0079_FA90, choose_bucket_count as *const () as usize),
+            fake(0x0051_C950, bucket_vector_new as *const () as usize),
+            fake(0x0090_CF63, free_array as *const () as usize),
+        ];
+        let mut primes = [5u32];
+        let mut last = 0u32;
+        let _data = [
+            crate::testing::fake_data(0x00A8_29B0, primes.as_mut_ptr().cast()),
+            crate::testing::fake_data(0x00A8_2A20, (&mut last as *mut u32).cast()),
+        ];
+        let mut nodes = [[0u32, 5, 91], [0, 10, 92], [0, 255, 93], [0, 0x1234_0105, 94]];
+        nodes[0][0] = nodes[1].as_mut_ptr() as u32;
+        nodes[2][0] = nodes[3].as_mut_ptr() as u32;
+        let mut old = [nodes[0].as_mut_ptr() as u32, nodes[2].as_mut_ptr() as u32];
+        let mut new = [0xAAAA_BBBBu32; 6];
+        let mut table = [
+            0x1234u32,
+            old.as_mut_ptr() as u32,
+            old.as_mut_ptr() as u32 + 8,
+            0x5678,
+            4,
+        ];
+        let before = nodes;
+        FOUND.with(|p| *p.borrow_mut() = primes.as_mut_ptr() as u32);
+        NEW_BUCKETS.with(|p| {
+            *p.borrow_mut() = [
+                new.as_mut_ptr() as u32,
+                new.as_mut_ptr() as u32 + 20,
+                new.as_mut_ptr() as u32 + 24,
+            ]
+        });
+        assert_eq!(
+            run(fc4p_0051ce70 as *const (), table.as_mut_ptr().cast(), &[3], 0, 0),
+            RESULT
+        );
+        assert_eq!(
+            calls(),
+            [
+                Call(
+                    0x0079_FA90,
+                    0,
+                    vec![primes.as_ptr() as u32, &last as *const u32 as u32, 3, 3, 0]
+                ),
+                Call(0x0051_C950, 0, vec![5]),
+                Call(0x0090_CF63, old.as_ptr() as usize, vec![])
+            ]
+        );
+        assert_eq!(old, [0, 0]);
+        assert_eq!(new, [nodes[3].as_ptr() as u32, 0, 0, 0, 0, 0xAAAA_BBBB]);
+        assert_eq!(nodes[3][0], nodes[2].as_ptr() as u32);
+        assert_eq!(nodes[2][0], nodes[1].as_ptr() as u32);
+        assert_eq!(nodes[1][0], nodes[0].as_ptr() as u32);
+        assert_eq!(nodes[0][0], 0);
+        for i in 0..4 {
+            assert_eq!(nodes[i][1..], before[i][1..]);
+        }
+        assert_eq!(
+            table,
+            [
+                0x1234,
+                new.as_ptr() as u32,
+                new.as_ptr() as u32 + 20,
+                new.as_ptr() as u32 + 24,
+                4
+            ]
+        );
+    }
+
+    #[test]
+    fn byte_hash_growth_handles_no_growth_selected_smaller_prime_empty_storage_and_prime_range_end() {
+        let _fakes = [
+            fake(0x0079_FA90, choose_bucket_count as *const () as usize),
+            fake(0x0051_C950, bucket_vector_new as *const () as usize),
+        ];
+        let mut prime = 1u32;
+        let mut last = 0u32;
+        let _data = [
+            crate::testing::fake_data(0x00A8_29B0, (&mut prime as *mut u32).cast()),
+            crate::testing::fake_data(0x00A8_2A20, (&mut last as *mut u32).cast()),
+        ];
+        let mut buckets = [0u32; 2];
+        let mut table = [
+            0x1234u32,
+            buckets.as_mut_ptr() as u32,
+            buckets.as_mut_ptr() as u32 + 8,
+            0x5678,
+            0,
+        ];
+        let before = table;
+        for requested in [0, 2] {
+            assert_eq!(
+                run(
+                    fc4p_0051ce70 as *const (),
+                    table.as_mut_ptr().cast(),
+                    &[requested],
+                    0,
+                    77
+                ),
+                registers(requested, 77)
+            );
+            assert!(calls().is_empty());
+            assert_eq!(table, before);
+        }
+        FOUND.with(|p| *p.borrow_mut() = &prime as *const u32 as u32);
+        run(fc4p_0051ce70 as *const (), table.as_mut_ptr().cast(), &[3], 0, 77);
+        assert_eq!(calls().len(), 1);
+        assert_eq!(table, before);
+        table = [0x1234, 0, 0, 0, 0];
+        FOUND.with(|p| *p.borrow_mut() = &last as *const u32 as u32);
+        NEW_BUCKETS.with(|p| *p.borrow_mut() = [0, 0xFFFF_FFEC, 0xFFFF_FFEC]);
+        run(
+            fc4p_0051ce70 as *const (),
+            table.as_mut_ptr().cast(),
+            &[u32::MAX],
+            0,
+            77,
+        );
+        assert_eq!(
+            calls(),
+            [
+                Call(
+                    0x0079_FA90,
+                    0,
+                    vec![
+                        &prime as *const u32 as u32,
+                        &last as *const u32 as u32,
+                        u32::MAX,
+                        u32::MAX,
+                        0
+                    ]
+                ),
+                Call(0x0051_C950, 0, vec![0xFFFF_FFFB])
+            ]
+        );
+        assert_eq!(table, [0x1234, 0, 0xFFFF_FFEC, 0xFFFF_FFEC, 0]);
+    }
+
+    thread_local! {
+        static ACTION_OUTPUT: RefCell<Option<u32>> = const { RefCell::new(None) };
+        static EIGHT_BYTE_TEMPORARY: RefCell<Option<[u32; 2]>> = const { RefCell::new(None) };
+    }
+
+    extern "C" fn action_allocate(size: u32) -> u64 {
+        log(0x005E_55E0, core::ptr::null_mut(), &[size]);
+        registers(FOUND.with(|p| *p.borrow()), 0x1234_ABCD)
+    }
+
+    macro_rules! action_constructor_fake {
+        ($name:ident, $address:literal) => {
+            extern "thiscall" fn $name(this: *mut u8) -> u64 {
+                log($address, this, &[]);
+                registers(
+                    ACTION_OUTPUT.with(|p| p.borrow().unwrap_or(this as u32)),
+                    0x8765_4321,
+                )
+            }
+        };
+    }
+    action_constructor_fake!(action_eight, 0x0050_5290);
+    action_constructor_fake!(action_eleven, 0x0050_5BF0);
+    action_constructor_fake!(action_fourteen, 0x0050_5C70);
+    action_constructor_fake!(action_fifteen, 0x0050_5C40);
+    action_constructor_fake!(action_sixteen, 0x0050_6370);
+    action_constructor_fake!(action_seventeen, 0x0050_5CA0);
+    action_constructor_fake!(action_nineteen, 0x0050_9A20);
+    action_constructor_fake!(action_twenty, 0x0050_52D0);
+    action_constructor_fake!(action_twenty_one, 0x0050_6330);
+    action_constructor_fake!(action_fifty_two, 0x0050_6420);
+
+    #[test]
+    fn action_factory_selects_every_constructor_tags_its_result_and_handles_allocation_failure() {
+        let _allocator = fake(0x005E_55E0, action_allocate as *const () as usize);
+        let cases = [
+            (8, 0x34, 0x0050_5290, action_eight as *const ()),
+            (11, 0x40, 0x0050_5BF0, action_eleven as *const ()),
+            (14, 0x40, 0x0050_5C70, action_fourteen as *const ()),
+            (15, 0x30, 0x0050_5C40, action_fifteen as *const ()),
+            (16, 0x274, 0x0050_6370, action_sixteen as *const ()),
+            (17, 0x58, 0x0050_5CA0, action_seventeen as *const ()),
+            (19, 0x34, 0x0050_9A20, action_nineteen as *const ()),
+            (20, 0x2C, 0x0050_52D0, action_twenty as *const ()),
+            (21, 0x44, 0x0050_6330, action_twenty_one as *const ()),
+            (52, 0x2C, 0x0050_6420, action_fifty_two as *const ()),
+        ];
+        for (kind, size, constructor, function) in cases {
+            let _constructor = fake(constructor, function as usize);
+            let mut allocation = [0xA5u8; 0x280];
+            let mut output = [0xCDu8; 0x280];
+            let p = allocation.as_mut_ptr();
+            for destination in [p as u32, output.as_mut_ptr() as u32, 0] {
+                FOUND.with(|v| *v.borrow_mut() = p as u32);
+                ACTION_OUTPUT.with(|v| *v.borrow_mut() = Some(destination));
+                let before = allocation;
+                let output_before = output;
+                assert_eq!(
+                    run(fc4p_0050b7f0 as *const (), core::ptr::null_mut(), &[kind], 0, 9),
+                    registers(destination, 0x8765_4321)
+                );
+                assert_eq!(
+                    calls(),
+                    [Call(0x005E_55E0, 0, vec![size]), Call(constructor, p as usize, vec![])]
+                );
+                let mut expected = before;
+                let mut expected_output = output_before;
+                if destination == p as u32 {
+                    expected[4..8].copy_from_slice(&kind.to_le_bytes());
+                }
+                if destination == output.as_mut_ptr() as u32 {
+                    expected_output[4..8].copy_from_slice(&kind.to_le_bytes());
+                }
+                assert_eq!(allocation, expected);
+                assert_eq!(output, expected_output);
+            }
+            FOUND.with(|v| *v.borrow_mut() = 0);
+            let before = allocation;
+            assert_eq!(
+                run(fc4p_0050b7f0 as *const (), core::ptr::null_mut(), &[kind], 0, 9),
+                registers(0, 0x1234_ABCD)
+            );
+            assert_eq!(calls(), [Call(0x005E_55E0, 0, vec![size])]);
+            assert_eq!(allocation, before);
+        }
+    }
+
+    #[test]
+    fn base_action_factory_initializes_only_its_fields_and_keeps_padding_and_allocator_edx() {
+        let _allocator = fake(0x005E_55E0, action_allocate as *const () as usize);
+        for kind in [0u32, 7, 9, 10, 12, 13, 18, 22, 51, 53, u32::MAX] {
+            let mut allocation = [0xA5u8; 0x30];
+            let p = allocation.as_mut_ptr();
+            FOUND.with(|v| *v.borrow_mut() = p as u32);
+            assert_eq!(
+                run(fc4p_0050b7f0 as *const (), core::ptr::null_mut(), &[kind], 0, 9),
+                registers(p as u32, 0x1234_ABCD)
+            );
+            let mut expected = [0xA5u8; 0x30];
+            expected[..0x28].fill(0);
+            expected[..4].copy_from_slice(&0x00A9_5384u32.to_le_bytes());
+            expected[4..8].copy_from_slice(&kind.to_le_bytes());
+            expected[0x15..0x18].fill(0xA5);
+            assert_eq!(allocation, expected);
+            assert_eq!(calls(), [Call(0x005E_55E0, 0, vec![0x28])]);
+        }
+    }
+
+    extern "thiscall" fn automaton_tree_destroy(this: *mut u8) -> u64 {
+        log(0x0051_3E00, this, &[]);
+        RESULT
+    }
+    extern "thiscall" fn lot_list_clear(this: *mut u8) -> u64 {
+        log(0x0047_3EC0, this, &[]);
+        RESULT
+    }
+    extern "thiscall" fn model_processor_destroy(this: *mut u8) -> u64 {
+        log(0x0080_30A0, this, &[]);
+        RESULT
+    }
+    extern "thiscall" fn triple_vector_destroy(this: *mut u8) -> u64 {
+        log(0x005E_8C40, this, &[]);
+        RESULT
+    }
+
+    #[test]
+    fn automaton_destruction_restores_tables_releases_adjusted_interfaces_and_preserves_fields() {
+        let _fakes = [
+            fake(0x0051_3E00, automaton_tree_destroy as *const () as usize),
+            fake(0x0047_3EC0, lot_list_clear as *const () as usize),
+            fake(0x0080_30A0, model_processor_destroy as *const () as usize),
+            fake(0x005E_8C40, triple_vector_destroy as *const () as usize),
+            fake(0x0090_CF63, free_array as *const () as usize),
+        ];
+        let tables = [
+            (0, 0x00A9_5AC0u32),
+            (4, 0x00A9_5A38),
+            (8, 0x00A9_5A1C),
+            (12, 0x00A9_59B8),
+            (0x20, 0x00A9_59A0),
+            (0x38, 0x00A9_5990),
+        ];
+        let release_table = [0usize, 0, release as *const () as usize];
+        let adjustment_table = [0u32, 8];
+        let mut adjusted = [0u32, adjustment_table.as_ptr() as u32, 0, release_table.as_ptr() as u32];
+        let mut retained = [release_table.as_ptr() as u32];
+        for populated in [false, true] {
+            let mut owner = Object::new(0x1D0);
+            let p = owner.ptr();
+            let mut expected_calls = vec![];
+            if populated {
+                for offset in [0x1C8, 0x188, 0x110, 0xC0, 0xB4] {
+                    unsafe { store(p, offset, 0x8000_0000 + offset as u32) };
+                }
+                unsafe {
+                    store(p, 0xCC, adjusted.as_mut_ptr() as u32);
+                    store(p, 0xB0, retained.as_mut_ptr() as u32);
+                    store(p, 0x98, retained.as_mut_ptr() as u32);
+                }
+                expected_calls.push(Call(0x0090_CF63, 0x8000_01C8, vec![]));
+            }
+            let mut expected_bytes = bytes(p, 0x1D0);
+            for (offset, value) in tables {
+                expected_bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+            }
+            expected_calls.extend([
+                Call(0x0051_3E00, p as usize + 0x18C, vec![]),
+                Call(0x0047_3EC0, p as usize + 0x188, vec![]),
+            ]);
+            if populated {
+                expected_calls.push(Call(0x0090_CF63, 0x8000_0188, vec![]));
+            }
+            expected_calls.push(Call(0x0080_30A0, p as usize + 0x12C, vec![]));
+            if populated {
+                expected_calls.push(Call(0x0090_CF63, 0x8000_0110, vec![]));
+            }
+            expected_calls.push(Call(0x0080_30A0, p as usize + 0xD0, vec![]));
+            if populated {
+                expected_calls.extend([
+                    Call(8, adjusted.as_ptr() as usize + 12, vec![]),
+                    Call(0x0090_CF63, 0x8000_00C0, vec![]),
+                    Call(0x0090_CF63, 0x8000_00B4, vec![]),
+                    Call(8, retained.as_ptr() as usize, vec![]),
+                    Call(8, retained.as_ptr() as usize, vec![]),
+                ]);
+            }
+            expected_calls.push(Call(0x005E_8C40, p as usize + 4, vec![]));
+            assert_eq!(run(fc4p_00513e60 as *const (), p, &[], 0, 77), RESULT);
+            assert_eq!(calls(), expected_calls);
+            assert_eq!(bytes(p, 0x1D0), expected_bytes);
+        }
+    }
+
+    #[test]
+    fn automaton_destruction_rereads_the_list_sentinel_after_clearing_it() {
+        let _fakes = [
+            fake(0x0051_3E00, automaton_tree_destroy as *const () as usize),
+            fake(0x0047_3EC0, lot_list_clear as *const () as usize),
+            fake(0x0080_30A0, model_processor_destroy as *const () as usize),
+            fake(0x005E_8C40, triple_vector_destroy as *const () as usize),
+            fake(0x0090_CF63, free_array as *const () as usize),
+        ];
+        let mut owner = Object::new(0x1D0);
+        let p = owner.ptr();
+        unsafe { store(p, 0x188, 0x1234) };
+        mutation(0x0047_3EC0, p, 0x188, 0x5678);
+        run(fc4p_00513e60 as *const (), p, &[], 0, 0);
+        let observed = calls();
+        assert_eq!(observed[2], Call(0x0090_CF63, 0x5678, vec![]));
+        assert_eq!(unsafe { word(p, 0x188) }, 0x5678);
+    }
+
+    extern "thiscall" fn erase_eights(this: *mut u8, first: u32, last: u32) -> u64 {
+        log(0x0071_0B40, this, &[first, last]);
+        RESULT
+    }
+    extern "thiscall" fn insert_eights(this: *mut u8, position: u32, count: u32, value: *mut u8) -> u64 {
+        assert!(!value.is_null());
+        EIGHT_BYTE_TEMPORARY.with(|expected| {
+            if let Some(expected) = *expected.borrow() {
+                // SAFETY: this case supplies initialized words at the caller's temporary address.
+                assert_eq!(unsafe { [word(value, 0), word(value, 4)] }, expected);
+            }
+        });
+        log(0x0063_8E80, this, &[position, count]);
+        RESULT
+    }
+
+    #[unsafe(naked)]
+    unsafe extern "C" fn resize_with_stack_bytes() {
+        core::arch::naked_asm!("mov dword ptr [esp - 8], 0x12345678",
+            "mov dword ptr [esp - 4], 0x87654321", "jmp {entry}", entry = sym fc4p_0051fc30);
+    }
+
+    #[test]
+    fn eight_byte_resize_passes_the_bytes_at_the_original_stack_temporary() {
+        let _insert = fake(0x0063_8E80, insert_eights as *const () as usize);
+        let mut vector = [0x1000u32, 0x1008, 0x2000];
+        EIGHT_BYTE_TEMPORARY.with(|v| *v.borrow_mut() = Some([0x1234_5678, 0x8765_4321]));
+        assert_eq!(
+            run(
+                resize_with_stack_bytes as *const (),
+                vector.as_mut_ptr().cast(),
+                &[3],
+                0,
+                0
+            ),
+            RESULT
+        );
+        EIGHT_BYTE_TEMPORARY.with(|v| *v.borrow_mut() = None);
+        assert_eq!(calls(), [Call(0x0063_8E80, vector.as_ptr() as usize, vec![0x1008, 2])]);
+    }
+
+    #[test]
+    fn eight_byte_resize_dispatches_unsigned_counts_including_equal_empty_and_wrapping_ranges() {
+        let _fakes = [
+            fake(0x0071_0B40, erase_eights as *const () as usize),
+            fake(0x0063_8E80, insert_eights as *const () as usize),
+        ];
+        for (begin, end, requested, erase, count) in [
+            (0x1000u32, 0x1018u32, 1, true, 1),
+            (0x1000, 0x1018, 0, true, 0),
+            (0x1000, 0x1018, 3, false, 0),
+            (0x1000, 0x1018, 5, false, 2),
+            (0, 0, 0, false, 0),
+            (0, 0, u32::MAX, false, u32::MAX),
+            (0xFFFF_FFF8, 0x10, 1, true, 1),
+            (0x1000, 0x0FF8, 0, true, 0),
+            (0x1000, 0x0FF8, u32::MAX, false, 0),
+        ] {
+            let mut vector = [begin, end, 0xDEAD_BEEF];
+            let p = vector.as_mut_ptr().cast();
+            let before = vector;
+            assert_eq!(run(fc4p_0051fc30 as *const (), p, &[requested], 1, 2), RESULT);
+            let expected = if erase {
+                Call(0x0071_0B40, p as usize, vec![begin.wrapping_add(count * 8), end])
+            } else {
+                Call(0x0063_8E80, p as usize, vec![end, count])
+            };
+            assert_eq!(calls(), [expected]);
+            assert_eq!(vector, before);
+        }
+    }
+
     #[test]
     fn bucket_remainders_use_unsigned_operands_with_a_zero_high_half() {
         for (value, divisor, expected) in [
