@@ -322,8 +322,10 @@ constexpr uint32_t kReturnKeys[] = {
     0x009339AF,
 };
 uintptr_t g_nativeReturns[std::size(kScheduleSites)] = {};
+bool g_anyNativeReturn = false;  // no fc4r_ export resolved: every return address is the exe's own
 
 uintptr_t OriginalReturn(uintptr_t site) {
+    if (!g_anyNativeReturn) return site;
     for (size_t i = 0; i < std::size(kScheduleSites); ++i) {
         if (g_nativeReturns[i] != 0 && site == g_nativeReturns[i]) return kScheduleSites[i].site;
     }
@@ -2452,6 +2454,7 @@ void ScheduleNativeModule(void* module) {
         char name[16];
         std::snprintf(name, sizeof(name), "fc4r_%08x", kScheduleSites[i].site);
         g_nativeReturns[i] = reinterpret_cast<uintptr_t>(GetProcAddress(static_cast<HMODULE>(module), name));
+        g_anyNativeReturn = g_anyNativeReturn || g_nativeReturns[i] != 0;
     }
 }
 
