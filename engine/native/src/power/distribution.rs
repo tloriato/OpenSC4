@@ -32,7 +32,7 @@ game_fn! { fn rect_any(bits: *mut u32, width: u32, rect: *mut Rect) -> u32 = "C"
 game_fn! { fn rect_or(out: *mut u32, source: *mut u32, width: u32, rect: *mut Rect) = "C" 0x0060_4440; }
 game_fn! { fn produced(this: *mut u8, occupant: *mut u8) -> u32 = "thiscall" 0x006E_B1C0; }
 game_fn! { fn find_connection(this: *mut u8, city: u32, visit: u32, power: u32) -> u32 = "thiscall" 0x006E_DB40; }
-game_fn! { fn mark_plants(this: *mut u8, used: u32, local_used: u32) = "thiscall" 0x006E_BC10; }
+game_fn! { fn mark_plants(this: *mut u8, used: u32, divisor: u32) = "thiscall" 0x006E_BC10; }
 game_fn! { fn iterator_reset(this: *mut u8, mode: u32) = "thiscall" 0x0049_D1C0; }
 game_fn! { fn iterator_next(this: *mut u8, x: *mut u32, z: *mut u32) -> u32 = "thiscall" 0x0049_CB10; }
 game_fn! { fn clear_deals(this: *mut u32) = "thiscall" 0x0042_1660; }
@@ -62,6 +62,7 @@ unsafe fn unsigned_float(value: u32) -> F80 {
 port! {
     /// Grow a selected network, visit plants, reserve exports, then power complete blocks in iterator order.
     /// Shortfall consumes the remaining availability. Totals and signed consumption cells wrap as words.
+    /// Plant usage divides by the signed greater of network production and consumption after imports.
     #[port(address = 0x006E_E110, owner = "power", name = "cSC4PowerSimulator::UpdatePowerGrid", naked)]
     pub unsafe extern "C" fn fc4p_006ee110() {
         core::arch::naked_asm!(
@@ -277,7 +278,7 @@ unsafe extern "fastcall" fn distribute(this: *mut u8, frame: *mut u8) -> u64 {
             }
             node = pointer(node, 0);
         }
-        mark_plants(this, used, (production as i32).min(used as i32) as u32);
+        mark_plants(this, used, (production as i32).max(used as i32) as u32);
         let storage = get(frame, 0x70) as *mut u8;
         if !storage.is_null() {
             free(storage);
