@@ -12,6 +12,8 @@ game_data! { static slope_scale: f32 = 0x00AB_1B04; }
 game_data! { static coverage_inset: f32 = 0x00A8_80D8; }
 game_data! { static level_sentinel: f32 = 0x00AB_1B00; }
 game_data! { static level_slope_limit: f32 = 0x00A8_FAF0; }
+game_data! { static foundation_terrain: *mut u8 = 0x00B4_3CF4; }
+game_data! { static foundation_half: f32 = 0x00A8_4D2C; }
 
 /// The entry adapter retains the integer results as well as the unrounded floating result.
 #[repr(C)]
@@ -85,6 +87,68 @@ unsafe fn finish(output: *mut FloatReturn, call: RawCall, st0: F80) {
             edx: call.edx,
             st0,
         });
+    }
+}
+
+float_port!(
+    0x006C_5360,
+    fc4p_006c5360,
+    "cSC4LotDeveloper::PickLotFoundationAltitude",
+    pick_foundation_altitude,
+    16
+);
+
+unsafe extern "fastcall" fn pick_foundation_altitude(this: *mut u8, stack: *mut u32, output: *mut FloatReturn) {
+    unsafe {
+        let lot = stack.add(1).read() as *mut u8;
+        let mut call = virtual_call(lot, 0x24, &[], table(lot), (*output).edx, false);
+        let config = call.eax as *mut u8;
+        if !config.is_null() {
+            call = virtual_call(config, 0x38, &[], call.eax, table(config), false);
+            if call.eax as u8 != 0 {
+                let terrain = foundation_terrain().read();
+                let mut rect = [0i32; 4];
+                call = virtual_call(lot, 0x38, &[rect.as_mut_ptr() as u32], table(lot), call.edx, false);
+                let mut x = rect[0];
+                let mut z = rect[1];
+                let mut end_z = rect[3];
+                while x <= rect[2] {
+                    while z <= end_z {
+                        call = virtual_call(terrain, 0x88, &[x as u32, z as u32], call.eax, table(terrain), false);
+                        if call.eax as u8 != 0 {
+                            let city = LotDeveloper::from_ptr(this).city();
+                            virtual_call(city, 0x184,
+                                &[x as u32, z as u32, stack.add(4) as u32, stack.add(1) as u32],
+                                stack.add(4) as u32, table(city), false);
+                            let world_x = stack.add(4).read();
+                            let world_z = stack.add(1).read();
+                            call = virtual_call(terrain, 0x78, &[world_x, world_z], world_z, table(terrain), true);
+                            let altitude = add_float(call.st0, *foundation_half());
+                            finish(output, call, altitude);
+                            return;
+                        }
+                        end_z = rect[3];
+                        call.eax = end_z as u32;
+                        z = z.wrapping_add(1);
+                    }
+                    z = rect[1];
+                    x = x.wrapping_add(1);
+                }
+            }
+        }
+        call = virtual_call(lot, 0x5C, &[], call.eax, table(lot), false);
+        let corners = stack.add(4).read() as *const f32;
+        let facing = call.eax as i32;
+        let a = F80::from_f32(corners.wrapping_offset(facing as isize).read_unaligned());
+        let adjacent = facing.wrapping_add(1) % 4;
+        let b = F80::from_f32(corners.wrapping_offset(adjacent as isize).read_unaligned());
+        let compared = a.compare(b);
+        // Both loaded corners are still live at the status-word read.
+        let status = with_live_value(with_live_value(compared.status_word()));
+        call.eax = (adjacent as u32 & 0xFFFF_0000) | u32::from(status);
+        let (hi, lo) = if compared.less() { (b, a) } else { (a, b) };
+        let altitude = lo + multiply_float(hi - lo, *foundation_half());
+        finish(output, call, altitude);
     }
 }
 
@@ -488,6 +552,7 @@ pub const PORTS: &[Port] = &[
     fc4p_006c44f0::PORT,
     fc4p_006c4590::PORT,
     fc4p_006c5620::PORT,
+    fc4p_006c5360::PORT,
     fc4p_006c5b70::PORT,
     fc4p_006c5f20::PORT,
     fc4p_006c5f50::PORT,

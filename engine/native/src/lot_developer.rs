@@ -78,6 +78,7 @@ pub mod io;
 pub mod lots;
 pub mod maintenance;
 pub mod operations;
+pub mod objects;
 pub mod props;
 pub mod queue;
 pub mod small;
@@ -94,7 +95,9 @@ const ALL: [Port;
         + props::PORTS.len()
         + queue::PORTS.len()
         + checks::PORTS.len()
-        + containers::PORTS.len()] = crate::port::concat(&[
+        + containers::PORTS.len()
+        + objects::PORTS.len()] = crate::port::concat(&[
+    objects::PORTS,
     containers::PORTS,
     small::PORTS,
     lots::PORTS,

@@ -201,6 +201,7 @@ macro_rules! mock {
 
 mod operations;
 mod anchor;
+mod objects;
 
 #[test]
 fn record_initializers_retain_every_padding_byte() {
@@ -883,6 +884,8 @@ float_slot!(lowest_area_float, lowest_area_body, 3, rect, lowest, water);
 float_slot!(lot_altitude_float, lot_altitude_body, 0);
 
 mod foundation_bottom;
+mod pick_foundation;
+mod add_foundation;
 slot!(bounding_rect, rect);
 slot!(coverage, occupant, rect);
 
