@@ -4,7 +4,7 @@
 //! Region bit masks, directional car subnetworks and hash-order query output.
 
 use super::late_containers::call;
-use super::monthly_queries::frame_entry;
+use super::monthly_queries::{frame_entry, unsigned_division};
 use super::*;
 use crate::abi::Conv;
 
@@ -186,7 +186,7 @@ unsafe extern "fastcall" fn query(this: *mut u8, out: *mut Registers, args: *mut
             if r.eax == 0 {
                 r.ecx = (set[2].wrapping_sub(set[1]) as i32 >> 2) as u32;
                 let key = word(node, 4);
-                r.edx = key % r.ecx;
+                r.edx = unsigned_division(key, r.ecx).1;
                 r.eax = 0;
                 loop {
                     r.edx = r.edx.wrapping_add(1);

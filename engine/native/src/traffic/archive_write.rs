@@ -3,7 +3,7 @@
 
 //! Version 41 traffic archive, including working containers and both statistics snapshots.
 
-use super::monthly_queries::frame_entry;
+use super::monthly_queries::{frame_entry, unsigned_division};
 use super::*;
 
 layout! {
@@ -96,7 +96,7 @@ unsafe fn next_bucket(this: *mut u8, begin: usize, end: usize, node: *mut u8, sh
         } else {
             word(node, 4)
         };
-        let mut i = key % count;
+        let mut i = unsigned_division(key, count).1;
         loop {
             i = i.wrapping_add(1);
             if i >= count {

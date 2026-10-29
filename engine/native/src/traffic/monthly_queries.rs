@@ -42,6 +42,17 @@ game_data! { static hundred: f32 = 0x00A8_0AA0; }
 game_data! { static commute_scale: f32 = 0x00AB_32C0; }
 game_data! { static percent_scale: f32 = 0x00A8_23A4; }
 
+/// Unsigned DIV, including the processor exception when the bucket count is zero.
+pub(super) fn unsigned_division(value: u32, divisor: u32) -> (u32, u32) {
+    let mut quotient = value;
+    let remainder: u32;
+    unsafe {
+        core::arch::asm!("xor edx, edx", "div {divisor:e}", divisor = in(reg) divisor,
+            inout("eax") quotient, out("edx") remainder, options(nomem, nostack));
+    }
+    (quotient, remainder)
+}
+
 register_entry!(
     0x0071_8800,
     fc4p_00718800,
@@ -56,7 +67,7 @@ unsafe extern "fastcall" fn insert_route(this: *mut u8, out: *mut Registers, res
         let buckets = hash.buckets();
         let size = (hash.end() as u32).wrapping_sub(buckets as u32) as i32 >> 2;
         let key = word(source, 0);
-        let bucket = key % size as u32;
+        let (quotient, bucket) = unsigned_division(key, size as u32);
         let head = buckets.wrapping_add(bucket as usize).read_unaligned() as *mut u8;
         let mut node = head;
         let mut r = out.read();
@@ -66,7 +77,7 @@ unsafe extern "fastcall" fn insert_route(this: *mut u8, out: *mut Registers, res
         }
         let inserted = node.is_null();
         if inserted {
-            r.eax = key / size as u32;
+            r.eax = quotient;
             r.ecx = 0;
             call(0x0090_CF54, Conv::Cdecl, &[0x3C], &mut r);
             node = r.eax as *mut u8;
@@ -106,7 +117,7 @@ unsafe extern "fastcall" fn erase_route(this: *mut u8, out: *mut Registers, iter
             let buckets = hash.buckets();
             let size = (hash.end() as u32).wrapping_sub(buckets as u32) as i32 >> 2;
             let key = word(r.ecx as *mut u8, 4);
-            let bucket = key % size as u32;
+            let (_, bucket) = unsigned_division(key, size as u32);
             r.edx = bucket;
             let slot = buckets.wrapping_add(bucket as usize);
             let head = slot.read_unaligned() as *mut u8;
