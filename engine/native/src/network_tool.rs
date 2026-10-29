@@ -101,6 +101,8 @@ mod tunnels;
 mod type_reload;
 mod tunnel_piece;
 mod tunnel_insertion;
+mod solution_records;
+mod refresh;
 
 const COUNT: usize = helpers::PORTS.len()
     + preview::PORTS.len()
@@ -121,7 +123,9 @@ const COUNT: usize = helpers::PORTS.len()
     + tunnels::PORTS.len()
     + type_reload::PORTS.len()
     + tunnel_piece::PORTS.len()
-    + tunnel_insertion::PORTS.len();
+    + tunnel_insertion::PORTS.len()
+    + solution_records::PORTS.len()
+    + refresh::PORTS.len();
 /// Completed replacements, ordered by original address within each group.
 pub const PORTS: &[Port] = &crate::port::concat::<COUNT>(&[
     helpers::PORTS,
@@ -144,4 +148,6 @@ pub const PORTS: &[Port] = &crate::port::concat::<COUNT>(&[
     type_reload::PORTS,
     tunnel_piece::PORTS,
     tunnel_insertion::PORTS,
+    solution_records::PORTS,
+    refresh::PORTS,
 ]);
