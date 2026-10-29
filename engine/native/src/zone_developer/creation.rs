@@ -71,7 +71,10 @@ port! {
     }
 }
 
-pub(super) const PORTS: &[Port] = &[fc4p_00730a80::PORT];
+// Enable this replacement after captured-call validation completes.
+const _: Port = fc4p_00730a80::PORT;
+
+pub(super) const PORTS: &[Port] = &[];
 
 #[cfg(test)]
 mod tests;

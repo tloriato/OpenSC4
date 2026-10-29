@@ -242,7 +242,10 @@ unsafe extern "fastcall" fn simple_parcellize(this: *mut u8, incoming_directions
     }
 }
 
-pub(super) const PORTS: &[Port] = &[fc4p_0072e520::PORT, fc4p_0072e9b0::PORT, fc4p_0072ec60::PORT];
+// Lot creation remains available for validation outside the installable table.
+const _: Port = fc4p_0072e520::PORT;
+
+pub(super) const PORTS: &[Port] = &[fc4p_0072e9b0::PORT, fc4p_0072ec60::PORT];
 
 #[cfg(test)]
 mod tests;
