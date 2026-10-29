@@ -96,6 +96,8 @@ pub mod find;
 pub mod grid;
 pub mod idle;
 pub mod io;
+pub mod life;
+pub mod load;
 pub mod messages;
 pub mod monthly;
 pub mod occupants;
@@ -103,6 +105,8 @@ pub mod plants;
 pub mod powered_lots;
 
 const COUNT: usize = bitmap::PORTS.len()
+    + life::PORTS.len()
+    + load::PORTS.len()
     + ageing::PORTS.len()
     + com::PORTS.len()
     + grid::PORTS.len()
@@ -118,6 +122,8 @@ const COUNT: usize = bitmap::PORTS.len()
     + messages::PORTS.len()
     + idle::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
+    life::PORTS,
+    load::PORTS,
     bitmap::PORTS,
     ageing::PORTS,
     com::PORTS,
