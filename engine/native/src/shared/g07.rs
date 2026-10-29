@@ -1766,8 +1766,8 @@ game_fn! { #[allow(dead_code)] fn acquire_reference_lock(this: *mut u8, lock: *m
 game_fn! { #[allow(dead_code)] fn clear_cursor_handle(this: *mut u8, value: u32) -> u64 = "thiscall" 0x00891d48; }
 game_fn! { #[allow(dead_code)] fn destroy_cursor_string(this: *mut u8) -> u64 = "thiscall" 0x00414250; }
 game_data! { static set_cursor_function: usize = 0x00a80578; }
-game_data! { static minimum_graph_scale: f32 = 0x00a8821c; }
-game_data! { static maximum_graph_scale: f32 = 0x00a9422c; }
+game_data! { static minimum_picture_zoom: f32 = 0x00a8821c; }
+game_data! { static maximum_picture_zoom: f32 = 0x00a9422c; }
 
 /// Preserves the volatile inputs of calls whose return can retain part of those inputs.
 unsafe fn address_result(
@@ -1851,19 +1851,19 @@ register_port! { fc4p_007a9810, 0x007a9810, "refresh_matching_filter", 4,
     }
 }
 
-register_port! { fc4p_007bfbe0, 0x007bfbe0, "clamp_graph_scales", 8,
-    clamp_graph_scales(this, entry) {
-        // SAFETY: the graph's two scale words and the game's comparison constants are live.
+register_port! { fc4p_007bfbe0, 0x007bfbe0, "set_picture_zoom_limits", 8,
+    set_picture_zoom_limits(this, entry) {
+        // SAFETY: the picture view's two zoom limits and the game's comparison constants are live.
         unsafe {
             use crate::x87::F80;
             let first = entry.arg(0);
-            let first_comparison = F80::from_f32(f32::from_bits(first)).compare(F80::from_f32(*minimum_graph_scale()));
+            let first_comparison = F80::from_f32(f32::from_bits(first)).compare(F80::from_f32(*minimum_picture_zoom()));
             put_word(this, 8, first);
             if first_comparison.less() {
                 put_word(this, 8, 0x3e800000);
             }
             let second = entry.arg(1);
-            let comparison = F80::from_f32(f32::from_bits(second)).compare(F80::from_f32(*maximum_graph_scale()));
+            let comparison = F80::from_f32(f32::from_bits(second)).compare(F80::from_f32(*maximum_picture_zoom()));
             put_word(this, 12, second);
             if !comparison.less() && !comparison.equal() && !comparison.unordered() {
                 put_word(this, 12, 0x43800000);
@@ -2222,8 +2222,124 @@ register_port! { fc4p_008922f0, 0x008922f0, "destroy_cursor_owner", 0,
     }
 }
 
+game_fn! { #[allow(dead_code)] fn base_port_usage(this: *mut u8, id: u32, usage: *mut u32, capacity: *mut u32) -> u64 = "thiscall" 0x006e9770; }
+game_fn! { #[allow(dead_code)] fn find_port_record(this: *mut u8, id: u32, output: *mut u32) -> u64 = "thiscall" 0x006e9590; }
+game_data! { static funding_zero: f32 = 0x00a81054; }
+game_data! { static unsigned_word_bias: f32 = 0x00a80aa8; }
+
+register_port! { fc4p_00700fe0, 0x00700fe0, "funded_port_usage", 12,
+    funded_port_usage(this, entry) {
+        // SAFETY: the base query initializes the two caller-owned output words on success.
+        unsafe {
+            use crate::x87::F80;
+            let usage = entry.arg(1) as *mut u8;
+            let capacity = entry.arg(2) as *mut u8;
+            let mut result = address_result(0x006e9770, crate::abi::Conv::Thiscall,
+                this.add(4) as u32, entry.arg(0), entry.edx,
+                &[entry.arg(0), usage as u32, capacity as u32]);
+            let accepted = result as u8;
+            if accepted == 0 { return result; }
+            let department = word(this, 0x34) as *mut u8;
+            result = virtual_result(department, 0x50, result as u32, word(department, 0), &[1]);
+            let item = result as u32 as *mut u8;
+            if !item.is_null() {
+                result = virtual_result(item, 0x2c, word(item, 0), (result >> 32) as u32, &[]);
+                let current = F80::from_i64(result as i64).to_f32();
+                result = virtual_result(item, 0x28, result as u32, word(item, 0), &[]);
+                let full = F80::from_i64(result as i64);
+                let compared = full.compare(F80::from_f32(*funding_zero()));
+                if !compared.less() && !compared.equal() && !compared.unordered() {
+                    let amount = word(capacity, 0);
+                    let mut amount_float = F80::from_i32(amount as i32);
+                    if (amount as i32) < 0 { amount_float = amount_float + F80::from_f32(*unsigned_word_bias()); }
+                    result = ((amount_float / full) * F80::from_f32(current)).ftol() as u64;
+                    put_word(capacity, 0, result as u32);
+                }
+            }
+            let limit = word(capacity, 0);
+            if word(usage, 0) > limit { put_word(usage, 0, limit); }
+            (result & 0xffffffff00000000) | u64::from((limit & !255) | u32::from(accepted))
+        }
+    }
+}
+
+register_port! { fc4p_00701830, 0x00701830, "funded_port_maintenance_cost", 4,
+    funded_port_maintenance_cost(this, entry) {
+        // SAFETY: a successful lookup identifies the owner's 32-byte stage record.
+        unsafe {
+            use crate::x87::F80;
+            let mut record = 0u32;
+            let result = address_result(0x006e9590, crate::abi::Conv::Thiscall,
+                this.add(4) as u32, &mut record as *mut u32 as u32, entry.edx,
+                &[entry.arg(0), &mut record as *mut u32 as u32]);
+            let mut cost = 0u64;
+            if result as u8 != 0 {
+                let index = word(record as *mut u8, 4).wrapping_shl(5);
+                let owner = word(record as *mut u8, 8) as *mut u8;
+                let table = word(owner, 0x14).wrapping_add(index) as *mut u8;
+                cost = (u64::from(word(table, 12)) << 32) | u64::from(word(table, 8));
+            }
+            let department = word(this, 0x34) as *mut u8;
+            let result = virtual_result(department, 0x50, result as u32, word(department, 0), &[1]);
+            let item = result as u32 as *mut u8;
+            if !item.is_null() {
+                let result = virtual_result(item, 0x2c, word(item, 0), (result >> 32) as u32, &[]);
+                let current = F80::from_i64(result as i64).to_f32();
+                let result = virtual_result(item, 0x28, result as u32, word(item, 0), &[]);
+                let full = F80::from_i64(result as i64);
+                let compared = full.compare(F80::from_f32(*funding_zero()));
+                if !compared.less() && !compared.equal() && !compared.unordered() {
+                    return ((F80::from_i64(cost as i64) / full) * F80::from_f32(current)).ftol() as u64;
+                }
+            }
+            cost
+        }
+    }
+}
+
+register_port! { fc4p_00745980, 0x00745980, "initialize_word_deque", 4,
+    initialize_word_deque(this, entry) {
+        // SAFETY: each allocated block holds 32 words; the map is centered around its live blocks.
+        unsafe {
+            let size = entry.arg(0);
+            let blocks = (size >> 5).wrapping_add(1);
+            let map_size = blocks.wrapping_add(2).max(8);
+            put_word(this, 0x24, map_size);
+            let allocation = allocate_shared(map_size.wrapping_shl(2));
+            let map = allocation as u32;
+            let first = map.wrapping_add(word(this, 0x24).wrapping_sub(blocks).wrapping_shr(1).wrapping_shl(2));
+            let limit = first.wrapping_add(blocks.wrapping_shl(2));
+            put_word(this, 0x20, map);
+            let mut cursor = first;
+            while cursor < limit {
+                let block = allocate_shared(128) as u32;
+                put_word(cursor as *mut u8, 0, block);
+                cursor = cursor.wrapping_add(4);
+            }
+            put_word(this, 0x0c, first);
+            let first_block = word(first as *mut u8, 0);
+            put_word(this, 4, first_block);
+            put_word(this, 8, first_block.wrapping_add(128));
+            let last = limit.wrapping_sub(4);
+            put_word(this, 0x1c, last);
+            let last_block = word(last as *mut u8, 0);
+            put_word(this, 0x14, last_block);
+            put_word(this, 0x18, last_block.wrapping_add(128));
+            put_word(this, 0, word(this, 4));
+            let remainder = entry.arg(0) & 31;
+            let finish = word(this, 0x14).wrapping_add(remainder * 4);
+            put_word(this, 0x10, finish);
+            entry.ecx = word(this, 0x14);
+            (u64::from(finish) << 32) | u64::from(remainder)
+        }
+    }
+}
+
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
+    fc4p_00700fe0::PORT,
+    fc4p_00701830::PORT,
+    fc4p_00745980::PORT,
     fc4p_00793ff0::PORT,
     fc4p_007a9810::PORT,
     fc4p_007bfbe0::PORT,
@@ -5041,7 +5157,7 @@ mod assigned_tests {
         }
     }
     #[test]
-    fn graph_scale_bounds_keep_nan_payload_signed_zero_and_status_return_bits() {
+    fn picture_zoom_limits_keep_nan_payload_signed_zero_and_status_return_bits() {
         use crate::x87::F80;
         let _fpu = GameFpu::new();
         let mut low = 0.25f32;
@@ -6061,6 +6177,384 @@ mod assigned_tests {
                 (EAX, EDX)
             );
             assert!(events().is_empty());
+        }
+    }
+
+    thread_local! {
+        static FUNDING: Cell<(i64, i64)> = const { Cell::new((700, 350)) };
+        static USAGE: Cell<(u32, u32)> = const { Cell::new((8000, 10000)) };
+        static RECORD: Cell<u32> = const { Cell::new(0) };
+        static ALLOCATIONS: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
+    }
+    extern "thiscall" fn port_usage(
+        this: *mut u8,
+        id: u32,
+        used: *mut u32,
+        capacity: *mut u32,
+    ) -> u64 {
+        // SAFETY: the caller supplies two initialized, writable output words.
+        unsafe {
+            event(this, &[0x9770, id, *used, *capacity]);
+            let (a, b) = USAGE.with(|v| v.get());
+            *used = a;
+            *capacity = b;
+        }
+        HIGH | u64::from(QUERY_RESULT.with(|v| v.get()))
+    }
+    extern "thiscall" fn port_find(this: *mut u8, id: u32, output: *mut u32) -> u64 {
+        // SAFETY: the optional stage handle is initialized to zero by the caller.
+        unsafe {
+            event(this, &[0x9590, id, *output]);
+            *output = RECORD.with(|v| v.get());
+        }
+        HIGH | u64::from(QUERY_RESULT.with(|v| v.get()))
+    }
+    extern "thiscall" fn funding_item(this: *mut u8, category: u32) -> u64 {
+        event(this, &[0x50, category]);
+        HIGH | u64::from(HELD.with(|v| v.get()))
+    }
+    extern "thiscall" fn funding_current(this: *mut u8) -> u64 {
+        event(this, &[0x2c]);
+        FUNDING.with(|v| v.get().1 as u64)
+    }
+    extern "thiscall" fn funding_full(this: *mut u8) -> u64 {
+        event(this, &[0x28]);
+        FUNDING.with(|v| v.get().0 as u64)
+    }
+    fn funding_table() -> [usize; 128] {
+        let mut t = table();
+        t[0x50 / 4] = funding_item as *const () as usize;
+        t[0x2c / 4] = funding_current as *const () as usize;
+        t[0x28 / 4] = funding_full as *const () as usize;
+        t
+    }
+    #[test]
+    fn port_usage_keeps_core_half_and_above_full_funding_queries_and_unsigned_limits() {
+        use crate::x87::F80;
+        let _fpu = GameFpu::new();
+        let _base = fake(0x006e9770, port_usage as *const () as usize);
+        let mut zero = 0f32;
+        let mut bias = 4294967296f32;
+        let _zero = fake_data(0x00a81054, (&mut zero as *mut f32).cast());
+        let _bias = fake_data(0x00a80aa8, (&mut bias as *mut f32).cast());
+        let mut owner = Object::new(80);
+        let p = owner.ptr();
+        let mut department = Object::new(4);
+        let department = department.ptr();
+        let mut item = Object::new(4);
+        let item = item.ptr();
+        let table = funding_table();
+        // SAFETY: the developer's funding provider and both outputs are live during the query.
+        unsafe {
+            put_word(p, 0x34, department as u32);
+            put_word(department, 0, table.as_ptr() as u32);
+            put_word(item, 0, table.as_ptr() as u32);
+            for (used, cap, full, current, literal) in [
+                (8000u32, 10000u32, 700i64, 350i64, Some((5000u32, 5000u32))),
+                (8000, 10000, 700, 840, Some((8000, 12000))),
+                (4000, 10000, 700, 350, Some((4000, 5000))),
+                (6000, 10000, 700, 350, Some((5000, 5000))),
+                (u32::MAX, 0x80000000, 1, 1, None),
+                (u32::MAX, u32::MAX, 1, 1, None),
+                (u32::MAX, u32::MAX, 1, i64::MAX, None),
+                (1, 31, i64::MAX, 1, None),
+                (100, 200, 0, 1, None),
+                (100, 200, -1, i64::MIN, None),
+                (100, 200, 700, -350, None),
+            ] {
+                USAGE.with(|v| v.set((used, cap)));
+                FUNDING.with(|v| v.set((full, current)));
+                for accepted in [0u32, 0x12345600, 0x12345601] {
+                    for present in [false, true] {
+                        QUERY_RESULT.with(|v| v.set(accepted));
+                        HELD.with(|v| v.set(if present { item as u32 } else { 0 }));
+                        let mut outputs = [0x11223344u32, 0x55667788];
+                        let before = snapshot(p, 80);
+                        let result = invoke(
+                            fc4p_00700fe0 as *const () as usize,
+                            p,
+                            &[
+                                0x87654321,
+                                outputs.as_mut_ptr() as u32,
+                                outputs.as_mut_ptr().add(1) as u32,
+                            ],
+                        );
+                        let scaled = accepted as u8 != 0 && present && full > 0;
+                        let converted = if scaled {
+                            let mut amount = F80::from_i32(cap as i32);
+                            if (cap as i32) < 0 {
+                                amount = amount + F80::from_f32(bias);
+                            }
+                            ((amount / F80::from_i64(full))
+                                * F80::from_f32(F80::from_i64(current).to_f32()))
+                            .ftol() as u64
+                        } else {
+                            u64::from(cap)
+                        };
+                        let limit = converted as u32;
+                        let expected = if accepted as u8 != 0 {
+                            [used.min(limit), limit]
+                        } else {
+                            [used, cap]
+                        };
+                        assert_eq!(outputs, expected);
+                        if let Some(literal) = literal {
+                            if scaled {
+                                assert_eq!((outputs[0], outputs[1]), literal);
+                            }
+                        }
+                        let high = if accepted as u8 == 0 || !present {
+                            (HIGH >> 32) as u32
+                        } else if scaled {
+                            (converted >> 32) as u32
+                        } else {
+                            (full as u64 >> 32) as u32
+                        };
+                        assert_eq!(
+                            result,
+                            (
+                                if accepted as u8 == 0 {
+                                    accepted
+                                } else {
+                                    (limit & !255) | u32::from(accepted as u8)
+                                },
+                                high
+                            )
+                        );
+                        let mut expected_calls = vec![(
+                            p as u32 + 4,
+                            vec![0x9770, 0x87654321, 0x11223344, 0x55667788],
+                        )];
+                        if accepted as u8 != 0 {
+                            expected_calls.push((department as u32, vec![0x50, 1]));
+                            if present {
+                                expected_calls
+                                    .extend([(item as u32, vec![0x2c]), (item as u32, vec![0x28])]);
+                            }
+                        }
+                        assert_eq!(events(), expected_calls);
+                        assert_eq!(snapshot(p, 80), before);
+                    }
+                }
+            }
+        }
+    }
+    #[test]
+    fn maintenance_cost_reads_signed_stage_pair_scales_in_order_and_queries_funding_on_a_miss() {
+        use crate::x87::F80;
+        let _fpu = GameFpu::new();
+        let _find = fake(0x006e9590, port_find as *const () as usize);
+        let mut zero = 0f32;
+        let _zero = fake_data(0x00a81054, (&mut zero as *mut f32).cast());
+        let mut owner = Object::new(80);
+        let p = owner.ptr();
+        let mut department = Object::new(4);
+        let department = department.ptr();
+        let mut item = Object::new(4);
+        let item = item.ptr();
+        let mut record = Object::new(12);
+        let record = record.ptr();
+        let mut stage_owner = Object::new(24);
+        let stage_owner = stage_owner.ptr();
+        let mut stages = [0xa5a5a5a5u32; 24];
+        let table = funding_table();
+        RECORD.with(|v| v.set(record as u32));
+        // SAFETY: index one points at the second 32-byte stage record in the owned table.
+        unsafe {
+            put_word(p, 0x34, department as u32);
+            put_word(department, 0, table.as_ptr() as u32);
+            put_word(item, 0, table.as_ptr() as u32);
+            put_word(record, 4, 1);
+            put_word(record, 8, stage_owner as u32);
+            put_word(stage_owner, 0x14, stages.as_mut_ptr() as u32);
+            for cost in [0i64, 700, -700, 0x123456789abcdef, i64::MIN, i64::MAX] {
+                stages[10] = cost as u32;
+                stages[11] = (cost as u64 >> 32) as u32;
+                for (full, current) in [
+                    (700i64, 350i64),
+                    (700, 840),
+                    (0, 100),
+                    (-1, 1),
+                    (1, i64::MAX),
+                ] {
+                    FUNDING.with(|v| v.set((full, current)));
+                    for accepted in [0u32, 0x12345600, 0x12345601] {
+                        for present in [false, true] {
+                            QUERY_RESULT.with(|v| v.set(accepted));
+                            HELD.with(|v| v.set(if present { item as u32 } else { 0 }));
+                            let stored = if accepted as u8 != 0 { cost } else { 0 };
+                            let expected = if present && full > 0 {
+                                ((F80::from_i64(stored) / F80::from_i64(full))
+                                    * F80::from_f32(F80::from_i64(current).to_f32()))
+                                .ftol() as u64
+                            } else {
+                                stored as u64
+                            };
+                            let before = snapshot(p, 80);
+                            assert_eq!(
+                                invoke(fc4p_00701830 as *const () as usize, p, &[0x87654321]),
+                                (expected as u32, (expected >> 32) as u32)
+                            );
+                            if cost == 700 && full == 700 && accepted as u8 != 0 && present {
+                                assert_eq!(expected, current as u64);
+                            }
+                            let mut expected_calls = vec![
+                                (p as u32 + 4, vec![0x9590, 0x87654321, 0]),
+                                (department as u32, vec![0x50, 1]),
+                            ];
+                            if present {
+                                expected_calls
+                                    .extend([(item as u32, vec![0x2c]), (item as u32, vec![0x28])]);
+                            }
+                            assert_eq!(events(), expected_calls);
+                            assert_eq!(snapshot(p, 80), before);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    extern "C" fn deque_allocate(bytes: u32) -> u64 {
+        // SAFETY: the allocation callback observes the already-initialized map-size field.
+        unsafe {
+            event(
+                core::ptr::null_mut(),
+                &[
+                    0xa110,
+                    bytes,
+                    word(OWNER.with(|v| v.get()) as *mut u8, 0x24),
+                ],
+            );
+        }
+        HIGH | u64::from(ALLOCATIONS.with(|v| v.borrow_mut().remove(0)))
+    }
+    #[test]
+    fn deque_initialization_centers_map_allocates_exact_blocks_and_keeps_unused_bytes() {
+        let _allocate = fake(0x0090cf54, deque_allocate as *const () as usize);
+        let mut owner = Object::new(64);
+        let p = owner.ptr();
+        let mut map = [0xa5a5a5a5u32; 16];
+        let mut blocks = [[0x76543210u32; 32]; 8];
+        OWNER.with(|v| v.set(p as u32));
+        // SAFETY: tested sizes need at most eight blocks and a sixteen-word map.
+        unsafe {
+            for size in [0u32, 1, 31, 32, 33, 159, 160, 255] {
+                for null_blocks in [false, true] {
+                    paint(p, 64);
+                    map.fill(0xa5a5a5a5);
+                    let block_count = (size >> 5) + 1;
+                    let map_count = (block_count + 2).max(8);
+                    let center = (map_count - block_count) / 2;
+                    let addresses: Vec<u32> = blocks
+                        .iter_mut()
+                        .take(block_count as usize)
+                        .map(|b| {
+                            if null_blocks {
+                                0
+                            } else {
+                                b.as_mut_ptr() as u32
+                            }
+                        })
+                        .collect();
+                    let mut allocations = vec![map.as_mut_ptr() as u32];
+                    allocations.extend_from_slice(&addresses);
+                    ALLOCATIONS.with(|v| *v.borrow_mut() = allocations);
+                    let first_node = map.as_mut_ptr().add(center as usize) as u32;
+                    let last_node = first_node + (block_count - 1) * 4;
+                    let first = addresses[0];
+                    let last = addresses[block_count as usize - 1];
+                    let finish = last + (size & 31) * 4;
+                    let mut expected = snapshot(p, 64);
+                    for (offset, value) in [
+                        (0, first),
+                        (4, first),
+                        (8, first + 128),
+                        (12, first_node),
+                        (16, finish),
+                        (20, last),
+                        (24, last + 128),
+                        (28, last_node),
+                        (32, map.as_mut_ptr() as u32),
+                        (36, map_count),
+                    ] {
+                        expected_word(&mut expected, offset, value);
+                    }
+                    assert_eq!(
+                        invoke(fc4p_00745980 as *const () as usize, p, &[size]),
+                        (size & 31, finish)
+                    );
+                    let mut expected_map = [0xa5a5a5a5u32; 16];
+                    expected_map[center as usize..(center + block_count) as usize]
+                        .copy_from_slice(&addresses);
+                    assert_eq!(map, expected_map);
+                    assert_eq!(snapshot(p, 64), expected);
+                    assert!(blocks.iter().flatten().all(|&v| v == 0x76543210));
+                    let mut expected_calls = vec![(0, vec![0xa110, map_count * 4, map_count])];
+                    expected_calls
+                        .extend((0..block_count).map(|_| (0, vec![0xa110, 128, map_count])));
+                    assert_eq!(events(), expected_calls);
+                    assert!(ALLOCATIONS.with(|v| v.borrow().is_empty()));
+                }
+            }
+        }
+    }
+
+    extern "thiscall" fn observe_surface_acquire(this: *mut u8) -> u64 {
+        // SAFETY: OWNER points at the holder that is replacing its retained surface.
+        unsafe {
+            event(this, &[4, word(OWNER.with(|v| v.get()) as *mut u8, 4)]);
+        }
+        HIGH | u64::from(VALUE)
+    }
+    extern "thiscall" fn replace_surface_on_release(this: *mut u8) -> u64 {
+        // SAFETY: changing the live holder in this callback tests the caller's subsequent reload.
+        unsafe {
+            let owner = OWNER.with(|v| v.get()) as *mut u8;
+            event(this, &[8, word(owner, 4)]);
+            put_word(owner, 4, HELD.with(|v| v.get()));
+        }
+        HIGH | u64::from(VALUE)
+    }
+    #[test]
+    fn surface_callbacks_observe_acquire_assignment_release_order_and_replace_current_surface() {
+        let mut owner = Object::new(0x100);
+        let base = owner.ptr();
+        let p = base.wrapping_add(0xe0);
+        let mut old = Object::new(4);
+        let old = old.ptr();
+        let mut new = Object::new(4);
+        let new = new.ptr();
+        let mut replacement = Object::new(4);
+        let replacement = replacement.ptr();
+        let mut table = table();
+        table[1] = observe_surface_acquire as *const () as usize;
+        table[2] = replace_surface_on_release as *const () as usize;
+        OWNER.with(|v| v.set(p as u32));
+        HELD.with(|v| v.set(replacement as u32));
+        // SAFETY: the window and all three surfaces expose live callback tables.
+        unsafe {
+            put_word(base, 0, table.as_ptr() as u32);
+            for s in [old, new, replacement] {
+                put_word(s, 0, table.as_ptr() as u32);
+            }
+            put_word(p, 4, old as u32);
+            let mut expected = snapshot(base, 0x100);
+            expected_word(&mut expected, 0xe4, replacement as u32);
+            assert_eq!(
+                invoke(fc4p_00793ff0 as *const () as usize, p, &[new as u32]),
+                (VALUE, (HIGH >> 32) as u32)
+            );
+            assert_eq!(
+                events(),
+                vec![
+                    (new as u32, vec![4, old as u32]),
+                    (old as u32, vec![8, new as u32]),
+                    (replacement as u32, vec![0x78, 255, 0, 255]),
+                    (replacement as u32, vec![0x5c, VALUE]),
+                    (base as u32, vec![0x170])
+                ]
+            );
+            assert_eq!(snapshot(base, 0x100), expected);
         }
     }
 }
