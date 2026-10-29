@@ -1919,8 +1919,225 @@ unsafe extern "fastcall" fn update_selected_model_attachment(
     }
 }
 
+game_fn! { #[allow(dead_code)] fn reserve_source_keys(this: *mut u8, count: u32) -> u64 = "thiscall" 0x0050_C4C0; }
+game_fn! { #[allow(dead_code)] fn next_source_bucket(this: *mut u8) -> u64 = "thiscall" 0x0053_DCF0; }
+game_fn! { #[allow(dead_code)] fn construct_source_filter(this: *mut u8, keys: *mut u8) -> u64 = "thiscall" 0x005E_A440; }
+game_fn! { #[allow(dead_code)] fn get_framework() -> u64 = "C" 0x0087_93EC; }
+game_fn! { #[allow(dead_code)] fn release_source_allocator_reference(this: *mut u8) -> u64 = "thiscall" 0x0041_1870; }
+game_fn! { #[allow(dead_code)] fn clear_source_occupants(this: *mut u8) -> u64 = "thiscall" 0x0041_3E60; }
+game_data! { static source_list_allocator: *mut u8 = 0x00B2_07E4; }
+
+layout! {
+    /// Active automata and the table of source identifiers with their current occupant counts.
+    struct SourceCountManager {
+        0x010 => active / set_active: u8,
+        0x044 => header / set_header: u32,
+        0x048 => count / set_count: u32,
+        0xA68 => buckets / set_buckets: u32,
+        0xA6C => buckets_end / set_buckets_end: u32,
+        0xA74 => source_count / set_source_count: u32,
+        0xA78 => refresh / set_refresh: u8,
+    }
+}
+
+/// Obtains the game's cached list allocator, releasing the temporary interface after caching it.
+unsafe fn ensure_source_list_allocator(mut result: u64) -> (*mut u8, u64) {
+    // SAFETY: the framework query, its temporary retained interface and the game's allocator cache.
+    unsafe {
+        let mut allocator = *source_list_allocator();
+        if allocator.is_null() {
+            let mut queried = 0u32;
+            result = invoke(
+                Conv::Cdecl,
+                crate::abi::target(0x0087_93EC),
+                allocator,
+                result as u32,
+                (result >> 32) as u32,
+                &[],
+            );
+            if result as u32 != 0 {
+                let framework = result as u32 as *mut u8;
+                result = virtual_call(
+                    framework,
+                    0x14,
+                    framework as u32,
+                    word(framework, 0),
+                    &[0x3AE4_BEA3, 0x3AE4_BEAB, &mut queried as *mut u32 as u32],
+                );
+            }
+            *source_list_allocator() = queried as *mut u8;
+            result = invoke(
+                Conv::Thiscall,
+                crate::abi::target(0x0041_1870),
+                (&mut queried as *mut u32).cast(),
+                result as u32,
+                queried,
+                &[],
+            );
+            allocator = *source_list_allocator();
+        }
+        (allocator, result)
+    }
+}
+
+port! {
+    /// Ticks retained automata, removes flagged entries before notifying and releasing them, and
+    /// optionally rebuilds source counts from a filtered occupant list. Finally flushes the manager.
+    #[port(address = 0x0050_F2C0, owner = "shared", name = "UpdateAutomataAndSourceCounts")]
+    pub unsafe extern "fastcall" fn fc4p_0050f2c0(this: *mut u8, entry_edx: u32) -> u64 {
+        // SAFETY: the game's manager, circular lists, hash table, reference-counted filters and trees.
+        unsafe {
+            let manager = SourceCountManager::from_ptr(this);
+            let mut result = registers(0, entry_edx);
+            if manager.active() != 0 {
+                let header = manager.header();
+                result = registers(header, entry_edx);
+                let mut node = word(header as *mut u8, 0);
+                while node != manager.header() {
+                    let object = word(node as *mut u8, 8) as *mut u8;
+                    result = virtual_call(object, 0x7C, word(object, 0), (result >> 32) as u32, &[0x8000]);
+                    if result as u8 != 0 {
+                        let next = word(node as *mut u8, 0);
+                        let previous = word(node as *mut u8, 4);
+                        store(previous as *mut u8, 0, next);
+                        store(next as *mut u8, 4, previous);
+                        result = invoke(Conv::Cdecl, crate::abi::target(0x0090_CF63), object,
+                            previous, (result >> 32) as u32, &[node]);
+                        manager.set_count(manager.count().wrapping_sub(1));
+                        result = virtual_call(this, 0xF8, result as u32, word(this, 0), &[object as u32]);
+                        result = virtual_call(object, 0x10, word(object, 0), (result >> 32) as u32, &[]);
+                        result = virtual_call(object, 8, result as u32, word(object, 0), &[]);
+                        node = next;
+                    } else {
+                        result = virtual_call(object, 12, word(object, 0), (result >> 32) as u32, &[]);
+                        node = word(node as *mut u8, 0);
+                    }
+                }
+                if manager.refresh() != 0 {
+                    let mut keys = [0u32; 3];
+                    let vector = keys.as_mut_ptr().cast::<u8>();
+                    result = invoke(Conv::Thiscall, crate::abi::target(0x0050_C4C0), vector,
+                        result as u32, (result >> 32) as u32, &[manager.source_count()]);
+                    let mut initial = [0u32; 2];
+                    result = invoke(Conv::Thiscall, crate::abi::target(0x004B_0390), this.add(0xA64),
+                        result as u32, initial.as_mut_ptr() as u32, &[initial.as_mut_ptr() as u32]);
+                    let mut iterator = initial;
+                    let mut current = iterator[0];
+                    result = registers(iterator[1], (result >> 32) as u32);
+                    while current != 0 {
+                        let mut key = word(current as *mut u8, 4);
+                        let end = word(vector, 4);
+                        if end != word(vector, 8) {
+                            if end != 0 { store(end as *mut u8, 0, key); }
+                            let next = word(vector, 4).wrapping_add(4);
+                            store(vector, 4, next);
+                            result = registers(next, (result >> 32) as u32);
+                        } else {
+                            let mut output = MaybeUninit::<u32>::uninit();
+                            result = invoke(Conv::Thiscall, crate::abi::target(0x0051_CA60), vector,
+                                end, &mut key as *mut u32 as u32, &[end, &mut key as *mut u32 as u32,
+                                    output.as_mut_ptr() as u32, 1, 1]);
+                        }
+                        store(current as *mut u8, 8, 0);
+                        let next = word(current as *mut u8, 0);
+                        current = if next == 0 {
+                            result = invoke(Conv::Thiscall, crate::abi::target(0x0053_DCF0), iterator.as_mut_ptr().cast(),
+                                result as u32, (result >> 32) as u32, &[]);
+                            result as u32
+                        } else { next };
+                        iterator[0] = current;
+                    }
+                    result = invoke(Conv::Cdecl, crate::abi::target(0x005E_55E0), iterator.as_mut_ptr().cast(),
+                        result as u32, (result >> 32) as u32, &[0x18]);
+                    if result as u32 != 0 {
+                        let allocation = result as u32 as *mut u8;
+                        result = invoke(Conv::Thiscall, crate::abi::target(0x005E_A440), allocation,
+                            allocation as u32, (result >> 32) as u32, &[vector as u32]);
+                    }
+                    let filter = result as u32 as *mut u8;
+                    if !filter.is_null() { result = virtual_call(filter, 4, filter as u32, word(filter, 0), &[]); }
+                    let service = *attachment_coordinates();
+                    let (allocator, mut result) = ensure_source_list_allocator(result);
+                    result = virtual_call(allocator, 12, word(allocator, 0), (result >> 32) as u32, &[12]);
+                    let header = result as u32;
+                    store(header as *mut u8, 0, header);
+                    store(header as *mut u8, 4, header);
+                    let mut occupants = header;
+                    result = virtual_call(service, 0x90, &mut occupants as *mut u32 as u32, word(service, 0),
+                        &[&mut occupants as *mut u32 as u32, 0, 0, filter as u32, u32::MAX]);
+                    if result as u8 != 0 {
+                        let sentinel = occupants;
+                        result = invoke(Conv::Cdecl, crate::abi::target(0x0090_CF54), service,
+                            result as u32, (result >> 32) as u32, &[20]);
+                        let header = result as u32 as *mut u8;
+                        let mut tree = [header as u32, 0u32];
+                        header.write(0);
+                        store(header, 4, 0);
+                        store(header, 8, header as u32);
+                        store(header, 12, header as u32);
+                        let mut occupant_node = word(occupants as *mut u8, 0);
+                        while occupant_node != sentinel {
+                            let occupant = word(occupant_node as *mut u8, 8) as *mut u8;
+                            virtual_call(occupant, 0x60, word(occupant, 0), tree.as_mut_ptr() as u32,
+                                &[tree.as_mut_ptr() as u32]);
+                            let mut key_node = word(tree[0] as *mut u8, 8);
+                            while key_node != tree[0] {
+                                let begin = manager.buckets();
+                                let buckets = (manager.buckets_end().wrapping_sub(begin) as i32 >> 2) as u32;
+                                let key = word(key_node as *mut u8, 16);
+                                let index = unsigned_remainder(key, buckets);
+                                let mut entry = word(begin.wrapping_add(index.wrapping_mul(4)) as *mut u8, 0);
+                                while entry != 0 && word(entry as *mut u8, 4) != key { entry = word(entry as *mut u8, 0); }
+                                if entry != 0 { store(entry as *mut u8, 8, word(entry as *mut u8, 8).wrapping_add(1)); }
+                                key_node = unsigned_tree_successor(key_node);
+                            }
+                            occupant_node = word(occupant_node as *mut u8, 0);
+                        }
+                        result = virtual_call(service, 0xC0, &mut occupants as *mut u32 as u32, word(service, 0),
+                            &[&mut occupants as *mut u32 as u32]);
+                        if tree[1] != 0 {
+                            let mut node = word(tree[0] as *mut u8, 4);
+                            while node != 0 {
+                                result = invoke(Conv::Thiscall, crate::abi::target(0x0046_F820), tree.as_mut_ptr().cast(),
+                                    result as u32, (result >> 32) as u32, &[word(node as *mut u8, 12)]);
+                                let next = word(node as *mut u8, 8);
+                                result = invoke(Conv::Cdecl, crate::abi::target(0x0090_CF63), tree.as_mut_ptr().cast(),
+                                    result as u32, (result >> 32) as u32, &[node]);
+                                node = next;
+                            }
+                            store(tree[0] as *mut u8, 8, tree[0]);
+                            store(tree[0] as *mut u8, 4, 0);
+                            store(tree[0] as *mut u8, 12, tree[0]);
+                            tree[1] = 0;
+                        }
+                        result = registers(tree[0], (result >> 32) as u32);
+                        if tree[0] != 0 {
+                            result = invoke(Conv::Cdecl, crate::abi::target(0x0090_CF63), tree.as_mut_ptr().cast(),
+                                result as u32, (result >> 32) as u32, &[tree[0]]);
+                        }
+                    }
+                    result = invoke(Conv::Thiscall, crate::abi::target(0x0041_3E60), (&mut occupants as *mut u32).cast(),
+                        result as u32, (result >> 32) as u32, &[]);
+                    let (allocator, mut result) = ensure_source_list_allocator(result);
+                    result = virtual_call(allocator, 16, word(allocator, 0), (result >> 32) as u32, &[occupants]);
+                    if !filter.is_null() { result = virtual_call(filter, 8, result as u32, word(filter, 0), &[]); }
+                    result = registers(word(vector, 0), (result >> 32) as u32);
+                    if result as u32 != 0 {
+                        result = invoke(Conv::Cdecl, crate::abi::target(0x0090_CF63), filter,
+                            result as u32, (result >> 32) as u32, &[result as u32]);
+                    }
+                    // The final virtual call replaces EAX; its EDX still comes from the last cleanup.
+                    return virtual_call(this, 0xC0, word(this, 0), (result >> 32) as u32, &[]);
+                }
+            }
+            virtual_call(this, 0xC0, word(this, 0), (result >> 32) as u32, &[])
+        }
+    }
+}
+
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
+    fc4p_0050f2c0::PORT,
     fc4p_0050afd0::PORT,
     fc4p_0050be90::PORT,
     fc4p_0054ed90::PORT,
@@ -1967,6 +2184,458 @@ pub const PORTS: &[Port] = &[
 
 #[cfg(test)]
 mod tests {
+    mod source_refresh {
+        use super::*;
+
+        thread_local! {
+            static STATE: RefCell<State> = RefCell::new(State::default());
+        }
+        #[derive(Default)]
+        struct State {
+            manager: u32,
+            storage: u32,
+            capacity: u32,
+            filter: u32,
+            allocator: u32,
+            framework: u32,
+            sentinel: u32,
+            list_nodes: Vec<u32>,
+            tree_header: u32,
+            tree_nodes: Vec<u32>,
+            collect_index: usize,
+            query_success: bool,
+        }
+        extern "fastcall" fn flush(this: *mut u8, edx: u32) -> u64 {
+            log(0xC0, this, &[edx]);
+            RESULT
+        }
+        extern "thiscall" fn flags(this: *mut u8, flag: u32) -> u64 {
+            log(0x7C, this, &[flag]);
+            registers(unsafe { word(this, 4) }, (RESULT >> 32) as u32)
+        }
+        extern "thiscall" fn tick(this: *mut u8) -> u64 {
+            log(12, this, &[]);
+            RESULT
+        }
+        extern "thiscall" fn retire(this: *mut u8, object: u32) -> u64 {
+            log(0xF8, this, &[object]);
+            assert_eq!(unsafe { word(this, 0x48) }, u32::MAX);
+            RESULT
+        }
+        extern "thiscall" fn shutdown(this: *mut u8) -> u64 {
+            log(16, this, &[]);
+            RESULT
+        }
+        extern "C" fn free_node(pointer: *mut u8) -> u64 {
+            log(0x0090_CF63, pointer, &[]);
+            RESULT
+        }
+        extern "thiscall" fn reserve(this: *mut u8, count: u32) -> u64 {
+            log(0x0050_C4C0, this, &[count]);
+            STATE.with(|s| {
+                let s = s.borrow();
+                unsafe {
+                    store(this, 0, s.storage);
+                    store(this, 4, s.storage);
+                    store(this, 8, s.storage + s.capacity * 4);
+                }
+            });
+            RESULT
+        }
+        extern "thiscall" fn begin(this: *mut u8, out: *mut u32) -> u64 {
+            log(0x004B_0390, this, &[]);
+            unsafe {
+                let first = word(this, 4) as *mut u32;
+                let len = word(this, 8).wrapping_sub(first as u32) / 4;
+                let node = (0..len)
+                    .map(|i| first.add(i as usize).read())
+                    .find(|&n| n != 0)
+                    .unwrap_or(0);
+                out.write(node);
+                out.add(1).write(this as u32);
+            }
+            RESULT
+        }
+        extern "thiscall" fn next_bucket(this: *mut u8) -> u64 {
+            unsafe {
+                log(0x0053_DCF0, this, &[word(word(this, 0) as *mut u8, 4)]);
+                let table = word(this, 4) as *mut u8;
+                let begin = word(table, 4) as *mut u32;
+                let count = word(table, 8).wrapping_sub(begin as u32) / 4;
+                let index = word(word(this, 0) as *mut u8, 4) % count;
+                let next = (index + 1..count)
+                    .map(|i| begin.add(i as usize).read())
+                    .find(|&n| n != 0)
+                    .unwrap_or(0);
+                registers(next, (RESULT >> 32) as u32)
+            }
+        }
+        extern "thiscall" fn insert(
+            this: *mut u8,
+            position: u32,
+            value: *const u32,
+            out: *mut u32,
+            count: u32,
+            stride: u32,
+        ) -> u64 {
+            let value = unsafe { value.read() };
+            log(0x0051_CA60, this, &[position, value, count, stride]);
+            unsafe {
+                store(position as *mut u8, 0, value);
+                store(this, 4, position + 4);
+                store(this, 8, position + 16);
+                out.write(0);
+            }
+            RESULT
+        }
+        extern "C" fn allocate_filter(size: u32) -> u64 {
+            log(0x005E_55E0, core::ptr::null_mut(), &[size]);
+            registers(STATE.with(|s| s.borrow().filter), (RESULT >> 32) as u32)
+        }
+        extern "thiscall" fn construct_filter(this: *mut u8, vector: *mut u8) -> u64 {
+            let values = unsafe {
+                core::slice::from_raw_parts(
+                    word(vector, 0) as *const u32,
+                    word(vector, 4).wrapping_sub(word(vector, 0)) as usize / 4,
+                )
+            };
+            log(0x005E_A440, this, values);
+            registers(this as u32, (RESULT >> 32) as u32)
+        }
+        extern "C" fn framework() -> u64 {
+            log(0x0087_93EC, core::ptr::null_mut(), &[]);
+            registers(STATE.with(|s| s.borrow().framework), (RESULT >> 32) as u32)
+        }
+        extern "thiscall" fn query_allocator(this: *mut u8, class: u32, iid: u32, out: *mut u32) -> u64 {
+            log(0x14, this, &[class, iid]);
+            unsafe {
+                out.write(STATE.with(|s| s.borrow().allocator));
+            }
+            RESULT
+        }
+        extern "thiscall" fn release_allocator(this: *mut u8) -> u64 {
+            log(0x0041_1870, core::ptr::null_mut(), &[unsafe { word(this, 0) }]);
+            RESULT
+        }
+        extern "thiscall" fn allocate_list(this: *mut u8, size: u32) -> u64 {
+            log(0x200C, this, &[size]);
+            registers(STATE.with(|s| s.borrow().sentinel), (RESULT >> 32) as u32)
+        }
+        extern "thiscall" fn free_list(this: *mut u8, pointer: u32) -> u64 {
+            log(0x2010, this, &[pointer]);
+            unsafe {
+                assert_eq!(word(pointer as *mut u8, 0), pointer);
+                assert_eq!(word(pointer as *mut u8, 4), pointer);
+            }
+            RESULT
+        }
+        extern "thiscall" fn query_occupants(
+            this: *mut u8,
+            out: *mut u32,
+            a: u32,
+            b: u32,
+            filter: u32,
+            limit: u32,
+        ) -> u64 {
+            log(0x90, this, &[a, b, filter, limit]);
+            STATE.with(|s| {
+                let s = s.borrow();
+                unsafe {
+                    let header = out.read();
+                    assert_eq!(word(header as *mut u8, 0), header);
+                    assert_eq!(word(header as *mut u8, 4), header);
+                    if s.query_success && !s.list_nodes.is_empty() {
+                        store(header as *mut u8, 0, s.list_nodes[0]);
+                        store(header as *mut u8, 4, *s.list_nodes.last().unwrap());
+                        for (i, &node) in s.list_nodes.iter().enumerate() {
+                            store(node as *mut u8, 0, s.list_nodes.get(i + 1).copied().unwrap_or(header));
+                            store(node as *mut u8, 4, if i == 0 { header } else { s.list_nodes[i - 1] });
+                        }
+                    }
+                }
+                registers(u32::from(s.query_success), (RESULT >> 32) as u32)
+            })
+        }
+        extern "C" fn allocate_tree(size: u32) -> u64 {
+            log(0x0090_CF54, core::ptr::null_mut(), &[size]);
+            registers(STATE.with(|s| s.borrow().tree_header), (RESULT >> 32) as u32)
+        }
+        extern "thiscall" fn collect(this: *mut u8, tree: *mut u32) -> u64 {
+            log(0x60, this, &[]);
+            STATE.with(|s| {
+                let mut s = s.borrow_mut();
+                unsafe {
+                    let header = tree.read() as *mut u8;
+                    let node = s.tree_nodes[s.collect_index] as *mut u8;
+                    let root = s.tree_nodes[0];
+                    store(node, 4, if s.collect_index == 0 { header as u32 } else { root });
+                    if s.collect_index == 0 {
+                        store(header, 4, root);
+                        store(header, 8, root);
+                    } else {
+                        store(root as *mut u8, 12, node as u32);
+                    }
+                    store(header, 12, node as u32);
+                    tree.add(1).write(tree.add(1).read() + 1);
+                }
+                s.collect_index += 1;
+            });
+            RESULT
+        }
+        extern "thiscall" fn finish_query(this: *mut u8, _list: *mut u32) -> u64 {
+            log(0x30C0, this, &[]);
+            RESULT
+        }
+        extern "thiscall" fn erase_right(_this: *mut u8, root: u32) -> u64 {
+            log(0x0046_F820, core::ptr::null_mut(), &[root]);
+            RESULT
+        }
+        extern "thiscall" fn clear_list(this: *mut u8) -> u64 {
+            log(0x0041_3E60, core::ptr::null_mut(), &[]);
+            unsafe {
+                let head = word(this, 0);
+                store(head as *mut u8, 0, head);
+                store(head as *mut u8, 4, head);
+            }
+            RESULT
+        }
+
+        #[test]
+        fn inactive_manager_still_flushes_and_retirement_unlinks_before_callbacks() {
+            let _free = fake(0x0090_CF63, free_node as *const () as usize);
+            let mut table = [0usize; 64];
+            table[0xC0 / 4] = flush as *const () as usize;
+            table[0xF8 / 4] = retire as *const () as usize;
+            let mut object_table = [0usize; 32];
+            object_table[0x7C / 4] = flags as *const () as usize;
+            object_table[3] = tick as *const () as usize;
+            object_table[4] = shutdown as *const () as usize;
+            object_table[2] = release as *const () as usize;
+            let mut manager = Object::new(0xA80);
+            let m = manager.ptr();
+            unsafe {
+                store(m, 0, table.as_ptr() as u32);
+                store(m, 0xA78, 1);
+            }
+            assert_eq!(run(fc4p_0050f2c0 as *const (), m, &[], 0, 0x1234), RESULT);
+            assert_eq!(calls(), [Call(0xC0, m as usize, vec![0x1234])]);
+            let mut objects = [[object_table.as_ptr() as u32, 1], [object_table.as_ptr() as u32, 0]];
+            let mut header = [0u32; 3];
+            let h = header.as_mut_ptr() as u32;
+            let mut last = [h, 0, objects[1].as_mut_ptr() as u32];
+            let mut first = [last.as_mut_ptr() as u32, h, objects[0].as_mut_ptr() as u32];
+            last[1] = first.as_mut_ptr() as u32;
+            header[0] = first.as_mut_ptr() as u32;
+            header[1] = last.as_mut_ptr() as u32;
+            unsafe {
+                store(m, 0x10, 1);
+                store(m, 0xA78, 0);
+                store(m, 0x44, h);
+            }
+            mutation(0x0090_CF63, first.as_mut_ptr().cast(), 0, h);
+            assert_eq!(run(fc4p_0050f2c0 as *const (), m, &[], 0, 0), RESULT);
+            assert_eq!(
+                calls(),
+                [
+                    Call(0x7C, objects[0].as_ptr() as usize, vec![0x8000]),
+                    Call(0x0090_CF63, first.as_ptr() as usize, vec![]),
+                    Call(0xF8, m as usize, vec![objects[0].as_ptr() as u32]),
+                    Call(16, objects[0].as_ptr() as usize, vec![]),
+                    Call(8, objects[0].as_ptr() as usize, vec![]),
+                    Call(0x7C, objects[1].as_ptr() as usize, vec![0x8000]),
+                    Call(12, objects[1].as_ptr() as usize, vec![]),
+                    Call(0xC0, m as usize, vec![(RESULT >> 32) as u32]),
+                ]
+            );
+            assert_eq!(header[0], last.as_ptr() as u32);
+            assert_eq!(last[1], h);
+            assert_eq!(unsafe { word(m, 0x48) }, u32::MAX);
+            // The ordinary tick reads the next link after its callback.
+            unsafe {
+                store(objects[0].as_mut_ptr().cast(), 4, 0);
+                store(header.as_mut_ptr().cast(), 0, first.as_mut_ptr() as u32);
+            }
+            first[0] = last.as_mut_ptr() as u32;
+            mutation(12, first.as_mut_ptr().cast(), 0, h);
+            run(fc4p_0050f2c0 as *const (), m, &[], 0, 0);
+            assert_eq!(calls().iter().map(|c| c.0).collect::<Vec<_>>(), [0x7C, 12, 0xC0]);
+        }
+
+        #[test]
+        fn source_counts_reset_then_accumulate_the_shared_tree_and_destroy_temporaries_in_order() {
+            for (success, allocated_filter, reserve_capacity, cached_allocator, empty) in [
+                (false, false, 0, true, false),
+                (true, true, 4, true, false),
+                (true, false, 0, false, false),
+                (true, false, 0, true, true),
+            ] {
+                let mut manager = Object::new(0xA80);
+                let m = manager.ptr();
+                let mut manager_table = [0usize; 64];
+                manager_table[0xC0 / 4] = flush as *const () as usize;
+                let mut service_table = [0usize; 64];
+                service_table[0x90 / 4] = query_occupants as *const () as usize;
+                service_table[0xC0 / 4] = finish_query as *const () as usize;
+                let mut allocator_table = [0usize; 8];
+                allocator_table[3] = allocate_list as *const () as usize;
+                allocator_table[4] = free_list as *const () as usize;
+                let framework_table = [0usize, 0, 0, 0, 0, query_allocator as *const () as usize];
+                let filter_table = [0usize, retain as *const () as usize, release as *const () as usize];
+                let mut occupant_table = [0usize; 25];
+                occupant_table[24] = collect as *const () as usize;
+                let mut service = [service_table.as_ptr() as u32];
+                let mut allocator = [allocator_table.as_ptr() as u32];
+                let mut framework_object = [framework_table.as_ptr() as u32];
+                let mut filter = [filter_table.as_ptr() as u32; 6];
+                let mut occupants = [[occupant_table.as_ptr() as u32]; 2];
+                let mut occupant_nodes = [
+                    [0u32, 0, occupants[0].as_mut_ptr() as u32],
+                    [0, 0, occupants[1].as_mut_ptr() as u32],
+                ];
+                let mut list_header = [0xCCCC_CCCCu32; 3];
+                let mut vector_storage = [0xDDDD_DDDDu32; 8];
+                let mut hash_nodes = [[0u32, 1, 99], [0, 4, 42], [0, 2, 77]];
+                hash_nodes[0][0] = hash_nodes[1].as_mut_ptr() as u32;
+                let mut buckets = [0, hash_nodes[0].as_mut_ptr() as u32, hash_nodes[2].as_mut_ptr() as u32];
+                if empty {
+                    buckets.fill(0);
+                }
+                let mut tree_header = [0xA5A5_A5A5u32; 5];
+                let mut tree_nodes = [[0u32, 0, 0, 0, 1], [0, 0, 0, 0, 4]];
+                let mut cached = if cached_allocator {
+                    allocator.as_mut_ptr() as u32
+                } else {
+                    0
+                };
+                let mut coordinate_pointer = service.as_mut_ptr() as u32;
+                let mut active_header = [0u32; 3];
+                let h = active_header.as_mut_ptr() as u32;
+                unsafe {
+                    store(active_header.as_mut_ptr().cast(), 0, h);
+                }
+                unsafe {
+                    store(m, 0, manager_table.as_ptr() as u32);
+                    store(m, 0x10, 1);
+                    store(m, 0x44, h);
+                    store(m, 0xA78, 1);
+                    store(m, 0xA74, 3);
+                    store(m, 0xA68, buckets.as_mut_ptr() as u32);
+                    store(m, 0xA6C, buckets.as_mut_ptr() as u32 + 12);
+                }
+                let before = bytes(m, 0xA80);
+                STATE.with(|s| {
+                    *s.borrow_mut() = State {
+                        manager: m as u32,
+                        storage: vector_storage.as_mut_ptr() as u32,
+                        capacity: reserve_capacity,
+                        filter: if allocated_filter {
+                            filter.as_mut_ptr() as u32
+                        } else {
+                            0
+                        },
+                        allocator: allocator.as_mut_ptr() as u32,
+                        framework: framework_object.as_mut_ptr() as u32,
+                        sentinel: list_header.as_mut_ptr() as u32,
+                        list_nodes: if empty {
+                            Vec::new()
+                        } else {
+                            occupant_nodes.iter_mut().map(|n| n.as_mut_ptr() as u32).collect()
+                        },
+                        tree_header: tree_header.as_mut_ptr() as u32,
+                        tree_nodes: tree_nodes.iter_mut().map(|n| n.as_mut_ptr() as u32).collect(),
+                        collect_index: 0,
+                        query_success: success,
+                    }
+                });
+                let _data = [
+                    crate::testing::fake_data(0x00B2_07E4, (&mut cached as *mut u32).cast()),
+                    crate::testing::fake_data(0x00B4_3D0C, (&mut coordinate_pointer as *mut u32).cast()),
+                ];
+                let _fakes: Vec<_> = [
+                    (0x0050_C4C0, reserve as *const ()),
+                    (0x004B_0390, begin as *const ()),
+                    (0x0053_DCF0, next_bucket as *const ()),
+                    (0x0051_CA60, insert as *const ()),
+                    (0x005E_55E0, allocate_filter as *const ()),
+                    (0x005E_A440, construct_filter as *const ()),
+                    (0x0087_93EC, framework as *const ()),
+                    (0x0041_1870, release_allocator as *const ()),
+                    (0x0090_CF54, allocate_tree as *const ()),
+                    (0x0041_3E60, clear_list as *const ()),
+                    (0x0046_F820, erase_right as *const ()),
+                    (0x0090_CF63, free_node as *const ()),
+                ]
+                .into_iter()
+                .map(|(a, p)| fake(a, p as usize))
+                .collect();
+                assert_eq!(run(fc4p_0050f2c0 as *const (), m, &[], 0, 0), RESULT);
+                let observed = calls();
+                let mut ids = vec![0x0050_C4C0, 0x004B_0390];
+                if reserve_capacity == 0 && !empty {
+                    ids.push(0x0051_CA60);
+                }
+                if !empty {
+                    ids.extend([0x0053_DCF0, 0x0053_DCF0]);
+                }
+                ids.push(0x005E_55E0);
+                if allocated_filter {
+                    ids.extend([0x005E_A440, 4]);
+                }
+                if !cached_allocator {
+                    ids.extend([0x0087_93EC, 0x14, 0x0041_1870]);
+                }
+                ids.extend([0x200C, 0x90]);
+                if success {
+                    ids.push(0x0090_CF54);
+                    if !empty {
+                        ids.extend([0x60, 0x60]);
+                    }
+                    ids.push(0x30C0);
+                    if !empty {
+                        ids.extend([0x0046_F820, 0x0090_CF63]);
+                    }
+                    ids.push(0x0090_CF63);
+                }
+                ids.extend([0x0041_3E60, 0x2010]);
+                if allocated_filter {
+                    ids.push(8);
+                }
+                ids.extend([0x0090_CF63, 0xC0]);
+                assert_eq!(observed.iter().map(|c| c.0).collect::<Vec<_>>(), ids);
+                assert_eq!(&vector_storage[..3], if empty { &[0xDDDD_DDDD; 3] } else { &[1, 4, 2] });
+                assert_eq!(
+                    hash_nodes.map(|n| n[2]),
+                    if empty {
+                        [99, 42, 77]
+                    } else if success {
+                        [2, 1, 0]
+                    } else {
+                        [0; 3]
+                    }
+                );
+                assert_eq!(bytes(m, 0xA80), before);
+                assert_eq!(cached, allocator.as_ptr() as u32);
+                assert_eq!(list_header[2], 0xCCCC_CCCC);
+                if success {
+                    assert_eq!(
+                        tree_header,
+                        [
+                            0xA5A5_A500,
+                            0,
+                            tree_header.as_ptr() as u32,
+                            tree_header.as_ptr() as u32,
+                            0xA5A5_A5A5
+                        ]
+                    );
+                    if !empty {
+                        assert!(observed.contains(&Call(0x0046_F820, 0, vec![tree_nodes[1].as_ptr() as u32])));
+                    }
+                }
+                STATE.with(|s| assert_eq!(s.borrow().manager, m as u32));
+            }
+        }
+    }
+
     thread_local! {
         static ATTACHMENT_TYPES: RefCell<std::collections::VecDeque<u32>> = const { RefCell::new(std::collections::VecDeque::new()) };
         static ATTACHMENT_TRANSFORMS: RefCell<Vec<Vec<u8>>> = const { RefCell::new(Vec::new()) };
