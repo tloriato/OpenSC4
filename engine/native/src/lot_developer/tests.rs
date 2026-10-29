@@ -206,6 +206,9 @@ mod updates;
 mod textures;
 mod network;
 mod altitudes;
+mod planting;
+mod daily;
+mod position;
 
 #[test]
 fn record_initializers_retain_every_padding_byte() {

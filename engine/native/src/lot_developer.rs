@@ -93,6 +93,9 @@ pub mod small;
 pub mod terrain;
 pub mod textures;
 pub mod updates;
+pub mod planting;
+pub mod daily;
+pub mod position;
 
 const ALL: [Port;
     explosion::PORTS.len()
@@ -116,7 +119,13 @@ const ALL: [Port;
         + altitudes::PORTS.len()
         + network::PORTS.len()
         + textures::PORTS.len()
-        + updates::PORTS.len()] = crate::port::concat(&[
+        + updates::PORTS.len()
+        + planting::PORTS.len()
+        + daily::PORTS.len()
+        + position::PORTS.len()] = crate::port::concat(&[
+    position::PORTS,
+    daily::PORTS,
+    planting::PORTS,
     textures::PORTS,
     construction::PORTS,
     business::PORTS,
