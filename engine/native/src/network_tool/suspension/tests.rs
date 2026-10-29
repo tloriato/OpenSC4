@@ -49,26 +49,44 @@ impl Constants {
 // An independent continuous x87 evaluation checks the split F80 implementation's rounding and
 // register exponent range. The position remains live while both exponentials are evaluated.
 fn profile(position: F80, weight: f32) -> F80 {
-    let complement = sub_float(F80::from_f32(1.), weight).to_f32();
-    let two = 2f64;
-    let scale = f64::from_bits(0x3FED_7628_782D_3949);
-    let mut output = F80::ZERO;
+    #[repr(C)]
+    struct Operands {
+        position: F80,
+        complement: f32,
+        weight: f32,
+        two: f64,
+        scale: f64,
+        output: F80,
+    }
+    let mut operands = Operands {
+        position,
+        complement: sub_float(F80::from_f32(1.), weight).to_f32(),
+        weight,
+        two: 2.,
+        scale: f64::from_bits(0x3FED_7628_782D_3949),
+        output: F80::ZERO,
+    };
     unsafe {
         core::arch::asm!(
-            "fld tbyte ptr [{position}]", "fld st(0)", "fchs", "fldl2e", "fmulp st(1), st(0)",
+            "fld tbyte ptr [{data}]", "fld st(0)", "fchs", "fldl2e", "fmulp st(1), st(0)",
             "fld st(0)", "frndint", "fxch st(1)", "fsub st(0), st(1)", "f2xm1",
             "fld1", "faddp st(1), st(0)", "fscale", "fstp st(1)",
             "fld st(1)", "fldl2e", "fmulp st(1), st(0)", "fld st(0)", "frndint",
             "fxch st(1)", "fsub st(0), st(1)", "f2xm1", "fld1", "faddp st(1), st(0)",
             "fscale", "fstp st(1)", "fstp st(2)", "fxch st(1)", "faddp st(1), st(0)",
-            "fsub qword ptr [{two}]", "fmul qword ptr [{scale}]", "fmul dword ptr [{complement}]",
-            "fadd dword ptr [{weight}]", "fstp tbyte ptr [{output}]",
-            position = in(reg) &position, two = in(reg) &two, scale = in(reg) &scale,
-            complement = in(reg) &complement, weight = in(reg) &weight, output = in(reg) &mut output,
+            "fsub qword ptr [{data} + {two}]", "fmul qword ptr [{data} + {scale}]",
+            "fmul dword ptr [{data} + {complement}]", "fadd dword ptr [{data} + {weight}]",
+            "fstp tbyte ptr [{data} + {output}]",
+            data = in(reg) &mut operands,
+            two = const core::mem::offset_of!(Operands, two),
+            scale = const core::mem::offset_of!(Operands, scale),
+            complement = const core::mem::offset_of!(Operands, complement),
+            weight = const core::mem::offset_of!(Operands, weight),
+            output = const core::mem::offset_of!(Operands, output),
             out("st(0)") _, out("st(1)") _, out("st(2)") _, out("st(3)") _,
         );
     }
-    output
+    operands.output
 }
 
 fn records(coordinates: &[[u32; 2]]) -> Object {
