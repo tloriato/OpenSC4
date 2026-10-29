@@ -24,23 +24,17 @@ port! {
     /// argument's stack slot is also the cell getter's second destination.
     #[port(address = 0x006C_DFA0, owner = "neighbors", name = "cSC4NeighborsSimulator::FindConnectionOnOtherSide", naked)]
     pub unsafe extern "C" fn fc4p_006cdfa0() {
-        core::arch::naked_asm!("lea edx, [esp + 4]", "jmp {}", sym other_side_of_object);
-    }
-}
-
-unsafe extern "fastcall" fn other_side_of_object(this: *mut u8, argument: *mut u32, connection: *mut u8) -> u64 {
-    unsafe {
-        let kind = virtual_call(connection, 0x14, &[], word(connection, 0), 0) as u32;
-        let mut x = this as u32;
-        virtual_call(
-            connection,
-            0x18,
-            &[&mut x as *mut u32 as u32, argument as u32],
-            argument as u32,
-            word(connection, 0),
+        // The coordinate overload can return a pointer into this frame in EDX, and the
+        // final pop exposes the cell getter's x output in ECX. Keep the original frame.
+        core::arch::naked_asm!(
+            "push ecx", "push ebx", "push esi", "mov esi, [esp + 16]", "mov eax, [esi]",
+            "push edi", "mov edi, ecx", "mov ecx, esi", "call dword ptr [eax + 0x14]",
+            "mov edx, [esi]", "mov ebx, eax", "lea eax, [esp + 20]", "push eax",
+            "lea ecx, [esp + 16]", "push ecx", "mov ecx, esi", "call dword ptr [edx + 0x18]",
+            "mov eax, [esp + 20]", "mov ecx, [esp + 12]", "mov edx, [edi]",
+            "push eax", "push ecx", "push ebx", "mov ecx, edi", "call dword ptr [edx + 0x38]",
+            "pop edi", "pop esi", "pop ebx", "pop ecx", "ret 4",
         );
-        let z = argument.read_unaligned();
-        virtual_call(this, 0x38, &[kind, x, z], z, word(this, 0))
     }
 }
 

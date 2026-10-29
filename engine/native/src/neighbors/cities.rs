@@ -293,17 +293,16 @@ unsafe extern "fastcall" fn connected(this: *mut u8, args: *mut u32, entry_edx: 
         let mut scratch = core::ptr::null_mut();
         let allocator = service(connection_allocator(), &mut scratch, &mut edx);
         let result = virtual_call(allocator, 0x0C, &[12], word(allocator, 0), edx);
-        let mut header = result as u32 as *mut u8;
+        let header = result as u32 as *mut u8;
         header.cast::<*mut u8>().write_unaligned(header);
         header.add(4).cast::<*mut u8>().write_unaligned(header);
-        let result = virtual_call(
-            this,
-            0x40,
-            &[&mut header as *mut *mut u8 as u32],
-            &mut header as *mut *mut u8 as u32,
-            word(this, 0),
-        );
+        // The original reuses the incoming output-list word, above entry ESP.
+        // This destination is observable both by callbacks and after return.
+        let header_slot = args.cast::<*mut u8>();
+        header_slot.write_unaligned(header);
+        let result = virtual_call(this, 0x40, &[header_slot as u32], header_slot as u32, word(this, 0));
         edx = (result >> 32) as u32;
+        let header = header_slot.read_unaligned();
         let mut node = pointer(header, 0);
         while node != header {
             let connection = pointer(node, 8);
@@ -351,9 +350,9 @@ unsafe extern "fastcall" fn connected(this: *mut u8, args: *mut u32, entry_edx: 
             edx = (result >> 32) as u32;
             node = pointer(node, 0);
         }
-        let result = clear_connections(&mut header, edx);
+        let result = clear_connections(header_slot, edx);
         edx = (result >> 32) as u32;
-        let saved_header = header;
+        let saved_header = header_slot.read_unaligned();
         let allocator = service(connection_allocator(), args.add(1).cast(), &mut edx);
         virtual_call(allocator, 0x10, &[saved_header as u32], word(allocator, 0), edx)
     }

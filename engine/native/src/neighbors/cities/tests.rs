@@ -57,6 +57,7 @@ struct State {
     framework: usize,
     region: usize,
     connections: Vec<usize>,
+    connection_header: u32,
     invalidate: bool,
     #[allow(clippy::vec_box)]
     nodes: Vec<Box<[u32; 5]>>,
@@ -275,6 +276,7 @@ extern "C" fn free_tree(node: *mut u8) -> u64 {
 }
 extern "thiscall" fn all_connections(_this: *mut u8, list: *mut u8) -> u64 {
     record(Call::AllConnections);
+    STATE.with(|s| s.borrow_mut().connection_header = unsafe { word(list, 0) });
     let objects = STATE.with(|s| s.borrow().connections.clone());
     for p in objects {
         unsafe {
@@ -442,7 +444,12 @@ impl World {
             )
         };
         assert_eq!(self.sim, before);
-        assert_eq!(args[0], output as u32);
+        if entry == fc4p_006d1e00 as *const () as usize {
+            // The temporary connection header replaces the incoming output argument.
+            assert_eq!(args[0], STATE.with(|s| s.borrow().connection_header));
+        } else {
+            assert_eq!(args[0], output as u32);
+        }
         let mut n = unsafe { pointer(*self.output, 0) };
         let mut ids = Vec::new();
         while n != *self.output {

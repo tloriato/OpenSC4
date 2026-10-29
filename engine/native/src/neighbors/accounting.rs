@@ -3,11 +3,21 @@
 
 //! Deal totals and the version-two connection record.
 
-use super::{pair, pointer, virtual_call, word, NeighborsSim};
+use super::{pointer, virtual_call, word, NeighborsSim};
 use crate::port::Port;
 
 game_fn! {
+    #[cfg(test)]
     fn write_reference(stream: *mut u8, object: *mut u8) -> u64 = "C" 0x005D_99A0;
+}
+
+#[cfg(not(test))]
+static WRITE_REFERENCE: usize = 0x005D_99A0;
+#[cfg(test)]
+static WRITE_REFERENCE: unsafe extern "C" fn(*mut u8, *mut u8) -> u64 = test_write_reference;
+#[cfg(test)]
+unsafe extern "C" fn test_write_reference(stream: *mut u8, object: *mut u8) -> u64 {
+    unsafe { write_reference(stream, object) }
 }
 
 unsafe fn total(this: *mut u8, entry_edx: u32, first_type: u32) -> u64 {
@@ -58,31 +68,24 @@ port! {
     /// Writes version two, the connection count, and each serializable connection reference. Only
     /// the low byte of the final stream error decides success; intermediate failures do not stop it.
     /// `this` is the serializable interface, eight bytes beyond the primary interface.
-    #[port(address = 0x006C_FB60, owner = "neighbors", name = "cSC4NeighborsSimulator::Write")]
+    #[port(address = 0x006C_FB60, owner = "neighbors", name = "cSC4NeighborsSimulator::Write", naked)]
     pub unsafe extern "fastcall" fn fc4p_006cfb60(this: *mut u8, entry_edx: u32, stream: *mut u8) -> u64 {
-        unsafe {
-            virtual_call(stream, 0x1C, &[2], word(stream, 0), entry_edx);
-            let sim = NeighborsSim::from_ptr(this.sub(8));
-            let header = sim.connections();
-            let mut node = pointer(header, 0);
-            let mut count = 0u32;
-            while node != header {
-                node = pointer(node, 0);
-                count = count.wrapping_add(1);
-            }
-            virtual_call(stream, 0x24, &[count], word(stream, 0), count);
-            let header = sim.connections();
-            node = pointer(header, 0);
-            let mut eax = header as u32;
-            while node != sim.connections() {
-                write_reference(stream, pointer(node, 8));
-                // The next node and current header are read only after the reference writer returns.
-                node = pointer(node, 0);
-                eax = sim.connections() as u32;
-            }
-            let result = virtual_call(stream, 0x48, &[], eax, word(stream, 0));
-            pair(u32::from(result as u8 == 0), (result >> 32) as u32)
-        }
+        // The stream retains addresses of its callees' stack buffers in heap state.
+        // Preserve the three saved words and call depth as well as the record data.
+        core::arch::naked_asm!(
+            "push ebx", "push esi", "push edi", "mov edi, [esp + 16]",
+            "mov eax, [edi]", "mov ebx, ecx", "push 2", "mov ecx, edi",
+            "call dword ptr [eax + 0x1c]", "mov ecx, [ebx + 0x14]", "mov eax, [ecx]",
+            "xor edx, edx", "cmp eax, ecx", "je 3f",
+            "2:", "mov eax, [eax]", "inc edx", "cmp eax, ecx", "jne 2b",
+            "3:", "mov eax, [edi]", "push edx", "mov ecx, edi", "call dword ptr [eax + 0x24]",
+            "mov eax, [ebx + 0x14]", "mov esi, [eax]", "cmp esi, eax", "je 5f",
+            "4:", "mov ecx, [esi + 8]", "push ecx", "push edi", "call dword ptr [{reference}]",
+            "mov esi, [esi]", "mov eax, [ebx + 0x14]", "add esp, 8", "cmp esi, eax", "jne 4b",
+            "5:", "mov edx, [edi]", "mov ecx, edi", "call dword ptr [edx + 0x48]",
+            "neg al", "pop edi", "pop esi", "pop ebx", "sbb eax, eax", "inc eax", "ret 4",
+            reference = sym WRITE_REFERENCE,
+        );
     }
 }
 
