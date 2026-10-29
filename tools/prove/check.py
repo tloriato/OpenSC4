@@ -4,10 +4,13 @@ import hashlib
 import json
 import struct
 import time
+import os
+import tempfile
+from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from .common import OUT, PROVEN, name_of, owner_of, abi_args, STORE_DB
+from .common import OUT, PROVEN, name_of, owner_of, abi_args, STORE_DB, resolve
 from .store import PageStore, captures_of, read_capture
 from .channel import channel, describe
 from .compare import difference, context_result
@@ -18,7 +21,13 @@ from .calls import CALL_INPUTS
 
 
 def same(replay, left, right, parts):
-    return difference(left[0], right[0], parts, left[1], right[1], replay.m.entry, replay.rec['stack'])
+    from .observer import normalize
+    a, b, rules = normalize(left, right, replay.m.entry)
+    for rule in rules:
+        key = json.dumps(rule, sort_keys=True)
+        replay.observer_exclusions[key] = rule
+    replay.observer_excluded_byte_events += len(rules)
+    return difference(left[0], right[0], parts, a, b, replay.m.entry, replay.rec['stack'])
 
 
 def twice(replay, port, parts, collect=False, timeout=30):
@@ -46,7 +55,41 @@ def validate_replay(rec, replay, original, store):
     return cpu_difference(rec, original[0], original[1], initial, actual)[0]
 
 
+@contextmanager
+def proven_lock():
+    """Serialize read/merge/replace across independent owner checks."""
+    folder=OUT/'locks';folder.mkdir(parents=True,exist_ok=True)
+    key=hashlib.sha256(str(PROVEN.resolve()).casefold().encode()).hexdigest()[:16]
+    with (folder/f'proven-{key}.lock').open('a+b') as f:
+        if not f.tell():f.write(b'\0');f.flush()
+        deadline=time.monotonic()+30
+        while True:
+            f.seek(0)
+            try:
+                if os.name=='nt':
+                    import msvcrt
+                    msvcrt.locking(f.fileno(),msvcrt.LK_NBLCK,1)
+                else:
+                    import fcntl
+                    fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                break
+            except OSError as error:
+                if error.errno not in (11,13,35,36):raise
+                if time.monotonic()>=deadline:raise TimeoutError('proof table is busy; no rows written')
+                time.sleep(.01)
+        try:yield
+        finally:
+            f.seek(0)
+            if os.name=='nt':msvcrt.locking(f.fileno(),msvcrt.LK_UNLCK,1)
+            else:fcntl.flock(f,fcntl.LOCK_UN)
+
+
 def update_proven(rows):
+    with proven_lock():
+        _update_proven(rows)
+
+
+def _update_proven(rows):
     fields = ['address', 'name', 'owner', 'verdict', 'captures', 'variants', 'skipped', 'scenarios', 'dll_sha256']
     old = {}
     if PROVEN.exists():
@@ -54,12 +97,21 @@ def update_proven(rows):
             old = {r['address']: r for r in csv.DictReader(f, delimiter='\t')}
     for r in rows:
         old[r['address']] = {k: r[k] for k in fields}
-    tmp = PROVEN.with_suffix('.tmp')
-    with tmp.open('w', encoding='utf-8', newline='') as f:
+    folder=OUT/'atomic';folder.mkdir(parents=True,exist_ok=True)
+    with tempfile.NamedTemporaryFile('w',encoding='utf-8',newline='',dir=folder,suffix='.tsv',delete=False) as f:
+        tmp=Path(f.name)
         writer = csv.DictWriter(f, fields, delimiter='\t', extrasaction='ignore')
         writer.writeheader()
         writer.writerows(old[a] for a in sorted(old))
-    tmp.replace(PROVEN)
+    try:
+        deadline=time.monotonic()+10
+        while True:
+            try:tmp.replace(PROVEN);break
+            except PermissionError:
+                if time.monotonic()>=deadline:raise
+                time.sleep(.02)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def check(args, targets):
@@ -70,11 +122,21 @@ def check(args, targets):
     batch_size = getattr(args, 'variant_batch', 32)
     limits = dict(variant_instructions=getattr(args, 'variant_instructions', 200_000),
                   replay_timeout=getattr(args, 'replay_timeout', 30))
+    limits['port_variant_instructions'] = getattr(args, 'port_variant_instructions', None) or limits['variant_instructions']
     raw = args.dll.read_bytes()
     sha = hashlib.sha256(raw).hexdigest()
     dll = OUT / 'dlls' / f'{sha}.dll'
     dll.parent.mkdir(parents=True, exist_ok=True)
-    dll.write_bytes(raw)
+    if not dll.exists() or hashlib.sha256(dll.read_bytes()).hexdigest()!=sha:
+        # Independent owner checks can use the same content-addressed DLL.
+        # Never truncate a copy another checker may be opening.
+        with tempfile.NamedTemporaryFile('wb',dir=dll.parent,suffix='.tmp',delete=False) as f:
+            f.write(raw);staged=Path(f.name)
+        try:
+            try:staged.replace(dll)
+            except PermissionError:
+                if not dll.exists() or hashlib.sha256(dll.read_bytes()).hexdigest()!=sha:raise
+        finally:staged.unlink(missing_ok=True)
     report = args.report or OUT / 'checks' / f'{time.strftime("%Y%m%d-%H%M%S")}-{sha[:8]}.json'
     report.parent.mkdir(parents=True, exist_ok=True)
     tool_files = {p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in Path(__file__).parent.glob('*.py')}
@@ -92,6 +154,10 @@ def check(args, targets):
         raise ValueError('no captures for the requested functions; run capture first')
     avoid = [(c['gdt'], c['gdt']+4096) for c in flat]
     port = Port(dll, [c['regions'] for c in flat], avoid=avoid)
+    enabled = set(targets)
+    if getattr(args, 'enabled', None):
+        enabled.update(resolve(args.enabled))
+    enabled = tuple(sorted(a for a in enabled if a in port.exports))
     results, items = [], []
     prepare_seconds = time.perf_counter()-all_start
     for a in targets:
@@ -103,7 +169,8 @@ def check(args, targets):
                       invalid_captures=[c['_path'] for c in records[a] if not c['validation']['valid']],
                       skips=[], seed=args.seed, requested_variants=args.variants,
                       capture_failures=0, variant_failures=0, unattempted_variants=0,
-                      unknown_call_targets=[], available_captures=len(cs), seconds=0)
+                      unknown_call_targets=[], available_captures=len(cs), seconds=0,
+                      observer_exclusions=[], observer_excluded_bytes=0, observer_excluded_byte_events=0)
         if a not in port.exports:
             result['difference'] = dict(field='missing export', export=f'fc4p_{a:08x}')
         if not cs:
@@ -119,11 +186,15 @@ def check(args, targets):
                 items.append(dict(result=len(results)-1, capture_index=capture_index,
                     path=rec['_path'], parts=parts, start=start+lo,
                     count=min(batch_size, quota-lo), first=lo == 0))
-    config = dict(port=port, dll_sha256=sha, enabled=tuple(targets), seed=args.seed, keep_going=keep_going,
+    config = dict(port=port, dll_sha256=sha, enabled=enabled, seed=args.seed, keep_going=keep_going,
                   store_path=str(STORE_DB), timeout=limits['replay_timeout'],
                   variant_instructions=limits['variant_instructions'],
+                  port_variant_instructions=limits['port_variant_instructions'],
                   journal=str(report.with_suffix('.work.jsonl')), tool_files=tool_files)
     pieces = run_items(items, config, jobs)
+    current_files = {p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in Path(__file__).parent.glob('*.py')}
+    if current_files != tool_files:
+        raise ValueError('tool source changed during check; no proof rows written; repeat with a stable tool version')
     timings = {}
     for item, piece in zip(items, pieces):
         if piece is None:
@@ -138,7 +209,7 @@ def check(args, targets):
     scenarios = [set() for _ in results]
     unknowns = [set() for _ in results]
     counts = ('captures', 'variants', 'skipped', 'deadline_skips', 'capture_failures',
-              'variant_failures', 'unattempted_variants', 'seconds')
+              'variant_failures', 'unattempted_variants', 'seconds', 'observer_excluded_byte_events')
     for item, piece in zip(items, pieces):
         i = item['result']
         if i in stopped:
@@ -149,6 +220,7 @@ def check(args, targets):
         for key in counts:
             result[key] += piece[key]
         result['skips'].extend(piece['skips'])
+        result['observer_exclusions'].extend(piece['observer_exclusions'])
         scenarios[i].update(piece['scenarios'])
         unknowns[i].update(piece['unknown_call_targets'])
         merge_decisions(decisions, piece['call_input_decisions'])
@@ -162,9 +234,13 @@ def check(args, targets):
             result['unattempted_variants'] = args.variants - result['variants'] - result['skipped'] - result['variant_failures']
         result['scenarios'] = ','.join(sorted(scenarios[i]))
         result['unknown_call_targets'] = sorted(unknowns[i])
+        result['observer_exclusions'] = list({json.dumps(r, sort_keys=True):r
+                                             for r in result['observer_exclusions']}.values())
+        result['observer_excluded_bytes'] = len({r['address'] for r in result['observer_exclusions']})
         print(json.dumps({k:v for k,v in result.items() if k != 'skips'}), flush=True)
     report.write_text(json.dumps(dict(dll=str(args.dll), sha256=sha, mapped_base=hex(port.base),
         jobs=jobs, variant_batch=batch_size, limits=limits,
+        enabled_entries=[f'{a:08x}' for a in enabled],
         prepare_seconds=prepare_seconds,
         timings=timings,
         tool_files=tool_files,

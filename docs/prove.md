@@ -21,6 +21,11 @@ Checks copy and hash the DLL before use. They reject imports, apply PE32 relocat
 and map the image in a gap free in every captured address space.
 The synthetic GDT occupies a separate free page; captured segment selectors and
 TEB addressing are preserved with a private user-mode bootstrap.
+Use `--enabled <owner|addresses>` to keep an owner's other exports redirected
+while checking only selected functions. Tested entries are always included.
+The report records `enabled_entries`, so a targeted recheck can reproduce the
+same replacement context as an owner check. A source change during a check
+aborts before proof rows are written.
 
 A check uses every stored **valid** capture for the selected functions. Invalid
 captures are listed separately and do not earn proof. The original runs twice and
@@ -45,6 +50,10 @@ twice for determinism. An original variant that faults, leaves the captured inpu
 or exceeds the deterministic instruction limit is skipped. The default is
 200,000 instructions (`--variant-instructions`); `deadline_skips` reports these
 separately per function. A port fault or instruction limit is DIFFERENT.
+`--port-variant-instructions N` raises only the port's ceiling when its compiled
+implementation needs more instructions. It defaults to the original ceiling;
+both ceilings are recorded. Hitting a ceiling alone is a resource limitation,
+not evidence of which calculation is wrong.
 The thirty-second wall watchdog (`--replay-timeout`) aborts the check without
 writing proof rows, because system load must not change a verdict. Skips never
 count as passing inputs.
@@ -53,6 +62,9 @@ count as passing inputs.
 capture and bounded variant batches (`--variant-batch`, default 32). Inputs retain
 their global numbers; the parent reduces results in function/capture/input order,
 so completion order cannot change the first difference or proof rows.
+Each worker retains at most one frozen, CPU-validated capture baseline across
+adjacent variant batches. It restores the machine, call sites and rule logs for
+each batch; successful variants still run twice in both implementations.
 
 By default a function stops at its first difference. `--keep-going` tests the rest
 of its captures and generated inputs while retaining the first difference and
@@ -60,6 +72,8 @@ counting capture/variant failures. The report includes passing variants, skips,
 failed variants, and capture failures separately. `docs/proven.tsv` records the
 DLL hash, attempted valid captures, passing variants, skips, scenarios and verdict.
 Use `--no-proven` for experiments and deliberately broken DLLs.
+Independent checks merge proof rows under a shared file lock and replace the
+table atomically. Staging files stay under ignored outputs.
 
 ## What is compared
 
@@ -72,25 +86,57 @@ Use `--no-proven` for experiments and deliberately broken DLLs.
   below entry ESP is dead at exit too. A callee writing local output values there
   does not itself cause a difference. Caller argument slots at or above exit ESP
   remain live and are compared.
+  One narrow exception covers the pinned capture observer's private state:
+  a differing byte in a writable `FreeCity4.dll` image region is excluded only
+  when every instruction that writes that byte in either replay belongs to that
+  same observer image. This avoids comparing the observer's retained stack
+  addresses, which depend on the tested implementation's local layout. Any game
+  or port write to that byte keeps it comparable, even if the observer overwrites
+  it later. The rule requires the recorded observer SHA256
+  `ee75f849f82f1fd3127865594bb0b8f67aae101b4a3f33dae6b31b9091f564a4`.
+  Hooks cover its writable image ranges plus the preceding boundary page to
+  catch stores that start before a range and cross into it; only bytes within
+  the writable range are eligible. Calls, registers, return values,
+  and effects passed into game memory remain compared. CPU-anchor validation
+  and repeated-run determinism are unchanged.
+  Each function's JSON report logs `observer_exclusions` (capture, byte, values,
+  writing instruction addresses and pin), `observer_excluded_bytes` (distinct
+  addresses), and `observer_excluded_byte_events` (across comparisons).
 * Ordered calls into executable code, excluding compiler helpers and calls within
   the port DLL. Each call compares its target and only the selected callee inputs.
 
 Call-input decisions are cached per callee and included in `call_input_decisions`
-in the JSON report. Known argument counts use the ABI table. Low-confidence or
+in the JSON report. Known argument counts use the ABI table. The verified
+`Date.Month` entry at `0091286f` takes no caller stack inputs; its three output
+addresses refer to its own local frame, and its table count comes from batched
+caller cleanup. This narrow override keeps the conflicting table value and
+decision source in the report. A convention label and plain return alone do not
+override other known counts. Low-confidence or
 missing counts are unknown; a consistent callee `ret imm16` can establish a count,
 otherwise cleanup after the call in the **original** caller is inspected (`add esp`,
 `lea esp`, or a discard pop). Batched or ambiguous cleanup remains unknown, with no
 padding. A virtual forwarding entry may consequently retain an unknown arity.
 
 ECX is selected for thiscall/fastcall or an entry-path read before overwrite; EDX
-for fastcall or a read before overwrite. Static scans follow direct branches and
-calls and report incomplete paths. A register push used only to reserve a local,
-whose bytes are overwritten before being read, is excluded. The report retains
-both ABI confidence and entry-read evidence; an incorrect ABI label can still
-produce a false input requirement and is a known limitation.
+for a read before overwrite or a fastcall label whose incoming EDX use cannot be
+disproved. A complete entry scan can prove a declared EDX input dead; that decision
+and its read mask are reported. Known stack-only Win32 imports do not implicitly
+take ECX. The thread-context helper at `009f7604` has no caller stack inputs;
+its ABI table's batched-cleanup attribution is overridden explicitly in the report.
+Static scans follow direct branches and calls and report incomplete paths.
+A register push used only to reserve a local, whose bytes are overwritten before
+being read, is excluded.
+The two reservation pushes in `operator new` at `009133dd` and `009133de` are
+also excluded: constructor `0048c9f0` initializes both frame words before either
+is read. Such stores are not incoming ECX arguments. This same rule applies when
+deciding which return registers later callers consume.
+The report retains both ABI confidence and entry-read evidence. An incomplete scan and an incorrect
+ABI label can still produce a conservative false input requirement.
 Partial register writes remove only the bits they replace: reading `DL` after
 writing `DL` does not require incoming `EDX`, while untouched higher bits remain
 inputs if used. Those masks also propagate through direct calls.
+Bits preserved by a direct callee remain live in its caller; a call alone does
+not prove the incoming register was overwritten.
 
 When a compared argument/register value points between the current call ESP and
 the tested function's entry ESP in either replay, it compares as a frame token.
@@ -103,7 +149,8 @@ normally, so an escaping pointer or changed local content can expose a differenc
 
 Selected executable entries jump to the DLL during port replay. Running original
 body instructions, writing the DLL image, changing an enabled entry jump, or
-accessing uncaptured pages fails. RDTSC/RDTSCP use a fixed sequence in both runs,
+accessing uncaptured pages fails. Forwarding calls made with `push target; ret` are
+traced like direct tail jumps. RDTSC/RDTSCP use a fixed sequence in both runs,
 including sites in system libraries. x87 transcendentals execute in the host helper.
 The helper builds automatically with VS 2022 C++ Build Tools (`vswhere`, `ml64`,
 `link`), under `build-runs/prove/bin`. A private Unicorn copy under
@@ -144,14 +191,16 @@ Synchronous observer file writes and `NtSetInformationFile` with
 `FilePositionInformation` are modelled through their process-visible completion
 records. Other information classes and unsupported services remain failures;
 effects outside the process are outside this replay check.
-The pinned observer's debug runtime can itself retain stack addresses in global
-memory; those differences remain visible and need separate diagnosis. No blanket
-observer-memory exception is applied.
 
 Exit codes: 0 for success/EXACT, 1 for DIFFERENT, 2 for environment/input errors.
 EXACT covers the recorded captures and generated inputs, including any explicitly
 unknown call inputs; it is not exhaustive equivalence or whole-game owner credit.
 No-capture functions and incomplete scans need more evidence.
+The pinned schedule replaces timer entries `0068bf50`, `0068bf80` and `0070e2b0`.
+When a tested entry is captured as a jump into that observer, `check` reports
+`observer replaces tested entry`. Such a capture cannot prove the unmodified
+timer implementation; it needs a CPU reference with that replacement disabled.
+This does not change how calls to those entries from other tested functions run.
 
 ## Tests and reports
 

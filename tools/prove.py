@@ -21,8 +21,10 @@ def main():
     chk.add_argument('--dll', type=Path, default=Path('engine/target/i686-pc-windows-msvc/release/fc4native.dll'))
     chk.add_argument('--variants', type=int, default=1000)
     chk.add_argument('--jobs', type=int, default=8)
+    chk.add_argument('--enabled', help='additional owner/address entries redirected during port replay')
     chk.add_argument('--variant-batch', type=int, default=32)
     chk.add_argument('--variant-instructions', type=int, default=200_000)
+    chk.add_argument('--port-variant-instructions', type=int, help='port instruction ceiling; defaults to the original ceiling')
     chk.add_argument('--replay-timeout', type=float, default=30)
     chk.add_argument('--seed', type=int, default=0xFC4)
     chk.add_argument('--report', type=Path)
@@ -59,6 +61,8 @@ def main():
             ap.error('variants must be nonnegative')
         if min(args.jobs, args.variant_batch, args.variant_instructions, args.replay_timeout) <= 0:
             ap.error('jobs, variant batch, instruction budget, and replay timeout must be positive')
+        if args.port_variant_instructions is not None and args.port_variant_instructions <= 0:
+            ap.error('port instruction budget must be positive')
         return check(args, resolve(args.functions))
     from prove.store import all_functions, captures_of, read_capture
     for a in all_functions():

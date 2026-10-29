@@ -14,6 +14,7 @@ class CallInputs:
         self.decisions = {}
         self.observed = None
         self.input_masks = {}
+        self.preserved_masks = {}
 
     @lru_cache(None)
     def instruction(self, addr):
@@ -27,6 +28,7 @@ class CallInputs:
                  {'edx':0xffffffff, 'dx':0xffff, 'dl':0xff, 'dh':0xff00})
         work, seen, reads, returns = [(target, (0xffffffff,0xffffffff))], set(), set(), set()
         observed = dict(ecx=0, edx=0)
+        preserved = dict(ecx=0, edx=0)
         unknown = False
         while work:
             addr, live = work.pop()
@@ -35,10 +37,14 @@ class CallInputs:
             seen.add((addr, live))
             if len(seen) > 512:
                 unknown = True
+                for reg in names:
+                    preserved[reg] = 0xffffffff
                 break
             ins = self.instruction(addr)
             if ins is None:
                 unknown = True
+                for i,reg in enumerate(names):
+                    preserved[reg] |= live[i]
                 continue
             rr, ww = ins.regs_access()
             read = {ins.reg_name(r) for r in rr}
@@ -65,6 +71,8 @@ class CallInputs:
             m = ins.mnemonic
             if m.startswith('ret'):
                 returns.add(direct or 0)
+                for i,reg in enumerate(names):
+                    preserved[reg] |= live[i]
                 continue
             if m == 'call':
                 if any(live) and direct is not None and depth < 3:
@@ -74,6 +82,12 @@ class CallInputs:
                         observed[reg] |= live[i] & nested_masks.get(reg,0)
                     reads.update(reg for reg in names if observed[reg])
                     unknown |= uncertain
+                    child = self.preserved_masks.get((direct,depth+1), {r:0xffffffff for r in names})
+                    live = tuple(live[i] & child[reg] for i,reg in enumerate(names))
+                elif direct is None and self.stack_only_import(ins):
+                    # These Win32 imports take only stack arguments. An
+                    # absolute IAT call is not a virtual method taking ECX.
+                    pass
                 elif any(live) and direct is None:
                     # A virtual call's receiver is observable. Its setup normally
                     # reads the receiver already, but preserve it here too.
@@ -82,12 +96,13 @@ class CallInputs:
                     unknown = True
                 elif any(live):
                     unknown = True
-                live = (0,0)
             if m == 'jmp':
                 if direct is not None:
                     work.append((direct, live))
                 else:
                     unknown = True
+                    for i,reg in enumerate(names):
+                        preserved[reg] |= live[i]
                 continue
             if m.startswith('j') or m.startswith('loop'):
                 if direct is not None:
@@ -99,12 +114,32 @@ class CallInputs:
                 continue
             work.append((nxt, live))
         self.input_masks[target,depth] = observed
+        self.preserved_masks[target,depth] = preserved
         return reads, returns, unknown
+
+    def stack_only_import(self, ins):
+        if not ins.operands or ins.operands[0].type != X.X86_OP_MEM:
+            return False
+        mem = ins.operands[0].mem
+        if mem.base or mem.index:
+            return False
+        imported = exe().imports.get(mem.disp & 0xffffffff)
+        return imported in {('kernel32.dll', name) for name in
+                            ('GetLastError', 'SetLastError', 'TlsGetValue', 'TlsSetValue',
+                             'QueryPerformanceCounter', 'GetCurrentThreadId', 'GetProcessHeap',
+                             'HeapAlloc', 'HeapFree', 'HeapReAlloc', 'HeapSize', 'HeapValidate',
+                             'EnterCriticalSection', 'LeaveCriticalSection', 'TryEnterCriticalSection',
+                             'InitializeCriticalSection', 'DeleteCriticalSection')}
 
     def dead_allocation_push(self, first):
         """A PUSH used to reserve a local is not a use of its incoming value."""
         if not first.operands or first.operands[0].type != X.X86_OP_REG or first.reg_name(first.operands[0].reg) not in ('ecx', 'edx'):
             return False
+        if first.address in (0x009133dd, 0x009133de) and bytes(first.bytes) == b'\x51':
+            # operator new reserves two words. LEA ECX,[EBP-8] then calls
+            # 0048c9f0, which initializes both words before reading either.
+            # The incoming ECX value never becomes an allocator argument.
+            return True
         sp, addr = -4, first.address+first.size
         for _ in range(16):
             ins = self.instruction(addr)
@@ -138,10 +173,27 @@ class CallInputs:
         declared = (row.get('reg_args') or '').lower().split(',')
         if 'thiscall' in convention or 'fastcall' in convention or row.get('this', '').lower() == 'ecx' or 'ecx' in declared:
             regs.add('ecx')
-        if 'fastcall' in convention:
+        dead_declared = []
+        if 'fastcall' in convention and (uncertain or 'edx' in regs):
             regs.add('edx')
+        elif 'fastcall' in convention:
+            dead_declared.append('edx')
         n = known[1] if known else None
         source = 'ABI table' if n is not None else 'unknown'
+        if target == 0x0091286f:
+            # Date.Month makes a 12-byte local frame and passes three local
+            # addresses to GetYMD. It reads only the month at EBP-4 and returns
+            # without popping arguments. Its caller's later cleanup is batched.
+            n, source = 0, 'verified Date.Month: three local outputs, no caller stack inputs'
+        if target == 0x009f7604:
+            # __getptd saves EBX/ESI, calls GetLastError and TlsGetValue,
+            # restores them and returns. No caller stack slot is read. Cleanup
+            # after callers belongs to their earlier calls, not to this helper.
+            n, source = 0, 'verified thread-context helper: no caller stack reads'
+            # Its no-argument CRT interface also takes no incoming ECX/EDX.
+            # A bounded walk through its slow allocation path can encounter
+            # an unresolved indirect call; that is not an implicit receiver.
+            regs.clear()
         if n is None and len(pops) == 1 and next(iter(pops)) > 0:
             pop = next(iter(pops))
             if pop % 4 == 0:
@@ -151,7 +203,11 @@ class CallInputs:
                       entry_read_masks={n:f'{v:08x}' for n,v in self.input_masks.get((target,0),{}).items()},
                       abi_convention=row.get('convention'), abi_reg_args=row.get('reg_args'),
                       abi_this=row.get('this'), abi_stack_arg_dwords=row.get('stack_arg_dwords'),
-                      register_source='ECX declaration/thiscall/fastcall or entry reads; EDX fastcall or entry reads; partial overwrites tracked by bit; overwritten allocation pushes excluded',
+                      input_override=('verified no-argument thread-context helper; no incoming ECX/EDX or stack parameters'
+                                      if target==0x009f7604 else
+                                      'verified Date.Month local outputs; no caller stack parameters' if target==0x0091286f else None),
+                      register_source='ECX declaration/thiscall/fastcall or entry reads; EDX entry reads or unproven fastcall; complete entry scan can prove incoming EDX dead; partial overwrites tracked by bit; overwritten allocation pushes excluded',
+                      proven_dead_declared_registers=dead_declared,
                       entry_scan_incomplete=uncertain, return_pop_bytes=sorted(pops), caller_sites={})
         self.decisions[key] = result
         return result

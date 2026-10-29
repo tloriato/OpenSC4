@@ -12,7 +12,10 @@ The sites are every direct call or tail jump to the function in the executable p
 capture (virtual calls have no static site; their captured return addresses do).
 """
 import json
+import hashlib
+import os
 from functools import lru_cache
+from pathlib import Path
 
 from .common import CACHE, EXE_LO, EXE_HI, exe, abi, call_sites, functions
 
@@ -112,6 +115,10 @@ def reads_after(ret_addr, depth=0):
         wn = {insn.reg_name(r) for r in ww}
         m = insn.mnemonic
         ops = insn.operands
+        if m == 'push':
+            from .calls import CALL_INPUTS
+            if CALL_INPUTS.dead_allocation_push(insn):
+                rn -= {'ecx', 'edx'}
         if m in ('xor', 'sub') and len(ops) == 2 and ops[0].type == X.X86_OP_REG and                 ops[1].type == X.X86_OP_REG and ops[0].reg == ops[1].reg:
             rn = set()                                   # zeroing idiom: a write, not a read
         for r in rn:
@@ -128,7 +135,9 @@ def reads_after(ret_addr, depth=0):
             elif t is not None and EXE_LO <= t < EXE_HI:
                 reads |= nlive                                     # too deep to follow
             else:
-                reads |= {'ecx'} & nlive                           # virtual call: this in ECX, volatiles clobbered
+                from .calls import CALL_INPUTS
+                if not CALL_INPUTS.stack_only_import(insn):
+                    reads |= {'ecx'} & nlive                       # unresolved virtual receiver
             continue
         if m.startswith('ret'):
             if stack:
@@ -158,18 +167,40 @@ def reads_after(ret_addr, depth=0):
 _site_cache = None
 
 
+@lru_cache(None)
+def cache_path():
+    # Both files affect liveness through dead-allocation-push recognition.
+    root=Path(__file__).parent
+    version=hashlib.sha256((root/'channel.py').read_bytes()+(root/'calls.py').read_bytes()).hexdigest()[:16]
+    return CACHE/f'return-reads-{version}.json'
+
+
 def _cache():
     global _site_cache
     if _site_cache is None:
-        p = CACHE / 'return-reads.json'
-        _site_cache = json.loads(p.read_text()) if p.is_file() else {}
+        p = cache_path()
+        try:
+            _site_cache = json.loads(p.read_text()) if p.is_file() else {}
+        except (OSError,ValueError):
+            _site_cache = {}  # a cache failure cannot change or abort a proof
     return _site_cache
 
 
 def save_cache():
     if _site_cache is not None:
         CACHE.mkdir(parents=True, exist_ok=True)
-        (CACHE / 'return-reads.json').write_text(json.dumps(_site_cache))
+        p=cache_path()
+        try:
+            existing=json.loads(p.read_text()) if p.is_file() else {}
+        except (OSError,ValueError):
+            existing={}
+        existing.update(_site_cache)
+        tmp=p.with_suffix(f'.{os.getpid()}.tmp')
+        tmp.write_text(json.dumps(existing))
+        try:
+            tmp.replace(p)
+        except PermissionError:
+            tmp.unlink(missing_ok=True)  # another reader may briefly hold the cache open on Windows
 
 
 def site_reads(site, kind, depth=0):

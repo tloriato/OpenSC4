@@ -21,6 +21,16 @@ ADDR, BASE, ESP, RET = 0x6bd540, 0x51000000, 0x300800, 0x401000
 CODE = bytes.fromhex('8b44240440c20400')  # return argument + 1
 
 
+def concurrent_proven_fixture(path,base,barrier):
+    from pathlib import Path
+    from . import check as checker
+    checker.PROVEN=Path(path)
+    barrier.wait(timeout=30)
+    for i in range(20):
+        checker.update_proven([dict(address=f'{base+i:08x}',name='fixture',owner='synthetic',
+            verdict='EXACT',captures=1,variants=1,skipped=0,scenarios='synthetic',dll_sha256='fixture')])
+
+
 class ReplayTests(unittest.TestCase):
     def test_kernel_shared_fields_are_named_and_byte_logged(self):
         from .validation import normalize_kernel, SHARED
@@ -163,6 +173,88 @@ class ReplayTests(unittest.TestCase):
 
     def test_equivalent_and_deterministic(self):
         self.assertIsNone(self.difference(self.replay()))
+
+    def observer_replay(self, foreign=None, pin=True, readonly=False, clobber=False, game_call=False):
+        from .observer import PIN
+        observer, data = 0x5c001000, 0x5d8b9000
+        # The observer remembers the caller's stack address. The two tested
+        # implementations deliberately use different amounts of local storage.
+        helper = b'\x89\x25'+struct.pack('<I', data)+b'\xc3'
+        def body(base, locals_size):
+            start = b'\x83\xec'+bytes([locals_size])
+            if game_call:
+                start += b'\x6a\x11'
+                start += b'\xe8'+struct.pack('<i',0x5f4250-(base+len(start)+5))
+            call_pc = base+len(start)
+            call = b'\xe8'+struct.pack('<i', observer-call_pc-5)
+            # Foreign writes remain observable even if the observer overwrites
+            # them afterwards; append another observer call for that case.
+            extra = b''
+            if base == BASE and foreign:
+                extra = b'\xc6\x05'+struct.pack('<I', data)+b'\x42'
+                if foreign == 'straddle':
+                    extra = b'\xc7\x05'+struct.pack('<I', data-1)+bytes(4)
+                if foreign in ('before', 'straddle'):
+                    pc = base+len(start)+len(call)+len(extra)
+                    extra += b'\xe8'+struct.pack('<i', observer-pc-5)
+            if base == BASE and clobber:
+                extra += b'\x31\xff'
+            return start+call+extra+b'\x83\xc4'+bytes([locals_size])+CODE
+        original, port = body(ADDR, 8), body(BASE, 24)
+        rec = copy.deepcopy(self.rec)
+        if pin:
+            rec['pinned'] = dict(dll_sha256=PIN)
+        rec['regions'] += [[observer, 4096, 0x1000, 0x20, 0x1000000, r'C:\Plugins\FreeCity4.dll'],
+                           [data-4096, 4096, 0x1000, 2, 0x1000000, r'C:\Plugins\FreeCity4.dll'],
+                           [data, 4096, 0x1000, 2 if readonly else 4, 0x1000000, r'C:\Plugins\FreeCity4.dll']]
+        game = bytearray(4096)
+        game[ADDR % 4096:ADDR % 4096+len(original)] = original
+        for addr, contents in ((ADDR & -4096, bytes(game)), (observer, helper+bytes(4096-len(helper))),
+                               (data-4096, bytes(4096)), (data, bytes(4096))):
+            rec['pages'][str(addr)] = self.store.put_many([contents])[0]
+        if game_call:
+            p=bytearray(4096);callee=bytes.fromhex('b812000000c20400')
+            p[0x250:0x250+len(callee)]=callee
+            rec['pages'][str(0x5f4000)]=self.store.put_many([bytes(p)])[0]
+        return Replay(rec, self.store, SimpleNamespace(base=BASE, image=port+bytes(4096-len(port)),
+                                                      exports={ADDR:BASE}), [ADDR])
+
+    def test_observer_private_frame_write_is_exact_and_logged(self):
+        r = self.observer_replay()
+        self.assertIsNone(self.difference(r))
+        rules = list(r.observer_exclusions.values())
+        self.assertEqual([v['address'] for v in rules], ['5d8b9000'])
+        self.assertEqual(rules[0]['writers'], ['5c001000'])
+        self.assertEqual(rules[0]['rule'], 'pinned observer private write')
+        self.assertEqual(r.observer_excluded_byte_events, 1)
+
+    def test_port_write_to_observer_page_still_differs(self):
+        for order in ('after', 'before', 'straddle'):
+            with self.subTest(order=order):
+                r = self.observer_replay(foreign=order)
+                self.assertEqual(self.difference(r)['field'], 'memory 5d8b9000')
+                self.assertFalse(r.observer_exclusions)
+
+    def test_observer_rule_requires_pin_and_writable_region(self):
+        for options in (dict(pin=False), dict(readonly=True)):
+            with self.subTest(options=options):
+                r = self.observer_replay(**options)
+                self.assertEqual(self.difference(r)['field'], 'memory 5d8b9000')
+                self.assertFalse(r.observer_exclusions)
+
+    def test_substituted_timer_entry_is_a_reference_limitation(self):
+        r=self.observer_replay()
+        # An observer-owned replacement may return a schedule constant instead
+        # of running the actual timer arithmetic. Do not blame a native port
+        # for reading an input that this replacement never reads.
+        data=bytearray(r.m.provider.get(ADDR & -4096))
+        data[ADDR % 4096:ADDR % 4096+5]=b'\xe9'+struct.pack('<i',0x5c001000-ADDR-5)
+        r.m.provider.pages[ADDR & -4096]=self.store.put_many([bytes(data)])[0]
+        with patch('prove.observer.SUBSTITUTED_ENTRIES',{ADDR:'test schedule replacement'}):
+            d=r.observer.reference_limitation(r.rec,r.m.provider)
+            self.assertEqual(d['field'],'observer replaces tested entry')
+            self.assertEqual(d['target'],'5c001000')
+        self.assertIsNone(r.observer.reference_limitation(r.rec,r.m.provider))
 
     def test_arithmetic(self):
         self.assertEqual(self.difference(self.replay(CODE.replace(b'\x40', b'\x48')))['field'], 'al')
@@ -324,6 +416,19 @@ class ReplayTests(unittest.TestCase):
         inputs = CallInputs()
         self.assertNotIn('ecx', inputs.callee(0x5d99a0)['registers'])
 
+    def test_operator_new_constructor_initializes_both_reserved_words(self):
+        inputs=CallInputs()
+        self.assertEqual(inputs.callee(0x9133da)['registers'],[])
+        for addr in (0x9133dd,0x9133de):
+            self.assertTrue(inputs.dead_allocation_push(inputs.instruction(addr)))
+        # The initializer's two stores precede its first outgoing call and
+        # cover precisely the two words at EBP-8 and EBP-4 in operator new.
+        for addr,offset in ((0x48c9f7,0),(0x48c9fd,4)):
+            ins=inputs.instruction(addr)
+            self.assertEqual(ins.mnemonic,'mov')
+            self.assertEqual(ins.reg_name(ins.operands[0].mem.base),'esi')
+            self.assertEqual(ins.operands[0].mem.disp,offset)
+
     def test_partial_register_writes_preserve_only_unwritten_input_bits(self):
         cases=(('b2000fb6c2c3',0),             # DL is written before reading DL
                ('66ba00000fb6c2c3',0),         # DX is written before reading DL
@@ -350,6 +455,18 @@ class ReplayTests(unittest.TestCase):
         self.assertFalse(unknown)
         self.assertEqual(regs,{'edx'})
         self.assertEqual(inputs.input_masks[base,0]['edx'],0xff00)
+
+    def test_input_preserved_through_child_is_still_read_after_call(self):
+        for child,expected in (('b801000000c3',0xffffffff),
+                               ('ba01000000c3',0),('b200c3',0xffffff00)):
+            with self.subTest(child=child):
+                inputs=CallInputs();base=0x1000
+                parent=bytes.fromhex('e8fb0000008bc2c3')
+                ins={i.address:i for start,data in ((base,parent),(0x1100,bytes.fromhex(child)))
+                     for i in inputs.md.disasm(data,start)}
+                inputs.instruction=ins.get
+                inputs.scan(base)
+                self.assertEqual(inputs.input_masks[base,0]['edx'],expected)
 
     def test_network_setter_does_not_take_incoming_edx(self):
         inputs=CallInputs();d=inputs.callee(0x61b480)
@@ -404,6 +521,25 @@ class ReplayTests(unittest.TestCase):
         self.assertIsNone(self.difference(r))
         self.assertEqual(len(r.trace), 1)
 
+    def test_jump_quantum_does_not_invent_entry_calls(self):
+        target=0x5f4250
+        r=self.call_replay()
+        # Replace the callee by a captured detour that forwards to its body.
+        # Its entry can be revisited when an instruction quantum ends there.
+        helper=0x5c001000
+        page=bytearray(4096)
+        page[target % 4096:target % 4096+5]=b'\xe9'+struct.pack('<i',helper-target-5)
+        body=b'\xb8\x12\x00\x00\x00\xc2\x04\x00'
+        page[target % 4096+5:target % 4096+5+len(body)]=body
+        trampoline=b'\xe9'+struct.pack('<i',target+5-helper-5)
+        for addr,data in ((target & -4096,bytes(page)),(helper,trampoline+bytes(4096-len(trampoline)))):
+            r.m.provider.pages[addr]=self.store.put_many([data])[0]
+        for quantum in (1,2,3,5,7):
+            with self.subTest(quantum=quantum):
+                r.m.quantum=quantum
+                self.assertIsNone(self.difference(r))
+                self.assertEqual(len(r.trace),1)
+
     def test_return_pop_derives_unknown_arity(self):
         import capstone
         inputs, base = CallInputs(), 0x12340000
@@ -450,12 +586,88 @@ class ReplayTests(unittest.TestCase):
         md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
         md.detail = True
         instructions = {i.address: i for i in md.disasm(bytes.fromhex('ba01000000c3'), base)}
-        for convention, expected in (('unknown', []), ('fastcall', ['ecx', 'edx'])):
+        for convention, expected in (('unknown', []), ('fastcall', ['ecx'])):
             inputs = CallInputs()
             inputs.instruction = instructions.get
             row = dict(convention=convention, reg_args='edx')
             with patch('prove.calls.abi', return_value={base: row}), patch('prove.calls.abi_args', return_value=([], 0)):
                 self.assertEqual(inputs.callee(base)['registers'], expected)
+
+    def test_timer_edx_is_proven_dead_even_with_fastcall_label(self):
+        for target in (0x68bf80, 0x8905c4):
+            d = CallInputs().callee(target)
+            self.assertEqual(d['registers'], ['ecx'])
+            self.assertFalse(d['entry_scan_incomplete'])
+            self.assertEqual(d['proven_dead_declared_registers'], ['edx'])
+
+    def test_unknown_fastcall_path_retains_edx(self):
+        inputs, base = CallInputs(), 0x12340000
+        instructions = {i.address:i for i in inputs.md.disasm(bytes.fromhex('ffe0'), base)}
+        inputs.instruction = instructions.get
+        with patch('prove.calls.abi', return_value={base:dict(convention='fastcall')}), \
+             patch('prove.calls.abi_args', return_value=([],0)):
+            self.assertEqual(inputs.callee(base)['registers'], ['ecx','edx'])
+
+    def test_thread_context_helper_has_no_stack_inputs(self):
+        d = CallInputs().callee(0x9f7604)
+        self.assertEqual(d['stack_dwords'], 0)
+        self.assertEqual(d['registers'], [])
+
+    def test_callee_cleanup_corrects_batched_abi_argument_count(self):
+        inputs=CallInputs()
+        d=inputs.callee(0x91286f)  # Date.Month uses three local output slots, no caller arguments.
+        self.assertEqual(d['stack_dwords'], 0)
+        self.assertIn('verified Date.Month',d['stack_source'])
+        base=0x12340000
+        inputs.instruction={i.address:i for i in inputs.md.disasm(bytes.fromhex('c20800'),base)}.get
+        # A convention label alone does not establish whether a nonstandard
+        # caller cleans its arguments. Preserve other known ABI counts.
+        for convention,expected in (('thiscall',1),('cdecl',1)):
+            inputs.decisions.clear()
+            with patch('prove.calls.abi',return_value={base:dict(convention=convention)}), \
+                 patch('prove.calls.abi_args',return_value=([],1)):
+                self.assertEqual(inputs.callee(base)['stack_dwords'],expected)
+
+    def test_push_ret_forwarding_entry_is_an_external_tail_call(self):
+        target = 0x5f4250
+        r = self.call_replay()
+        # Both tested functions forward the incoming argument/return address.
+        original = b'\xe9'+struct.pack('<i', target-ADDR-5)
+        page = bytearray(4096)
+        page[ADDR % 4096:ADDR % 4096+len(original)] = original
+        r.m.provider.pages[ADDR & -4096] = self.store.put_many([bytes(page)])[0]
+        code = b'\x68'+struct.pack('<I', target)+b'\xc3'
+        image = code+bytes(4096-len(code))
+        r.m.uc.mem_write(BASE, image)
+        r.m.entry[BASE] = image
+        self.assertIsNone(self.difference(r))
+        self.assertEqual(len(r.trace), 1)
+        self.assertEqual(r.trace[0]['target'], f'{target:08x}')
+
+    def test_return_channel_ignores_overwritten_allocation_push(self):
+        from .channel import reads_after
+        inputs, base = CallInputs(), 0x12340000
+        # Saving an output register to reserve a local does not observe it
+        # when the local is overwritten before any read.
+        ins = {i.address:i for i in inputs.md.disasm(bytes.fromhex('5189042483c404c3'), base)}
+        inputs.instruction = ins.get
+        with patch('prove.channel._insn', side_effect=ins.get), \
+             patch('prove.channel.EXE_LO', 0), patch('prove.channel.EXE_HI', 0xffffffff), \
+             patch('prove.channel._ret_reads', return_value=set()), \
+             patch('prove.calls.CALL_INPUTS', inputs):
+            self.assertNotIn('ecx', reads_after(base))
+
+    def test_stack_only_import_does_not_consume_returned_ecx(self):
+        from .channel import reads_after
+        from .common import exe
+        slot=next(a for a,(dll,name) in exe().imports.items() if dll=='kernel32.dll' and name=='GetLastError')
+        inputs=CallInputs();base=0x12340000
+        code=b'\xff\x15'+struct.pack('<I',slot)+b'\xc3'
+        ins={i.address:i for i in inputs.md.disasm(code,base)}
+        with patch('prove.channel._insn',side_effect=ins.get), \
+             patch('prove.channel.EXE_LO',0),patch('prove.channel.EXE_HI',0xffffffff), \
+             patch('prove.channel._ret_reads',return_value=set()):
+            self.assertNotIn('ecx',reads_after(base))
 
     def test_kernel_model_cannot_write_hidden_state(self):
         from unicorn import UC_HOOK_CODE
@@ -474,10 +686,11 @@ class ReplayTests(unittest.TestCase):
         from . import check as checker
         root = OUT/'tests/parallel'
         root.mkdir(parents=True, exist_ok=True)
-        r = self.replay(b'\x31\xff'+CODE)
+        r = self.observer_replay(clobber=True,game_call=True)
         out, pages = r.run()
         rec = copy.deepcopy(r.rec)
-        rec.update(scenario='synthetic', validation=dict(valid=True, clock_rules=[]), exit_pages={})
+        rec.update(scenario='synthetic', validation=dict(valid=True, clock_rules=[]),
+                   exit_pages={str(p):self.store.put_many([data])[0] for p,data in pages.items()})
         rec['exit'] = dict(regs={**out['regs'], 'eflags':out['eflags']},
                            fpu=copy.deepcopy(rec['entry']['fpu']))
         paths = []
@@ -488,7 +701,7 @@ class ReplayTests(unittest.TestCase):
             paths.append(path)
         dummy = root/'fixture.dll'
         dummy.write_bytes(b'synthetic test image supplied by the loader fixture')
-        reports, tables = [], []
+        reports, tables, decisions = [], [], []
         for keep_going,jobs in ((True,1),(True,2),(False,1),(False,2)):
             table, report = root/f'proven-{jobs}-{keep_going}.tsv', root/f'check-{jobs}-{keep_going}.json'
             table.unlink(missing_ok=True)
@@ -499,7 +712,9 @@ class ReplayTests(unittest.TestCase):
                  patch.object(checker, 'STORE_DB', self.store.path), \
                  patch.object(checker, 'PROVEN', table), contextlib.redirect_stdout(io.StringIO()):
                 checker.check(args, [ADDR])
-            result = json.loads(report.read_text())['results']
+            saved=json.loads(report.read_text())
+            result = saved['results']
+            decisions.append(saved['call_input_decisions'])
             for row in result:
                 row.pop('seconds')
             reports.append(result)
@@ -507,6 +722,8 @@ class ReplayTests(unittest.TestCase):
         for i in (0,2):
             self.assertEqual(reports[i], reports[i+1])
             self.assertEqual(tables[i], tables[i+1])
+            self.assertEqual(decisions[i],decisions[i+1])
+            self.assertTrue(decisions[i])
         self.assertEqual(reports[0][0]['verdict'], 'DIFFERENT')
         self.assertEqual(reports[0][0]['difference']['field'], 'edi')
         self.assertEqual(reports[0][0]['difference']['input']['id'], 1)
@@ -519,6 +736,52 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(first['kind'], 'instruction_limit')
         self.assertEqual({k:v for k,v in first.items() if k!='seconds'},
                          {k:v for k,v in second.items() if k!='seconds'})
+
+    def test_port_ceiling_can_allow_equivalent_compiler_overhead(self):
+        import gzip,json,contextlib,io
+        from argparse import Namespace
+        from . import check as checker
+        r=self.replay(b'\x90'*1000+CODE)
+        out,pages=r.run()
+        rec=copy.deepcopy(r.rec)
+        rec.update(scenario='synthetic',validation=dict(valid=True),
+                   exit=dict(regs={**out['regs'],'eflags':out['eflags']},fpu=rec['entry']['fpu']),
+                   exit_pages={str(p):self.store.put_many([v])[0] for p,v in pages.items()})
+        folder=OUT/'tests/port-ceiling';folder.mkdir(parents=True,exist_ok=True)
+        path=folder/'capture.json.gz'
+        with gzip.open(path,'wt') as f:json.dump(rec,f)
+        dll=folder/'fixture.dll';dll.write_bytes(b'test loader fixture')
+        for ceiling,expected in ((None,'DIFFERENT'),(5000,'EXACT')):
+            report=folder/f'{ceiling}.json'
+            args=Namespace(dll=dll,variants=2,seed=0xfc4,jobs=1,variant_batch=2,
+                           variant_instructions=128,port_variant_instructions=ceiling,
+                           keep_going=False,no_proven=True,report=report)
+            with patch.object(checker,'Port',return_value=r.port), \
+                 patch.object(checker,'captures_of',return_value=[path]), \
+                 patch.object(checker,'STORE_DB',self.store.path),contextlib.redirect_stdout(io.StringIO()):
+                checker.check(args,[ADDR])
+            result=json.loads(report.read_text())['results'][0]
+            self.assertEqual(result['verdict'],expected)
+            if ceiling:self.assertEqual(result['variants'],2)
+
+    def test_concurrent_owner_proof_rows_are_not_lost(self):
+        import multiprocessing,csv
+        root=OUT/'tests/concurrent-proven';root.mkdir(parents=True,exist_ok=True)
+        table=root/'proven.tsv';table.unlink(missing_ok=True)
+        ctx=multiprocessing.get_context('spawn');barrier=ctx.Barrier(2)
+        children=[ctx.Process(target=concurrent_proven_fixture,args=(str(table),base,barrier))
+                  for base in (0x600000,0x700000)]
+        try:
+            for child in children:child.start()
+            for child in children:
+                child.join(60)
+                self.assertEqual(child.exitcode,0)
+            with table.open(newline='') as f:rows=list(csv.DictReader(f,delimiter='\t'))
+            self.assertEqual({r['address'] for r in rows},
+                             {f'{base+i:08x}' for base in (0x600000,0x700000) for i in range(20)})
+        finally:
+            for child in children:
+                if child.is_alive():child.terminate();child.join()
 
 
 if __name__ == '__main__':

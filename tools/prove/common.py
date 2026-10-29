@@ -212,6 +212,10 @@ class ExeImage:
         for s in pe.sections:
             d = s.get_data()[:max(s.Misc_VirtualSize, 0) or len(s.get_data())]
             img[s.VirtualAddress:s.VirtualAddress + len(d)] = d
+        pe.parse_data_directories(directories=[pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_IMPORT']])
+        self.imports = {imp.address: (desc.dll.decode('ascii').lower(),
+                                    imp.name.decode('ascii') if imp.name else None)
+                        for desc in getattr(pe, 'DIRECTORY_ENTRY_IMPORT', []) for imp in desc.imports}
         self.base, self.img = base, bytes(img)
 
     def read(self, va, n):
