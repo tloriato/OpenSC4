@@ -15,6 +15,7 @@ enum Arg {
     Word(u32),
     Out(Vec<u32>),
     In(Vec<u32>),
+    Bytes(Vec<u8>),
 }
 
 struct Step {
@@ -75,6 +76,9 @@ fn run(object: *mut u8, method: &'static str, args: &[u32]) -> u64 {
             },
             Arg::In(values) => unsafe {
                 assert_eq!(std::slice::from_raw_parts(*actual as *const u32, values.len()), values);
+            },
+            Arg::Bytes(values) => unsafe {
+                core::ptr::copy_nonoverlapping(values.as_ptr(), *actual as *mut u8, values.len());
             },
         }
     }
@@ -212,6 +216,7 @@ mod position;
 mod connections;
 mod lot_update;
 mod lighting_transition;
+mod entrypoints;
 
 #[test]
 fn record_initializers_retain_every_padding_byte() {
