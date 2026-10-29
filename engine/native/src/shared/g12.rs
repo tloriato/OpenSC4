@@ -2798,6 +2798,20 @@ game_fn! { #[allow(dead_code)] fn construct_window_base(this: *mut u8) -> u32 = 
 game_fn! { #[allow(dead_code)] fn erase_list_iterator(this: *mut u8, output: u32, position: u32) -> u32 = "thiscall" 0x0094_9259; }
 game_fn! { #[allow(dead_code)] fn insert_tree_with_hint(this: *mut u8, output: u32, hint: u32, value: u32) -> u32 = "thiscall" 0x0098_1404; }
 
+/// Hash bucket selection uses the CPU's unsigned division, including its zero-divisor fault.
+fn bucket_remainder(hash: u32, count: u32) -> u32 {
+    let remainder;
+    // SAFETY: the instruction has no memory operands and declares both result registers.
+    unsafe {
+        core::arch::asm!(
+            "div {count:e}", count = in(reg) count,
+            inout("eax") hash => _, inout("edx") 0u32 => remainder,
+            options(nomem, nostack),
+        );
+    }
+    remainder
+}
+
 register_port!(
     0x00918731,
     fc4p_00918731,
@@ -3105,7 +3119,7 @@ register_port!(
             let buckets = SharedHashBuckets::from_ptr(object as *mut u8);
             let count = ((buckets.end().wrapping_sub(buckets.begin()) as i32) >> 2) as u32;
             r.eax = word(value, 8);
-            r.edx = r.eax % count;
+            r.edx = bucket_remainder(r.eax, count);
             r.eax = word(object, 4);
             let mut node = word(r.eax, r.edx.wrapping_mul(4) as usize);
             while node != 0 {
@@ -3135,7 +3149,7 @@ register_port!(
             let iterator = SharedHashIterator::from_ptr(r.ecx as *mut u8);
             let table = iterator.table();
             let count = ((word(table, 8).wrapping_sub(word(table, 4)) as i32) >> 2) as u32;
-            r.edx = r.eax % count;
+            r.edx = bucket_remainder(r.eax, count);
             r.eax = 0;
             loop {
                 r.edx = r.edx.wrapping_add(1);
