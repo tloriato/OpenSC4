@@ -304,6 +304,24 @@ impl World {
     }
 }
 
+extern "thiscall" fn reset_result(_iterator: *mut u8, _shuffle: u32) -> u32 {
+    0xAABB_CC7F
+}
+
+#[unsafe(naked)]
+unsafe extern "C" fn exhausted_iterator() {
+    core::arch::naked_asm!("xor al, al", "ret 8");
+}
+
+#[test]
+fn exhausted_iterator_retains_the_callers_upper_eax_bytes() {
+    let _fpu = GameFpu::new();
+    let mut w = World::new(&[]);
+    let _reset = fake(0x0049_D1C0, reset_result as *const () as usize);
+    let _next = fake(0x0049_CB10, exhausted_iterator as *const () as usize);
+    assert_eq!(w.run(), 0xAABB_CC00);
+}
+
 #[test]
 fn scans_x_before_z_in_grid_order_and_keeps_first_worst_tie() {
     let _fpu = GameFpu::new();
