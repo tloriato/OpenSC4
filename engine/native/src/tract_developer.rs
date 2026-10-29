@@ -25,6 +25,7 @@ layout! {
         0x18 => city / set_city: u32,
         0x1C => building_development / set_building_development: u32,
         0x20 => land_value / set_land_value: u32,
+        0x24 => lot_configuration_manager / set_lot_configuration_manager: u32,
         0x28 => lot_developer / set_lot_developer: u32,
         0x2C => lot_manager / set_lot_manager: u32,
         0x30 => plumbing / set_plumbing: u32,
@@ -189,6 +190,7 @@ pub mod copying;
 pub mod discovery;
 pub mod develop;
 pub mod evaluation;
+pub mod farm;
 pub mod geometry;
 pub mod growth;
 pub mod listeners;
@@ -215,6 +217,7 @@ const COUNT: usize = compatibility::PORTS.len()
     + discovery::PORTS.len()
     + develop::PORTS.len()
     + evaluation::PORTS.len()
+    + farm::PORTS.len()
     + geometry::PORTS.len()
     + growth::PORTS.len()
     + listeners::PORTS.len()
@@ -241,6 +244,7 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     discovery::PORTS,
     develop::PORTS,
     evaluation::PORTS,
+    farm::PORTS,
     geometry::PORTS,
     growth::PORTS,
     listeners::PORTS,
