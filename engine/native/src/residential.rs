@@ -67,6 +67,7 @@ pub mod grade;
 pub mod message;
 pub mod tract;
 pub mod building;
+pub mod daily;
 
 const COUNT: usize = interface::PORTS.len()
     + proximity::PORTS.len()
@@ -90,7 +91,8 @@ const COUNT: usize = interface::PORTS.len()
     + grade::PORTS.len()
     + message::PORTS.len()
     + tract::PORTS.len()
-    + building::PORTS.len();
+    + building::PORTS.len()
+    + daily::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
     interface::PORTS,
     proximity::PORTS,
@@ -115,6 +117,7 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     message::PORTS,
     tract::PORTS,
     building::PORTS,
+    daily::PORTS,
 ]);
 
 /// This module's replacements.
