@@ -61,6 +61,7 @@ pub mod foundation;
 pub mod growth;
 pub mod growth_tree;
 pub mod io;
+pub mod messages;
 pub mod planning;
 pub mod queries;
 pub mod resources;
@@ -85,7 +86,8 @@ const ALL: [Port;
         + daily::PORTS.len()
         + io::PORTS.len()
         + catalogue::PORTS.len()
-        + terrain::PORTS.len()] = crate::port::concat(&[
+        + terrain::PORTS.len()
+        + messages::PORTS.len()] = crate::port::concat(&[
     checks::PORTS,
     containers::PORTS,
     resources::PORTS,
@@ -102,6 +104,7 @@ const ALL: [Port;
     planning::PORTS,
     changed::PORTS,
     growth::PORTS,
+    messages::PORTS,
 ]);
 
 /// This module's complete replacements.
