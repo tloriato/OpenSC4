@@ -2818,8 +2818,301 @@ unsafe extern "fastcall" fn refresh_underground_corner_heights(this: *mut u8, fr
     }
 }
 
+layout! {
+    /// Segment records, cell coordinates and grading parameters of a network tool.
+    struct PlaneWindows {
+        0x054 => segments / set_segments: *mut u8,
+        0x060 => coordinates / set_coordinates: *mut u8,
+        0x078 => count / set_count: i32,
+        0x238 => cell_size / set_cell_size: f32,
+        0x2B0 => tolerance / set_tolerance: f32,
+    }
+}
+
+layout! {
+    /// An inclusive cell-index range and its segment kind; zero kinds receive plane windows.
+    struct PlaneSegment {
+        0x00 => first / set_first: u32,
+        0x04 => last / set_last: u32,
+        0x08 => kind / set_kind: u32,
+    }
+}
+
+layout! {
+    /// An anchor span's signed segment indices and the two endpoint payloads.
+    struct PlaneAnchor {
+        0x00 => first / set_first: i32,
+        0x04 => last / set_last: i32,
+        0x08 => near / set_near: u32,
+        0x0C => far / set_far: u32,
+    }
+}
+
+layout! {
+    /// A cell's unsigned position, four terrain heights, allowed windows and preferred windows.
+    /// Window pairs are accessed individually so a retained endpoint receives no write.
+    struct PlaneCell {
+        0x00 => x / set_x: u32,
+        0x04 => z / set_z: u32,
+        0x58 => terrain / set_terrain: [f32; 4],
+        0x68 => allowed / set_allowed: [[f32; 2]; 4],
+        0x88 => preferred / set_preferred: [[f32; 2]; 4],
+    }
+}
+
+game_fn! { #[allow(dead_code)] fn build_segment_plane(this: *mut u8, output: *mut f32, first: i32, last: i32, near: u32, far: u32) -> u64 = "thiscall" 0x0063_7780; }
+// This entry consumes the stack frame and flags prepared by the preceding prefix.
+game_fn! { #[allow(dead_code)] fn continue_connection_initialization(this: *mut u8, first: u32, second: u32) -> u32 = "thiscall" 0x0065_471D; }
+game_data! { static plane_negative_one: f32 = 0x00A8_FE78; }
+game_data! { static plane_unsigned_bias: f32 = 0x00A8_0AA8; }
+game_data! { static plane_interval_epsilon: f32 = 0x00AA_8A74; }
+game_data! { static plane_corner_x: [u32; 4] = 0x00AA_8B30; }
+game_data! { static plane_corner_z: [u32; 4] = 0x00AA_8B20; }
+game_data! { #[allow(dead_code)] static connection_services_initialized: u8 = 0x00B4_6838; }
+
+height_float_op!(plane_add, "fadd dword ptr [{operand}]");
+height_float_op!(plane_multiply, "fmul dword ptr [{operand}]");
+height_float_op!(plane_divide, "fdiv dword ptr [{operand}]");
+
+/// Compares against a stored single without first quieting its NaN payload.
+fn plane_compare(value: crate::x87::F80, operand: f32) -> u16 {
+    let status: u16;
+    unsafe {
+        core::arch::asm!(
+            "fld tbyte ptr [{value}]", "fcomp dword ptr [{operand}]", "fnstsw ax",
+            value = in(reg) &value, operand = in(reg) &operand,
+            out("ax") status, out("st(0)") _,
+        );
+    }
+    status
+}
+
+fn plane_less(status: u16) -> bool {
+    status & 0x4500 == 0x0100
+}
+
+/// Loads the wrapped coordinate as signed, then corrects its unsigned high half on the x87.
+unsafe fn plane_coordinate(value: u32) -> crate::x87::F80 {
+    let value_signed = value as i32;
+    let value = crate::x87::F80::from_i32(value_signed);
+    if value_signed < 0 {
+        unsafe { plane_add(value, plane_unsigned_bias().read_unaligned()) }
+    } else {
+        value
+    }
+}
+
+port! {
+    /// Intersects four corner windows with a cached segment plane, retaining the terrain height.
+    /// The plane output occupies the original four stack words, including on an early zero-plane return.
+    #[port(address = 0x0063_7B90, owner = "shared", name = "ApplySegmentPlaneWindows", naked)]
+    pub unsafe extern "C" fn fc4p_00637b90() {
+        core::arch::naked_asm!(
+            "sub esp, 0x48", "push edx", "push ecx", "push eax", "mov edx, esp",
+            "call {body}", "pop eax", "pop ecx", "pop edx", "add esp, 0x48", "ret 4",
+            body = sym apply_segment_plane_windows,
+        );
+    }
+}
+
+unsafe extern "fastcall" fn apply_segment_plane_windows(this: *mut u8, frame: *mut u32) {
+    use crate::x87::F80;
+    unsafe {
+        let tool = PlaneWindows::from_ptr(this);
+        let mut count = tool.count();
+        if count <= 0 {
+            return;
+        }
+        let anchors = ByteRange::from_ptr(frame.add(22).read_unaligned() as *mut u8);
+        let plane = frame.add(17).cast::<f32>();
+        let (mut index, mut offset) = (0i32, 0u32);
+        let (mut last_anchor, mut cached) = (-1i32, false);
+        let mut inverse = 0.0f32;
+        let (mut eax, mut edx);
+        loop {
+            eax = tool.segments() as u32;
+            edx = PlaneSegment::from_ptr((eax as *mut u8).wrapping_add(offset as usize)).kind();
+            if edx == 0 {
+                if index > last_anchor || !cached {
+                    let mut record = anchors.first();
+                    let end = anchors.last();
+                    let (mut first_anchor, mut near, mut far) = (-1i32, 0u32, 0u32);
+                    last_anchor = i32::MAX;
+                    while record != end {
+                        let anchor = PlaneAnchor::from_ptr(record);
+                        let before = anchor.last();
+                        if before < index && first_anchor < before {
+                            first_anchor = before;
+                            near = anchor.far();
+                        }
+                        let after = anchor.first();
+                        if index < after && after < last_anchor {
+                            last_anchor = after;
+                            far = anchor.near();
+                        }
+                        record = record.wrapping_add(16);
+                    }
+                    if first_anchor == -1 {
+                        first_anchor = index;
+                        near = 0;
+                    }
+                    if last_anchor == i32::MAX {
+                        last_anchor = count.wrapping_sub(1);
+                        far = 0;
+                    }
+                    let result = seeded_call(
+                        crate::abi::Conv::Thiscall,
+                        crate::abi::target(0x0063_7780),
+                        this as u32,
+                        &[plane as u32, first_anchor as u32, last_anchor as u32, near, far],
+                        last_anchor as u32,
+                        first_anchor as u32,
+                    );
+                    let zero = float_zero().read_unaligned();
+                    let status: u16;
+                    core::arch::asm!(
+                        "fld dword ptr [{zero}]", "fld dword ptr [{coefficient}]", "fucompp", "fnstsw ax",
+                        zero = in(reg) &zero, coefficient = in(reg) plane.add(1),
+                        out("ax") status, out("st(0)") _, out("st(1)") _,
+                    );
+                    if status & 0x4500 == 0x4000 {
+                        save_result(
+                            frame,
+                            registers((result as u32 & 0xFFFF_0000) | u32::from(status), (result >> 32) as u32),
+                        );
+                        return;
+                    }
+                    inverse = plane_divide(
+                        F80::from_f32(plane_negative_one().read_unaligned()),
+                        plane.add(1).read_unaligned(),
+                    )
+                    .to_f32();
+                    cached = true;
+                }
+                edx = tool.segments() as u32;
+                let segment = (edx as *mut u8).wrapping_add(offset as usize);
+                let mut cell_index = PlaneSegment::from_ptr(segment).first();
+                eax = segment as u32;
+                if cell_index <= PlaneSegment::from_ptr(segment).last() {
+                    loop {
+                        let coordinate = tool.coordinates().wrapping_add(cell_index.wrapping_mul(8) as usize);
+                        let x = word(coordinate, 0);
+                        let key = word(coordinate, 4).wrapping_shl(16).wrapping_add(x);
+                        let cell = seeded_call(
+                            crate::abi::Conv::Thiscall,
+                            crate::abi::target(0x0063_3220),
+                            this as u32,
+                            &[key],
+                            key,
+                            x,
+                        ) as u32 as *mut u8;
+                        let cell_view = PlaneCell::from_ptr(cell);
+                        for corner in 0..4usize {
+                            let x = plane_corner_x()
+                                .cast::<u32>()
+                                .add(corner)
+                                .read_unaligned()
+                                .wrapping_add(cell_view.x());
+                            let tx = plane_multiply(
+                                plane_multiply(plane_coordinate(x), tool.cell_size()),
+                                plane.read_unaligned(),
+                            );
+                            let z = plane_corner_z()
+                                .cast::<u32>()
+                                .add(corner)
+                                .read_unaligned()
+                                .wrapping_add(cell_view.z());
+                            let tz = plane_multiply(
+                                plane_multiply(plane_coordinate(z), tool.cell_size()),
+                                plane.add(2).read_unaligned(),
+                            );
+                            let height = plane_multiply(plane_add(tx + tz, plane.add(3).read_unaligned()), inverse);
+                            let mut low = height_subtract(height, tool.tolerance()).to_f32();
+                            let mut high = plane_add(height, tool.tolerance());
+                            let terrain = f32::from_bits(word(cell, 0x58 + corner * 4));
+                            if plane_less(plane_compare(F80::from_f32(terrain), low)) {
+                                low = terrain;
+                            } else if plane_less(plane_compare(high, terrain)) {
+                                high = F80::from_f32(terrain);
+                            }
+                            let interval = cell.wrapping_add(0x68 + corner * 8);
+                            if plane_less(plane_compare(F80::from_f32(f32::from_bits(word(interval, 0))), low)) {
+                                put(interval, 0, low.to_bits());
+                            }
+                            if plane_less(plane_compare(high, f32::from_bits(word(interval, 4)))) {
+                                put(interval, 4, high.to_f32().to_bits());
+                            }
+                            let low = f32::from_bits(word(interval, 0));
+                            if plane_less(plane_compare(F80::from_f32(f32::from_bits(word(interval, 4))), low)) {
+                                let gap = height_subtract(F80::from_f32(low), f32::from_bits(word(interval, 4)));
+                                let status = plane_compare(gap, plane_interval_epsilon().read_unaligned());
+                                if matches!(status & 0x4100, 0x0100 | 0x4000) {
+                                    put(interval, 4, word(interval, 0));
+                                }
+                            }
+                            let status = plane_compare(height, f32::from_bits(word(cell, 0x58 + corner * 4)));
+                            let terrain = word(cell, 0x58 + corner * 4);
+                            if status & 0x4100 == 0 {
+                                put(interval, 0x24, height.to_f32().to_bits());
+                                put(interval, 0x20, terrain);
+                            } else {
+                                put(interval, 0x20, height.to_f32().to_bits());
+                                put(interval, 0x24, terrain);
+                            }
+                        }
+                        let segments = tool.segments();
+                        edx = offset;
+                        eax = PlaneSegment::from_ptr(segments.wrapping_add(offset as usize)).last();
+                        cell_index = cell_index.wrapping_add(1);
+                        if cell_index > eax {
+                            break;
+                        }
+                    }
+                }
+            }
+            count = tool.count();
+            index = index.wrapping_add(1);
+            offset = offset.wrapping_add(12);
+            if index >= count {
+                break;
+            }
+        }
+        save_result(frame, registers(eax, edx));
+    }
+}
+
+#[cfg(test)]
+extern "C" fn connection_prefix_targets() -> u64 {
+    registers(
+        connection_services_initialized() as u32,
+        crate::abi::target(0x0065_471D) as u32,
+    )
+}
+
+port! {
+    /// Prepares the connection initializer's local frame, zero register and service flag comparison.
+    /// Continues at the following entry with all incoming arguments and the prepared flags intact.
+    #[port(address = 0x0065_4710, owner = "shared", name = "PrepareConnectionInitialization", naked)]
+    pub unsafe extern "C" fn fc4p_00654710() {
+        #[cfg(not(test))]
+        core::arch::naked_asm!(
+            "mov al, byte ptr [0x00b46838]", "sub esp, 0x54", "push ebx", "xor ebx, ebx", "cmp al, bl",
+            "jmp dword ptr [2f]", "2: .long 0x0065471d",
+        );
+        #[cfg(test)]
+        core::arch::naked_asm!(
+            "push eax", "push ecx", "push edx", "call {targets}",
+            "mov al, [eax]", "mov [esp + 8], al", "mov [esp - 4], edx",
+            "pop edx", "pop ecx", "pop eax", "sub esp, 0x54", "push ebx", "xor ebx, ebx", "cmp al, bl",
+            "jmp dword ptr [esp + 0x48]", targets = sym connection_prefix_targets,
+        );
+    }
+}
+
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
+    fc4p_00637b90::PORT,
+    fc4p_00654710::PORT,
     fc4p_00658710::PORT,
     fc4p_00639170::PORT,
     fc4p_006392f0::PORT,
@@ -2922,6 +3215,490 @@ mod tests {
     use crate::abi::{Conv, RawCall};
     use crate::testing::{fake, Object};
     use std::cell::RefCell;
+
+    mod lane42 {
+        use super::*;
+        use crate::testing::{fake_data, Fake, GameFpu};
+
+        #[derive(Default)]
+        struct Fixture {
+            planes: Vec<[f32; 4]>,
+            plane_index: usize,
+            cells: Vec<(u32, usize)>,
+            output: usize,
+            plane_mutations: Vec<(usize, usize, u32)>,
+            cell_mutations: Vec<(usize, usize, u32)>,
+            builder_registers: Vec<[u32; 2]>,
+            cell_registers: Vec<[u32; 2]>,
+        }
+        thread_local! { static FIXTURE: RefCell<Fixture> = RefCell::new(Fixture::default()); }
+
+        extern "fastcall" fn record_builder_registers(_this: *mut u8, frame: *const u32) {
+            FIXTURE.with(|s| unsafe {
+                s.borrow_mut()
+                    .builder_registers
+                    .push([frame.add(1).read(), frame.add(2).read()]);
+            });
+        }
+
+        extern "fastcall" fn record_cell_registers(_this: *mut u8, frame: *const u32) {
+            FIXTURE.with(|s| unsafe {
+                s.borrow_mut()
+                    .cell_registers
+                    .push([frame.add(1).read(), frame.add(2).read()]);
+            });
+        }
+
+        #[unsafe(naked)]
+        unsafe extern "C" fn build_plane_entry() {
+            core::arch::naked_asm!(
+                "push edx", "push eax", "push ecx", "mov edx, esp", "call {record}",
+                "pop ecx", "pop eax", "pop edx", "jmp {body}",
+                record = sym record_builder_registers, body = sym build_plane,
+            );
+        }
+
+        #[unsafe(naked)]
+        unsafe extern "C" fn find_cell_entry() {
+            core::arch::naked_asm!(
+                "push edx", "push eax", "push ecx", "mov edx, esp", "call {record}",
+                "pop ecx", "pop eax", "pop edx", "jmp {body}",
+                record = sym record_cell_registers, body = sym find_cell,
+            );
+        }
+
+        extern "thiscall" fn build_plane(
+            this: *mut u8,
+            output: *mut f32,
+            first: i32,
+            last: i32,
+            near: u32,
+            far: u32,
+        ) -> u64 {
+            log(0x0063_7780, this, &[first as u32, last as u32, near, far]);
+            FIXTURE.with(|s| {
+                let mut s = s.borrow_mut();
+                s.output = output as usize;
+                let plane = s.planes[s.plane_index];
+                s.plane_index += 1;
+                unsafe {
+                    for (i, value) in plane.into_iter().enumerate() {
+                        output.add(i).write_unaligned(value);
+                    }
+                    for &(p, offset, value) in &s.plane_mutations {
+                        put(p as *mut u8, offset, value);
+                    }
+                }
+            });
+            registers(0xBEEF_1234, 0x1122_3344)
+        }
+
+        extern "thiscall" fn find_cell(this: *mut u8, key: u32) -> u64 {
+            log(0x0063_3220, this, &[key]);
+            FIXTURE.with(|s| {
+                let s = s.borrow();
+                unsafe {
+                    for &(p, offset, value) in &s.cell_mutations {
+                        put(p as *mut u8, offset, value);
+                    }
+                }
+                registers(s.cells.iter().find(|&&(k, _)| k == key).unwrap().1 as u32, 0x5566_7788)
+            })
+        }
+
+        struct Harness {
+            tool: Object,
+            segments: Vec<[u32; 3]>,
+            coordinates: Vec<[u32; 2]>,
+            cells: Vec<[u32; 48]>,
+            anchors: Vec<[u32; 4]>,
+            _constants: Box<[u32; 13]>,
+            _fakes: Vec<Fake>,
+            _fpu: GameFpu,
+        }
+
+        impl Harness {
+            fn new(segments: &[[u32; 3]], coordinates: &[[u32; 2]], planes: &[[f32; 4]]) -> Self {
+                reset();
+                FIXTURE.with(|s| {
+                    *s.borrow_mut() = Fixture {
+                        planes: planes.to_vec(),
+                        ..Fixture::default()
+                    }
+                });
+                let mut constants = Box::new([
+                    0.0f32.to_bits(),
+                    (-1.0f32).to_bits(),
+                    4_294_967_296.0f32.to_bits(),
+                    0.01f32.to_bits(),
+                    0,
+                    0,
+                    1,
+                    1,
+                    0,
+                    1,
+                    1,
+                    0,
+                    0,
+                ]);
+                let mut fakes = vec![
+                    fake(0x0063_7780, build_plane_entry as *const () as usize),
+                    fake(0x0063_3220, find_cell_entry as *const () as usize),
+                ];
+                for (address, slot) in [
+                    (0x00A8_1054, 0),
+                    (0x00A8_FE78, 1),
+                    (0x00A8_0AA8, 2),
+                    (0x00AA_8A74, 3),
+                    (0x00AA_8B30, 4),
+                    (0x00AA_8B20, 8),
+                ] {
+                    fakes.push(fake_data(address, unsafe { constants.as_mut_ptr().add(slot).cast() }));
+                }
+                let mut h = Self {
+                    tool: Object::new(0x2C0),
+                    segments: segments.to_vec(),
+                    coordinates: coordinates.to_vec(),
+                    cells: vec![[0xA5A5_A5A5; 48]; coordinates.len()],
+                    anchors: Vec::new(),
+                    _constants: constants,
+                    _fakes: fakes,
+                    _fpu: GameFpu::new(),
+                };
+                unsafe {
+                    let view = PlaneWindows::from_ptr(h.tool.ptr());
+                    view.set_segments(h.segments.as_mut_ptr().cast());
+                    view.set_coordinates(h.coordinates.as_mut_ptr().cast());
+                    view.set_count(h.segments.len() as i32);
+                    view.set_cell_size(16.0);
+                    view.set_tolerance(35.0);
+                }
+                for (i, &[x, z]) in coordinates.iter().enumerate() {
+                    h.cells[i][0] = x;
+                    h.cells[i][1] = z;
+                    for corner in 0..4 {
+                        h.cells[i][0x58 / 4 + corner] = 300.0f32.to_bits();
+                        h.cells[i][0x68 / 4 + corner * 2] = f32::NEG_INFINITY.to_bits();
+                        h.cells[i][0x6C / 4 + corner * 2] = f32::INFINITY.to_bits();
+                    }
+                    FIXTURE.with(|s| {
+                        s.borrow_mut()
+                            .cells
+                            .push((z.wrapping_shl(16).wrapping_add(x), h.cells[i].as_mut_ptr() as usize))
+                    });
+                }
+                h
+            }
+
+            fn run(&mut self) -> (u32, u32) {
+                let range = [
+                    self.anchors.as_mut_ptr(),
+                    self.anchors.as_mut_ptr().wrapping_add(self.anchors.len()),
+                ];
+                unsafe {
+                    run(
+                        fc4p_00637b90 as *const (),
+                        Conv::Thiscall,
+                        self.tool.ptr(),
+                        &[range.as_ptr() as u32],
+                        0xAABB_CCDD,
+                        0x9876_5432,
+                    )
+                }
+            }
+
+            fn windows(&self, cell: usize) -> [[f32; 4]; 4] {
+                core::array::from_fn(|k| {
+                    [0x68, 0x6C, 0x88, 0x8C].map(|offset| f32::from_bits(self.cells[cell][offset / 4 + k * 2]))
+                })
+            }
+
+            fn assert_calls(&mut self, expected: &[(u32, Vec<u32>)]) {
+                assert_eq!(
+                    calls(),
+                    expected
+                        .iter()
+                        .map(|(id, args)| Call(*id, self.tool.ptr() as usize, args.clone()))
+                        .collect::<Vec<_>>()
+                );
+            }
+        }
+
+        #[test]
+        fn plane_windows_keep_the_live_terrain_fixture_and_touch_only_corner_ranges() {
+            // The same four heights and plane used by network geometry's single-cell control.
+            let mut h = Harness::new(&[[0, 0, 0]], &[[86, 3]], &[[0.0, 256.0, -25.332031, -73144.0]]);
+            let terrain = [291.40268f32, 293.30893, 290.79285, 289.53262];
+            for (i, value) in terrain.into_iter().enumerate() {
+                h.cells[0][0x58 / 4 + i] = value.to_bits();
+            }
+            let mut expected = h.cells[0];
+            let tool_before = bytes(h.tool.ptr(), 0x2C0);
+            assert_eq!(h.run(), (0, 0));
+            let heights = [290.4685f32, 292.05176, 292.05176, 290.4685];
+            for k in 0..4 {
+                let values = [
+                    heights[k] - 35.0,
+                    heights[k] + 35.0,
+                    heights[k].min(terrain[k]),
+                    heights[k].max(terrain[k]),
+                ];
+                for (offset, value) in [0x68, 0x6C, 0x88, 0x8C].into_iter().zip(values) {
+                    expected[offset / 4 + k * 2] = value.to_bits();
+                }
+            }
+            assert_eq!(h.cells[0], expected);
+            assert_eq!(bytes(h.tool.ptr(), 0x2C0), tool_before);
+            assert_eq!(h.segments, [[0, 0, 0]]);
+            assert_eq!(h.coordinates, [[86, 3]]);
+            h.assert_calls(&[(0x0063_7780, vec![0, 0, 0, 0]), (0x0063_3220, vec![0x0003_0056])]);
+        }
+
+        #[test]
+        fn empty_counts_skipped_segments_and_empty_cell_ranges_preserve_their_result_words() {
+            let mut h = Harness::new(&[[2, 1, 0]], &[], &[[0.0, 1.0, 0.0, -10.0]]);
+            for count in [0, -1, i32::MIN] {
+                unsafe {
+                    PlaneWindows::from_ptr(h.tool.ptr()).set_count(count);
+                }
+                assert_eq!(h.run(), (0xAABB_CCDD, 0x9876_5432));
+                assert!(calls().is_empty());
+            }
+            unsafe {
+                PlaneWindows::from_ptr(h.tool.ptr()).set_count(1);
+            }
+            h.segments[0][2] = 0x8765_4321;
+            assert_eq!(h.run(), (h.segments.as_ptr() as u32, 0x8765_4321));
+            assert!(calls().is_empty());
+            h.segments[0][2] = 0;
+            assert_eq!(h.run(), (h.segments.as_ptr() as u32, h.segments.as_ptr() as u32));
+            h.assert_calls(&[(0x0063_7780, vec![0, 0, 0, 0])]);
+        }
+
+        #[test]
+        fn zero_plane_returns_after_the_builder_with_partial_eax_and_its_edx() {
+            for b in [0.0, -0.0] {
+                let mut h = Harness::new(&[[0, 0, 0]], &[[0, 0]], &[[1.0, b, 2.0, 3.0]]);
+                let before = h.cells.clone();
+                // The register probe keeps one x87 value live: TOP is seven at the comparison.
+                assert_eq!(h.run(), (0xBEEF_7800, 0x1122_3344));
+                assert_eq!(h.cells, before);
+                h.assert_calls(&[(0x0063_7780, vec![0, 0, 0, 0])]);
+            }
+        }
+
+        #[test]
+        fn anchors_choose_nearest_strict_neighbors_and_reuse_the_plane_through_the_far_anchor() {
+            let mut h = Harness::new(
+                &[[0, 0, 1], [0, 0, 0], [1, 1, 0], [2, 2, 0], [3, 3, 0]],
+                &[[1, 0], [2, 0], [3, 0], [4, 0]],
+                &[[0.0, 1.0, 0.0, -300.0], [0.0, 1.0, 0.0, -310.0]],
+            );
+            h.anchors = vec![
+                [4, 0, 40, 10],
+                [3, 1, 30, 11],
+                [2, 0, 20, 12],
+                [2, 0, 99, 99],
+                [i32::MIN as u32, i32::MAX as u32, 77, 88],
+            ];
+            assert_eq!(h.run(), (3, 48));
+            h.assert_calls(&[
+                (0x0063_7780, vec![0, 2, 10, 20]),
+                (0x0063_3220, vec![1]),
+                (0x0063_3220, vec![2]),
+                (0x0063_7780, vec![1, 4, 11, 40]),
+                (0x0063_3220, vec![3]),
+                (0x0063_3220, vec![4]),
+            ]);
+            assert_eq!(h.windows(0), [[265.0, 335.0, 300.0, 300.0]; 4]);
+            assert_eq!(h.windows(3), [[275.0, 345.0, 300.0, 310.0]; 4]);
+        }
+
+        #[test]
+        fn clamping_intersects_existing_windows_and_repairs_only_small_ordered_inversions() {
+            let mut h = Harness::new(&[[0, 0, 0]], &[[0, 0]], &[[0.0, 1.0, 0.0, -300.0]]);
+            for (k, height) in [250.0f32, 350.0, 300.0, 300.0].into_iter().enumerate() {
+                h.cells[0][0x58 / 4 + k] = height.to_bits();
+            }
+            h.cells[0][0x68 / 4 + 2 * 2] = 301.0f32.to_bits();
+            h.cells[0][0x6C / 4 + 2 * 2] = 300.995f32.to_bits();
+            h.cells[0][0x68 / 4 + 3 * 2] = 301.0f32.to_bits();
+            h.cells[0][0x6C / 4 + 3 * 2] = 300.98f32.to_bits();
+            h.run();
+            assert_eq!(
+                h.windows(0),
+                [
+                    [250.0, 335.0, 250.0, 300.0],
+                    [265.0, 350.0, 300.0, 350.0],
+                    [301.0, 301.0, 300.0, 300.0],
+                    [301.0, 300.98, 300.0, 300.0],
+                ]
+            );
+            for (gap, repair) in [
+                (0.0f32, true),
+                (0.01, true),
+                (f32::from_bits(0.01f32.to_bits() + 1), false),
+                (f32::NAN, false),
+            ] {
+                let mut h = Harness::new(&[[0, 0, 0]], &[[0, 0]], &[[0.0, 1.0, 0.0, 0.0]]);
+                h.cells[0][0x58 / 4] = 0;
+                h.cells[0][0x68 / 4] = gap.to_bits();
+                h.cells[0][0x6C / 4] = 0;
+                h.run();
+                assert_eq!(h.cells[0][0x6C / 4], if repair { gap.to_bits() } else { 0 });
+            }
+        }
+
+        #[test]
+        fn coordinates_wrap_before_unsigned_x87_conversion_and_intermediates_keep_their_exponents() {
+            let mut h = Harness::new(&[[0, 0, 0]], &[[u32::MAX, 0]], &[[1.0, -1.0, 0.0, 0.0]]);
+            unsafe {
+                PlaneWindows::from_ptr(h.tool.ptr()).set_cell_size(1.0);
+            }
+            h.run();
+            assert_eq!(h.windows(0)[0][3], 4_294_967_296.0);
+            assert_eq!(h.windows(0)[2][2..], [0.0, 300.0]);
+
+            let mut h = Harness::new(&[[0, 0, 0]], &[[1, 0]], &[[f32::MAX, -1.0, 0.0, 0.0]]);
+            unsafe {
+                PlaneWindows::from_ptr(h.tool.ptr()).set_cell_size(2.0);
+            }
+            // The product exceeds single precision's exponent range, then returns to it.
+            FIXTURE.with(|s| s.borrow_mut().planes[0][1] = -f32::MAX);
+            h.run();
+            assert!(h.windows(0)[0][2].is_finite());
+            assert_eq!(h.windows(0)[0][2].to_bits(), 2.0f32.to_bits() - 1);
+        }
+
+        #[test]
+        fn unordered_planes_and_terrain_follow_the_comparison_branches_and_keep_payloads() {
+            for b in [f32::from_bits(0x7FC1_2345), f32::from_bits(0x7F81_2345)] {
+                let mut h = Harness::new(&[[0, 0, 0]], &[[0, 0]], &[[0.0, b, 0.0, 0.0]]);
+                let before = h.cells[0];
+                h.run();
+                for k in 0..4 {
+                    assert_eq!(h.cells[0][0x68 / 4 + k * 2], before[0x68 / 4 + k * 2]);
+                    assert_eq!(h.cells[0][0x6C / 4 + k * 2], before[0x6C / 4 + k * 2]);
+                    assert_eq!(h.cells[0][0x88 / 4 + k * 2], 0x7FC1_2345);
+                    assert_eq!(h.cells[0][0x8C / 4 + k * 2], 300.0f32.to_bits());
+                }
+                h.assert_calls(&[(0x0063_7780, vec![0, 0, 0, 0]), (0x0063_3220, vec![0])]);
+            }
+            let mut h = Harness::new(&[[0, 0, 0]], &[[0, 0]], &[[0.0, 1.0, 0.0, -300.0]]);
+            h.cells[0][0x58 / 4] = 0x7F81_2345;
+            h.run();
+            assert_eq!(h.windows(0)[0][..3], [265.0, 335.0, 300.0]);
+            assert_eq!(h.cells[0][0x8C / 4], 0x7F81_2345);
+        }
+
+        #[test]
+        fn plane_and_cell_calls_can_replace_live_storage_and_shorten_the_scan() {
+            let mut h = Harness::new(&[[9, 8, 0], [9, 8, 1]], &[[1, 2], [3, 4]], &[[0.0, 1.0, 0.0, -300.0]]);
+            let mut replacement = [[0u32, 1, 0], [0, 0, 0]];
+            FIXTURE.with(|s| {
+                let mut s = s.borrow_mut();
+                s.plane_mutations
+                    .push((h.tool.ptr() as usize, 0x54, replacement.as_mut_ptr() as u32));
+                s.cell_mutations = vec![
+                    (replacement.as_mut_ptr() as usize, 4, 0),
+                    (h.tool.ptr() as usize, 0x78, 1),
+                ];
+            });
+            assert_eq!(h.run(), (0, 0));
+            h.assert_calls(&[(0x0063_7780, vec![0, 1, 0, 0]), (0x0063_3220, vec![0x0002_0001])]);
+            assert_eq!(h.cells[1][0x88 / 4], 0xA5A5_A5A5);
+        }
+
+        #[unsafe(naked)]
+        unsafe extern "C" fn plane_stack_probe() {
+            core::arch::naked_asm!("mov [ecx + 0x2b4], esp", "jmp {entry}", entry = sym fc4p_00637b90);
+        }
+
+        #[test]
+        fn inclusive_cell_ranges_pass_the_original_registers_and_plane_output_address() {
+            let mut h = Harness::new(&[[0, 1, 0], [2, 1, 7]], &[[5, 6], [7, 8]], &[[0.0, 1.0, 0.0, -300.0]]);
+            let range = [h.anchors.as_mut_ptr(); 2];
+            let result = unsafe {
+                run(
+                    plane_stack_probe as *const (),
+                    Conv::Thiscall,
+                    h.tool.ptr(),
+                    &[range.as_ptr() as u32],
+                    0,
+                    0,
+                )
+            };
+            assert_eq!(result, (h.segments.as_ptr() as u32, 7));
+            FIXTURE.with(|s| {
+                let s = s.borrow();
+                assert_eq!(s.builder_registers, [[1, 0]]);
+                assert_eq!(s.cell_registers, [[0x0006_0005, 5], [0x0008_0007, 7]]);
+                assert_eq!(s.output as u32, unsafe { word(h.tool.ptr(), 0x2B4) }.wrapping_sub(16));
+            });
+            h.assert_calls(&[
+                (0x0063_7780, vec![0, 1, 0, 0]),
+                (0x0063_3220, vec![0x0006_0005]),
+                (0x0063_3220, vec![0x0008_0007]),
+            ]);
+        }
+
+        #[unsafe(naked)]
+        unsafe extern "C" fn prefix_continuation() {
+            core::arch::naked_asm!(
+                "pushfd",
+                "pop dword ptr [ecx + 12]",
+                "mov [ecx], eax",
+                "mov [ecx + 4], edx",
+                "mov [ecx + 8], ebx",
+                "lea eax, [esp + 0x58]",
+                "mov [ecx + 16], eax",
+                "mov eax, [esp + 0x5c]",
+                "mov [ecx + 20], eax",
+                "mov eax, [esp + 0x60]",
+                "mov [ecx + 24], eax",
+                "mov eax, [ecx]",
+                "pop ebx",
+                "add esp, 0x54",
+                "ret 8",
+            );
+        }
+
+        #[unsafe(naked)]
+        unsafe extern "C" fn prefix_probe() {
+            core::arch::naked_asm!("mov [ecx + 28], esp", "jmp {entry}", entry = sym fc4p_00654710);
+        }
+
+        #[test]
+        fn connection_prefix_prepares_the_full_frame_and_flags_without_consuming_arguments() {
+            let mut flag = 0u8;
+            let _data = fake_data(0x00B4_6838, &mut flag);
+            let _next = fake(0x0065_471D, prefix_continuation as *const () as usize);
+            for byte in [0u8, 1, 0x7F, 0x80, 0xFF] {
+                flag = byte;
+                let mut recorded = [0u32; 8];
+                let out = unsafe {
+                    run(
+                        prefix_probe as *const (),
+                        Conv::Thiscall,
+                        recorded.as_mut_ptr().cast(),
+                        &[0x1234_ABCD, 0x9876_EF01],
+                        0xAABB_CCDD,
+                        0x1122_3344,
+                    )
+                };
+                assert_eq!(recorded[0], 0xAABB_CC00 | u32::from(byte));
+                assert_eq!(recorded[1..3], [0x1122_3344, 0]);
+                let expected_flags = (u32::from(byte == 0) * 0x40)
+                    | (u32::from(byte & 0x80 != 0) * 0x80)
+                    | (u32::from(byte.count_ones().is_multiple_of(2)) * 4);
+                assert_eq!(recorded[3] & 0x8D5, expected_flags);
+                assert_eq!(recorded[4], recorded[7]);
+                assert_eq!(recorded[5..7], [0x1234_ABCD, 0x9876_EF01]);
+                assert_eq!(out, (recorded[0], 0x1122_3344));
+                assert_eq!(flag, byte);
+            }
+        }
+    }
 
     mod lane30 {
         use super::*;
