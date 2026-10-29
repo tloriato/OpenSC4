@@ -7,8 +7,13 @@ use super::{pair, virtual_call, word, NeighborsSim};
 use crate::port::Port;
 
 game_fn! {
-    #[allow(dead_code)]
-    fn release(this: *mut u8) -> u32 = "thiscall" 0x006C_E770;
+    #[cfg(test)]
+    fn release(this: *mut u8, edx: u32) -> u64 = "fastcall" 0x006C_E770;
+}
+
+#[cfg(test)]
+unsafe extern "fastcall" fn release_target(this: *mut u8, edx: u32) -> u64 {
+    unsafe { release(this, edx) }
 }
 
 port! {
@@ -97,9 +102,9 @@ port! {
     #[port(address = 0x006C_FDA0, owner = "neighbors", name = "release_message_interface", naked)]
     pub unsafe extern "C" fn fc4p_006cfda0() {
         #[cfg(not(test))]
-        core::arch::naked_asm!("sub ecx, 4", "push 0x006ce770", "ret");
+        core::arch::naked_asm!("sub ecx, 4", "jmp dword ptr [2f]", "2: .long 0x006ce770");
         #[cfg(test)]
-        core::arch::naked_asm!("sub ecx, 4", "jmp {}", sym fc4p_006ce770);
+        core::arch::naked_asm!("sub ecx, 4", "jmp {}", sym release_target);
     }
 }
 
@@ -108,9 +113,9 @@ port! {
     #[port(address = 0x006C_FDB0, owner = "neighbors", name = "release_serializable_interface", naked)]
     pub unsafe extern "C" fn fc4p_006cfdb0() {
         #[cfg(not(test))]
-        core::arch::naked_asm!("sub ecx, 8", "push 0x006ce770", "ret");
+        core::arch::naked_asm!("sub ecx, 8", "jmp dword ptr [2f]", "2: .long 0x006ce770");
         #[cfg(test)]
-        core::arch::naked_asm!("sub ecx, 8", "jmp {}", sym fc4p_006ce770);
+        core::arch::naked_asm!("sub ecx, 8", "jmp {}", sym release_target);
     }
 }
 

@@ -70,6 +70,7 @@ thread_local! {
     static CACHED_ALLOCATOR: RefCell<usize> = const { RefCell::new(0) };
     static DEAL_STORAGE: RefCell<(usize, usize)> = const { RefCell::new((0, 0)) };
     static SUITABLE: RefCell<usize> = const { RefCell::new(0) };
+    static CELL_DESTINATIONS: RefCell<(usize, usize)> = const { RefCell::new((0, 0)) };
 }
 
 pub(super) fn record(call: Call) {
@@ -120,6 +121,27 @@ extern "thiscall" fn shutdown(this: *mut u8) -> u64 {
 extern "thiscall" fn destroy(this: *mut u8, flags: u32) -> u64 {
     record(Call::Destroy(this as usize, flags));
     0xFEED_CAFE_9876_5432
+}
+
+extern "fastcall" fn release_replacement(this: *mut u8, edx: u32) -> u64 {
+    record(Call::Release(this as usize));
+    pair(0x1234_5678, edx)
+}
+
+#[test]
+fn release_thunks_dispatch_to_the_game_entry_and_keep_edx() {
+    let _release = fake(0x006C_E770, release_replacement as *const () as usize);
+    let mut object = Object::new(0x48);
+    let p = object.ptr();
+    for (entry, offset) in [
+        (fc4p_006cfda0 as *const () as usize, 4),
+        (fc4p_006cfdb0 as *const () as usize, 8),
+    ] {
+        unsafe { NeighborsSim::from_ptr(p) }.set_references(2);
+        let result = unsafe { run(entry, p.add(offset), &[], 0, 0xDEAD_BEEF) };
+        assert_eq!(result, pair(0x1234_5678, 0xDEAD_BEEF));
+        assert_eq!(take_calls(), [Call::Release(p as usize)]);
+    }
 }
 
 #[test]
@@ -926,6 +948,45 @@ extern "thiscall" fn stream_error(this: *mut Stream) -> u64 {
     pair(unsafe { (*this).error }, 0xFACE_CAFE)
 }
 
+#[unsafe(naked)]
+unsafe extern "C" fn retain_stream_buffer_address() {
+    // At the version callback, the original Write has saved three registers,
+    // pushed the version, and called. A stream may retain this address on the heap.
+    core::arch::naked_asm!("lea eax, [esp + 20]", "mov [ecx + 4], eax", "ret 4");
+}
+#[unsafe(naked)]
+unsafe extern "C" fn discard_stream_count() {
+    core::arch::naked_asm!("ret 4");
+}
+#[unsafe(naked)]
+unsafe extern "C" fn no_stream_error() {
+    core::arch::naked_asm!("xor eax, eax", "ret");
+}
+#[unsafe(naked)]
+unsafe extern "fastcall" fn write_with_entry_address(_this: *mut u8, _stream: *mut u32) {
+    core::arch::naked_asm!(
+        "push edx", "lea eax, [esp - 4]", "mov [edx + 8], eax",
+        "call {write}", "ret", write = sym fc4p_006cfb60,
+    );
+}
+
+#[test]
+fn write_preserves_the_stack_buffer_addresses_retained_by_stream_callbacks() {
+    let mut table = [0usize; 19];
+    table[0x1C / 4] = retain_stream_buffer_address as *const () as usize;
+    table[0x24 / 4] = discard_stream_count as *const () as usize;
+    table[0x48 / 4] = no_stream_error as *const () as usize;
+    let mut stream = [table.as_ptr() as u32, 0, 0];
+    let mut list = List::new(&[]);
+    let mut object = Object::new(0x48);
+    unsafe {
+        NeighborsSim::from_ptr(object.ptr()).set_connections(list.ptr());
+        write_with_entry_address(object.ptr().add(8), stream.as_mut_ptr());
+    }
+    assert_ne!(stream[2], 0);
+    assert_eq!(stream[1], stream[2]);
+}
+
 #[test]
 fn version_two_record_keeps_only_connections_and_ignores_intermediate_failures() {
     let _reference = fake(0x005D_99A0, reference as *const () as usize);
@@ -1143,7 +1204,14 @@ fn float_environment() -> (u16, u16, u32, u32) {
     (cw, sw & 0x3800, mxcsr, flags & 0x400)
 }
 
-pub(super) unsafe fn checked_call(entry: usize, this: *mut u8, args: &mut [u32], eax: u32, edx: u32, convention: Conv) -> u64 {
+pub(super) unsafe fn checked_call(
+    entry: usize,
+    this: *mut u8,
+    args: &mut [u32],
+    eax: u32,
+    edx: u32,
+    convention: Conv,
+) -> u64 {
     let _fpu = crate::testing::GameFpu::new();
     let sentinel = 123.25f64;
     let mut restored = 0.0f64;
@@ -1216,6 +1284,7 @@ extern "thiscall" fn connection_kind(this: *mut Connection) -> u64 {
 
 extern "thiscall" fn connection_cell(this: *mut Connection, x: *mut i32, z: *mut i32) -> u64 {
     record(Call::Cell(this as usize));
+    CELL_DESTINATIONS.with(|p| *p.borrow_mut() = (x as usize, z as usize));
     unsafe {
         x.write_unaligned((*this).x);
         z.write_unaligned((*this).z);
@@ -1292,6 +1361,14 @@ fn object_overload_forwards_cell_and_updates_its_argument_word() {
         0x1234_5678_AABB_CCDD
     );
     assert_eq!(args, [0x1020_3040]);
+    CELL_DESTINATIONS.with(|p| {
+        let (x, z) = *p.borrow();
+        assert_eq!(
+            x + 8,
+            z,
+            "x occupies the saved ECX word immediately below the return address"
+        );
+    });
     assert_eq!(
         take_calls(),
         [

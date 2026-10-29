@@ -352,7 +352,7 @@ macro_rules! port {
     (
         $(#[doc = $doc:literal])*
         #[port(address = $address:literal, owner = $owner:literal, name = $name:literal, naked)]
-        $vis:vis unsafe extern "C" fn $export:ident() $body:block
+        $vis:vis unsafe extern $abi:tt fn $export:ident($($arg:ident: $ty:ty),* $(,)?) $(-> $ret:ty)? $body:block
     ) => {
         $(#[doc = $doc])*
         #[doc = ""]
@@ -361,7 +361,7 @@ macro_rules! port {
         #[doc = "Called by the game in place of the original, with the original's register convention."]
         #[unsafe(naked)]
         #[no_mangle]
-        $vis unsafe extern "C" fn $export() $body
+        $vis unsafe extern $abi fn $export($($arg: $ty),*) $(-> $ret)? $body
 
         #[doc = concat!("The port table entry of [`", stringify!($export), "`].")]
         pub mod $export {
