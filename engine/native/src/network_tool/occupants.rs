@@ -74,16 +74,35 @@ unsafe extern "fastcall" fn remember_id(this: *mut u8, frame: *mut u32) -> u64 {
 port! {
     /// Acquire an exemplar using the supplied group, or the active type's group when it is zero. Only
     /// the low success byte controls the returned pointer; keep the resource service's output unchanged.
-    #[port(address = 0x0062_44B0, owner = "networktool", name = "cSC4NetworkTool::GetOccupantExemplar")]
-    pub unsafe extern "thiscall" fn fc4p_006244b0(this: *mut u8, instance: u32, group: u32) -> *mut u8 {
-        unsafe {
-            let selected = if group == 0 { read(NetworkTool::from_ptr(this).type_info(), 0xC) } else { group };
-            let tgi = [0x6534_284Au32, selected, instance];
-            let mut output = group as *mut u8;
-            let result = vcall!(*resource_manager(), 0xC => fn(*const u32, u32, *mut *mut u8, u32, u32) -> u32,
-                tgi.as_ptr(), 0xA521_60F5, &mut output, 0, 0);
-            if result as u8 != 0 { output } else { core::ptr::null_mut() }
-        }
+    #[port(address = 0x0062_44B0, owner = "networktool", name = "cSC4NetworkTool::GetOccupantExemplar", naked)]
+    pub unsafe extern "C" fn fc4p_006244b0() {
+        core::arch::naked_asm!(
+            "sub esp, 12", "mov edx, esp", "call {body}", "add esp, 12", "ret 8",
+            body = sym occupant_exemplar,
+        );
+    }
+}
+unsafe extern "fastcall" fn occupant_exemplar(this: *mut u8, frame: *mut u32) -> u64 {
+    unsafe {
+        let instance = frame.add(4).read();
+        let group = frame.add(5).read();
+        let selected = if group == 0 {
+            read(NetworkTool::from_ptr(this).type_info(), 0xC)
+        } else {
+            group
+        };
+        frame.write(0x6534_284A);
+        frame.add(1).write(selected);
+        frame.add(2).write(instance);
+        let manager = *resource_manager();
+        let result = virtual_call(
+            manager,
+            0xC,
+            &[frame as u32, 0xA521_60F5, frame.add(5) as u32, 0, 0],
+            read(manager, 0),
+            frame as u32,
+        );
+        registers(if result.eax as u8 != 0 { frame.add(5).read() } else { 0 }, result.edx)
     }
 }
 register_port!(

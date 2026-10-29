@@ -64,6 +64,7 @@ enum Call {
 }
 #[derive(Default)]
 struct State {
+    entry_location: usize,
     calls: Vec<Call>,
     values: Vec<u32>,
     predicates: Vec<u32>,
@@ -89,6 +90,12 @@ extern "thiscall" fn value(this: *mut u8, key: u32, output: *mut u32) -> u32 {
     })
 }
 extern "thiscall" fn cache_value(this: *mut u8, key: u32, output: *mut u32) {
+    STATE.with(|s| {
+        let location = s.borrow().entry_location;
+        if location != 0 {
+            assert_eq!(output as usize, unsafe { *(location as *const usize) } - 8);
+        }
+    });
     let _ = value(this, key, output);
     unsafe {
         output.add(1).write(0x8765_4321);
@@ -110,6 +117,14 @@ extern "thiscall" fn insert(
     count: u32,
     stride: u32,
 ) {
+    STATE.with(|s| {
+        let location = s.borrow().entry_location;
+        if location != 0 {
+            let entry = unsafe { *(location as *const usize) };
+            assert_eq!(record as usize, entry - 12);
+            assert_eq!(scratch as usize, entry + 8);
+        }
+    });
     let r = unsafe { [u32::from(read::<u8>(record, 0)), read(record, 4), read(record, 8)] };
     STATE.with(|s| {
         s.borrow_mut().calls.push(Call::Insert(
@@ -216,7 +231,7 @@ fn cache_hit_uses_only_key_byte_and_writes_only_output() {
     let before_records = records;
     let mut output = [0xA5A5_A5A5u32; 3];
     assert_eq!(
-        unsafe { fc4p_00621d30(context.as_mut_ptr().cast(), 0xDEAD_BE34, output.as_mut_ptr().add(1)) },
+        unsafe { CACHED(context.as_mut_ptr().cast(), 0xDEAD_BE34, output.as_mut_ptr().add(1)) },
         0x8765_4321
     );
     assert_eq!(context, before);
@@ -245,7 +260,7 @@ fn cache_miss_forwards_full_key_appends_without_padding_and_grows_only_when_full
                 ..State::default()
             }
         });
-        assert_eq!(unsafe { fc4p_00621d30(c, 0xDEAD_BE12, &mut output) }, 0x1234_5678);
+        assert_eq!(unsafe { CACHED(c, 0xDEAD_BE12, &mut output) }, 0x1234_5678);
         assert_eq!(output, 0x1234_5678);
         let mut expected = vec![Call::Value(c as usize, 0xDEAD_BE12)];
         if full {
@@ -253,7 +268,7 @@ fn cache_miss_forwards_full_key_appends_without_padding_and_grows_only_when_full
                 c as usize + 8,
                 p as usize,
                 [0x12, 0x1234_5678, 0x8765_4321],
-                0xDEAD_BE12,
+                &mut output as *mut u32 as u32,
                 1,
                 1,
             ));
@@ -293,7 +308,7 @@ fn cache_append_reloads_cursor_after_callback_and_handles_null_spare_position() 
             }
         });
         unsafe {
-            fc4p_00621d30(c, 9, &mut output);
+            CACHED(c, 9, &mut output);
         }
         assert_eq!(output, 42);
         assert_eq!(context[3] as usize, position + 12);
@@ -411,4 +426,30 @@ fn empty_rule_succeeds_and_equal_key_search_is_unsigned_and_stops_at_first_match
             }
         }
     }
+}
+
+const CACHED: unsafe extern "thiscall" fn(*mut u8, u32, *mut u32) -> u32 =
+    unsafe { core::mem::transmute(fc4p_00621d30 as unsafe extern "C" fn()) };
+
+#[test]
+fn cache_growth_keeps_record_and_caller_output_at_their_original_addresses() {
+    let _fake = fake(0x0062_1A40, insert as *const () as usize);
+    let table = [0usize, cache_value as *const () as usize];
+    let mut context = [table.as_ptr() as u32, 0, 0, 0, 0];
+    let mut output = 0u32;
+    let args = [0xABCD_0012, &mut output as *mut u32 as u32];
+    let mut call = super::super::stack_tests::StackCall::new(
+        fc4p_00621d30 as *const () as usize,
+        context.as_mut_ptr().cast(),
+        &args,
+    );
+    STATE.with(|s| {
+        *s.borrow_mut() = State {
+            entry_location: &mut call.entry as *mut usize as usize,
+            values: vec![0x1234_5678],
+            ..State::default()
+        }
+    });
+    assert_eq!(unsafe { call.run() }.0, 0x1234_5678);
+    assert_eq!(output, 0x1234_5678);
 }

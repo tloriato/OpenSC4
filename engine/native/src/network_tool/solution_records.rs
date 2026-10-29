@@ -4,15 +4,15 @@
 //! Construction and copying of a solution record, and clearing its chained bucket storage.
 
 use super::*;
-use crate::abi::{call_raw, Conv, RawCall};
+use crate::abi::{Conv, RawCall, call_raw};
 
-game_fn! { fn copy_small(this: *mut u8, source: *mut u8) = "thiscall" 0x0062_5190; }
-game_fn! { fn copy_words(this: *mut u8, source: *mut u8) = "thiscall" 0x007C_ED60; }
-game_fn! { fn copy_pairs(this: *mut u8, source: *mut u8) = "thiscall" 0x0062_4D60; }
-game_fn! { fn copy_first_table(this: *mut u8, source: *mut u8) = "thiscall" 0x0062_6430; }
-game_fn! { fn copy_second_table(this: *mut u8, source: *mut u8) = "thiscall" 0x0062_65B0; }
-game_fn! { fn copy_string(this: *mut u8, source: *mut u8, start: u32, length: u32, scratch: *mut *mut u8) = "thiscall" 0x0040_89B0; }
-game_fn! { fn copy_vector(this: *mut u8, source: *mut u8) = "thiscall" 0x0045_9E80; }
+game_fn! { #[allow(dead_code)] fn copy_small(this: *mut u8, source: *mut u8) = "thiscall" 0x0062_5190; }
+game_fn! { #[allow(dead_code)] fn copy_words(this: *mut u8, source: *mut u8) = "thiscall" 0x007C_ED60; }
+game_fn! { #[allow(dead_code)] fn copy_pairs(this: *mut u8, source: *mut u8) = "thiscall" 0x0062_4D60; }
+game_fn! { #[allow(dead_code)] fn copy_first_table(this: *mut u8, source: *mut u8) = "thiscall" 0x0062_6430; }
+game_fn! { #[allow(dead_code)] fn copy_second_table(this: *mut u8, source: *mut u8) = "thiscall" 0x0062_65B0; }
+game_fn! { #[allow(dead_code)] fn copy_string(this: *mut u8, source: *mut u8, start: u32, length: u32, scratch: *mut *mut u8) = "thiscall" 0x0040_89B0; }
+game_fn! { #[allow(dead_code)] fn copy_vector(this: *mut u8, source: *mut u8) = "thiscall" 0x0045_9E80; }
 game_fn! { fn initialize_table(this: *mut u8, buckets: u32) -> u64 = "thiscall" 0x0082_9BC0; }
 game_fn! { fn allocate(size: u32) -> *mut u8 = "C" 0x0090_CF54; }
 game_fn! { #[allow(dead_code)] fn destroy_value(this: *mut u8) = "thiscall" 0x0062_6160; }
@@ -40,49 +40,105 @@ unsafe fn zero_table(table: *mut u8) {
 }
 
 port! {
-    /// Copy each scalar and owned member in member order. Byte flags retain the destination padding.
-    /// The string has the game's interface table and a zero reference word. EDX is the source's +0xF4.
-    #[port(address = 0x0062_A1D0, owner = "networktool", name = "CopyNetworkSolutionRecord")]
-    pub unsafe extern "thiscall" fn fc4p_0062a1d0(this: *mut u8, source: *mut u8) -> u64 {
-        unsafe {
-            copy_word(this, source, 0);
-            copy_small(this.add(4), source.add(4));
-            for offset in (0x10..=0x24).step_by(4) { copy_word(this, source, offset); }
-            copy_words(this.add(0x28), source.add(0x28));
-            copy_words(this.add(0x34), source.add(0x34));
-            copy_word(this, source, 0x40);
-            copy_word(this, source, 0x44);
-            write(this, 0x48, read::<u8>(source, 0x48));
-            copy_words(this.add(0x4C), source.add(0x4C));
-            copy_pairs(this.add(0x58), source.add(0x58));
-            zero_table(this.add(0x64));
-            copy_first_table(this.add(0x64), source.add(0x64));
-            copy_word(this, source, 0x78);
-            copy_word(this, source, 0x7C);
-            let string = source.wrapping_add(0x80);
-            let mut scratch = source;
-            copy_string(this.add(0x84), if string.is_null() { string } else { string.wrapping_add(4) },
-                0, u32::MAX, &mut scratch);
-            write(this, 0x80, 0x00A8_0810u32);
-            write(this, 0x90, 0u32);
-            copy_word(this, source, 0x94);
-            copy_word(this, source, 0x98);
-            copy_vector(this.add(0x9C), source.add(0x9C));
-            for offset in (0xA8..=0xB4).step_by(4) { copy_word(this, source, offset); }
-            copy_vector(this.add(0xB8), source.add(0xB8));
-            for offset in [0xC4, 0xC8, 0xCC] { copy_word(this, source, offset); }
-            zero_table(this.add(0xD0));
-            copy_second_table(this.add(0xD0), source.add(0xD0));
-            copy_word(this, source, 0xE4);
-            write(this, 0xE8, read::<u8>(source, 0xE8));
-            write(this, 0xE9, read::<u8>(source, 0xE9));
-            copy_word(this, source, 0xEC);
-            copy_word(this, source, 0xF0);
-            let edx = read::<u32>(source, 0xF4);
-            write(this, 0xF4, edx);
-            copy_word(this, source, 0xF8);
-            registers(this as u32, edx)
-        }
+    /// Copy scalars and owned members in order, retaining each member call's original stack depth.
+    #[port(address = 0x0062_A1D0, owner = "networktool", name = "CopyNetworkSolutionRecord", naked)]
+    pub unsafe extern "C" fn fc4p_0062a1d0() {
+        core::arch::naked_asm!(
+            "push ebx", "push esi", "push edi", "mov esi, ecx", "mov edi, [esp + 16]",
+            "push 0", "mov ecx, esi", "mov edx, edi", "call {stage}",
+            "lea ebx, [edi + 4]", "push ebx", "lea ecx, [esi + 4]", "call eax",
+            "push 1", "mov ecx, esi", "mov edx, edi", "call {stage}",
+            "lea ebx, [edi + 40]", "push ebx", "lea ecx, [esi + 40]", "call eax",
+            "push 2", "mov ecx, esi", "mov edx, edi", "call {stage}",
+            "lea ebx, [edi + 52]", "push ebx", "lea ecx, [esi + 52]", "call eax",
+            "push 3", "mov ecx, esi", "mov edx, edi", "call {stage}",
+            "lea ebx, [edi + 76]", "push ebx", "lea ecx, [esi + 76]", "call eax",
+            "push 4", "mov ecx, esi", "mov edx, edi", "call {stage}",
+            "lea ebx, [edi + 88]", "push ebx", "lea ecx, [esi + 88]", "call eax",
+            "push 5", "mov ecx, esi", "mov edx, edi", "call {stage}",
+            "lea ebx, [edi + 100]", "push ebx", "lea ecx, [esi + 100]", "call eax",
+            "push 6", "mov ecx, esi", "mov edx, edi", "call {stage}",
+            "lea ebx, [esp + 16]", "push ebx", "push -1", "push 0", "push edx", "lea ecx, [esi + 132]", "call eax",
+            "push 7", "mov ecx, esi", "mov edx, edi", "call {stage}",
+            "lea ebx, [edi + 156]", "push ebx", "lea ecx, [esi + 156]", "call eax",
+            "push 8", "mov ecx, esi", "mov edx, edi", "call {stage}",
+            "lea ebx, [edi + 184]", "push ebx", "lea ecx, [esi + 184]", "call eax",
+            "push 9", "mov ecx, esi", "mov edx, edi", "call {stage}",
+            "lea ebx, [edi + 208]", "push ebx", "lea ecx, [esi + 208]", "call eax",
+            "push 10", "mov ecx, esi", "mov edx, edi", "call {stage}",
+            "pop edi", "pop esi", "pop ebx", "ret 4", stage = sym copy_stage,
+        );
+    }
+}
+unsafe extern "fastcall" fn copy_stage(this: *mut u8, source: *mut u8, stage: u32) -> u64 {
+    unsafe {
+        let target = match stage {
+            0 => {
+                copy_word(this, source, 0);
+                0x0062_5190
+            }
+            1 => {
+                for offset in (0x10..=0x24).step_by(4) {
+                    copy_word(this, source, offset);
+                }
+                0x007C_ED60
+            }
+            2 => 0x007C_ED60,
+            3 => {
+                copy_word(this, source, 0x40);
+                copy_word(this, source, 0x44);
+                write(this, 0x48, read::<u8>(source, 0x48));
+                0x007C_ED60
+            }
+            4 => 0x0062_4D60,
+            5 => {
+                zero_table(this.add(0x64));
+                0x0062_6430
+            }
+            6 => {
+                copy_word(this, source, 0x78);
+                copy_word(this, source, 0x7C);
+                let string = source.wrapping_add(0x80);
+                let string = if string.is_null() {
+                    string
+                } else {
+                    string.wrapping_add(4)
+                };
+                return registers(crate::abi::target(0x0040_89B0) as u32, string as u32);
+            }
+            7 => {
+                write(this, 0x80, 0x00A8_0810u32);
+                write(this, 0x90, 0u32);
+                copy_word(this, source, 0x94);
+                copy_word(this, source, 0x98);
+                0x0045_9E80
+            }
+            8 => {
+                for offset in (0xA8..=0xB4).step_by(4) {
+                    copy_word(this, source, offset);
+                }
+                0x0045_9E80
+            }
+            9 => {
+                for offset in [0xC4, 0xC8, 0xCC] {
+                    copy_word(this, source, offset);
+                }
+                zero_table(this.add(0xD0));
+                0x0062_65B0
+            }
+            _ => {
+                copy_word(this, source, 0xE4);
+                write(this, 0xE8, read::<u8>(source, 0xE8));
+                write(this, 0xE9, read::<u8>(source, 0xE9));
+                copy_word(this, source, 0xEC);
+                copy_word(this, source, 0xF0);
+                let edx = read::<u32>(source, 0xF4);
+                write(this, 0xF4, edx);
+                copy_word(this, source, 0xF8);
+                return registers(this as u32, edx);
+            }
+        };
+        registers(crate::abi::target(target) as u32, 0)
     }
 }
 

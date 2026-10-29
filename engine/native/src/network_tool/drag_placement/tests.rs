@@ -2,7 +2,7 @@
 // Copyright (C) 2026 FreeCity4 contributors
 
 use super::*;
-use crate::testing::{call_thiscall_with_eax, fake, fake_data, Fake, Object};
+use crate::testing::{Fake, Object, call_thiscall_with_eax, fake, fake_data};
 use std::cell::RefCell;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -28,6 +28,7 @@ enum Call {
 
 #[derive(Default)]
 struct State {
+    entry_location: usize,
     tool: usize,
     filter: usize,
     callback: usize,
@@ -60,6 +61,9 @@ extern "C" fn clear_steps_fake(first: *mut u8, last: *mut u8, output: *mut u8, r
         let tool = unsafe { NetworkTool::from_ptr(s.tool as *mut u8) };
         assert_eq!(tool.insertion_data(), 3);
         assert_eq!(unsafe { DragTool::from_ptr(s.tool as *mut u8) }.failure(), 0);
+        if s.entry_location != 0 {
+            assert_eq!(real as usize, unsafe { *(s.entry_location as *const usize) } + 28);
+        }
         s.argument = real as usize;
         if let Some(value) = s.clear_real {
             unsafe {
@@ -90,6 +94,11 @@ extern "thiscall" fn draw(this: *mut u8, a: *mut u32, b: *mut u32, flags: u32, n
     assert_eq!(flags, 0);
     STATE.with(|s| {
         let mut s = s.borrow_mut();
+        if s.entry_location != 0 {
+            let entry = unsafe { *(s.entry_location as *const usize) };
+            assert_eq!(a as usize, entry - 32);
+            assert_eq!(b as usize, entry - 24);
+        }
         assert_eq!(this as usize, s.tool);
         let a = unsafe { [*a, *a.add(1)] };
         let b = unsafe { [*b, *b.add(1)] };
@@ -662,4 +671,16 @@ fn direct_placement_writes_only_step_counts_anchor_end_and_request_fields() {
             assert_eq!(a, b, "offset {offset:x}");
         }
     }
+}
+
+#[test]
+fn direct_drag_keeps_coordinate_pairs_and_real_argument_at_their_entry_offsets() {
+    let mut w = World::new();
+    let args = [10, 12, 20, 12, 0, 0, 0, u32::MAX];
+    let mut call =
+        super::super::stack_tests::StackCall::new(fc4p_00629210 as *const () as usize, w.object.ptr(), &args);
+    STATE.with(|s| s.borrow_mut().entry_location = &mut call.entry as *mut usize as usize);
+    let result = unsafe { call.run() };
+    assert_eq!((result.0 as u8, result.1), (1, 0));
+    assert!(calls().iter().any(|c| matches!(c, Call::Draw([10, 12], [20, 12], 3))));
 }

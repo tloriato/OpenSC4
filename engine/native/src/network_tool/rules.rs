@@ -15,6 +15,7 @@ layout! {
     }
 }
 game_fn! {
+    #[allow(dead_code)]
     fn insert_cache(this: *mut u8, position: *mut u8, record: *mut u8, scratch: *mut u32, count: u32, stride: u32)
         = "thiscall" 0x0062_1A40;
 }
@@ -82,41 +83,73 @@ port! {
         }
     }
 }
+// The original record and caller output word are also the growth helper's inputs. Calls leave
+// the Rust preparation frame before entering the game, retaining the caller's stack depths.
 port! {
-    /// Find a cached value by its low-byte key. On a miss ask the context, append the byte/value/mask
-    /// record, growing only when full, and write the returned value to the output.
-    #[port(address = 0x0062_1D30, owner = "networktool", name = "GetCachedRuleValue")]
-    pub unsafe extern "thiscall" fn fc4p_00621d30(this: *mut u8, key: u32, output: *mut u32) -> u32 {
-        unsafe {
-            let mut p: *mut u8 = read(this, 8);
-            let end: *mut u8 = read(this, 0xC);
-            while p != end {
-                if read::<u8>(p, 0) == key as u8 {
-                    let value = read(p, 4);
-                    output.write_unaligned(value);
-                    return value;
-                }
-                p = p.wrapping_add(12);
+    /// Look up the key byte, query a missing value, and append its byte/value/mask record.
+    #[port(address = 0x0062_1D30, owner = "networktool", name = "GetCachedRuleValue", naked)]
+    pub unsafe extern "C" fn fc4p_00621d30() {
+        core::arch::naked_asm!(
+            "sub esp, 12", "push ebx", "push esi", "push edi",
+            "mov esi, ecx", "mov edi, esp", "mov edx, edi", "call {find}",
+            "test edx, edx", "jz 3f",
+            "mov ebx, eax", "lea eax, [edi + 16]", "push eax",
+            "mov edx, [edi + 28]", "push edx", "mov ecx, esi", "mov eax, ebx", "call dword ptr [eax + 4]",
+            "mov ecx, esi", "mov edx, edi", "call {append}",
+            "test edx, edx", "jz 2f",
+            "mov ebx, eax", "call {target}", "push 1", "push 1", "lea edx, [edi + 32]", "push edx",
+            "lea ecx, [edi + 12]", "push ecx", "push ebx", "lea ecx, [esi + 8]", "call eax",
+            "2:", "mov ecx, edi", "call {finish}",
+            "3:", "pop edi", "pop esi", "pop ebx", "add esp, 12", "ret 8",
+            find = sym find_cached_value, append = sym append_cached_value,
+            target = sym insert_cache_target, finish = sym finish_cached_value,
+        );
+    }
+}
+extern "C" fn insert_cache_target() -> usize {
+    crate::abi::target(0x0062_1A40)
+}
+unsafe extern "fastcall" fn find_cached_value(this: *mut u8, frame: *mut u32) -> u64 {
+    unsafe {
+        let key = frame.add(7).read();
+        let mut p: *mut u8 = read(this, 8);
+        let end: *mut u8 = read(this, 12);
+        while p != end {
+            if read::<u8>(p, 0) == key as u8 {
+                let value = read(p, 4);
+                (frame.add(8).read() as *mut u32).write_unaligned(value);
+                return registers(value, 0);
             }
-            let mut record = [key & 0xFF, 0u32, 0u32];
-            vcall!(this, 4 => fn(u32, *mut u32), key, record.as_mut_ptr().add(1));
-            let position: *mut u8 = read(this, 0xC);
-            let capacity: *mut u8 = read(this, 0x10);
-            if position == capacity {
-                let mut scratch = key;
-                insert_cache(this.add(8), position, record.as_mut_ptr().cast(), &mut scratch, 1, 1);
-            } else {
-                if !position.is_null() {
-                    write(position, 0, record[0] as u8);
-                    write(position, 4, record[1]);
-                    write(position, 8, record[2]);
-                }
-                let position: *mut u8 = read(this, 0xC);
-                write(this, 0xC, position.wrapping_add(12));
-            }
-            output.write_unaligned(record[1]);
-            record[1]
+            p = p.wrapping_add(12);
         }
+        frame.add(3).cast::<u8>().write(key as u8);
+        frame.add(4).write(0);
+        frame.add(5).write(0);
+        registers(read(this, 0), 1)
+    }
+}
+unsafe extern "fastcall" fn append_cached_value(this: *mut u8, frame: *mut u32) -> u64 {
+    unsafe {
+        let position: *mut u8 = read(this, 12);
+        if position == read::<*mut u8>(this, 16) {
+            return registers(position as u32, 1);
+        }
+        if !position.is_null() {
+            write(position, 0, frame.add(3).cast::<u8>().read());
+            write(position, 4, frame.add(4).read());
+            write(position, 8, frame.add(5).read());
+        }
+        let position: *mut u8 = read(this, 12);
+        write(this, 12, position.wrapping_add(12));
+        0
+    }
+}
+unsafe extern "thiscall" fn finish_cached_value(frame: *mut u32) -> u64 {
+    unsafe {
+        let value = frame.add(4).read();
+        let output = frame.add(8).read() as *mut u32;
+        output.write_unaligned(value);
+        registers(value, output as u32)
     }
 }
 port! {

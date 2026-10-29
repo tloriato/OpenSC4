@@ -2,8 +2,8 @@
 // Copyright (C) 2026 FreeCity4 contributors
 
 use super::*;
-use crate::abi::{call_raw, Conv, RawCall};
-use crate::testing::{fake, Fake, Object};
+use crate::abi::{Conv, RawCall, call_raw};
+use crate::testing::{Fake, Object, fake};
 use std::cell::RefCell;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -18,6 +18,7 @@ enum Call {
 
 #[derive(Default)]
 struct State {
+    entry_location: usize,
     calls: Vec<Call>,
     allocation: usize,
     swap: Option<(usize, usize, usize)>,
@@ -56,6 +57,12 @@ copy_fake!(first_table, 0x0062_6430);
 copy_fake!(second_table, 0x0062_65B0);
 copy_fake!(vector, 0x0045_9E80);
 extern "thiscall" fn string(this: *mut u8, source: *mut u8, start: u32, length: u32, scratch: *mut *mut u8) {
+    STATE.with(|s| {
+        let location = s.borrow().entry_location;
+        if location != 0 {
+            assert_eq!(scratch as usize, unsafe { *(location as *const usize) } + 4);
+        }
+    });
     unsafe {
         record(Call::String(
             this as usize,
@@ -127,7 +134,7 @@ fn copy_members_in_order_and_preserve_flag_padding_and_terminal_registers() {
     let mut source: [u8; 0x100] = core::array::from_fn(|i| i as u8);
     let mut output = [0xCDu8; 0x100];
     let (s, d) = (source.as_mut_ptr(), output.as_mut_ptr());
-    let result = unsafe { fc4p_0062a1d0(d, s) };
+    let result = unsafe { COPY_SOLUTION(d, s) };
     assert_eq!(result, registers(d as u32, 0xF7F6_F5F4));
     assert_eq!(
         calls(),
@@ -289,4 +296,23 @@ fn empty_bucket_table_clears_count_and_keeps_entry_edx() {
     assert_eq!((c.eax, c.edx), (0, 0x1234_5678));
     assert_eq!(table, [0xABCD, 0, 0, 0xBEEF, 0]);
     assert!(calls().is_empty());
+}
+
+const COPY_SOLUTION: unsafe extern "thiscall" fn(*mut u8, *mut u8) -> u64 =
+    unsafe { core::mem::transmute(fc4p_0062a1d0 as unsafe extern "C" fn()) };
+
+#[test]
+fn solution_string_copy_uses_the_original_source_argument_for_scratch() {
+    let _fakes = fakes();
+    let mut source = [0u32; 64];
+    source[0xF4 / 4] = 0x1234_5678;
+    let mut destination = [0u32; 64];
+    let args = [source.as_mut_ptr() as u32];
+    let mut call = super::super::stack_tests::StackCall::new(
+        fc4p_0062a1d0 as *const () as usize,
+        destination.as_mut_ptr().cast(),
+        &args,
+    );
+    STATE.with(|s| s.borrow_mut().entry_location = &mut call.entry as *mut usize as usize);
+    assert_eq!(unsafe { call.run() }, (destination.as_mut_ptr() as u32, 0x1234_5678));
 }
