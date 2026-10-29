@@ -12,6 +12,14 @@ layout! {
     struct BuildingSim {
         0xA0 => dirty / set_dirty: u8,
         0xD0 => budget / set_budget: *mut u8,
+        0x19C => pending_school / set_pending_school: *mut u8,
+        0x1A0 => pending_hospital / set_pending_hospital: *mut u8,
+        0x1A4 => pending_health / set_pending_health: *mut u8,
+        0x1A8 => schools / set_schools: *mut *mut u8,
+        0x1AC => schools_end / set_schools_end: *mut *mut u8,
+        0x1B4 => hospitals / set_hospitals: *mut *mut u8,
+        0x1B8 => hospitals_end / set_hospitals_end: *mut *mut u8,
+        0x1C0 => health / set_health: *mut u8,
     }
 }
 layout! {

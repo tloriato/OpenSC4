@@ -14,8 +14,14 @@ layout! {
         0x2C => medium_developer / set_medium_developer: *mut u8,
         0x30 => high_developer / set_high_developer: *mut u8,
         0x48 => low_population / set_low_population: *mut u8,
+        0x4C => medium_population / set_medium_population: *mut u8,
+        0x50 => high_population / set_high_population: *mut u8,
         0x54 => age_grid / set_age_grid: *mut u8,
+        0x7C => eq_grids / set_eq_grids: [*mut u8;3],
+        0x88 => hq_grids / set_hq_grids: [*mut u8;3],
         0xA8 => running_population / set_running_population: i32,
+        0x1C4 => age_counts / set_age_counts: [i32;20],
+        0x214 => age_eq_sums / set_age_eq_sums: [i32;20],
         0x348 => life_low / set_life_low: u32,
         0x34C => life_high / set_life_high: u32,
     }
@@ -26,9 +32,12 @@ layout! {
     struct Tuning {
         0x00 => eq_decay / set_eq_decay: f32,
         0x04 => hq_decay / set_hq_decay: f32,
+        0x08 => newcomer_ages / set_newcomer_ages: [i16;3],
         0x0E => reset_age / set_reset_age: u8,
         0x10 => eq_reset / set_eq_reset: f32,
         0x14 => hq_reset / set_hq_reset: f32,
+        0x18 => newcomer_eq / set_newcomer_eq: [f32;3],
+        0x24 => newcomer_hq / set_newcomer_hq: [f32;3],
         0x30 => door / set_door: f32,
         0x34 => effect_height / set_effect_height: f32,
         0x38 => effect_delta / set_effect_delta: f32,
@@ -99,7 +108,7 @@ unsafe fn range(this: *mut u8, low: f64, high: f64) -> F80 {
     unsafe { random(this, low as u32, (low >> 32) as u32, high as u32, (high >> 32) as u32) }
 }
 
-/// The two flag bytes precede an identity matrix and its translation. Unused padding stays untouched.
+/// The two flag bytes precede an identity matrix and its translation. Padding retains its entry bytes.
 unsafe fn place_effect(effect: *mut u8, padding: u32, x: f32, y: F80, z: f32) {
     unsafe {
         let mut transform = MaybeUninit::<[u8; 56]>::uninit();

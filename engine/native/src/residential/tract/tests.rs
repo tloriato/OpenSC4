@@ -547,6 +547,22 @@ fn pollution_curve_results_accumulate_in_order_at_x87_precision() {
 }
 
 #[test]
+fn grid_values_arrive_in_st0_without_a_float32_rounding_step() {
+    let mut world = World::new();
+    world.populations([1, 0, 0], [1, 0, 0]);
+    world.grids[3].float = 16_777_217.0;
+    world.grids[6].float = 16_777_217.0;
+    world.tuning().set_eq_decay(16_777_216.0);
+    world.tuning().set_hq_decay(16_777_216.0);
+    let word = crate::x87::control_word();
+    world.run(0, 0);
+    assert_eq!(crate::x87::control_word(), word);
+    assert_eq!(world.eq(), [1.0, 0.0, 0.0]);
+    assert_eq!(world.hq(), [1.0, 0.0, 0.0]);
+    assert_eq!(world.histogram(19), (1, 1));
+}
+
+#[test]
 fn newcomers_blend_and_age_preserve_signed_delta_and_old_population_quirks() {
     for (old, new, age, eq, want_age, want_eq) in [
         ([100, 0, 0], [150, 0, 0], 40, 50.0, 35, 45.0),

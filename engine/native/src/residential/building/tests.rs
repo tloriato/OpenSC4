@@ -531,6 +531,29 @@ fn hospital_and_school_recognition_groups_and_optional_capacity_leftovers() {
 }
 
 #[test]
+fn a_building_can_enter_both_service_lists_and_the_health_pending_list() {
+    let mut world = World::new();
+    state(|state| {
+        state.groups.extend([0x1507, 0x1503]);
+        state.floats = [Some(1.0), Some(1.0)];
+    });
+    world.run(1);
+    for head in 0..3 {
+        assert_eq!(world.values(head), [object(1) as usize]);
+    }
+    assert_eq!((world.objects[0].refs, world.objects[1].refs), (2, 1));
+    let calls = take();
+    assert!(
+        calls.iter().position(|call| *call == Call::Allocate(0x1A0)).unwrap()
+            < calls.iter().position(|call| *call == Call::Item(SCHOOL.staff)).unwrap()
+    );
+    assert!(
+        calls.iter().position(|call| *call == Call::Allocate(0x19C)).unwrap()
+            < calls.iter().position(|call| *call == Call::Allocate(0x1A4)).unwrap()
+    );
+}
+
+#[test]
 fn staff_and_vehicle_budget_creation_counting_and_registration_follow_call_order() {
     let mut world = World::new();
     state(|state| {
