@@ -1,0 +1,2 @@
+owner	dll_sha256	scenarios	identical	checked	notes
+landvalue	e574f663bf00e6d537ca588c425bc5d90dd55924baf3f96e4d252aad617dece0	62	62	2026-10-29	check.py run, [native] functions = landvalue, 27 of 27 ports installed; fixed schedule r6
