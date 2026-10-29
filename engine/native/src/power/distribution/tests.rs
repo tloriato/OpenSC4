@@ -456,6 +456,35 @@ impl Fixture {
 }
 
 #[test]
+fn plant_usage_divisor_covers_both_production_and_consumption_with_signed_words() {
+    let _fpu = GameFpu::new();
+    for (production, demand, used, divisor) in [
+        (1000, 0, 0, 1000),
+        (1000, 500, 500, 1000),
+        (1000, 1000, 1000, 1000),
+        (1000, 1200, 1100, 1100),
+        (0x8000_0000, 0, 0, 0),
+    ] {
+        let mut f = Fixture::new();
+        f.plant(1, 1, production);
+        f.cells[2][2] = demand;
+        STATE.with(|s| {
+            let mut s = s.borrow_mut();
+            s.network = vec![(1, 1), (2, 2)];
+            s.blocks = vec![(0, 0)];
+        });
+        f.run(1, 1);
+        assert_eq!(f.view().consumption(), used);
+        let marks: Vec<_> = calls().into_iter().filter(|c| matches!(c, Call::Mark(..))).collect();
+        assert_eq!(
+            marks,
+            [Call::Mark(used, divisor)],
+            "production {production}, demand {demand}"
+        );
+    }
+}
+
+#[test]
 fn one_plant_one_block_accounts_supply_consumption_and_cleanup_in_order() {
     let _fpu = GameFpu::new();
     let mut f = Fixture::new();
@@ -515,7 +544,7 @@ fn one_plant_one_block_accounts_supply_consumption_and_cleanup_in_order() {
             }),
             Call::Next,
             Call::Deals(0x4773_FFE0),
-            Call::Mark(500, 500),
+            Call::Mark(500, 1000),
             Call::FreeIterator,
             Call::ClearDeals,
             Call::FreeHead,
@@ -543,7 +572,7 @@ fn shortfall_uses_iterator_order_and_consumes_all_remaining_supply() {
         assert_eq!((v.consumption(), v.demand(), v.powered_count()), (1100, 1200, 1));
         assert_eq!(f.next[2] & (1 << 2) != 0, order[0].0 == 0);
         assert_eq!(f.next[2] & (1 << 10) != 0, order[0].0 == 1);
-        assert!(calls().contains(&Call::Mark(1100, 1000)));
+        assert!(calls().contains(&Call::Mark(1100, 1100)));
     }
 }
 
@@ -563,7 +592,7 @@ fn conservation_keeps_x87_rounding_and_ignores_nonpositive_consumption_cells() {
     f.run(1, 1);
     let v = f.view();
     assert_eq!((v.consumption(), v.demand(), v.powered_count()), (500, 555, 1));
-    assert!(calls().contains(&Call::Mark(500, 500)));
+    assert!(calls().contains(&Call::Mark(500, 1000)));
 }
 
 #[test]
@@ -626,7 +655,7 @@ fn exports_precede_local_blocks_and_preserve_the_flag_argument_upper_bytes() {
         all.iter().position(|c| *c == Call::SetUsed(7, 400)).unwrap()
             < all.iter().position(|c| matches!(c, Call::Reset(..))).unwrap()
     );
-    assert!(all.contains(&Call::Mark(500, 500)));
+    assert!(all.contains(&Call::Mark(500, 1000)));
 }
 
 #[test]
@@ -665,14 +694,14 @@ fn growth_bounds_fallback_height_clamp_and_visited_plants_skip_output_calls() {
 }
 
 #[test]
-fn unsigned_production_and_signed_final_minimum_keep_their_original_word_semantics() {
+fn unsigned_production_and_signed_final_maximum_keep_their_original_word_semantics() {
     let _fpu = GameFpu::new();
     let mut f = Fixture::new();
     f.plant(1, 1, 0x8000_0000);
     f.run(1, 1);
     let v = f.view();
     assert_eq!((v.production(), v.consumption()), (0x8000_0000, 0));
-    assert!(calls().contains(&Call::Mark(0, 0x8000_0000)));
+    assert!(calls().contains(&Call::Mark(0, 0)));
 }
 
 #[test]
@@ -684,7 +713,7 @@ fn negative_zero_and_nan_factors_follow_unsigned_loads_and_the_games_integer_hel
         f.view().set_factor(factor);
         f.run(1, 1);
         assert_eq!(f.view().consumption(), consumption, "factor {factor}");
-        assert!(calls().contains(&Call::Mark(consumption, consumption.min(1000))));
+        assert!(calls().contains(&Call::Mark(consumption, consumption.max(1000))));
     }
 }
 
