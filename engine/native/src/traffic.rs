@@ -147,16 +147,28 @@ pub mod finish_passes;
 pub mod final_map;
 pub mod source_totals;
 pub mod trip_map;
+pub mod late_containers;
+pub mod late_passes;
+pub mod late_boundaries;
+pub mod commercial;
+pub mod destination;
+pub mod tunnel;
 #[cfg(test)]
 mod test_support;
 
 /// This module's replacements.
 pub const PORTS: &[Port] = &crate::port::concat::<
     {
-        queries::PORTS.len() + containers::PORTS.len() + budget::PORTS.len() + capacity::PORTS.len() + maps::PORTS.len()
+        tunnel::PORTS.len() + destination::PORTS.len() + commercial::PORTS.len() + late_boundaries::PORTS.len() + late_passes::PORTS.len() + late_containers::PORTS.len() + queries::PORTS.len() + containers::PORTS.len() + budget::PORTS.len() + capacity::PORTS.len() + maps::PORTS.len()
             + network::PORTS.len() + trees::PORTS.len() + trips::PORTS.len() + refresh::PORTS.len() + finish_helpers::PORTS.len() + finish_passes::PORTS.len() + final_map::PORTS.len() + source_totals::PORTS.len() + trip_map::PORTS.len()
     },
 >(&[
+    late_containers::PORTS,
+    late_passes::PORTS,
+    late_boundaries::PORTS,
+    commercial::PORTS,
+    destination::PORTS,
+    tunnel::PORTS,
     queries::PORTS,
     containers::PORTS,
     budget::PORTS,
