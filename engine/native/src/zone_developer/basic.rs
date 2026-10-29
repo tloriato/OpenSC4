@@ -15,6 +15,39 @@ game_data! { static half: f32 = 0x00A8_4D2C; }
 game_data! { static rounding_bias: f32 = 0x00AB_36D4; }
 game_fn! { fn refill_pool(this: *mut u8) -> *mut u8 = "thiscall" 0x0090_CF9A; }
 
+#[cfg(not(test))]
+game_data! { static pool_stamp_site: u8 = 0x006B_F448; }
+
+/// Follow either pool-stamp hook form before changing the free-list head. A jump hook's
+/// stamp call is invoked directly because its tail continues inside this function's game entry.
+unsafe fn stamp_pool_take() {
+    unsafe {
+        #[cfg(not(test))]
+        {
+            let site = pool_stamp_site();
+            if site.read_volatile() == 0xE9 {
+                let displacement = read_unaligned(site.add(1).cast::<i32>());
+                let hook = site.add(5).wrapping_offset(displacement as isize);
+                // The hook loads the pool page, saves registers, pushes stride and pool, then calls.
+                if read_unaligned(hook.cast::<[u8; 8]>()) == [0x8B, 0x15, 0xB0, 0xD3, 0xB0, 0, 0x9C, 0x60]
+                    && hook.add(8).read() == 0x68 && hook.add(13).read() == 0x68
+                    && hook.add(18).read() == 0xE8
+                {
+                    let stride = read_unaligned(hook.add(9).cast::<u32>());
+                    let pool = read_unaligned(hook.add(14).cast::<u32>());
+                    let displacement = read_unaligned(hook.add(19).cast::<i32>());
+                    let target = hook.add(23).wrapping_offset(displacement as isize);
+                    let args = [pool, stride];
+                    let mut call = crate::abi::RawCall::new(crate::abi::Conv::Cdecl, target as usize, 0, &args);
+                    crate::abi::call_raw(&mut call);
+                }
+                return;
+            }
+        }
+        crate::abi::pool_take(0x006B_F448);
+    }
+}
+
 port! {
     /// Return the density for residential, commercial, agricultural and industrial zone types.
     #[port(address = 0x0045_8960, owner = "zonedeveloper", name = "ZoneDensity")]
@@ -38,7 +71,7 @@ port! {
                 node = refill_pool(pool());
             }
             let next = read_unaligned(node.cast::<*mut u8>());
-            crate::abi::pool_take(0x006B_F448);
+            stamp_pool_take();
             write_unaligned((*pool_slot()).add(8).cast::<*mut u8>(), next);
             let count = (*pool_slot()).add(12).cast::<u32>();
             write_unaligned(count, read_unaligned(count).wrapping_add(1));
