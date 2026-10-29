@@ -132,7 +132,28 @@ unsafe extern "thiscall" fn corners(this: *mut u8, x: u32, z: u32, output: *mut 
     CALLS.with(|c| c.borrow_mut().push(Call::Corners(this as u32, x, z)));
     HEIGHTS.with(|h| unsafe { core::ptr::copy_nonoverlapping(h.borrow().as_ptr(), output, 4) });
 }
-unsafe extern "C" fn backward(first: *mut u32, last: *mut u32, end: *mut u32, value: *mut u32, flags: u32) -> u64 {
+#[unsafe(naked)]
+unsafe extern "C" fn backward() {
+    core::arch::naked_asm!(
+        "push eax", "push ecx", "push edx", "mov ecx, esp", "call {body}", "add esp, 12", "ret",
+        body = sym backward_body,
+    );
+}
+unsafe extern "thiscall" fn backward_body(frame: *mut u32) -> u64 {
+    unsafe {
+        assert_eq!(*frame, 0xD4C3_B2A1, "copy helper entry EDX");
+        assert_eq!(*frame.add(1), *frame.add(6), "copy helper entry ECX");
+        assert_eq!(*frame.add(2), *frame.add(5), "copy helper entry EAX");
+        backward_fields(
+            *frame.add(4) as *mut u32,
+            *frame.add(5) as *mut u32,
+            *frame.add(6) as *mut u32,
+            *frame.add(7) as *mut u32,
+            *frame.add(8),
+        )
+    }
+}
+unsafe fn backward_fields(first: *mut u32, last: *mut u32, end: *mut u32, value: *mut u32, flags: u32) -> u64 {
     CALLS.with(|c| {
         c.borrow_mut()
             .push(Call::Backward(first as u32, last as u32, end as u32, flags))

@@ -10,7 +10,7 @@ use crate::x87::F80;
 
 game_fn! { #[allow(dead_code)] fn destroy_tool(this: *mut u8) -> u64 = "thiscall" 0x0062_CAF0; }
 game_fn! { #[allow(dead_code)] fn delete_tool(storage: *mut u8) -> u64 = "C" 0x005E_5620; }
-game_fn! { fn copy_floats_backward(first: *mut u32, last: *mut u32, output_end: *mut u32, value: *mut u32, flags: u32) -> u64 = "C" 0x0062_DC30; }
+game_fn! { #[allow(dead_code)] fn copy_floats_backward(first: *mut u32, last: *mut u32, output_end: *mut u32, value: *mut u32, flags: u32) -> u64 = "C" 0x0062_DC30; }
 
 // Keep the right operand in memory: loading a signaling NaN into a second register would change
 // which payload an operation selects. These comparisons pop exactly the one operand they load.
@@ -151,10 +151,19 @@ unsafe extern "fastcall" fn insert_float(_this: *mut u8, frame: *mut u32) -> u64
             F80::from_f32(f32::from_bits(*value)),
             f32::from_bits(*first),
         )) {
-            let result = copy_floats_backward(first, hole, hole.wrapping_add(1), value, 0);
+            let args = [first as u32, hole as u32, hole.wrapping_add(1) as u32, value as u32, 0];
+            let mut call = RawCall::new(
+                Conv::Cdecl,
+                crate::abi::target(0x0062_DC30),
+                hole.wrapping_add(1) as u32,
+                &args,
+            );
+            call.eax = hole as u32;
+            call.edx = *frame;
+            call_registers(&mut call);
             let bits = *value;
             first.write_unaligned(bits);
-            registers(result as u32, bits)
+            registers(call.eax, bits)
         } else {
             let mut output = hole;
             let mut previous = hole.wrapping_sub(1);
