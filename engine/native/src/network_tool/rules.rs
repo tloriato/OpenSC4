@@ -215,12 +215,14 @@ port! {
     }
 }
 
-pub const PORTS: &[Port] = &[
-    fc4p_0061f5d0::PORT,
-    fc4p_00621d30::PORT,
-    fc4p_00622040::PORT,
-    fc4p_006220d0::PORT,
-];
+pub const PORTS: &[Port] = {
+    let _ = fc4p_00621d30::PORT;
+    &[
+        fc4p_0061f5d0::PORT,
+        fc4p_00622040::PORT,
+        fc4p_006220d0::PORT,
+    ]
+};
 
 #[cfg(test)]
 mod tests;
