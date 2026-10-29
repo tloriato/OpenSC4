@@ -80,7 +80,17 @@ extern "thiscall" fn budget_new(this: *mut u8, category: u32) {
     unsafe { core::ptr::write_bytes(this, 0xA5, 24) };
     STATE.with(|s| s.borrow_mut().budget = this as usize);
 }
-extern "thiscall" fn expired(this: *mut u8) -> u32 {
+extern "C" {
+    static fc4r_0069b149: u8;
+}
+
+#[unsafe(naked)]
+unsafe extern "thiscall" fn expired(_this: *mut u8) -> u32 {
+    core::arch::naked_asm!("mov edx, [esp]", "jmp {}", sym expired_at_site);
+}
+
+extern "fastcall" fn expired_at_site(this: *mut u8, return_address: usize) -> u32 {
+    assert_eq!(return_address, core::ptr::addr_of!(fc4r_0069b149) as usize);
     log(Event::Expired(unsafe { read(this.add(8).cast()) }));
     STATE.with(|s| {
         let mut s = s.borrow_mut();

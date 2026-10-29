@@ -14,6 +14,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstddef>
 
 // The fixed schedule (docs/specs/simulator.md §5.8) for the original game:
 // `schedule = fixed` in FreeCity4.ini (tooling; default off) holds its work to
@@ -22,6 +23,25 @@
 // any other executable.
 
 namespace fc4 {
+
+// Every fixed-schedule patch or return-address key, and its enclosing exe function.
+// A zero function denotes an import slot, vtable slot or other global data.
+struct ScheduleSite { uint32_t site; uint32_t function; };
+const ScheduleSite* ScheduleSites(size_t* count);
+inline uint32_t MissingScheduleSite(const ScheduleSite* keys, size_t keyCount, uint32_t function,
+                                    const uint32_t* honoured, size_t honouredCount) {
+    for (size_t i = 0; i < keyCount; ++i) {
+        if (keys[i].function == 0 || keys[i].function != function) continue;
+        bool found = false;
+        for (size_t j = 0; j < honouredCount; ++j) found = found || honoured[j] == keys[i].site;
+        if (!found) return keys[i].site;
+    }
+    return 0;
+}
+// Resolve fc4r_<site> exports once, before installing any native entry jumps.
+void ScheduleNativeModule(void* module);
+// First site lost by replacing this function without a declaration (zero means none).
+uint32_t ScheduleMissingSite(uint32_t function, const uint32_t* sites, size_t count);
 
 bool ScheduleFixed();               // `schedule = fixed` and the executable is the supported one
 void ScheduleStartup();             // install the hooks; one log line per lever

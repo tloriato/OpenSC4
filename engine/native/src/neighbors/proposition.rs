@@ -10,7 +10,7 @@ use crate::x87::F80;
 
 game_fn! { fn deal_node(list: *mut u8, edx: u32, count: u32, hint: u32) -> u64 = "fastcall" 0x0042_0FD0; }
 game_fn! { fn property_float(holder: *mut u8, id: u32, out: *mut u32) -> u64 = "C" 0x005F_D4F0; }
-game_fn! { fn construct_random(this: *mut u8, seed: i32) -> u64 = "thiscall" 0x0091_3A5C; }
+game_return_fn! { fn proposition_construct_random(this: *mut u8, seed: i32) -> u64 = 0x0091_3A5C, fc4r_006d0628; }
 game_fn! { fn random_range(this: *mut u8, low_lo: u32, low_hi: u32, high_lo: u32, high_hi: u32) -> St0 = "thiscall" 0x0091_3761; }
 game_fn! { fn date_from_time(this: *mut u8, edx: u32, time: u32) -> u64 = "fastcall" 0x0091_2DFA; }
 game_fn! { fn day_number(this: *mut u8, edx: u32) -> u64 = "fastcall" 0x0091_297E; }
@@ -137,7 +137,7 @@ unsafe extern "fastcall" fn create_proposition(this: *mut u8, args: *mut u32) ->
         }
         if random_initialized().read() & 1 == 0 {
             random_initialized().write(random_initialized().read() | 1);
-            construct_random(random().cast(), -1);
+            proposition_construct_random(random().cast(), -1);
         }
         let high = (F80::from_f32(f32::from_bits(args.add(2).read_unaligned())) + F80::from_f64(term_epsilon().read()))
             .to_f64();

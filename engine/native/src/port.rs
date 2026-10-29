@@ -18,6 +18,8 @@
 //! address at compile time), and a [`Port`] entry with its owner (the class it belongs to, the unit the ini
 //! switches on) and name is defined next to it, as `<export>::PORT`. Each module lists its entries in a
 //! `PORTS` slice, and the crate root joins those into the exported table [`PortTable`] (`fc4native_ports`).
+//! The optional `fc4native_sites` companion table declares the original sites each port honours; v1 port
+//! tables without it remain readable, but cannot replace a function containing a schedule site.
 //!
 //! Three forms:
 //! - plain: `#[port(address = .., owner = .., name = ..)] pub unsafe extern "thiscall" fn fc4p_..(..) {..}`;
@@ -76,6 +78,72 @@ pub struct PortTable {
 
 // SAFETY: see `Port`.
 unsafe impl Sync for PortTable {}
+
+/// A port's promise to preserve one original patch or return-address key.
+#[repr(C)]
+pub struct HonouredSite {
+    pub function: u32,
+    pub site: u32,
+}
+
+/// Companion table, independent of the unchanged v1 port layout.
+#[repr(C)]
+pub struct SiteTable {
+    pub magic: u32,
+    pub version: u32,
+    pub count: u32,
+    pub entry_size: u32,
+    pub entries: *const HonouredSite,
+}
+
+// SAFETY: points only at an immutable static array.
+unsafe impl Sync for SiteTable {}
+
+static HONOURED_SITES: &[HonouredSite] = &[
+    HonouredSite {
+        function: 0x0045_8A60,
+        site: 0x0045_8A78,
+    },
+    HonouredSite {
+        function: 0x0060_5040,
+        site: 0x0060_5058,
+    },
+    HonouredSite {
+        function: 0x0061_D200,
+        site: 0x0061_D218,
+    },
+    HonouredSite {
+        function: 0x0069_B0B0,
+        site: 0x0069_B149,
+    },
+    HonouredSite {
+        function: 0x006B_F430,
+        site: 0x006B_F448,
+    },
+    HonouredSite {
+        function: 0x006D_0520,
+        site: 0x006D_0628,
+    },
+    HonouredSite {
+        function: 0x0070_FB70,
+        site: 0x0070_FBA9,
+    },
+    HonouredSite {
+        function: 0x0070_FB70,
+        site: 0x0070_FC34,
+    },
+];
+
+/// Sites honoured by the ports, checked by the loader before installing entry jumps.
+#[no_mangle]
+#[allow(non_upper_case_globals)]
+pub static fc4native_sites: SiteTable = SiteTable {
+    magic: 0x5334_4346, // FC4S
+    version: 1,
+    count: HONOURED_SITES.len() as u32,
+    entry_size: core::mem::size_of::<HonouredSite>() as u32,
+    entries: HONOURED_SITES.as_ptr(),
+};
 
 /// `FC4P` in memory order.
 pub const TABLE_MAGIC: u32 = u32::from_le_bytes(*b"FC4P");

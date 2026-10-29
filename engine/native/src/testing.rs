@@ -74,8 +74,50 @@ pub fn resolve(address: u32) -> usize {
 
 /// The stand-in of the game global at `address`, else a panic.
 pub fn resolve_data(address: u32) -> usize {
+    optional_data(address).unwrap_or_else(|| panic!("game global 0x{address:08X} has no stand-in in this test"))
+}
+
+/// A site's instruction bytes, when a test models an installed patch.
+pub fn optional_data(address: u32) -> Option<usize> {
     DATA.with(|t| t.borrow().iter().find(|&&(a, _)| a == address).map(|&(_, f)| f))
-        .unwrap_or_else(|| panic!("game global 0x{address:08X} has no stand-in in this test"))
+}
+
+thread_local! {
+    static PATCH_CALLS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+extern "C" fn count_patch() {
+    PATCH_CALLS.with(|n| n.set(n.get() + 1));
+}
+
+// A pool thunk can write any GPR, including the register the original load filled.
+#[unsafe(naked)]
+unsafe extern "C" fn count_patch_registers() {
+    core::arch::naked_asm!(
+        "call {}", "mov ebx, 0x12345678", "mov esi, 0x23456789",
+        "mov edi, 0x34567890", "mov ebp, 0x45678901", "ret", sym count_patch,
+    );
+}
+
+/// A live E8 patch in test memory. Its target counts calls made through any such patch on this thread.
+pub struct TestPatch {
+    _guard: Fake,
+    _code: Box<[u8; 5]>,
+    before: u32,
+}
+impl TestPatch {
+    pub fn calls(&self) -> u32 {
+        PATCH_CALLS.with(|n| n.get() - self.before)
+    }
+}
+pub fn fake_patch(site: u32) -> TestPatch {
+    let mut code = Box::new([0xE8, 0, 0, 0, 0]);
+    let rel = (count_patch_registers as *const () as usize).wrapping_sub(code.as_ptr() as usize + 5) as u32;
+    code[1..].copy_from_slice(&rel.to_le_bytes());
+    TestPatch {
+        _guard: fake_data(site, code.as_mut_ptr()),
+        _code: code,
+        before: PATCH_CALLS.with(|n| n.get()),
+    }
 }
 
 /// Runs the x87 at the game's control word (0x007F) until dropped, then restores the previous one.

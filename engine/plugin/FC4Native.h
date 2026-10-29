@@ -28,7 +28,11 @@
 // 1.1.641 build the ports are written for) loads the DLL, reads its port table (`fc4native_ports`),
 // checks each enabled port's export (`fc4p_<address>`), and writes a 5-byte `jmp` to it at the original's
 // entry in memory (the executable on disk is never changed). One log line per jump, with the entry bytes
-// it replaced, and a summary. When `functions` is absent or empty, nothing is loaded, nothing is written
+// it replaced, and a summary. The optional `fc4native_sites` table (FC4S, version 1, entries of
+// {function, site}, two uint32_t words) declares the schedule sites a port honours. The loader refuses a
+// function containing an undeclared site; a return key also needs its `fc4r_<site>` export. The original
+// `fc4native_ports` v1 layout is unchanged, and older DLLs without a site table remain supported.
+// When `functions` is absent or empty, nothing is loaded, nothing is written
 // and nothing is logged.
 #pragma once
 

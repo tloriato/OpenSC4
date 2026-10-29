@@ -148,10 +148,11 @@ unsafe extern "fastcall" fn get_info(this: *mut u8, out: *mut Registers, kind: u
     }
 }
 
-unsafe fn new_info(kind: u32) -> *mut u8 {
+unsafe fn new_info(kind: u32, site: u32) -> *mut u8 {
     unsafe {
         let mut memory = word(read_unaligned(info_pool_block()), 8) as *mut u8;
         if memory.is_null() { memory = allocate_pool(info_pool()); }
+        crate::abi::pool_take(site);
         store(read_unaligned(info_pool_block()), 8, word(memory, 0));
         let block = read_unaligned(info_pool_block());
         store(block, 12, word(block, 12).wrapping_add(1));
@@ -175,7 +176,7 @@ port! {
             let sim = NetworkSim::from_ptr(this);
             let mut node = word(cell(sim, x, z), 0) as *mut u8;
             if node.is_null() {
-                let memory = new_info(kind);
+                let memory = new_info(kind, 0x0070_FBA9);
                 NetworkInfo::from_ptr(memory).set_connection_count(0);
                 store(cell(sim, x, z), 0, memory as u32);
                 return memory;
@@ -186,7 +187,7 @@ port! {
                 if info.next().is_null() { break; }
                 node = info.next();
             }
-            let memory = new_info(kind);
+            let memory = new_info(kind, 0x0070_FC34);
             let tail = NetworkInfo::from_ptr(node);
             tail.set_connection_count(0);
             tail.set_next(memory);

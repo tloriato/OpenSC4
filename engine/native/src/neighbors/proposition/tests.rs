@@ -145,7 +145,15 @@ extern "C" fn property(_: *mut u8, id: u32, out: *mut u32) {
         }
     }
 }
-extern "thiscall" fn seed(_: *mut u8, seed: i32) {
+extern "C" {
+    static fc4r_006d0628: u8;
+}
+#[unsafe(naked)]
+unsafe extern "thiscall" fn seed(_this: *mut u8, _seed: i32) {
+    core::arch::naked_asm!("mov edx, [esp]", "jmp {}", sym seed_at_site);
+}
+extern "fastcall" fn seed_at_site(_: *mut u8, return_address: usize, seed: i32) {
+    assert_eq!(return_address, core::ptr::addr_of!(fc4r_006d0628) as usize);
     let flags = STATE.with(|s| unsafe { (s.borrow().initialized as *const u32).read() });
     record(Call::Seed(seed, flags));
 }

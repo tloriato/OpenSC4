@@ -143,6 +143,7 @@ struct Page([u8; 8192]);
 
 #[test]
 fn pool_allocation_reloads_the_active_page_after_growth() {
+    let patch = crate::testing::fake_patch(0x0045_8A78);
     let _grow = fake(0x0090_CF9A, grow_pool as *const () as usize);
     let mut context = 0u8;
     let _context = fake_data(0x00B0_7F1C, &mut context);
@@ -183,6 +184,7 @@ fn pool_allocation_reloads_the_active_page_after_growth() {
         assert_eq!(read_unaligned(p2.add(8).cast::<*mut u8>()), p2.add(160));
         assert_eq!(events(), [Event::PoolGrow(&mut context as *mut u8 as usize)]);
     }
+    assert_eq!(patch.calls(), 2);
 }
 
 #[test]

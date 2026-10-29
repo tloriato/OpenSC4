@@ -38,6 +38,7 @@ port! {
                 node = refill_pool(pool());
             }
             let next = read_unaligned(node.cast::<*mut u8>());
+            crate::abi::pool_take(0x006B_F448);
             write_unaligned((*pool_slot()).add(8).cast::<*mut u8>(), next);
             let count = (*pool_slot()).add(12).cast::<u32>();
             write_unaligned(count, read_unaligned(count).wrapping_add(1));

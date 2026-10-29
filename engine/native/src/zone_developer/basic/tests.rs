@@ -308,6 +308,7 @@ extern "thiscall" fn refill(this: *mut u8) -> *mut u8 {
 
 #[test]
 fn pooled_node_unlinks_refills_and_wraps_count() {
+    let patch = crate::testing::fake_patch(0x006B_F448);
     let mut next = [0xDEAD_BEEFu32; 4];
     let mut node = [next.as_mut_ptr() as usize, 0xCC, 0xCC];
     let mut first = [0usize, 0, node.as_mut_ptr() as usize, u32::MAX as usize];
@@ -326,6 +327,7 @@ fn pooled_node_unlinks_refills_and_wraps_count() {
     assert_eq!(second, [0, 0, next.as_mut_ptr() as usize, 8]);
     assert_eq!(node[1..], [0xCC, 0xCC]);
     assert_eq!(calls(), [(storage.as_mut_ptr() as usize, 0x0090_CF9A, vec![])]);
+    assert_eq!(patch.calls(), 2);
 }
 
 extern "thiscall" fn position(this: *mut u8, out: *mut f32) -> u32 {
