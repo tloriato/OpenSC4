@@ -35,10 +35,14 @@ layout! {
         0x48 => street_tool / set_street_tool: *mut u8,
         0x4C => road_tool / set_road_tool: *mut u8,
         0x50 => lot_configuration / set_lot_configuration: *mut u8,
+        0x98 => orientation_flag / set_orientation_flag: u8,
         0x99 => real_mode / set_real_mode: u8,
         0x9A => place_streets / set_place_streets: u8,
+        0x9B => alternate_orientation / set_alternate_orientation: u8,
         0xA0 => current_zone / set_current_zone: u32,
         0xA4 => restriction / set_restriction: *mut u8,
+        0xAC => scores / set_scores: [i32; 4],
+        0xBC => conditions / set_conditions: [i32; 4],
         0xCC => orientation_q / set_orientation_q: u32,
         0xD0 => orientation_d / set_orientation_d: u32,
         0xD8 => virtual_lot_header / set_virtual_lot_header: *mut u8,
@@ -50,15 +54,18 @@ layout! {
 
 mod altitude;
 mod basic;
+mod boundaries;
 mod creation;
 mod deletion;
 mod dezone;
 mod edges;
 mod examine;
 mod face;
+mod insert;
 mod jog;
 mod lot;
 mod manager;
+mod message;
 mod network;
 mod occupancy;
 mod parcellize;
@@ -92,6 +99,7 @@ unsafe fn virtual_registers(this: *mut u8, slot: usize, eax: u32, edx: u32, args
 pub const PORTS: &[Port] = &crate::port::concat::<
     {
         basic::PORTS.len()
+            + boundaries::PORTS.len()
             + creation::PORTS.len()
             + dezone::PORTS.len()
             + deletion::PORTS.len()
@@ -99,6 +107,7 @@ pub const PORTS: &[Port] = &crate::port::concat::<
             + edges::PORTS.len()
             + examine::PORTS.len()
             + manager::PORTS.len()
+            + message::PORTS.len()
             + network::PORTS.len()
             + occupancy::PORTS.len()
             + parcels::PORTS.len()
@@ -106,6 +115,7 @@ pub const PORTS: &[Port] = &crate::port::concat::<
             + altitude::PORTS.len()
             + face::PORTS.len()
             + jog::PORTS.len()
+            + insert::PORTS.len()
             + region::PORTS.len()
             + search::PORTS.len()
             + placement::PORTS.len()
@@ -116,6 +126,7 @@ pub const PORTS: &[Port] = &crate::port::concat::<
     },
 >(&[
     basic::PORTS,
+    boundaries::PORTS,
     creation::PORTS,
     dezone::PORTS,
     deletion::PORTS,
@@ -123,6 +134,7 @@ pub const PORTS: &[Port] = &crate::port::concat::<
     edges::PORTS,
     examine::PORTS,
     manager::PORTS,
+    message::PORTS,
     network::PORTS,
     occupancy::PORTS,
     parcels::PORTS,
@@ -130,6 +142,7 @@ pub const PORTS: &[Port] = &crate::port::concat::<
     altitude::PORTS,
     face::PORTS,
     jog::PORTS,
+    insert::PORTS,
     region::PORTS,
     search::PORTS,
     placement::PORTS,

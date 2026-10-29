@@ -2,6 +2,7 @@
 // Copyright (C) 2026 FreeCity4 contributors
 
 use super::*;
+use crate::abi::{call_raw, Conv, RawCall};
 use crate::testing::{fake, fake_data, Object};
 use std::cell::RefCell;
 
@@ -40,6 +41,18 @@ extern "thiscall" fn zone(this: *mut u8, x: u32, z: u32) -> u32 {
 
 #[test]
 fn constructor_orientations_wrapping_and_exact_byte_writes() {
+    constructor_cases(
+        &[(10, 20, 3, 5), (-1, 254, 0, 4), (i32::MAX, i32::MIN, 2, -1)],
+        &[0, 1, 2, 3, 4, 255, 256, 259],
+    );
+}
+
+#[test]
+fn rectangular_lot_dimensions_for_facings_two_and_three() {
+    constructor_cases(&[(10, 20, 3, 5), (2, 4, 7, 1)], &[2, 3]);
+}
+
+fn constructor_cases(cases: &[(i32, i32, i32, i32)], facings: &[u32]) {
     let _base = fake(0x005F_F100, base as *const () as usize);
     let _alloc = fake(0x0090_CF54, alloc as *const () as usize);
     let mut table = [0usize; 13];
@@ -47,8 +60,8 @@ fn constructor_orientations_wrapping_and_exact_byte_writes() {
     let mut manager = [table.as_ptr() as usize];
     let mut manager_ptr = manager.as_mut_ptr().cast::<u8>();
     let _global = fake_data(0x00B4_3D14, (&mut manager_ptr as *mut *mut u8).cast());
-    for (x, z, width, height) in [(10i32, 20i32, 3i32, 5i32), (-1, 254, 0, 4), (i32::MAX, i32::MIN, 2, -1)] {
-        for facing in [0u32, 1, 2, 3, 4, 255, 256, 259] {
+    for &(x, z, width, height) in cases {
+        for &facing in facings {
             let mut object = Object::new(0x90);
             let ptr = object.ptr();
             unsafe { core::ptr::write_bytes(ptr, 0xA5, 0x90) };
@@ -62,15 +75,18 @@ fn constructor_orientations_wrapping_and_exact_byte_writes() {
                     list.as_mut_ptr() as usize,
                 ]
             });
-            assert_eq!(unsafe { fc4p_006c1e50(ptr, x, z, width, height, facing) }, ptr);
+            let args = [x as u32, z as u32, width as u32, height as u32, facing];
+            let mut call = RawCall::new(Conv::Thiscall, fc4p_006c1e50 as *const () as usize, ptr as u32, &args);
+            unsafe { call_raw(&mut call) };
+            assert_eq!(call.eax, ptr as u32);
             let lot = unsafe { Lot::from_ptr(ptr) };
             let x1 = x.wrapping_add(width).wrapping_sub(1) as u8;
             let z1 = z.wrapping_add(height).wrapping_sub(1) as u8;
             let anchor = match facing as u8 {
                 0 => [x1, z as u8, width as u8, height as u8],
                 1 => [x1, z1, height as u8, width as u8],
-                2 => [x as u8, z1, height as u8, width as u8],
-                3 => [x as u8, z as u8, width as u8, height as u8],
+                2 => [x as u8, z1, width as u8, height as u8],
+                3 => [x as u8, z as u8, height as u8, width as u8],
                 _ => [0; 4],
             };
             assert_eq!(lot.bounds(), [x as u8, z as u8, x1, z1]);

@@ -85,8 +85,8 @@ port! {
             match facing {
                 0 => lot.set_anchor([x1, z as u8, width as u8, height as u8]),
                 1 => lot.set_anchor([x1, z1, height as u8, width as u8]),
-                2 => lot.set_anchor([x as u8, z1, height as u8, width as u8]),
-                3 => lot.set_anchor([x as u8, z as u8, width as u8, height as u8]),
+                2 => lot.set_anchor([x as u8, z1, width as u8, height as u8]),
+                3 => lot.set_anchor([x as u8, z as u8, height as u8, width as u8]),
                 _ => {}
             }
             let anchor = lot.anchor();
