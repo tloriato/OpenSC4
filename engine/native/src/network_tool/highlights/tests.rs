@@ -2,7 +2,8 @@
 // Copyright (C) 2026 FreeCity4 contributors
 
 use super::*;
-use crate::testing::{call_thiscall_with_eax, fake, Fake, Object};
+use crate::abi::{Conv, RawCall, call_raw};
+use crate::testing::{Fake, Object, call_thiscall_with_eax, fake};
 use std::cell::RefCell;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -500,4 +501,45 @@ fn region_columns_and_count_are_reloaded_after_free() {
             Call::RegionFree(region.as_ptr() as usize)
         ]
     );
+}
+
+unsafe fn append_inline(cells: &mut CellVector, cell: [u32; 2]) {
+    unsafe {
+        if cells.end != cells.capacity {
+            if !cells.end.is_null() {
+                write(cells.end, 0, cell[0]);
+                write(cells.end, 4, cell[1]);
+            }
+            cells.end = cells.end.wrapping_add(8);
+        } else {
+            let size = (cells.end as u32).wrapping_sub(cells.begin as u32) as i32 >> 3;
+            let capacity = (size as u32).wrapping_add(if (size as u32) < 1 { 1 } else { size as u32 });
+            let begin = if capacity == 0 {
+                null_mut()
+            } else {
+                allocate(capacity.wrapping_mul(8))
+            };
+            let mut source = cells.begin;
+            let mut end = begin;
+            while source != cells.end {
+                if !end.is_null() {
+                    write(end, 0, read::<u32>(source, 0));
+                    write(end, 4, read::<u32>(source, 4));
+                }
+                source = source.wrapping_add(8);
+                end = end.wrapping_add(8);
+            }
+            if !end.is_null() {
+                write(end, 0, cell[0]);
+                write(end, 4, cell[1]);
+            }
+            end = end.wrapping_add(8);
+            if !cells.begin.is_null() {
+                free(cells.begin);
+            }
+            cells.begin = begin;
+            cells.end = end;
+            cells.capacity = begin.wrapping_add(capacity.wrapping_mul(8) as usize);
+        }
+    }
 }
