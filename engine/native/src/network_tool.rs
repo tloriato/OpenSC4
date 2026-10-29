@@ -24,7 +24,11 @@ layout! {
         0x44 => terrain / set_terrain: *mut u8,
         0x48 => occupant_manager / set_occupant_manager: *mut u8,
         0x50 => real / set_real: u8,
+        0x54 => steps / set_steps: *mut u8,
+        0x60 => cells / set_cells: *mut u8,
+        0x74 => straight_steps / set_straight_steps: i32,
         0x78 => valid_steps / set_valid_steps: i32,
+        0x7C => pen / set_pen: u8,
         0x98 => solved_begin / set_solved_begin: *mut u8,
         0x9C => solved_end / set_solved_end: *mut u8,
         0xCC => support_begin / set_support_begin: *mut u8,
@@ -108,6 +112,8 @@ mod solved_insertion;
 mod occupant_insertion;
 mod intersection_storage;
 mod construction;
+mod bridge_helpers;
+mod bridge_steps;
 
 const COUNT: usize = helpers::PORTS.len()
     + preview::PORTS.len()
@@ -134,7 +140,9 @@ const COUNT: usize = helpers::PORTS.len()
     + solved_insertion::PORTS.len()
     + occupant_insertion::PORTS.len()
     + intersection_storage::PORTS.len()
-    + construction::PORTS.len();
+    + construction::PORTS.len()
+    + bridge_helpers::PORTS.len()
+    + bridge_steps::PORTS.len();
 /// Completed replacements, ordered by original address within each group.
 pub const PORTS: &[Port] = &crate::port::concat::<COUNT>(&[
     helpers::PORTS,
@@ -163,4 +171,6 @@ pub const PORTS: &[Port] = &crate::port::concat::<COUNT>(&[
     occupant_insertion::PORTS,
     intersection_storage::PORTS,
     construction::PORTS,
+    bridge_helpers::PORTS,
+    bridge_steps::PORTS,
 ]);
