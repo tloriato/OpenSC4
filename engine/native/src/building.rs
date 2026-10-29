@@ -62,6 +62,7 @@ pub mod growth;
 pub mod growth_tree;
 pub mod io;
 pub mod messages;
+pub mod setup;
 pub mod planning;
 pub mod queries;
 pub mod resources;
@@ -79,7 +80,8 @@ const COUNT: usize = checks::PORTS.len()
     + growth_tree::PORTS.len()
     + planning::PORTS.len()
     + changed::PORTS.len()
-    + growth::PORTS.len();
+    + growth::PORTS.len()
+    + setup::PORTS.len();
 const ALL: [Port;
     COUNT
         + foundation::PORTS.len()
@@ -105,6 +107,7 @@ const ALL: [Port;
     changed::PORTS,
     growth::PORTS,
     messages::PORTS,
+    setup::PORTS,
 ]);
 
 /// This module's complete replacements.
