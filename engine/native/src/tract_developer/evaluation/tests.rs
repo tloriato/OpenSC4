@@ -16,16 +16,19 @@ struct Settings {
     zone: u32,
     score_from_capacity: f32,
     draw: f64,
+    checked_frame: u32,
+    advances: Vec<(u32, u32, u32, u32, i32, i32)>,
 }
 thread_local! { static SETTINGS: RefCell<Settings> = RefCell::new(Settings::default()); }
 fn log(slot: u32, this: u32, argument: u32, value: u32) -> u64 {
     SETTINGS.with(|s| s.borrow_mut().calls.push(Call(slot, this, argument)));
     0xBADC_0FFE_0000_0000 | u64::from(value)
 }
-extern "thiscall" fn dev_type(this: u32, flag: u32) -> u64 {
-    log(0x18, this, flag, 0x1234_5678)
+extern "thiscall" fn dev_type(this: u32) -> u64 {
+    log(0x18, this, 0, 0x1234_5678)
 }
-extern "thiscall" fn capacity(this: u32, kind: u32) -> u64 {
+extern "thiscall" fn capacity(this: u32, kind: u32, include_vacant: u32) -> u64 {
+    assert_eq!(include_vacant, 1);
     log(0xC8, this, kind, unsafe { word(this, 4) })
 }
 extern "thiscall" fn state(this: u32) -> u64 {
@@ -48,6 +51,89 @@ extern "thiscall" fn advance(this: u32) -> u64 {
         store(this, 0, word(word(this, 0), 0));
     }
     log(0x005D_17C0, 0, 0, 0x7654_3210)
+}
+
+/// The tree iterator's register and stack behavior, including its ESI save on parent walks.
+#[unsafe(naked)]
+unsafe extern "C" fn tree_advance() {
+    core::arch::naked_asm!(
+        "mov eax, ecx",
+        "mov edx, [eax]",
+        "mov ecx, [edx + 12]",
+        "test ecx, ecx",
+        "jz 4f",
+        "2:",
+        "mov edx, [ecx + 8]",
+        "test edx, edx",
+        "jz 3f",
+        "mov ecx, edx",
+        "jmp 2b",
+        "3:",
+        "mov [eax], ecx",
+        "ret",
+        "4:",
+        "push esi",
+        "mov esi, [edx + 4]",
+        "5:",
+        "cmp edx, [esi + 12]",
+        "jne 6f",
+        "mov edx, esi",
+        "mov esi, [esi + 4]",
+        "jmp 5b",
+        "6:",
+        "cmp [edx + 12], esi",
+        "je 7f",
+        "mov [eax], esi",
+        "pop esi",
+        "ret",
+        "7:",
+        "mov [eax], edx",
+        "pop esi",
+        "ret",
+    );
+}
+
+extern "stdcall" fn observe_advance(phase: u32, iterator: u32, stack: u32) {
+    SETTINGS.with(|s| {
+        let s = &mut *s.borrow_mut();
+        unsafe {
+            let expected_candidate = word(s.checked_frame, 4);
+            let argument_slot = word(s.checked_frame, 8);
+            let candidate = word(argument_slot, 0);
+            assert_eq!(candidate, expected_candidate, "live candidate argument after advance");
+            let c = Candidate::from_ptr(candidate as *mut u8);
+            assert_eq!(c.kind(), 3);
+            s.advances
+                .push((phase, stack, word(iterator, 0), candidate, c.occupied(), c.abandoned()));
+        }
+    });
+}
+
+/// Observe both sides of the real iterator operation without changing its register results.
+#[unsafe(naked)]
+unsafe extern "C" fn observed_tree_advance() {
+    core::arch::naked_asm!(
+        "pushfd", "pushad", "lea eax, [esp + 36]", "push eax",
+        "push dword ptr [esp + 28]", "push 0", "call {observe}", "popad", "popfd",
+        "call {advance}",
+        "pushfd", "pushad", "lea ecx, [esp + 36]", "push ecx",
+        "push dword ptr [esp + 32]", "push 1", "call {observe}", "popad", "popfd", "ret",
+        observe = sym observe_advance, advance = sym tree_advance,
+    );
+}
+
+/// Keep the address of the port's actual candidate argument visible to the observer.
+#[unsafe(naked)]
+unsafe extern "fastcall" fn checked_capacity_call(_this: u32, _frame: *mut [u32; 3]) -> u32 {
+    core::arch::naked_asm!(
+        "push edi",
+        "mov edi, edx",
+        "push dword ptr [edi + 4]",
+        "mov [edi + 8], esp",
+        "call dword ptr [edi]",
+        "pop edi",
+        "ret",
+    );
 }
 extern "thiscall" fn zone(this: u32) -> u64 {
     let zone = SETTINGS.with(|s| s.borrow().zone);
@@ -193,7 +279,7 @@ fn single_lot_capacity_uses_low_word_and_stage_byte() {
             assert_eq!(
                 w.calls(),
                 [
-                    Call(0x18, td.developer(), 1),
+                    Call(0x18, td.developer(), 0),
                     Call(0xC8, l, 0x1234_5678),
                     Call(0x84, l, 0),
                     Call(0x24, l, 0),
@@ -278,6 +364,80 @@ fn aggregation_sums_in_tree_order_and_keeps_maximum_stage_and_signed_wealth() {
     assert_eq!((c.occupied(), c.abandoned(), c.stage(), c.wealth()), (0, 0, 0, 0));
     assert!(w.calls().is_empty());
     assert_eq!(nodes[3][2], header);
+}
+
+#[test]
+fn aggregation_with_real_tree_advance_preserves_candidate_and_stack() {
+    let mut w = World::new();
+    let td = w.view();
+    let _advance = fake(0x005D_17C0, observed_tree_advance as *const () as usize);
+    let mut lots = [w.lot(11, 0, 0, 0), w.lot(22, 4, 0, 0), w.lot(33, 0, 0, 0)];
+    let mut nodes = [[0u32; 5]; 4];
+    let pointers = core::array::from_fn::<_, 4, _>(|i| nodes[i].as_mut_ptr() as u32);
+    // A root with one child on each side exercises both descent and parent traversal.
+    nodes[0][1] = pointers[1];
+    nodes[1][1] = pointers[3];
+    nodes[1][2] = pointers[0];
+    nodes[1][3] = pointers[2];
+    nodes[2][1] = pointers[1];
+    nodes[3][1] = pointers[1];
+    nodes[3][2] = pointers[0];
+    nodes[3][3] = pointers[2];
+    for i in 0..3 {
+        nodes[i][4] = lots[i].as_mut_ptr() as u32;
+    }
+    let mut memory = [0xA5u8; 0xA4];
+    let c = unsafe { Candidate::from_ptr(memory.as_mut_ptr()) };
+    c.set_kind(3);
+    c.set_lot_header(pointers[3]);
+    c.set_occupied(-1);
+    let before = memory;
+    let (stack_before, stack_after): (u32, u32);
+    unsafe {
+        core::arch::asm!("mov {p}, esp", p = out(reg) stack_before, options(nomem, nostack));
+    }
+    let mut frame = [fc4p_007055b0 as *const () as u32, c.as_ptr() as u32, 0];
+    SETTINGS.with(|s| s.borrow_mut().checked_frame = frame.as_mut_ptr() as u32);
+    let result = unsafe { checked_capacity_call(td.as_ptr() as u32, &mut frame) };
+    unsafe {
+        core::arch::asm!("mov {p}, esp", p = out(reg) stack_after, options(nomem, nostack));
+    }
+    assert_eq!(stack_before, stack_after);
+    assert_eq!(result, pointers[3]);
+    assert_eq!((c.occupied(), c.abandoned(), c.stage(), c.wealth()), (44, 22, 0, 0));
+    let mut expected = before;
+    expected[0x24..0x34].fill(0);
+    expected[0x24..0x28].copy_from_slice(&44u32.to_le_bytes());
+    expected[0x28..0x2C].copy_from_slice(&22u32.to_le_bytes());
+    assert_eq!(memory, expected);
+    let expected_calls: Vec<_> = lots
+        .iter()
+        .flat_map(|lot| {
+            let l = lot.as_ptr() as u32;
+            [
+                Call(0x18, td.developer(), 0),
+                Call(0xC8, l, 0x1234_5678),
+                Call(0x84, l, 0),
+                Call(0x24, l, 0),
+                Call(0xB8, l, 0),
+            ]
+        })
+        .collect();
+    assert_eq!(w.calls(), expected_calls);
+    SETTINGS.with(|s| {
+        let s = s.borrow();
+        assert_eq!(s.advances.len(), 6);
+        for (i, pair) in s.advances.as_chunks::<2>().0.iter().enumerate() {
+            assert_eq!((pair[0].0, pair[1].0), (0, 1));
+            assert_eq!(pair[0].1, pair[1].1, "ESP after advance {i}");
+            assert_eq!(pair[0].2, pointers[i]);
+            assert_eq!(pair[1].2, pointers[i + 1]);
+            for observation in pair {
+                assert_eq!(observation.3, c.as_ptr() as u32);
+                assert_eq!((observation.4, observation.5), [(11, 0), (11, 22), (44, 22)][i]);
+            }
+        }
+    });
 }
 
 #[test]

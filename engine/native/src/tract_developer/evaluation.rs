@@ -20,10 +20,12 @@ unsafe fn account<const N: usize>(r: &mut Entry<N>, this: u32, candidate: u32, l
         r.ecx = word(this, 0x80);
         r.eax = word(r.ecx, 0);
         let lot_table = word(lot, 0);
-        invoke(r, Conv::Thiscall, word(r.eax, 0x18) as usize, &[1]);
+        // The capacity flag is the lot method's second argument. The developer's type getter
+        // takes no stack words; leaving the flag under that call would unbalance this adapter.
+        invoke(r, Conv::Thiscall, word(r.eax, 0x18) as usize, &[]);
         let developer_type = r.eax;
         r.ecx = lot;
-        invoke(r, Conv::Thiscall, word(lot_table, 0xC8) as usize, &[developer_type]);
+        invoke(r, Conv::Thiscall, word(lot_table, 0xC8) as usize, &[developer_type, 1]);
         r.edx = word(lot, 0);
         r.ecx = lot;
         let capacity = r.eax & 0xFFFF;
