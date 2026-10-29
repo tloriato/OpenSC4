@@ -93,7 +93,7 @@ pub(super) unsafe fn advance(scan: PassScan, result: &mut Registers) -> bool {
 }
 
 /// The inline pacing update preserves upper EAX bytes and only replaces AL with completion.
-pub(super) unsafe fn paced_return(pacing: *mut [u32; 2], work: u32, completed: bool, double_in_ecx: bool, mut result: Registers) -> Registers {
+pub(super) unsafe fn paced_return(pacing: *mut [u32; 2], work: u32, completed: bool, double_in_ecx: bool, double_in_eax: bool, mut result: Registers) -> Registers {
     unsafe {
         let p = pacing.cast::<u8>();
         result.eax = work >> 10;
@@ -114,7 +114,9 @@ pub(super) unsafe fn paced_return(pacing: *mut [u32; 2], work: u32, completed: b
                     store(p, 4, 0);
                     if result.eax < 1024 {
                         let doubled = result.eax.wrapping_mul(2);
-                        if double_in_ecx { result.ecx = doubled; } else { result.edx = doubled; }
+                        if double_in_ecx { result.ecx = doubled; }
+                        else if double_in_eax { result.eax = doubled; }
+                        else { result.edx = doubled; }
                         store(p, 0, doubled);
                     }
                 }
@@ -199,7 +201,7 @@ unsafe extern "fastcall" fn clear_destinations(this: *mut u8, out: *mut Register
             }
             work = scope[2];
         };
-        out.write(paced_return(clear_pacing(), work, completed, completed, result));
+        out.write(paced_return(clear_pacing(), work, completed, completed, false, result));
     }
 }
 
@@ -256,7 +258,7 @@ unsafe extern "fastcall" fn reduce_edges(this: *mut u8, out: *mut Registers, bud
             if work & 1023 == 0 {
                 result = check_budget(scope, result);
                 if result.eax as u8 != 0 {
-                    out.write(paced_return(edge_pacing(), work, false, false, result));
+                    out.write(paced_return(edge_pacing(), work, false, false, false, result));
                     return;
                 }
             }
@@ -269,7 +271,7 @@ unsafe extern "fastcall" fn reduce_edges(this: *mut u8, out: *mut Registers, bud
             ferry = word(ferry, 0) as *mut u8;
         }
         if had_ferries { work = scope[2]; }
-        out.write(paced_return(edge_pacing(), work, true, false, result));
+        out.write(paced_return(edge_pacing(), work, true, false, false, result));
     }
 }
 

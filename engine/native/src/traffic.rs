@@ -145,6 +145,8 @@ pub mod refresh;
 pub mod finish_helpers;
 pub mod finish_passes;
 pub mod final_map;
+pub mod source_totals;
+pub mod trip_map;
 #[cfg(test)]
 mod test_support;
 
@@ -152,7 +154,7 @@ mod test_support;
 pub const PORTS: &[Port] = &crate::port::concat::<
     {
         queries::PORTS.len() + containers::PORTS.len() + budget::PORTS.len() + capacity::PORTS.len() + maps::PORTS.len()
-            + network::PORTS.len() + trees::PORTS.len() + trips::PORTS.len() + refresh::PORTS.len() + finish_helpers::PORTS.len() + finish_passes::PORTS.len() + final_map::PORTS.len()
+            + network::PORTS.len() + trees::PORTS.len() + trips::PORTS.len() + refresh::PORTS.len() + finish_helpers::PORTS.len() + finish_passes::PORTS.len() + final_map::PORTS.len() + source_totals::PORTS.len() + trip_map::PORTS.len()
     },
 >(&[
     queries::PORTS,
@@ -167,4 +169,6 @@ pub const PORTS: &[Port] = &crate::port::concat::<
     finish_helpers::PORTS,
     finish_passes::PORTS,
     final_map::PORTS,
+    source_totals::PORTS,
+    trip_map::PORTS,
 ]);

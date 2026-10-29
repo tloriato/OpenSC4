@@ -273,3 +273,35 @@ fn edge_clear_budget_is_after_active_cell_and_defers_ferries_until_completion() 
     assert_eq!(e.world.run(fc4p_007110b0 as *const () as usize).eax as u8, 1);
     e.assert_cleared(&[0, 1, 3]);
 }
+
+#[test]
+fn edge_clear_only_clears_first_duplicate_and_leaves_missing_records_absent() {
+    let mut e = Edges::new();
+    let mut duplicate = Object::new(80);
+    unsafe {
+        core::ptr::write_bytes(duplicate.ptr(), 0xA5, 80);
+        store(duplicate.ptr(), 0, e.buckets[0]); store(duplicate.ptr(), 4, 0);
+    }
+    e.buckets[0] = duplicate.ptr() as u32;
+    // Remove one ferry-arrival key from the table without changing its storage.
+    unsafe { store(e.nodes[54].ptr(), 4, 0xFFFFFFFF); }
+    e.world.run(fc4p_007110b0 as *const () as usize);
+    unsafe {
+        assert!(bytes(duplicate.ptr().add(42), 32).iter().all(|&b| b == 0));
+        assert!(bytes(e.nodes[0].ptr().add(42), 32).iter().all(|&b| b == 0xA5));
+        assert!(bytes(e.nodes[54].ptr().add(42), 32).iter().all(|&b| b == 0xA5));
+    }
+    assert_eq!(e.buckets[0], duplicate.ptr() as u32);
+}
+
+#[test]
+fn capacity_null_holder_advances_without_property_or_statistic_calls() {
+    let mut w = World::new(false);
+    let mut lot = object(8, &w._tables[2]);
+    unsafe { store(lot.ptr(), 4, 0); PassScan::from_ptr(w.scan.ptr()).set_maximum_x(0); }
+    w.lots[0] = lot.ptr() as u32;
+    let r = w.run(fc4p_0070e4f0 as *const () as usize);
+    assert_eq!(r.eax as u8, 1);
+    assert_eq!(calls(), [Call::Budget(11, 22, 1024, 1024), Call::Lot(0, 0, 1),
+        Call::Holder(lot.ptr() as u32), Call::Budget(11, 22, 2048, 1024)]);
+}

@@ -91,8 +91,10 @@ fn rail_accident_draws_only_for_damage_and_uses_strict_threshold() {
         assert_eq!(calls(), [Call::Random(0x10203040)]);
     }
     // A missing key traverses its chain and returns the bucket-array pointer with AL cleared.
-    let result = unsafe { fc4p_00711590(sim.ptr(), 4, 4) };
-    assert_eq!(result, u64::from(buckets.as_ptr() as u32 & !255));
+    for (x, z) in [(4, 4), (0, 0)] {
+        let result = unsafe { fc4p_00711590(sim.ptr(), x, z) };
+        assert_eq!(result, u64::from(buckets.as_ptr() as u32 & !255));
+    }
     assert!(calls().is_empty());
 }
 
