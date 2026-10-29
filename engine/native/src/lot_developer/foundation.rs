@@ -46,14 +46,21 @@ port! {
 
 port! {
     /// Looks up the lot foundation by its cell location.
-    #[port(address = 0x006C_3E70, owner = "lotdeveloper", name = "cSC4LotDeveloper::GetLotFoundation")]
+    #[port(address = 0x006C_3E70, owner = "lotdeveloper", name = "cSC4LotDeveloper::GetLotFoundation", naked)]
     pub unsafe extern "thiscall" fn fc4p_006c3e70(this: *mut u8, lot: *mut u8) -> u64 {
-        unsafe {
-            let (mut x, mut z) = (core::mem::MaybeUninit::<u32>::uninit(), core::mem::MaybeUninit::<u32>::uninit());
-            vcall!(lot, 0x54 => fn(*mut u32, *mut u32) -> u32, x.as_mut_ptr(), z.as_mut_ptr());
-            let x = x.assume_init();
-            result(virtual_call(this, 0xC4, &[2, x, z.assume_init()], table(this), x, false))
-        }
+        stack_entry!(lot_foundation, 4);
+    }
+}
+
+// The lot argument becomes z; the local x word is restored into ECX on return.
+unsafe extern "fastcall" fn lot_foundation(this: *mut u8, stack: *mut u32, _entry_edx: u32) -> u64 {
+    unsafe {
+        let lot = stack.add(1).read() as *mut u8;
+        let x = stack.sub(1);
+        let z = stack.add(1);
+        vcall!(lot, 0x54 => fn(*mut u32, *mut u32) -> u32, x, z);
+        let x = x.read();
+        result(virtual_call(this, 0xC4, &[2, x, z.read()], table(this), x, false))
     }
 }
 
@@ -87,17 +94,24 @@ port! {
 
 port! {
     /// Removes the cell's foundation, then clears the supplied lot's flags again.
-    #[port(address = 0x006C_3F30, owner = "lotdeveloper", name = "cSC4LotDeveloper::RemoveLotFoundation(lot)")]
+    #[port(address = 0x006C_3F30, owner = "lotdeveloper", name = "cSC4LotDeveloper::RemoveLotFoundation(lot)", naked)]
     pub unsafe extern "thiscall" fn fc4p_006c3f30(this: *mut u8, lot: *mut u8) -> u64 {
-        unsafe {
-            let (mut x, mut z) = (core::mem::MaybeUninit::<u32>::uninit(), core::mem::MaybeUninit::<u32>::uninit());
-            vcall!(lot, 0x54 => fn(*mut u32, *mut u32) -> u32, x.as_mut_ptr(), z.as_mut_ptr());
-            let removed = vcall!(this, 0xD4 => fn(u32, u32) -> u32, x.assume_init(), z.assume_init());
-            let flags = vcall!(lot, 0x30 => fn() -> u32) & !3;
-            let mut call = virtual_call(lot, 0x34, &[flags], flags, table(lot), false);
-            call.eax = (call.eax & !255) | (removed & 255);
-            result(call)
-        }
+        stack_entry!(remove_foundation_lot, 4);
+    }
+}
+
+// The lot argument becomes z; the local x word is restored into ECX on return.
+unsafe extern "fastcall" fn remove_foundation_lot(this: *mut u8, stack: *mut u32, _entry_edx: u32) -> u64 {
+    unsafe {
+        let lot = stack.add(1).read() as *mut u8;
+        let x = stack.sub(1);
+        let z = stack.add(1);
+        vcall!(lot, 0x54 => fn(*mut u32, *mut u32) -> u32, x, z);
+        let removed = vcall!(this, 0xD4 => fn(u32, u32) -> u32, x.read(), z.read());
+        let flags = vcall!(lot, 0x30 => fn() -> u32) & !3;
+        let mut call = virtual_call(lot, 0x34, &[flags], flags, table(lot), false);
+        call.eax = (call.eax & !255) | (removed & 255);
+        result(call)
     }
 }
 
@@ -379,8 +393,10 @@ port! {
 
 pub const PORTS: &[Port] = &[
     fc4p_006c3e10::PORT,
+    fc4p_006c3e70::PORT,
     fc4p_006c3eb0::PORT,
     fc4p_006c3f80::PORT,
+    fc4p_006c3ff0::PORT,
     fc4p_006c4020::PORT,
     fc4p_006c40e0::PORT,
     fc4p_006c4150::PORT,
