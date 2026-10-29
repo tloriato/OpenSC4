@@ -85,6 +85,7 @@ mod clear;
 mod control;
 mod cost;
 mod geometry;
+mod highlights;
 mod helpers;
 mod init;
 mod lifetime;
@@ -98,11 +99,13 @@ mod storage;
 mod tunnels;
 mod type_reload;
 mod tunnel_piece;
+mod tunnel_insertion;
 
 const COUNT: usize = helpers::PORTS.len()
     + preview::PORTS.len()
     + rules::PORTS.len()
     + geometry::PORTS.len()
+    + highlights::PORTS.len()
     + occupants::PORTS.len()
     + storage::PORTS.len()
     + cost::PORTS.len()
@@ -115,13 +118,15 @@ const COUNT: usize = helpers::PORTS.len()
     + clear::PORTS.len()
     + tunnels::PORTS.len()
     + type_reload::PORTS.len()
-    + tunnel_piece::PORTS.len();
+    + tunnel_piece::PORTS.len()
+    + tunnel_insertion::PORTS.len();
 /// Completed replacements, ordered by original address within each group.
 pub const PORTS: &[Port] = &crate::port::concat::<COUNT>(&[
     helpers::PORTS,
     preview::PORTS,
     rules::PORTS,
     geometry::PORTS,
+    highlights::PORTS,
     occupants::PORTS,
     storage::PORTS,
     cost::PORTS,
@@ -135,4 +140,5 @@ pub const PORTS: &[Port] = &crate::port::concat::<COUNT>(&[
     tunnels::PORTS,
     type_reload::PORTS,
     tunnel_piece::PORTS,
+    tunnel_insertion::PORTS,
 ]);
