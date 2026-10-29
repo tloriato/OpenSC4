@@ -8,9 +8,6 @@ use crate::abi::{call_raw, Conv, RawCall};
 use crate::testing::Object;
 use std::cell::RefCell;
 
-game_fn! { fn query(this: *mut u8, iid: u32, out: *mut *mut u8) -> u32 = "thiscall" 0x006E_ABC0; }
-game_fn! { fn release(this: *mut u8) -> u32 = "thiscall" 0x006E_B190; }
-
 fn invoke(entry: *const (), this: *mut u8, args: &[u32]) -> (u32, u32) {
     let mut c = RawCall::new(Conv::Thiscall, entry as usize, this as u32, args);
     c.eax = 0x1122_3344;

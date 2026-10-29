@@ -321,4 +321,4 @@ unsafe fn nuclear_free_zone(sim: MessageSim, frame: *mut u8, r: &mut Registers) 
 pub const PORTS: &[Port] = &[fc4p_006efb70::PORT];
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

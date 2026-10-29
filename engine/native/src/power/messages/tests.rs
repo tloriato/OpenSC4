@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 
 type Action = Box<dyn FnOnce(u32, &[u32])>;
-struct Step {
+pub(crate) struct Step {
     site: u32,
     this: Option<u32>,
     args: Vec<Option<u32>>,
@@ -18,7 +18,11 @@ struct Step {
     return_this: bool,
 }
 impl Step {
-    fn new(site: u32, this: *mut u8, args: &[u32], eax: u32) -> Self {
+    pub(crate) fn value(mut self, value: u64) -> Self {
+        self.result = value;
+        self
+    }
+    pub(crate) fn new(site: u32, this: *mut u8, args: &[u32], eax: u32) -> Self {
         Self {
             site,
             this: Some(this as u32),
@@ -28,23 +32,23 @@ impl Step {
             return_this: false,
         }
     }
-    fn pointer(mut self, arg: usize) -> Self {
+    pub(crate) fn pointer(mut self, arg: usize) -> Self {
         self.args[arg] = None;
         self
     }
-    fn scratch(mut self) -> Self {
+    pub(crate) fn scratch(mut self) -> Self {
         self.this = None;
         self
     }
-    fn returns_this(mut self) -> Self {
+    pub(crate) fn returns_this(mut self) -> Self {
         self.return_this = true;
         self
     }
-    fn action(mut self, action: impl FnOnce(u32, &[u32]) + 'static) -> Self {
+    pub(crate) fn action(mut self, action: impl FnOnce(u32, &[u32]) + 'static) -> Self {
         self.action = Some(Box::new(action));
         self
     }
-    fn output(self, arg: usize, words: &[u32]) -> Self {
+    pub(crate) fn output(self, arg: usize, words: &[u32]) -> Self {
         let words = words.to_vec();
         self.action(move |_, args| {
             for (i, value) in words.iter().enumerate() {
@@ -57,7 +61,7 @@ thread_local! {
     static STEPS: RefCell<VecDeque<Step>> = const { RefCell::new(VecDeque::new()) };
     static ERRORS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 }
-fn run(site: u32, this: u32, args: &[u32]) -> u64 {
+pub(crate) fn run(site: u32, this: u32, args: &[u32]) -> u64 {
     let mut step = STEPS.with(|s| s.borrow_mut().pop_front()).expect("unexpected call");
     if step.site != site
         || step.this.is_some_and(|p| p != this)
@@ -84,14 +88,14 @@ fn run(site: u32, this: u32, args: &[u32]) -> u64 {
         step.result
     }
 }
-fn script(steps: Vec<Step>) {
+pub(crate) fn script(steps: Vec<Step>) {
     STEPS.with(|s| {
         assert!(s.borrow().is_empty());
         *s.borrow_mut() = steps.into();
     });
     ERRORS.with(|e| assert!(e.borrow().is_empty()));
 }
-fn finish() {
+pub(crate) fn finish() {
     let remaining = STEPS.with(|s| s.borrow().len());
     let errors = ERRORS.with(|e| std::mem::take(&mut *e.borrow_mut()));
     assert_eq!(errors, Vec::<String>::new());
@@ -154,14 +158,14 @@ method!(ref_out_fake, 0x004F_20A0);
 function!(manager_fake, 0x0060_2680);
 function!(property_fake, 0x005F_D480, object, id, out);
 
-struct World {
-    sim: Object,
+pub(crate) struct World {
+    pub(crate) sim: Object,
     message: Object,
     _table: Box<[usize; 0x17C / 4]>,
     _fakes: Vec<Fake>,
 }
 impl World {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let mut table = Box::new([0usize; 0x17C / 4]);
         for (offset, entry) in [
             (0, qi as *const () as usize),
@@ -221,7 +225,7 @@ impl World {
             _fakes: fakes,
         }
     }
-    fn object(&self, overrides: &[(usize, usize)]) -> (Object, Box<[usize; 0x17C / 4]>) {
+    pub(crate) fn object(&self, overrides: &[(usize, usize)]) -> (Object, Box<[usize; 0x17C / 4]>) {
         let mut table = self._table.clone();
         for &(offset, entry) in overrides {
             table[offset / 4] = entry;

@@ -94,6 +94,7 @@ pub mod com;
 pub mod distribution;
 pub mod find;
 pub mod grid;
+pub mod idle;
 pub mod io;
 pub mod messages;
 pub mod monthly;
@@ -114,7 +115,8 @@ const COUNT: usize = bitmap::PORTS.len()
     + changes::PORTS.len()
     + distribution::PORTS.len()
     + accessors::PORTS.len()
-    + messages::PORTS.len();
+    + messages::PORTS.len()
+    + idle::PORTS.len();
 const ALL: [Port; COUNT] = crate::port::concat(&[
     bitmap::PORTS,
     ageing::PORTS,
@@ -130,6 +132,7 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     distribution::PORTS,
     accessors::PORTS,
     messages::PORTS,
+    idle::PORTS,
 ]);
 /// This module's complete replacements.
 pub const PORTS: &[Port] = &ALL;

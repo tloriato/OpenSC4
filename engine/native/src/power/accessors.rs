@@ -5,6 +5,9 @@
 
 use super::*;
 
+game_fn! { #[allow(dead_code)] fn query(this: *mut u8, iid: u32, out: *mut *mut u8) -> u32 = "thiscall" 0x006E_ABC0; }
+game_fn! { #[allow(dead_code)] fn release(this: *mut u8) -> u32 = "thiscall" 0x006E_B190; }
+
 macro_rules! getter {
     ($export:ident, $address:literal, $name:literal, $load:literal) => {
         port! {
