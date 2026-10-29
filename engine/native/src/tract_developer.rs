@@ -197,6 +197,7 @@ pub mod population;
 pub mod removal;
 pub mod sites;
 pub mod sorting;
+pub mod subdivision;
 pub mod suitability;
 pub mod surface;
 pub mod trees;
@@ -217,6 +218,7 @@ const COUNT: usize = compatibility::PORTS.len()
     + population::PORTS.len()
     + removal::PORTS.len()
     + sorting::PORTS.len()
+    + subdivision::PORTS.len()
     + sites::PORTS.len()
     + suitability::PORTS.len()
     + surface::PORTS.len()
@@ -238,6 +240,7 @@ const ALL: [Port; COUNT] = crate::port::concat(&[
     population::PORTS,
     removal::PORTS,
     sorting::PORTS,
+    subdivision::PORTS,
     sites::PORTS,
     suitability::PORTS,
     surface::PORTS,
