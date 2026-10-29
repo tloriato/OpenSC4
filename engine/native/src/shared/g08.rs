@@ -288,7 +288,13 @@ layout! {
     struct ResourceCache {
         0x04 => buckets / set_buckets: *mut u8,
         0x08 => buckets_end / set_buckets_end: *mut u8,
+        0x0C => buckets_capacity / set_buckets_capacity: *mut u8,
         0x10 => count / set_count: u32,
+        0x14 => free_first / set_free_first: *mut u8,
+        0x24 => free_end / set_free_end: *mut u8,
+        0x28 => free_end_block / set_free_end_block: *mut u8,
+        0x2C => free_end_limit / set_free_end_limit: *mut u8,
+        0x30 => free_end_node / set_free_end_node: *mut u8,
         0x40 => age / set_age: u32,
         0x50 => key_low / set_key_low: u32,
         0x54 => key_high / set_key_high: u32,
@@ -642,8 +648,36 @@ unsafe extern "thiscall" fn copy_forty_byte_range_backward(stack: *mut u32) -> *
     }
 }
 
+layout! {
+    /// Fixed-point state shared by the depth, texture and color edge initializers.
+    struct RasterEdge {
+        0x04 => x_slope / set_x_slope: i32,
+        0x08 => texture_u / set_texture_u: u32,
+        0x0C => texture_v / set_texture_v: u32,
+        0x10 => texture_slope_u / set_texture_slope_u: u32,
+        0x14 => texture_slope_v / set_texture_slope_v: u32,
+        0x18 => colors / set_colors: [u32; 4],
+        0x28 => color_slopes / set_color_slopes: [u32; 4],
+        0x38 => depth / set_depth: u32,
+        0x3C => depth_slope / set_depth_slope: u32,
+        0x40 => fraction_x / set_fraction_x: i32,
+        0x44 => fraction_y / set_fraction_y: i32,
+    }
+}
+layout! {
+    struct RasterVertex {
+        0x08 => depth / set_depth: u16,
+        0x0C => color / set_color: u32,
+        0x10 => texture_u / set_texture_u: u32,
+        0x14 => texture_v / set_texture_v: u32,
+    }
+}
 game_data! { static depth_step_x: i32 = 0x00B5_CA00; }
 game_data! { static depth_step_y: i32 = 0x00B5_CA04; }
+game_data! { static texture_steps_x: [i32; 2] = 0x00B5_C9F0; }
+game_data! { static texture_steps_y: [i32; 2] = 0x00B5_C9F8; }
+game_data! { static color_steps_x: [i32; 4] = 0x00B5_CA08; }
+game_data! { static color_steps_y: [i32; 4] = 0x00B5_CA18; }
 
 /// Signed products retain all 64 bits before the fixed-point rounding bias is added.
 fn rounded_depth_product(a: i32, b: i32) -> u64 {
@@ -661,18 +695,199 @@ port! {
 }
 unsafe extern "fastcall" fn set_raster_depth_edge(edge: *mut u8, vertex: *mut u8) -> u64 {
     unsafe {
-        let slope = (rounded_depth_product(read(edge, 4), *depth_step_x()) >> 15) as u32;
+        let edge = RasterEdge::from_ptr(edge);
+        let vertex = RasterVertex::from_ptr(vertex);
+        let slope = (rounded_depth_product(edge.x_slope(), *depth_step_x()) >> 15) as u32;
         let step_y = *depth_step_y();
-        write(edge, 0x3C, slope.wrapping_sub(step_y as u32));
-        let vertical = (rounded_depth_product(step_y, read(edge, 0x44)) >> 15) as u32;
-        let base = (u32::from(read::<u16>(vertex, 8)) << 16).wrapping_sub(vertical);
-        let horizontal = rounded_depth_product(*depth_step_x(), read(edge, 0x40));
+        edge.set_depth_slope(slope.wrapping_sub(step_y as u32));
+        let vertical = (rounded_depth_product(step_y, edge.fraction_y()) >> 15) as u32;
+        let base = (u32::from(vertex.depth()) << 16).wrapping_sub(vertical);
+        let horizontal = rounded_depth_product(*depth_step_x(), edge.fraction_x());
         let shifted = (horizontal >> 15) as u32;
-        write(edge, 0x38, base.wrapping_add(shifted));
+        edge.set_depth(base.wrapping_add(shifted));
         (u64::from(shifted) << 32) | u64::from(horizontal as u32)
     }
 }
 
+fn fixed_texture_product(a: i32, b: i32) -> u64 {
+    i64::from(a).wrapping_mul(i64::from(b)) as u64
+}
+port! {
+    /// Set the texture-coordinate slopes and starting coordinates of a raster edge.
+    /// EBP and ESI select the edge and vertex; EBX supplies the vertical fraction.
+    #[port(address = 0x008D_D680, owner = "shared", name = "SetRasterTextureEdge", naked)]
+    pub unsafe extern "C" fn fc4p_008dd680() {
+        core::arch::naked_asm!(
+            "push ecx", "sub esp, 4", "lea eax, [esp]", "push eax", "push ebx",
+            "push dword ptr [esp + 0x3c]", "mov ecx, ebp", "mov edx, esi", "call {body}",
+            "pop edi", "pop ecx", "ret", body = sym set_raster_texture_edge)
+    }
+}
+unsafe extern "fastcall" fn set_raster_texture_edge(
+    edge: *mut u8,
+    vertex: *mut u8,
+    flags: u32,
+    fraction_y: i32,
+    result_edi: *mut u32,
+) -> u64 {
+    unsafe {
+        let vertex = RasterVertex::from_ptr(vertex);
+        let slope_u = (fixed_texture_product(read(edge, 4), (*texture_steps_x())[0]) >> 15) as u32;
+        let u = vertex.texture_u();
+        write(edge, 0x10, slope_u.wrapping_sub((*texture_steps_y())[0] as u32));
+        let shift = if flags & 8 == 0 { 20 } else { 16 };
+        let u = u
+            .wrapping_shl(shift)
+            .wrapping_sub((fixed_texture_product((*texture_steps_y())[0], fraction_y) >> 15) as u32)
+            .wrapping_add((fixed_texture_product((*texture_steps_x())[0], read(edge, 0x40)) >> 15) as u32);
+        write(edge, 8, u);
+        let slope_v = (fixed_texture_product(read(edge, 4), (*texture_steps_x())[1]) >> 15) as u32;
+        let v = vertex.texture_v();
+        write(edge, 0x14, slope_v.wrapping_sub((*texture_steps_y())[1] as u32));
+        let v = v
+            .wrapping_shl(shift)
+            .wrapping_sub((fixed_texture_product((*texture_steps_y())[1], fraction_y) >> 15) as u32);
+        let horizontal_v = fixed_texture_product((*texture_steps_x())[1], read(edge, 0x40));
+        let edx = (horizontal_v >> 15) as u32;
+        let edi = v.wrapping_add(edx);
+        write(edge, 12, edi);
+        result_edi.write(edi);
+
+        // The second coordinate reverses its direction before the pixel-boundary correction.
+        let dx = [(*texture_steps_x())[0], !(*texture_steps_x())[1]];
+        let dy = [(*texture_steps_y())[0], !(*texture_steps_y())[1]];
+        let mask = [
+            if dx[0] == 0 { u32::MAX } else { 0 },
+            if dx[1] == 0 { u32::MAX } else { 0 },
+        ];
+        let corrected_x = [
+            read::<u32>(edge, 8).wrapping_add((dx[0] >> 31) as u32),
+            read::<u32>(edge, 12).wrapping_add((dx[1] >> 31) as u32),
+        ];
+        let corrected_y = [
+            corrected_x[0].wrapping_add(((dy[0] >> 31) as u32) & mask[0]),
+            corrected_x[1].wrapping_add(((dy[1] >> 31) as u32) & mask[1]),
+        ];
+        write(edge, 8, corrected_y[0]);
+        write(edge, 12, corrected_y[1]);
+        let mm = [
+            corrected_x[0],
+            corrected_x[1],
+            corrected_y[0],
+            corrected_y[1],
+            0,
+            0,
+            mask[0],
+            mask[1],
+        ];
+        // MMX results are live inputs to the following span renderer, including the full tag state.
+        core::arch::asm!(
+            "movq mm0, qword ptr [{mm}]", "movq mm1, qword ptr [{mm} + 8]",
+            "movq mm2, qword ptr [{mm} + 16]", "movq mm3, qword ptr [{mm} + 24]",
+            mm = in(reg) mm.as_ptr(), out("mm0") _, out("mm1") _, out("mm2") _, out("mm3") _, options(nostack, readonly));
+        (u64::from(edx) << 32) | u64::from((horizontal_v as u32) >> 15)
+    }
+}
+
+port! {
+    /// Set four color slopes and starting color channels for a raster edge.
+    /// The entry uses EBP and ESI and leaves all color accumulators in MMX registers.
+    #[port(address = 0x008D_D760, owner = "shared", name = "SetRasterColorEdge", naked)]
+    pub unsafe extern "C" fn fc4p_008dd760() {
+        core::arch::naked_asm!(
+            "push ecx", "sub esp, 16", "lea eax, [esp]", "push eax", "mov ecx, ebp", "mov edx, esi", "call {body}",
+            "pop eax", "pop edx", "pop ebx", "pop edi", "pop ecx", "ret", body = sym set_raster_color_edge)
+    }
+}
+unsafe extern "fastcall" fn set_raster_color_edge(edge: *mut u8, vertex: *mut u8, registers: *mut u32) {
+    unsafe {
+        for channel in 0..4 {
+            let product = rounded_depth_product((*color_steps_x())[channel], read(edge, 4));
+            write(
+                edge,
+                0x28 + channel * 4,
+                ((product >> 15) as u32).wrapping_sub((*color_steps_y())[channel] as u32),
+            );
+        }
+        let dx = *color_steps_x();
+        let fraction_x = read::<i32>(edge, 0x40);
+        let horizontal = [
+            color_horizontal(dx[0], fraction_x),
+            color_horizontal(dx[1], fraction_x),
+            color_horizontal(dx[2], fraction_x),
+            color_horizontal(dx[3], fraction_x),
+        ];
+        let dy = *color_steps_y();
+        let fraction_y = read::<i32>(edge, 0x44);
+        let vertical = [
+            (dy[0] >> 12).wrapping_mul(fraction_y),
+            (dy[1] >> 12).wrapping_mul(fraction_y),
+            (dy[2] >> 12).wrapping_mul(fraction_y),
+            (dy[3] >> 12).wrapping_mul(fraction_y),
+        ];
+        let offset = [
+            (horizontal[0].wrapping_sub(vertical[0]) >> 3) as u32,
+            (horizontal[1].wrapping_sub(vertical[1]) >> 3) as u32,
+            (horizontal[2].wrapping_sub(vertical[2]) >> 3) as u32,
+            (horizontal[3].wrapping_sub(vertical[3]) >> 3) as u32,
+        ];
+        let color = RasterVertex::from_ptr(vertex).color();
+        let channels = [
+            ((color & 255) << 19).wrapping_add(offset[0]),
+            ((color >> 8 & 255) << 19).wrapping_add(offset[1]),
+            ((color >> 16 & 255) << 19).wrapping_add(offset[2]),
+            ((color >> 24) << 19).wrapping_add(offset[3]),
+        ];
+        write(edge, 0x18, channels[0]);
+        write(edge, 0x1C, channels[1]);
+        write(edge, 0x20, channels[2]);
+        write(edge, 0x24, channels[3]);
+        registers.write(vertical[1] as u32);
+        registers.add(1).write(vertical[0] as u32);
+        registers.add(2).write(vertical[2] as u32);
+        registers.add(3).write(vertical[3] as u32);
+        let mm = [
+            vertical[2] as u32,
+            vertical[3] as u32,
+            channels[2],
+            channels[3],
+            channels[0],
+            channels[1],
+            0,
+            0,
+            offset[2],
+            offset[3],
+            vertical[0] as u32,
+            vertical[1] as u32,
+            offset[0],
+            offset[1],
+        ];
+        core::arch::asm!(
+            "movq mm0, qword ptr [{mm}]", "movq mm1, qword ptr [{mm} + 8]", "movq mm2, qword ptr [{mm} + 16]",
+            "movq mm4, qword ptr [{mm} + 24]", "movq mm5, qword ptr [{mm} + 32]", "movq mm6, qword ptr [{mm} + 40]", "movq mm7, qword ptr [{mm} + 48]",
+            mm = in(reg) mm.as_ptr(), out("mm0") _, out("mm1") _, out("mm2") _, out("mm4") _, out("mm5") _, out("mm6") _, out("mm7") _, options(nostack, readonly));
+    }
+}
+fn color_horizontal(step: i32, fraction: i32) -> i32 {
+    (step >> 12).wrapping_mul(fraction).wrapping_add(0x20_4000)
+}
+
+layout! {
+    struct FontNameOwner { 0x08 => face / set_face: *mut u8 }
+}
+layout! {
+    struct FontNameFace {
+        0x50 => byte_name / set_byte_name: *mut u8,
+        0x54 => wide_name / set_wide_name: *mut u8,
+        0x180 => naming_mode / set_naming_mode: *mut u8,
+    }
+}
+layout! {
+    struct FontNameString {
+        0x04 => first / set_first: *mut u8,
+        0x08 => end / set_end: *mut u8,
+    }
+}
 // These calls use RawCall below because EDX survives into the caller-visible result.
 game_fn! { #[allow(dead_code)] fn select_font_name(face: *mut u8, language: u32, kind: u32, result: *mut u32) -> u64 = "C" 0x0089_F353; }
 game_fn! { #[allow(dead_code)] fn wide_name_vector(this: *mut u32, text: *mut u8, allocator: *mut u8) -> u64 = "thiscall" 0x0079_CA50; }
@@ -694,8 +909,8 @@ unsafe fn font_name_call(conv: Conv, target: usize, this: u32, args: &[u32], edx
 }
 unsafe fn missing_font_name(this: *mut u8) -> bool {
     unsafe {
-        let face = read::<*mut u8>(this, 8);
-        read::<u32>(face, 0x54) == 0 && read::<u32>(face, 0x50) == 0
+        let face = FontNameFace::from_ptr(FontNameOwner::from_ptr(this).face());
+        face.wide_name().is_null() && face.byte_name().is_null()
     }
 }
 port! {
@@ -710,25 +925,17 @@ port! {
 unsafe extern "stdcall" fn read_font_name(this: *mut u8, stack: *mut u32, mut edx: u32) -> u64 {
     unsafe {
         let output = stack.add(1).read() as *mut u8;
+        let output_view = FontNameString::from_ptr(output);
         let kind = stack.add(2).read();
         if !read::<*mut u8>(this, 8).is_null() {
             let mut selected = 0u32;
-            for (index, (language, requested_kind, alternate)) in [
-                (0x409, kind, false),
-                (0x409, kind, true),
-                (0, kind, false),
-                (0, kind, true),
-                (0x409, 4, false),
-                (0x409, 4, true),
-                (0, 4, false),
-                (0, 4, true),
-            ]
-            .into_iter()
-            .enumerate()
-            {
+            for index in 0..8 {
                 if index != 0 && !missing_font_name(this) {
                     continue;
                 }
+                let language = if index & 2 == 0 { 0x409 } else { 0 };
+                let requested_kind = if index < 4 { kind } else { 4 };
+                let alternate = index & 1 != 0;
                 if alternate {
                     let face = read::<*mut u8>(this, 8);
                     write(read::<*mut u8>(face, 0x180), 0x76, 0u16);
@@ -775,10 +982,10 @@ unsafe extern "stdcall" fn read_font_name(this: *mut u8, stack: *mut u32, mut ed
                     font_name_call(Conv::Cdecl, crate::abi::target(0x0090_CF63), 0, &[vector[0]], &mut edx);
                 }
             } else {
-                let first = read::<*mut u8>(output, 4);
-                if first != read::<*mut u8>(output, 8) {
+                let first = output_view.first();
+                if first != output_view.end() {
                     first.write(0);
-                    write(output, 8, read::<u32>(output, 4));
+                    output_view.set_end(output_view.first());
                 }
             }
             if kind == 1 || kind == 2 {
@@ -839,8 +1046,8 @@ unsafe extern "stdcall" fn read_font_name(this: *mut u8, stack: *mut u32, mut ed
                 );
             }
         }
-        let first = read::<u32>(output, 4);
-        let nonempty = u32::from(first != read::<u32>(output, 8));
+        let first = output_view.first() as u32;
+        let nonempty = u32::from(first != output_view.end() as u32);
         (u64::from(edx) << 32) | u64::from((first & !255) | nonempty)
     }
 }
@@ -855,6 +1062,16 @@ game_fn! { fn resource_reserve(this: *mut u8, count: u32) -> u32 = "thiscall" 0x
 game_fn! { fn resource_insert(this: *mut u8, result: *mut u32, value: *const u32) -> u64 = "thiscall" 0x008E_B920; }
 game_data! { static resource_primes: u32 = 0x00A8_29B0; }
 game_data! { static resource_primes_end: u32 = 0x00A8_2A20; }
+layout! {
+    struct ResourceNode {
+        0x00 => next / set_next: *mut u8,
+        0x08 => key_low / set_key_low: u32,
+        0x0C => key_high / set_key_high: u32,
+        0x10 => slot / set_slot: u32,
+        0x14 => age / set_age: u32,
+        0x18 => value / set_value: u32,
+    }
+}
 
 port! {
     /// Grow the cache's hash buckets to the next prime, reversing each moved chain.
@@ -891,7 +1108,8 @@ unsafe extern "fastcall" fn grow_resource_buckets(this: *mut u8, stack: *mut u32
             let mut node = read::<*mut u8>(read(this, 4), index as usize * 4);
             while !node.is_null() {
                 let slot = read::<*mut u8>(this, 4).wrapping_add(index as usize * 4);
-                let hash = read::<u32>(node, 12).wrapping_add(read(node, 8));
+                let view = ResourceNode::from_ptr(node);
+                let hash = view.key_high().wrapping_add(view.key_low());
                 let bucket = divide(hash, stack.add(1).read()).1;
                 write(slot, 0, read::<u32>(node, 0));
                 write(node, 0, read::<u32>(buckets, bucket as usize * 4));
@@ -940,7 +1158,7 @@ port! {
                 resource_begin(this, iterator.as_mut_ptr());
                 while iterator[0] != 0 {
                     let node = iterator[0] as *mut u8;
-                    if read::<u32>(node, 0x14) < read::<u32>(this, 0x40).wrapping_sub(2) {
+                    if ResourceNode::from_ptr(node).age() < read::<u32>(this, 0x40).wrapping_sub(2) {
                         let mut next = [read::<u32>(node, 0), iterator[1]];
                         if next[0] == 0 { next[0] = resource_next_bucket(iterator.as_mut_ptr()) as u32; }
                         append_free_resource(this, node.wrapping_add(0x10));
@@ -999,6 +1217,8 @@ pub const PORTS: &[Port] = &[
     fc4p_008d1030::PORT,
     fc4p_008d29b9::PORT,
     fc4p_008dd620::PORT,
+    fc4p_008dd680::PORT,
+    fc4p_008dd760::PORT,
     fc4p_008dc4c0::PORT,
     fc4p_008eb800::PORT,
     fc4p_008eb8d0::PORT,
@@ -1019,6 +1239,306 @@ pub const PORTS: &[Port] = &[
 mod depth_edge_tests {
     use super::*;
     use crate::testing::fake_data;
+
+    #[repr(C, align(16))]
+    struct SimdState([u8; 512]);
+    #[unsafe(naked)]
+    unsafe extern "fastcall" fn invoke_simd(_: *mut u32) {
+        core::arch::naked_asm!(
+            "push ebp",
+            "push ebx",
+            "push esi",
+            "push edi",
+            "push ecx",
+            "mov edx, [ecx + 64]",
+            "movq mm0, [edx + 32]",
+            "movq mm1, [edx + 48]",
+            "movq mm2, [edx + 64]",
+            "movq mm3, [edx + 80]",
+            "movq mm4, [edx + 96]",
+            "movq mm5, [edx + 112]",
+            "movq mm6, [edx + 128]",
+            "movq mm7, [edx + 144]",
+            "mov ebp, [ecx + 4]",
+            "mov esi, [ecx + 8]",
+            "mov ebx, [ecx + 16]",
+            "mov edi, [ecx + 20]",
+            "mov eax, [ecx + 24]",
+            "mov edx, [ecx + 28]",
+            "push dword ptr [ecx]",
+            "push dword ptr [ecx + 60]",
+            "push 0",
+            "push 0",
+            "push 0",
+            "push 0",
+            "push 0",
+            "push 0",
+            "push 0",
+            "push 0",
+            "push 0",
+            "push 0",
+            "mov ecx, [ecx + 12]",
+            "call dword ptr [esp + 44]",
+            "add esp, 48",
+            "push eax",
+            "mov eax, [esp + 4]",
+            "mov [eax + 32], edx",
+            "mov [eax + 36], ecx",
+            "mov [eax + 40], ebx",
+            "mov [eax + 44], esi",
+            "mov [eax + 48], edi",
+            "mov [eax + 52], ebp",
+            "mov edx, [eax + 64]",
+            "fxsave [edx]",
+            "emms",
+            "pop edx",
+            "mov [eax + 56], edx",
+            "pop ecx",
+            "pop edi",
+            "pop esi",
+            "pop ebx",
+            "pop ebp",
+            "ret"
+        )
+    }
+    fn simd_state() -> (SimdState, [u64; 8]) {
+        let mut state = SimdState([0u8; 512]);
+        let seed = core::array::from_fn(|i| 0x1234_5678_90AB_CDEFu64.wrapping_mul(i as u64 + 1));
+        for (i, value) in seed.iter().enumerate() {
+            state.0[32 + i * 16..40 + i * 16].copy_from_slice(&value.to_le_bytes());
+        }
+        (state, seed)
+    }
+    fn assert_simd(state: &SimdState, expected: [u64; 8], mxcsr: u32) {
+        assert_eq!(
+            u16::from_le_bytes(state.0[0..2].try_into().unwrap()),
+            crate::x87::GAME_CONTROL_WORD
+        );
+        assert_eq!(u16::from_le_bytes(state.0[2..4].try_into().unwrap()) & 0x3800, 0);
+        assert_eq!(state.0[4], 0xFF);
+        assert_eq!(u32::from_le_bytes(state.0[24..28].try_into().unwrap()), mxcsr);
+        for (i, value) in expected.into_iter().enumerate() {
+            assert_eq!(
+                u64::from_le_bytes(state.0[32 + i * 16..40 + i * 16].try_into().unwrap()),
+                value,
+                "MM{i}"
+            );
+            assert_eq!(&state.0[40 + i * 16..42 + i * 16], &[0xFF, 0xFF], "MM{i} exponent");
+        }
+    }
+    fn mxcsr() -> u32 {
+        let mut value = 0u32;
+        unsafe {
+            core::arch::asm!("stmxcsr [{p}]", p = in(reg) &mut value, options(nostack));
+        }
+        value
+    }
+    fn pack(a: u32, b: u32) -> u64 {
+        u64::from(a) | (u64::from(b) << 32)
+    }
+
+    #[test]
+    fn texture_edge_covers_coordinate_modes_direction_ties_registers_and_live_mmx() {
+        let _fpu = crate::testing::GameFpu::new();
+        for (dx, dy, slope, fraction_x, fraction_y, coordinates) in [
+            ([0, 0], [0, 0], 0, 0, 0, [0, 0]),
+            ([0, -1], [-1, 0], 0x12345, 0x7FFF, -0x4000, [0xFFFF, 0x8000]),
+            ([-1, 0], [0, -1], -0x8000, -0x7FFF, 0x4000, [1, u32::MAX]),
+            (
+                [0x8000, -0x8000],
+                [0x4000, -0x4000],
+                0x4000,
+                0x4000,
+                0x4000,
+                [0x1234, 0x5678],
+            ),
+            (
+                [i32::MIN, i32::MAX],
+                [i32::MAX, i32::MIN],
+                i32::MIN,
+                i32::MAX,
+                i32::MIN,
+                [u32::MAX, 0x8000_0000],
+            ),
+            (
+                [i32::MAX, i32::MIN],
+                [i32::MIN, i32::MAX],
+                i32::MAX,
+                i32::MIN,
+                i32::MAX,
+                [0x7FFF_FFFF, 0xFFFF_FFFF],
+            ),
+        ] {
+            let mut dx = dx;
+            let mut dy = dy;
+            let _dx = fake_data(0x00B5_C9F0, dx.as_mut_ptr().cast());
+            let _dy = fake_data(0x00B5_C9F8, dy.as_mut_ptr().cast());
+            for flags in [0, 8, u32::MAX, 16] {
+                let mut edge = [0xA5A5_A5A5u32; 20];
+                edge[1] = slope as u32;
+                edge[16] = fraction_x as u32;
+                let mut vertex = [0x5A5A_5A5Au32; 8];
+                vertex[4..6].copy_from_slice(&coordinates);
+                let vertex_before = vertex;
+                let mut expected = edge;
+                let multiply = |a: i32, b: i32| ((i128::from(a) * i128::from(b)) >> 15) as u32;
+                let mut raw = [0u32; 2];
+                let mut sign_corrected = [0u32; 2];
+                let mut masks = [0u32; 2];
+                for i in 0..2 {
+                    expected[4 + i] = multiply(slope, dx[i]).wrapping_sub(dy[i] as u32);
+                    raw[i] = coordinates[i]
+                        .wrapping_shl(if flags & 8 == 0 { 20 } else { 16 })
+                        .wrapping_sub(multiply(dy[i], fraction_y))
+                        .wrapping_add(multiply(dx[i], fraction_x));
+                    let forward = if i == 0 { dx[i] } else { !dx[i] };
+                    let downward = if i == 0 { dy[i] } else { !dy[i] };
+                    masks[i] = if forward == 0 { u32::MAX } else { 0 };
+                    sign_corrected[i] = raw[i].wrapping_sub(u32::from(forward < 0));
+                    expected[2 + i] = sign_corrected[i].wrapping_sub(u32::from(forward == 0 && downward < 0));
+                }
+                let (mut simd, seed) = simd_state();
+                let csr = mxcsr();
+                let mut registers = [0u32; 17];
+                registers[..8].copy_from_slice(&[
+                    fc4p_008dd680 as *const () as u32,
+                    edge.as_mut_ptr() as u32,
+                    vertex.as_mut_ptr() as u32,
+                    0x1234_5678,
+                    fraction_y as u32,
+                    0x3456_789A,
+                    0x4567_89AB,
+                    0x5678_9ABC,
+                ]);
+                registers[15] = flags;
+                registers[16] = simd.0.as_mut_ptr() as u32;
+                unsafe {
+                    invoke_simd(registers.as_mut_ptr());
+                }
+                assert_eq!(edge, expected, "flags {flags:X}, dx {dx:?}, dy {dy:?}");
+                assert_eq!(vertex, vertex_before);
+                assert_eq!(registers[8], multiply(dx[1], fraction_x));
+                assert_eq!(registers[9], registers[3]);
+                assert_eq!(registers[10], fraction_y as u32);
+                assert_eq!(registers[11], registers[2]);
+                assert_eq!(registers[12], raw[1]);
+                assert_eq!(registers[13], registers[1]);
+                assert_eq!(
+                    registers[14],
+                    ((i128::from(dx[1]) * i128::from(fraction_x)) as u32) >> 15
+                );
+                assert_simd(
+                    &simd,
+                    [
+                        pack(sign_corrected[0], sign_corrected[1]),
+                        pack(expected[2], expected[3]),
+                        0,
+                        pack(masks[0], masks[1]),
+                        seed[4],
+                        seed[5],
+                        seed[6],
+                        seed[7],
+                    ],
+                    csr,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn color_edge_covers_rounding_overflow_all_channels_registers_and_live_mmx() {
+        let _fpu = crate::testing::GameFpu::new();
+        for (dx, dy, slope, fraction_x, fraction_y, color) in [
+            ([0; 4], [0; 4], 0, 0, 0, 0),
+            (
+                [0x8000, -0x8000, 1, -1],
+                [-0x4000, 0x4000, -1, 1],
+                0x4000,
+                0x7FFF,
+                -0x4000,
+                0xFF_80_01_00,
+            ),
+            (
+                [i32::MIN, i32::MAX, 0x7FFF_F000, -0x1000],
+                [i32::MAX, i32::MIN, -0x1000, 0x1000],
+                i32::MIN,
+                i32::MAX,
+                i32::MIN,
+                0x12_34_56_78,
+            ),
+            (
+                [-0x1001, 0x1001, -0xFFF, 0xFFF],
+                [0x7FFF, -0x7FFF, 0x8000, -0x8000],
+                i32::MAX,
+                i32::MIN,
+                i32::MAX,
+                u32::MAX,
+            ),
+        ] {
+            let mut dx = dx;
+            let mut dy = dy;
+            let _dx = fake_data(0x00B5_CA08, dx.as_mut_ptr().cast());
+            let _dy = fake_data(0x00B5_CA18, dy.as_mut_ptr().cast());
+            let mut edge = [0xA5A5_A5A5u32; 20];
+            edge[1] = slope as u32;
+            edge[16] = fraction_x as u32;
+            edge[17] = fraction_y as u32;
+            let mut vertex = [0x5A5A_5A5Au32; 8];
+            vertex[3] = color;
+            let vertex_before = vertex;
+            let mut expected = edge;
+            let mut offset = [0u32; 4];
+            let mut vertical = [0u32; 4];
+            for i in 0..4 {
+                expected[10 + i] =
+                    (((i128::from(dx[i]) * i128::from(slope) + 16384) >> 15) as u32).wrapping_sub(dy[i] as u32);
+                let horizontal = ((i128::from(dx[i]) >> 12) * i128::from(fraction_x) + 0x204000) as u32;
+                vertical[i] = ((i128::from(dy[i]) >> 12) * i128::from(fraction_y)) as u32;
+                offset[i] = (horizontal.wrapping_sub(vertical[i]) as i32 >> 3) as u32;
+                expected[6 + i] = ((color >> (i * 8) & 255) << 19).wrapping_add(offset[i]);
+            }
+            let (mut simd, seed) = simd_state();
+            let csr = mxcsr();
+            let mut registers = [0u32; 17];
+            registers[..8].copy_from_slice(&[
+                fc4p_008dd760 as *const () as u32,
+                edge.as_mut_ptr() as u32,
+                vertex.as_mut_ptr() as u32,
+                0x1234_5678,
+                0x2345_6789,
+                0x3456_789A,
+                0x4567_89AB,
+                0x5678_9ABC,
+            ]);
+            registers[16] = simd.0.as_mut_ptr() as u32;
+            unsafe {
+                invoke_simd(registers.as_mut_ptr());
+            }
+            assert_eq!(edge, expected);
+            assert_eq!(vertex, vertex_before);
+            assert_eq!(registers[8], vertical[0]);
+            assert_eq!(registers[9], registers[3]);
+            assert_eq!(registers[10], vertical[2]);
+            assert_eq!(registers[11], registers[2]);
+            assert_eq!(registers[12], vertical[3]);
+            assert_eq!(registers[13], registers[1]);
+            assert_eq!(registers[14], vertical[1]);
+            assert_simd(
+                &simd,
+                [
+                    pack(vertical[2], vertical[3]),
+                    pack(expected[8], expected[9]),
+                    pack(expected[6], expected[7]),
+                    seed[3],
+                    0,
+                    pack(offset[2], offset[3]),
+                    pack(vertical[0], vertical[1]),
+                    pack(offset[0], offset[1]),
+                ],
+                csr,
+            );
+        }
+    }
 
     // The harness gives the edge helper its own register convention, then records all live registers.
     #[unsafe(naked)]
@@ -1324,7 +1844,7 @@ mod font_name_tests {
                 let mut text = [0x5Au8; 24];
                 let first = text.as_mut_ptr() as u32 + 1;
                 let mut output = [0, first, first + 8, first + 20, 0xDEAD_BEEF];
-                let mut stack = [0xDEAD_BEEF, output.as_mut_ptr() as u32, 4, 0xCAFE_BABE];
+                let mut stack = [0xDEAD_BEEF, output.as_mut_ptr() as u32, 99, 0xCAFE_BABE];
                 let before_stack = stack;
                 STATE.with(|s| {
                     let mut s = s.borrow_mut();
@@ -1341,7 +1861,7 @@ mod font_name_tests {
                 for i in 0..attempts {
                     expected.push(Event::Select(
                         if i % 4 < 2 { 0x409 } else { 0 },
-                        4,
+                        if i < 4 { 99 } else { 4 },
                         if i == 0 {
                             7
                         } else if i % 2 == 1 {
@@ -1524,12 +2044,13 @@ mod resource_tests {
         event(Event::Vector(count, fill, allocator));
         STATE.with(|s| {
             let mut s = s.borrow_mut();
-            let mut memory = vec![fill; count as usize].into_boxed_slice();
+            let mut memory = vec![fill; if count == 0xFFFF_FFFB { 1 } else { count as usize }].into_boxed_slice();
             let start = memory.as_mut_ptr() as u32;
             unsafe {
                 this.write(start);
-                this.add(1).write(start.wrapping_add(count * 4));
-                this.add(2).write(start.wrapping_add(count * 4 + 16));
+                this.add(1).write(start.wrapping_add(count.wrapping_mul(4)));
+                this.add(2)
+                    .write(start.wrapping_add(count.wrapping_mul(4).wrapping_add(16)));
             }
             s.allocated.push(memory);
         });
@@ -1699,6 +2220,30 @@ mod resource_tests {
             }
             assert_eq!(stack[1], 7);
         }
+    }
+    #[test]
+    fn bucket_growth_uses_the_terminal_bucket_count_after_the_prime_table() {
+        reset();
+        let mut primes = [3, 7, 11];
+        let end = unsafe { primes.as_mut_ptr().add(3) };
+        let _start = fake_data(0x00A8_29B0, primes.as_mut_ptr().cast());
+        let _end = fake_data(0x00A8_2A20, end.cast());
+        let _prime = fake(0x0079_FA90, prime as *const () as usize);
+        let _vector = fake(0x0051_C950, vector as *const () as usize);
+        STATE.with(|s| s.borrow_mut().prime_result = end as u32);
+        let mut object = [0u32; 24];
+        let mut stack = [0xDEAD_BEEF, u32::MAX, 0xCAFE_BABE];
+        assert_eq!(
+            unsafe { grow_resource_buckets(object.as_mut_ptr().cast(), stack.as_mut_ptr(), 0) },
+            0
+        );
+        assert_eq!(stack, [0xDEAD_BEEF, 0xFFFF_FFFB, 0xCAFE_BABE]);
+        assert_eq!(
+            events(),
+            vec![Event::Prime(u32::MAX), Event::Vector(0xFFFF_FFFB, 0, 0xFFFF_FFFB)]
+        );
+        assert_eq!(object[2], object[1].wrapping_sub(20));
+        assert_eq!(object[3], object[1].wrapping_sub(4));
     }
     #[test]
     fn recycle_uses_last_free_entry_preserves_cache_and_passes_new_payload() {
