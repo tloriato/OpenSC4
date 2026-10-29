@@ -1873,8 +1873,634 @@ unsafe extern "fastcall" fn post_object_event(this: *mut u8, frame: *mut u32) {
     }
 }
 
+game_fn! { #[allow(dead_code)] fn lookup_solved_height(this: *mut u8, vertex: u32, output: *mut u32) -> u64 = "thiscall" 0x0065_EB00; }
+game_fn! { #[allow(dead_code)] fn link_height_constraints(this: *mut u8, first: u32, second: u32) -> u64 = "thiscall" 0x0065_FDB0; }
+game_fn! { #[allow(dead_code)] fn clear_two_ranges(a0: u32, a1: u32, a2: u32, a3: u32, b0: u32, b1: u32, b2: u32, b3: u32, flag: u32) -> u64 = "C" 0x008E_BB10; }
+game_fn! { #[allow(dead_code)] fn clear_range_storage(this: *mut u8, first: u32, last: u32) -> u64 = "thiscall" 0x0066_7D40; }
+game_fn! { #[allow(dead_code)] fn free_large_range(allocation: *mut u8) -> u64 = "C" 0x009F_015B; }
+game_fn! { #[allow(dead_code)] fn copy_thirty_two_byte_records(first: *mut u8, last: *mut u8, out: *mut u8, cookie: *mut u32) -> u64 = "C" 0x006E_9150; }
+game_data! { static range_allocators: [*mut u8; 9] = 0x00B6_2674; }
+game_data! { static float_zero: f32 = 0x00A8_1054; }
+game_data! { static height_threshold: f32 = 0x00A8_67A4; }
+game_data! { static terrain_city: *mut u8 = 0x00B4_3CEC; }
+game_fn! { fn rewind_solved_heights(this: *mut u8) -> u64 = "thiscall" 0x0065_EF70; }
+game_fn! { fn next_solved_height(this: *mut u8, vertex: *mut u32, height: *mut u32) -> u64 = "thiscall" 0x0065_EB50; }
+game_fn! { fn grow_vertex_vector(this: *mut u8, at: *mut u8, value: *const u32, cookie: *mut u32, count: u32, mode: u32) -> u64 = "thiscall" 0x0051_CA60; }
+
+register_entry!(
+    0x0064_4530,
+    fc4p_00644530,
+    apply_solved_terrain_heights,
+    "ret 4",
+    "ApplySolvedTerrainHeights"
+);
+unsafe extern "fastcall" fn apply_solved_terrain_heights(this: *mut u8, frame: *mut u32) {
+    unsafe {
+        let mut rect = [word(this, 0x248), word(this, 0x24C), u32::MAX, u32::MAX];
+        let changed = frame.add(4).read_unaligned() as *mut u8;
+        put(changed, 4, word(changed, 0));
+        let iterator = this.wrapping_add(0x188);
+        rewind_solved_heights(iterator);
+        let mut height = 0u32;
+        let vertex = frame.add(4);
+        while next_solved_height(iterator, vertex, &mut height) as u8 != 0 {
+            let terrain = pointer(this, 0x44);
+            let altitude = vcall_st0!(terrain, 0x30, vertex.read_unaligned());
+            let difference = height_subtract_from(altitude, f32::from_bits(height)).abs();
+            let comparison = difference.compare(crate::x87::F80::from_f32(height_threshold().read_unaligned()));
+            if !comparison.less() && !comparison.equal() && !comparison.unordered() {
+                vcall!(pointer(this, 0x44), 0xC8 => fn(u32, u32) -> u64, vertex.read_unaligned(), height);
+                let end = pointer(changed, 4);
+                let mut cookie = vertex.read_unaligned();
+                if end != pointer(changed, 8) {
+                    if !end.is_null() {
+                        put(end, 0, vertex.read_unaligned());
+                    }
+                    put(changed, 4, word(changed, 4).wrapping_add(4));
+                } else {
+                    grow_vertex_vector(changed, end, &cookie, vertex, 1, 1);
+                }
+                // The iterator's vertex slot can be changed by vector growth.
+                cookie = vertex.read_unaligned();
+                let x = cookie % word(this, 0x248);
+                let z = cookie / word(this, 0x24C);
+                if (x as i32) < rect[0] as i32 {
+                    rect[0] = x;
+                }
+                if (x as i32) > rect[2] as i32 {
+                    rect[2] = x;
+                }
+                if (z as i32) < rect[1] as i32 {
+                    rect[1] = z;
+                }
+                if (z as i32) > rect[3] as i32 {
+                    rect[3] = z;
+                }
+            }
+        }
+        if rect[1] != 0 {
+            rect[1] = rect[1].wrapping_sub(1);
+        }
+        if rect[0] != 0 {
+            rect[0] = rect[0].wrapping_sub(1);
+        }
+        let city = terrain_city().read_unaligned();
+        let width = seeded_virtual(city, 0x174, &[], rect[0], word(city, 0));
+        if (rect[2] as i32) < width as u32 as i32 {
+            rect[2] = rect[2].wrapping_add(1);
+        }
+        let city = terrain_city().read_unaligned();
+        let depth = seeded_virtual(city, 0x178, &[], word(city, 0), (width >> 32) as u32);
+        if (rect[3] as i32) < depth as u32 as i32 {
+            rect[3] = rect[3].wrapping_add(1);
+        }
+        let mut result = registers(depth as u32, rect[2]);
+        if rect[2] as i32 >= rect[0] as i32 && rect[3] as i32 >= rect[1] as i32 {
+            let terrain = pointer(this, 0x44);
+            seeded_virtual(terrain, 0x15C, &[], word(terrain, 0), rect[2]);
+            let terrain = pointer(this, 0x44);
+            let refreshed = seeded_virtual(
+                terrain,
+                0x110,
+                &[1, 1, rect.as_ptr() as u32, 4],
+                rect.as_ptr() as u32,
+                word(terrain, 0),
+            );
+            let terrain = pointer(this, 0x44);
+            result = seeded_virtual(terrain, 0x160, &[], refreshed as u32, word(terrain, 0));
+        }
+        save_result(frame, result);
+    }
+}
+
+// Keep a stored operand in memory until the x87 operation consumes it.
+macro_rules! height_float_op {
+    ($name:ident, $instruction:literal) => {
+        fn $name(value: crate::x87::F80, operand: f32) -> crate::x87::F80 {
+            let mut output = crate::x87::F80::ZERO;
+            unsafe {
+                core::arch::asm!(
+                    "fld tbyte ptr [{value}]", $instruction, "fstp tbyte ptr [{output}]",
+                    value = in(reg) &value, operand = in(reg) &operand,
+                    output = in(reg) &mut output, out("st(0)") _,
+                );
+            }
+            output
+        }
+    };
+}
+height_float_op!(height_subtract, "fsub dword ptr [{operand}]");
+height_float_op!(height_subtract_from, "fsubr dword ptr [{operand}]");
+
+// The boundary returns an unrounded x87 value and retains the integer result registers.
+macro_rules! height_entry {
+    ($address:literal, $export:ident, $body:ident, $name:literal, $adjust:literal) => {
+        port! {
+            #[port(address = $address, owner = "shared", name = $name, naked)]
+            pub unsafe extern "C" fn $export() {
+                core::arch::naked_asm!(
+                    "push edx", "push ecx", "push eax", "sub esp, 12",
+                    "lea edx, [esp + 12]", "push esp", "call {body}",
+                    "fld tbyte ptr [esp]", "add esp, 12", "pop eax", "pop ecx", "pop edx", "ret 4",
+                    body = sym $body,
+                );
+            }
+        }
+        unsafe extern "fastcall" fn $body(this: *mut u8, frame: *mut u32, output: *mut crate::x87::F80) {
+            unsafe { solved_or_terrain_height(this, frame, output, $adjust) }
+        }
+    };
+}
+
+height_entry!(
+    0x0064_44F0,
+    fc4p_006444f0,
+    get_solved_or_terrain_height,
+    "GetSolvedOrTerrainHeight",
+    false
+);
+height_entry!(
+    0x0065_7790,
+    fc4p_00657790,
+    get_solved_or_offset_height,
+    "GetSolvedOrOffsetTerrainHeight",
+    true
+);
+
+unsafe fn solved_or_terrain_height(this: *mut u8, frame: *mut u32, output: *mut crate::x87::F80, adjust: bool) {
+    unsafe {
+        let argument = frame.add(4);
+        let vertex = argument.read_unaligned();
+        let found = seeded_call(
+            crate::abi::Conv::Thiscall,
+            crate::abi::target(0x0065_EB00),
+            this.wrapping_add(0x124) as u32,
+            &[vertex, argument as u32],
+            argument as u32,
+            frame.add(2).read_unaligned(),
+        );
+        if found as u8 != 0 {
+            output.write_unaligned(crate::x87::F80::from_f32(f32::from_bits(argument.read_unaligned())));
+            save_result(frame, found);
+        } else {
+            let terrain = pointer(this, 0x44);
+            let args = [vertex];
+            let mut call = crate::abi::RawCall::new(
+                crate::abi::Conv::Thiscall,
+                crate::abi::vslot(terrain, 0x30),
+                terrain as u32,
+                &args,
+            );
+            call.eax = found as u32;
+            call.edx = word(terrain, 0);
+            call.take_st0 = 1;
+            crate::abi::call_raw(&mut call);
+            let value = if adjust {
+                height_subtract(call.st0, f32::from_bits(word(this, 0x36C)))
+            } else {
+                call.st0
+            };
+            output.write_unaligned(value);
+            save_result(frame, registers(call.eax, call.edx));
+        }
+    }
+}
+
+port! {
+    /// Stores a direction scaled by its largest absolute component, along with the supplied origin and kind.
+    #[port(address = 0x0064_9820, owner = "shared", name = "SetDominantAxisDirection")]
+    pub unsafe extern "thiscall" fn fc4p_00649820(this: *mut u8, x: u32, z: u32, dx: f32, dz: f32, kind: u32) -> u64 {
+        use crate::x87::F80;
+        unsafe {
+            let ax = F80::from_f32(dx).abs();
+            let az = F80::from_f32(dz).abs();
+            let comparison = ax.compare(az);
+            if !comparison.less() && !comparison.equal() && !comparison.unordered() {
+                put(this, 0x10, 1f32.to_bits());
+                put(this, 0x14, (az / ax).to_f32().to_bits());
+            } else {
+                let zero = F80::from_f32(float_zero().read_unaligned());
+                let value = if az.compare(zero).equal() { 0.0 } else { (ax / az).to_f32() };
+                put(this, 0x10, value.to_bits());
+                put(this, 0x14, 1f32.to_bits());
+            }
+            if F80::from_f32(dx).compare(F80::from_f32(float_zero().read_unaligned())).less() {
+                put(this, 0x10, (-F80::from_f32(f32::from_bits(word(this, 0x10)))).to_f32().to_bits());
+            }
+            if F80::from_f32(dz).compare(F80::from_f32(float_zero().read_unaligned())).less() {
+                put(this, 0x14, (-F80::from_f32(f32::from_bits(word(this, 0x14)))).to_f32().to_bits());
+            }
+            put(this, 0, kind);
+            put(this, 4, 0);
+            put(this, 8, x);
+            put(this, 12, z);
+            registers(z, x)
+        }
+    }
+}
+
+register_entry!(
+    0x0065_7860,
+    fc4p_00657860,
+    link_cell_height_edges,
+    "ret 4",
+    "LinkCellHeightEdges"
+);
+unsafe extern "fastcall" fn link_cell_height_edges(this: *mut u8, frame: *mut u32) {
+    unsafe {
+        let found = lookup_network_cell(this, frame.add(4).read_unaligned());
+        let cell = found as u32 as *mut u8;
+        if cell.is_null() {
+            save_result(frame, found);
+            return;
+        }
+        let mut eax = (cell as u32 & !0xFF) | u32::from(cell.add(0x53).read());
+        let mut edx = (found >> 32) as u32;
+        if eax as u8 != 0 {
+            save_result(frame, registers(eax, edx));
+            return;
+        }
+        let predefined = cell.add(0x57).read();
+        eax = (eax & !0xFF) | u32::from(predefined);
+        let kind;
+        if predefined != 0 {
+            eax = word(cell, 0xB8);
+            edx = word(this, 0x98);
+            kind = word(edx as *mut u8, eax.wrapping_mul(12) as usize);
+        } else {
+            let occupant = pointer(cell, 0x0C);
+            if occupant.is_null() {
+                save_result(frame, registers(eax, edx));
+                return;
+            }
+            let classified = seeded_virtual(occupant, 0x5C, &[], word(occupant, 0), edx);
+            kind = classified as u32;
+            let occupant = pointer(cell, 0x0C);
+            let mut first = core::mem::MaybeUninit::<u32>::uninit();
+            let got = seeded_virtual(
+                occupant,
+                0xEC,
+                &[first.as_mut_ptr() as u32, frame.add(4) as u32],
+                first.as_mut_ptr() as u32,
+                word(occupant, 0),
+            );
+            eax = got as u32;
+            edx = (got >> 32) as u32;
+        }
+        if [0, 0x200, 0x300, 0x800, 0xA00, 0x1400, 0x4B00, 0x14E00].contains(&kind) {
+            save_result(frame, registers(eax, edx));
+            return;
+        }
+        let bias = if cell.add(0x56).read() != 0 { 100_000u32 } else { 0 };
+        for edge in 0usize..3 {
+            let second = word(cell, 0xA8 + (edge + 1) * 4).wrapping_add(bias);
+            let first = word(cell, 0xA8 + edge * 4).wrapping_add(bias);
+            if first != second && first as i32 >= 0 && second as i32 >= 0 {
+                let result = seeded_call(
+                    crate::abi::Conv::Thiscall,
+                    crate::abi::target(0x0065_FDB0),
+                    this.wrapping_add(0x124) as u32,
+                    &[first, second],
+                    second,
+                    edx,
+                );
+                edx = (result >> 32) as u32;
+            }
+        }
+        save_result(frame, registers(3, edx));
+    }
+}
+
+register_entry!(
+    0x0065_7A30,
+    fc4p_00657a30,
+    refresh_occupant_flags,
+    "ret 8",
+    "RefreshOccupantFlags"
+);
+unsafe extern "fastcall" fn refresh_occupant_flags(_this: *mut u8, frame: *mut u32) {
+    unsafe {
+        let occupant = frame.add(4).read_unaligned() as *mut u8;
+        let mut interface = core::ptr::null_mut::<u8>();
+        let mut result = seeded_virtual(
+            occupant,
+            0,
+            &[0x4A10_AFC2, &mut interface as *mut _ as u32],
+            word(occupant, 0),
+            frame.add(2).read_unaligned(),
+        );
+        if result as u8 != 0 {
+            for (flag, eax_table) in [(0x0100_0000, false), (0x0200_0000, true), (0x0400_0000, false)] {
+                result = seeded_virtual(
+                    occupant,
+                    0x2C,
+                    &[flag],
+                    if eax_table { word(occupant, 0) } else { result as u32 },
+                    if eax_table {
+                        (result >> 32) as u32
+                    } else {
+                        word(occupant, 0)
+                    },
+                );
+            }
+            let mut second = core::mem::MaybeUninit::<u8>::uninit();
+            let mut third = core::mem::MaybeUninit::<u8>::uninit();
+            result = seeded_virtual(
+                interface,
+                0x170,
+                &[
+                    frame.add(4) as u32,
+                    second.as_mut_ptr() as u32,
+                    third.as_mut_ptr() as u32,
+                ],
+                word(interface, 0),
+                third.as_mut_ptr() as u32,
+            );
+            let first = frame.add(4).read_unaligned() as u8;
+            result = (result & !0xFF) | u64::from(first);
+            if first != 0 {
+                result = seeded_virtual(occupant, 0x28, &[0x0100_0000], word(occupant, 0), (result >> 32) as u32);
+            }
+            let second = second.assume_init();
+            result = (result & !0xFF) | u64::from(second);
+            if second == 0 {
+                result = seeded_virtual(occupant, 0x28, &[0x0200_0000], result as u32, word(occupant, 0));
+            }
+            let third = third.assume_init();
+            result = (result & !0xFF) | u64::from(third);
+            if third == 0 {
+                result = seeded_virtual(occupant, 0x28, &[0x0400_0000], word(occupant, 0), (result >> 32) as u32);
+            }
+        }
+        if !interface.is_null() {
+            result = seeded_virtual(interface, 8, &[], result as u32, word(interface, 0));
+        }
+        save_result(frame, result);
+    }
+}
+
+register_entry!(
+    0x0066_8AB0,
+    fc4p_00668ab0,
+    destroy_paired_ranges,
+    "ret",
+    "DestroyPairedRanges"
+);
+unsafe extern "fastcall" fn destroy_paired_ranges(this: *mut u8, frame: *mut u32) {
+    unsafe {
+        let args = [
+            word(this, 0),
+            word(this, 4),
+            word(this, 8),
+            word(this, 12),
+            word(this, 16),
+            word(this, 20),
+            word(this, 24),
+            word(this, 28),
+            0,
+        ];
+        let cleared = seeded_call(
+            crate::abi::Conv::Cdecl,
+            crate::abi::target(0x008E_BB10),
+            args[3],
+            &args,
+            args.as_ptr() as u32,
+            args[1],
+        );
+        let allocation = pointer(this, 0x20);
+        if allocation.is_null() {
+            save_result(frame, registers(0, (cleared >> 32) as u32));
+            return;
+        }
+        let first = word(this, 0x0C);
+        let last = word(this, 0x1C).wrapping_add(4);
+        let cleared = seeded_call(
+            crate::abi::Conv::Thiscall,
+            crate::abi::target(0x0066_7D40),
+            this as u32,
+            &[first, last],
+            first,
+            last,
+        );
+        let allocation = pointer(this, 0x20);
+        if allocation.is_null() {
+            save_result(frame, cleared);
+            return;
+        }
+        let tag = allocation.wrapping_sub(1).read();
+        let header = allocation.wrapping_sub(4);
+        let result = if tag < 9 {
+            let allocator = range_allocators().cast::<*mut u8>().add(tag as usize).read_unaligned();
+            seeded_virtual(allocator, 4, &[header as u32], header as u32, word(allocator, 0))
+        } else {
+            seeded_call(
+                crate::abi::Conv::Cdecl,
+                crate::abi::target(0x009F_015B),
+                tag as u32,
+                &[header as u32],
+                header as u32,
+                (cleared >> 32) as u32,
+            )
+        };
+        save_result(frame, result);
+    }
+}
+
+register_entry!(
+    0x0069_15E0,
+    fc4p_006915e0,
+    reallocate_thirty_two_byte_vector,
+    "ret 20",
+    "ReallocateThirtyTwoByteVector"
+);
+unsafe extern "fastcall" fn reallocate_thirty_two_byte_vector(this: *mut u8, frame: *mut u32) {
+    unsafe {
+        let at = frame.add(4).read_unaligned() as *mut u8;
+        let value = frame.add(5).read_unaligned() as *mut u8;
+        let count = frame.add(7).read_unaligned();
+        let length = (word(this, 4).wrapping_sub(word(this, 0)) as i32 >> 5) as u32;
+        let capacity = length.wrapping_add(length.max(count));
+        let allocation = if capacity == 0 {
+            core::ptr::null_mut()
+        } else {
+            allocate_storage(capacity.wrapping_mul(32))
+        };
+        let mut source = pointer(this, 0);
+        let mut out = allocation;
+        let mut edx = source as u32;
+        while source != at {
+            if !out.is_null() {
+                for offset in (0..32).step_by(4) {
+                    put(out, offset, word(source, offset));
+                }
+            }
+            source = source.wrapping_add(32);
+            out = out.wrapping_add(32);
+            edx = source as u32;
+        }
+        for _ in 0..count {
+            if !out.is_null() {
+                for offset in (0..32).step_by(4) {
+                    put(out, offset, word(value, offset));
+                }
+            }
+            out = out.wrapping_add(32);
+        }
+        if count > 1 {
+            edx = 0;
+        }
+        if frame.add(8).read_unaligned() as u8 == 0 {
+            let end = pointer(this, 4);
+            let cookie = frame.add(8);
+            let copied = seeded_call(
+                crate::abi::Conv::Cdecl,
+                crate::abi::target(0x006E_9150),
+                cookie as u32,
+                &[at as u32, end as u32, out as u32, cookie as u32],
+                at as u32,
+                end as u32,
+            );
+            out = copied as u32 as *mut u8;
+            edx = (copied >> 32) as u32;
+        }
+        let original = pointer(this, 0);
+        if !original.is_null() {
+            let freed = seeded_call(
+                crate::abi::Conv::Cdecl,
+                crate::abi::target(0x0090_CF63),
+                frame as u32,
+                &[original as u32],
+                original as u32,
+                edx,
+            );
+            edx = (freed >> 32) as u32;
+        }
+        put(this, 4, out as u32);
+        put(this, 8, (allocation as u32).wrapping_add(capacity.wrapping_mul(32)));
+        put(this, 0, allocation as u32);
+        save_result(frame, registers(allocation as u32, edx));
+    }
+}
+
+game_fn! { fn read_entry_pair(this: *mut u8, key: *mut u32, value: *mut u32) -> u64 = "thiscall" 0x0067_E0B0; }
+game_fn! { fn compare_entry_key(first: *const u8, second: *const u8) -> u64 = "C" 0x00A0_4487; }
+game_fn! { fn parse_entry_integer(text: *const u8) -> u64 = "C" 0x0090_FE93; }
+game_fn! { #[allow(dead_code)] fn interpret_boolean_entry() -> u64 = "C" 0x0067_DFD0; }
+game_fn! { #[allow(dead_code)] fn interpret_entry_value(output: *mut u8) -> u64 = "C" 0x0067_E780; }
+
+unsafe fn make_entry_string() -> [u32; 5] {
+    unsafe {
+        let allocation = allocate_storage(8);
+        allocation.write(0);
+        [
+            0x00A8_0810,
+            allocation as u32,
+            allocation as u32,
+            allocation.wrapping_add(8) as u32,
+            0,
+        ]
+    }
+}
+
+unsafe fn discard_entry_strings(key: &mut [u32; 5], value: &mut [u32; 5], mut result: u64) -> u64 {
+    unsafe {
+        for string in [value, key] {
+            let allocation = string[1] as *mut u8;
+            string[0] = 0x00A8_0810;
+            result = registers(allocation as u32, (result >> 32) as u32);
+            if !allocation.is_null() {
+                result = seeded_call(
+                    crate::abi::Conv::Cdecl,
+                    crate::abi::target(0x0090_CF63),
+                    string.as_mut_ptr() as u32,
+                    &[allocation as u32],
+                    allocation as u32,
+                    (result >> 32) as u32,
+                );
+            }
+        }
+        result
+    }
+}
+
+port! {
+    /// Reads a named boolean entry and releases the two temporary strings, retaining the interpreter's low byte.
+    #[port(address = 0x0067_E140, owner = "shared", name = "ReadNamedBooleanEntry")]
+    pub unsafe extern "C" fn fc4p_0067e140(parser: *mut u8, expected: *mut u8) -> u64 {
+        unsafe {
+            let mut key = make_entry_string();
+            let mut value = make_entry_string();
+            let mut result = read_entry_pair(parser, key.as_mut_ptr(), value.as_mut_ptr());
+            let mut answer = 0;
+            if result as u8 != 0 {
+                result = compare_entry_key(key[1] as *const u8, pointer(expected, 4));
+                if result as u32 == 0 {
+                    result = seeded_call(crate::abi::Conv::Cdecl, crate::abi::target(0x0067_DFD0),
+                        parser as u32, &[], value.as_mut_ptr() as u32, (result >> 32) as u32);
+                    answer = result as u8;
+                }
+            }
+            (discard_entry_strings(&mut key, &mut value, result) & !0xFF) | u64::from(answer)
+        }
+    }
+}
+
+port! {
+    /// Reads a named integer entry, writing the destination only after the key matches.
+    #[port(address = 0x0067_E250, owner = "shared", name = "ReadNamedIntegerEntry")]
+    pub unsafe extern "C" fn fc4p_0067e250(parser: *mut u8, expected: *mut u8, output: *mut u32) -> u64 {
+        unsafe {
+            let mut key = make_entry_string();
+            let mut value = make_entry_string();
+            let mut result = read_entry_pair(parser, key.as_mut_ptr(), value.as_mut_ptr());
+            let mut answer = 0;
+            if result as u8 != 0 {
+                result = compare_entry_key(key[1] as *const u8, pointer(expected, 4));
+                if result as u32 == 0 {
+                    result = parse_entry_integer(value[1] as *const u8);
+                    output.write_unaligned(result as u32);
+                    answer = 1;
+                }
+            }
+            (discard_entry_strings(&mut key, &mut value, result) & !0xFF) | answer
+        }
+    }
+}
+
+port! {
+    /// Reads an integer key and delegates the value conversion, retaining the key even if conversion fails.
+    #[port(address = 0x0067_F0D0, owner = "shared", name = "ReadIntegerKeyAndValue")]
+    pub unsafe extern "C" fn fc4p_0067f0d0(parser: *mut u8, key_output: *mut u32, value_output: *mut u8) -> u64 {
+        unsafe {
+            let mut key = make_entry_string();
+            let mut value = make_entry_string();
+            let mut result = read_entry_pair(parser, key.as_mut_ptr(), value.as_mut_ptr());
+            let mut answer = 0;
+            if result as u8 != 0 {
+                result = parse_entry_integer(key[1] as *const u8);
+                key_output.write_unaligned(result as u32);
+                result = seeded_call(crate::abi::Conv::Cdecl, crate::abi::target(0x0067_E780),
+                    key_output as u32, &[value_output as u32], value.as_mut_ptr() as u32, value_output as u32);
+                answer = u64::from(result as u8 != 0);
+            }
+            (discard_entry_strings(&mut key, &mut value, result) & !0xFF) | answer
+        }
+    }
+}
+
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
+    fc4p_006444f0::PORT,
+    fc4p_00644530::PORT,
+    fc4p_00649820::PORT,
+    fc4p_00657790::PORT,
+    fc4p_00657860::PORT,
+    fc4p_00657a30::PORT,
+    fc4p_00668ab0::PORT,
+    fc4p_0067e140::PORT,
+    fc4p_0067e250::PORT,
+    fc4p_0067f0d0::PORT,
+    fc4p_006915e0::PORT,
     fc4p_00638990::PORT,
     fc4p_00657740::PORT,
     fc4p_00657af0::PORT,
@@ -1963,6 +2589,853 @@ mod tests {
     use crate::abi::{Conv, RawCall};
     use crate::testing::{fake, Object};
     use std::cell::RefCell;
+
+    mod lane30 {
+        use super::*;
+        use crate::testing::{fake_data, GameFpu};
+        use crate::x87::F80;
+
+        #[derive(Default)]
+        struct Fixture {
+            words: [u32; 12],
+            pointers: [usize; 8],
+        }
+        thread_local! { static FIXTURE: RefCell<Fixture> = RefCell::new(Fixture::default()); }
+        fn reset() {
+            super::reset();
+            FIXTURE.with(|s| *s.borrow_mut() = Fixture::default());
+        }
+        extern "thiscall" fn solved(this: *mut u8, vertex: u32, output: *mut u32) -> u64 {
+            log(0x0065_EB00, this, &[vertex, unsafe { output.read_unaligned() }]);
+            FIXTURE.with(|s| {
+                let s = s.borrow();
+                unsafe {
+                    output.write_unaligned(s.words[1]);
+                }
+                registers(s.words[0], 0x5566_7788)
+            })
+        }
+        extern "thiscall" fn terrain_height(this: *mut u8, vertex: u32) -> f32 {
+            log(0x30, this, &[vertex]);
+            12.5
+        }
+
+        #[test]
+        fn height_getters_choose_the_solution_or_unrounded_terrain_and_apply_only_the_fallback_offset() {
+            reset();
+            let _fpu = GameFpu::new();
+            let _lookup = fake(0x0065_EB00, solved as *const () as usize);
+            let mut vt = [0usize; 13];
+            vt[12] = terrain_height as *const () as usize;
+            let mut terrain = [vt.as_ptr() as usize];
+            let t = terrain.as_mut_ptr().cast::<u8>();
+            let mut object = [0xA5u8; 0x380];
+            let p = object.as_mut_ptr();
+            unsafe {
+                put(p, 0x44, t as u32);
+                put(p, 0x36C, 2.25f32.to_bits());
+            }
+            let before = object;
+            for (entry, offset) in [(fc4p_006444f0 as *const (), 0.0), (fc4p_00657790 as *const (), 2.25)] {
+                for result in [0xABCD_0000, 0xABCD_0080] {
+                    FIXTURE.with(|s| {
+                        let mut s = s.borrow_mut();
+                        s.words[0] = result;
+                        s.words[1] = 7.75f32.to_bits();
+                    });
+                    let args = [0x8000_1234];
+                    let mut call = RawCall::new(Conv::Thiscall, entry as usize, p as u32, &args);
+                    call.take_st0 = 1;
+                    unsafe {
+                        crate::abi::call_raw(&mut call);
+                    }
+                    let expected = if result as u8 == 0 { 12.5 - offset } else { 7.75 };
+                    assert_eq!(call.st0, F80::from_f32(expected));
+                    let mut expected_calls = vec![Call(
+                        0x0065_EB00,
+                        p.wrapping_add(0x124) as usize,
+                        vec![args[0], args[0]],
+                    )];
+                    if result as u8 == 0 {
+                        expected_calls.push(Call(0x30, t as usize, vec![args[0]]));
+                    }
+                    assert_eq!(calls(), expected_calls);
+                    if result as u8 != 0 {
+                        assert_eq!((call.eax, call.edx), (result, 0x5566_7788));
+                    }
+                    assert_eq!(object, before);
+                }
+            }
+        }
+
+        #[test]
+        fn direction_scaling_handles_axes_signs_zero_infinities_and_nan() {
+            let _fpu = GameFpu::new();
+            let mut zero = 0f32;
+            let _zero = fake_data(0x00A8_1054, (&mut zero as *mut f32).cast());
+            for (dx, dz, x, z) in [
+                (4.0, 2.0, 1.0f32, 0.5f32),
+                (-2.0, 4.0, -0.5, 1.0),
+                (3.0, -3.0, 1.0, -1.0),
+                (0.0, 0.0, 0.0, 1.0),
+                (-0.0, -0.0, 0.0, 1.0),
+                (-4.0, -2.0, -1.0, -0.5),
+                (f32::INFINITY, 1.0, 1.0, 0.0),
+                (1.0, f32::INFINITY, 0.0, 1.0),
+            ] {
+                let mut object = [0xA5u8; 32];
+                let p = object.as_mut_ptr();
+                let result = unsafe { fc4p_00649820(p, 0x1122_3344, 0xAABB_CCDD, dx, dz, 0x300) };
+                let mut expected = [0xA5u8; 32];
+                for (offset, word) in [
+                    (0, 0x300u32),
+                    (4, 0),
+                    (8, 0x1122_3344),
+                    (12, 0xAABB_CCDD),
+                    (16, x.to_bits()),
+                    (20, z.to_bits()),
+                ] {
+                    expected[offset..offset + 4].copy_from_slice(&word.to_le_bytes());
+                }
+                assert_eq!(object, expected);
+                assert_eq!(result, registers(0xAABB_CCDD, 0x1122_3344));
+            }
+            let mut object = [0u8; 24];
+            unsafe {
+                fc4p_00649820(object.as_mut_ptr(), 0, 0, f32::NAN, 1.0, 0);
+            }
+            assert!(f32::from_bits(unsafe { word(object.as_ptr(), 16) }).is_nan());
+            assert_eq!(unsafe { word(object.as_ptr(), 20) }, 1f32.to_bits());
+        }
+
+        extern "thiscall" fn edge(this: *mut u8, a: u32, b: u32) -> u64 {
+            log(0x0065_FDB0, this, &[a, b]);
+            registers(0x1234_5678, 0x8765_4321)
+        }
+        extern "thiscall" fn edge_kind(this: *mut u8) -> u64 {
+            log(0x5C, this, &[]);
+            FIXTURE.with(|s| registers(s.borrow().words[0], 0x1020_3040))
+        }
+        extern "thiscall" fn dimensions(this: *mut u8, a: *mut u32, b: *mut u32) -> u64 {
+            log(0xEC, this, &[unsafe { b.read_unaligned() }]);
+            unsafe {
+                a.write_unaligned(7);
+                b.write_unaligned(11);
+            }
+            registers(0xAABB_CCDD, 0x1020_3040)
+        }
+        #[test]
+        fn cell_edges_skip_special_kinds_and_link_only_three_valid_neighbor_pairs() {
+            reset();
+            let _cell = fake(0x0063_3220, cell as *const () as usize);
+            let _edge = fake(0x0065_FDB0, edge as *const () as usize);
+            let mut object = [0u32; 0x130 / 4];
+            let p = object.as_mut_ptr().cast::<u8>();
+            let mut cell_memory = [0u8; 0xBC];
+            let c = cell_memory.as_mut_ptr();
+            STATE.with(|s| s.borrow_mut().cell = c as usize);
+            let mut kinds = [0x900u32, 0, 0];
+            unsafe {
+                put(p, 0x98, kinds.as_mut_ptr() as u32);
+                for (i, value) in [5u32, 8, u32::MAX, 20].into_iter().enumerate() {
+                    put(c, 0xA8 + i * 4, value);
+                }
+            }
+            cell_memory[0x57] = 1;
+            for kind in [0, 0x200, 0x300, 0x800, 0xA00, 0x1400, 0x4B00, 0x14E00, 0x900] {
+                kinds[0] = kind;
+                let result = unsafe { run(fc4p_00657860 as *const (), Conv::Thiscall, p, &[99], 0, 0) };
+                let mut expected = vec![Call(0x0063_3220, p as usize, vec![99])];
+                if kind == 0x900 {
+                    expected.push(Call(0x0065_FDB0, p.wrapping_add(0x124) as usize, vec![5, 8]));
+                    assert_eq!(result, (3, 0x8765_4321));
+                } else {
+                    assert_eq!(result, (0, kinds.as_ptr() as u32));
+                }
+                assert_eq!(calls(), expected);
+            }
+            cell_memory[0x56] = 1;
+            unsafe {
+                kinds.as_mut_ptr().write(0x900);
+            }
+            unsafe {
+                run(fc4p_00657860 as *const (), Conv::Thiscall, p, &[99], 0, 0);
+            }
+            assert_eq!(
+                calls(),
+                [
+                    Call(0x0063_3220, p as usize, vec![99]),
+                    Call(0x0065_FDB0, p.wrapping_add(0x124) as usize, vec![100_005, 100_008]),
+                    Call(0x0065_FDB0, p.wrapping_add(0x124) as usize, vec![100_008, 99_999]),
+                    Call(0x0065_FDB0, p.wrapping_add(0x124) as usize, vec![99_999, 100_020])
+                ]
+            );
+            let mut vt = [0usize; 0xF0 / 4];
+            vt[0x5C / 4] = edge_kind as *const () as usize;
+            vt[0xEC / 4] = dimensions as *const () as usize;
+            let mut occupant = [vt.as_ptr() as usize];
+            unsafe {
+                put(c, 0x0C, occupant.as_mut_ptr() as u32);
+            }
+            cell_memory[0x57] = 0;
+            FIXTURE.with(|s| s.borrow_mut().words[0] = 0x300);
+            assert_eq!(
+                unsafe { run(fc4p_00657860 as *const (), Conv::Thiscall, p, &[99], 0, 0) },
+                (0xAABB_CCDD, 0x1020_3040)
+            );
+            assert_eq!(
+                calls().iter().map(|c| c.0).collect::<Vec<_>>(),
+                [0x0063_3220, 0x5C, 0xEC]
+            );
+            for (offset, value) in [(0x53, 1), (0x53, 0)] {
+                cell_memory[offset] = value;
+                unsafe {
+                    put(c, 12, 0);
+                    run(fc4p_00657860 as *const (), Conv::Thiscall, p, &[99], 0, 0);
+                }
+                assert_eq!(calls().len(), 1);
+            }
+            STATE.with(|s| s.borrow_mut().cell = 0);
+            assert_eq!(
+                unsafe { run(fc4p_00657860 as *const (), Conv::Thiscall, p, &[99], 0, 0) },
+                (0, 0x0033_4455)
+            );
+            calls();
+        }
+
+        extern "thiscall" fn flags_query(this: *mut u8, iid: u32, output: *mut *mut u8) -> u64 {
+            log(0, this, &[iid, unsafe { output.read() } as u32]);
+            FIXTURE.with(|s| {
+                let s = s.borrow();
+                unsafe {
+                    output.write(s.pointers[0] as *mut u8);
+                }
+                registers(s.words[0], 0x1122_3344)
+            })
+        }
+        extern "thiscall" fn remove_flag(this: *mut u8, flag: u32) -> u64 {
+            log(0x2C, this, &[flag]);
+            registers(0x1234_5678, 0x90AB_CDEF)
+        }
+        extern "thiscall" fn add_flag(this: *mut u8, flag: u32) -> u64 {
+            log(0x28, this, &[flag]);
+            registers(0x2233_4455, 0x6677_8899)
+        }
+        extern "thiscall" fn statuses(this: *mut u8, a: *mut u8, b: *mut u8, c: *mut u8) -> u64 {
+            log(0x170, this, &[]);
+            FIXTURE.with(|s| {
+                let s = s.borrow();
+                unsafe {
+                    a.write(s.words[1] as u8);
+                    b.write(s.words[2] as u8);
+                    c.write(s.words[3] as u8);
+                }
+            });
+            registers(0xAABB_CCDD, 0x1122_3344)
+        }
+        #[test]
+        fn occupant_flags_cover_every_status_combination_and_release_even_a_failed_query_output() {
+            reset();
+            let mut vt = [0usize; 0x174 / 4];
+            vt[0] = flags_query as *const () as usize;
+            vt[8 / 4] = release as *const () as usize;
+            vt[0x28 / 4] = add_flag as *const () as usize;
+            vt[0x2C / 4] = remove_flag as *const () as usize;
+            vt[0x170 / 4] = statuses as *const () as usize;
+            let mut occupant = [vt.as_ptr() as usize];
+            let p = occupant.as_mut_ptr().cast::<u8>();
+            for bits in 0..8u32 {
+                FIXTURE.with(|s| {
+                    let mut s = s.borrow_mut();
+                    s.pointers[0] = p as usize;
+                    s.words[0] = 0x1234_0080;
+                    for i in 0..3 {
+                        s.words[i + 1] = ((bits >> i) & 1) * 0x80;
+                    }
+                });
+                let result = unsafe {
+                    run(
+                        fc4p_00657a30 as *const (),
+                        Conv::Stdcall,
+                        core::ptr::null_mut(),
+                        &[p as u32, 0xDEAD_BEEF],
+                        0,
+                        0,
+                    )
+                };
+                assert_eq!(result, (0xA1B2_C3D4, 0x0077_8899));
+                let mut expected = vec![Call(0, p as usize, vec![0x4A10_AFC2, 0])];
+                for flag in [0x0100_0000, 0x0200_0000, 0x0400_0000] {
+                    expected.push(Call(0x2C, p as usize, vec![flag]));
+                }
+                expected.push(Call(0x170, p as usize, vec![]));
+                for (flag, enabled) in [
+                    (0x0100_0000, bits & 1 != 0),
+                    (0x0200_0000, bits & 2 == 0),
+                    (0x0400_0000, bits & 4 == 0),
+                ] {
+                    if enabled {
+                        expected.push(Call(0x28, p as usize, vec![flag]));
+                    }
+                }
+                expected.push(Call(8, p as usize, vec![]));
+                assert_eq!(calls(), expected);
+            }
+            for output in [0, p as usize] {
+                FIXTURE.with(|s| {
+                    let mut s = s.borrow_mut();
+                    s.pointers[0] = output;
+                    s.words[0] = 0xAABB_0000;
+                });
+                let result = unsafe { run(fc4p_00657a30 as *const (), Conv::Stdcall, p, &[p as u32, 0], 0, 0) };
+                assert_eq!(
+                    result,
+                    if output == 0 {
+                        (0xAABB_0000, 0x1122_3344)
+                    } else {
+                        (0xA1B2_C3D4, 0x0077_8899)
+                    }
+                );
+                assert_eq!(calls().len(), if output == 0 { 1 } else { 2 });
+            }
+        }
+
+        extern "C" fn clear_ranges(a: u32, b: u32, c: u32, d: u32, e: u32, f: u32, g: u32, h: u32, flag: u32) -> u64 {
+            log(0x008E_BB10, core::ptr::null_mut(), &[a, b, c, d, e, f, g, h, flag]);
+            registers(0x1122_3344, 0x5566_7788)
+        }
+        extern "thiscall" fn clear_range(this: *mut u8, first: u32, last: u32) -> u64 {
+            log(0x0066_7D40, this, &[first, last]);
+            FIXTURE.with(|s| {
+                if s.borrow().words[0] != 0 {
+                    unsafe {
+                        put(this, 0x20, 0);
+                    }
+                }
+            });
+            registers(0x2233_4455, 0x6677_8899)
+        }
+        extern "thiscall" fn pool_free(this: *mut u8, allocation: *mut u8) -> u64 {
+            log(4, this, &[allocation as u32]);
+            registers(0x3344_5566, 0x7788_99AA)
+        }
+        extern "C" fn large_free(allocation: *mut u8) -> u64 {
+            log(0x009F_015B, allocation, &[]);
+            registers(0x4455_6677, 0x8899_AABB)
+        }
+        #[test]
+        fn range_destruction_copies_both_descriptors_and_selects_every_allocator_tag() {
+            reset();
+            let _clear = fake(0x008E_BB10, clear_ranges as *const () as usize);
+            let _range = fake(0x0066_7D40, clear_range as *const () as usize);
+            let _large = fake(0x009F_015B, large_free as *const () as usize);
+            let vt = [0usize, pool_free as *const () as usize];
+            let mut pools = [[vt.as_ptr() as usize]; 9];
+            let mut pool_ptrs = pools.each_mut().map(|p| p.as_mut_ptr().cast::<u8>());
+            let _pools = fake_data(0x00B6_2674, pool_ptrs.as_mut_ptr().cast());
+            let mut allocation = [0u8; 16];
+            let a = allocation.as_mut_ptr();
+            let mut object = [1u32, 2, 3, 4, 5, 6, 7, u32::MAX, 0];
+            let p = object.as_mut_ptr().cast::<u8>();
+            for tag in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 255] {
+                allocation[3] = tag;
+                object[8] = a.wrapping_add(4) as u32;
+                let result = unsafe { run(fc4p_00668ab0 as *const (), Conv::Thiscall, p, &[], 0, 0) };
+                assert_eq!(
+                    result,
+                    if tag < 9 {
+                        (0x3344_5566, 0x7788_99AA)
+                    } else {
+                        (0x4455_6677, 0x8899_AABB)
+                    }
+                );
+                let trace = calls();
+                assert_eq!(trace[0], Call(0x008E_BB10, 0, vec![1, 2, 3, 4, 5, 6, 7, u32::MAX, 0]));
+                assert_eq!(trace[1], Call(0x0066_7D40, p as usize, vec![4, 3]));
+                assert_eq!(
+                    trace[2],
+                    if tag < 9 {
+                        Call(4, pool_ptrs[tag as usize] as usize, vec![a as u32])
+                    } else {
+                        Call(0x009F_015B, a as usize, vec![])
+                    }
+                );
+            }
+            FIXTURE.with(|s| s.borrow_mut().words[0] = 1);
+            assert_eq!(
+                unsafe { run(fc4p_00668ab0 as *const (), Conv::Thiscall, p, &[], 0, 0) },
+                (0x2233_4455, 0x6677_8899)
+            );
+            assert_eq!(calls().len(), 2);
+            assert_eq!(
+                unsafe { run(fc4p_00668ab0 as *const (), Conv::Thiscall, p, &[], 0, 0) },
+                (0, 0x5566_7788)
+            );
+            assert_eq!(calls().len(), 1);
+        }
+
+        extern "C" fn allocate_vector(size: u32) -> *mut u8 {
+            log(0x0090_CF54, core::ptr::null_mut(), &[size]);
+            FIXTURE.with(|s| s.borrow().pointers[0] as *mut u8)
+        }
+        extern "C" fn vector_free(allocation: *mut u8) -> u64 {
+            log(0x0090_CF63, allocation, &[]);
+            registers(0xDEAD_BEEF, 0xFEED_FACE)
+        }
+        extern "C" fn copy_records(first: *mut u8, last: *mut u8, out: *mut u8, cookie: *mut u32) -> u64 {
+            log(
+                0x006E_9150,
+                first,
+                &[last as u32, out as u32, unsafe { cookie.read_unaligned() }],
+            );
+            let mut first = first;
+            let mut out = out;
+            unsafe {
+                while first != last {
+                    for offset in (0..32).step_by(4) {
+                        put(out, offset, word(first, offset));
+                    }
+                    first = first.add(32);
+                    out = out.add(32);
+                }
+                cookie.write_unaligned(0xABCD_EF80);
+            }
+            registers(out as u32, 0x1122_3344)
+        }
+        #[test]
+        fn vector_growth_covers_empty_single_multiple_insertions_suffix_modes_and_aliased_values() {
+            reset();
+            let _allocate = fake(0x0090_CF54, allocate_vector as *const () as usize);
+            let _free = fake(0x0090_CF63, vector_free as *const () as usize);
+            let _copy = fake(0x006E_9150, copy_records as *const () as usize);
+            for (length, at_index, count, skip) in [
+                (0usize, 0usize, 0usize, 1u32),
+                (0, 0, 1, 1),
+                (3, 0, 1, 0),
+                (3, 1, 2, 0),
+                (3, 3, 5, 0),
+                (3, 2, 0, 0),
+                (3, 1, 2, 0x100),
+            ] {
+                let mut source: Vec<u32> = (0..24).map(|n| n + 100).collect();
+                let a = source.as_mut_ptr().cast::<u8>();
+                let mut destination = [0xCCCC_CCCCu32; 96];
+                let b = destination.as_mut_ptr().cast::<u8>();
+                FIXTURE.with(|s| s.borrow_mut().pointers[0] = b as usize);
+                let mut object = [a as u32, a.wrapping_add(length * 32) as u32, a.wrapping_add(96) as u32];
+                let p = object.as_mut_ptr().cast::<u8>();
+                let result = unsafe {
+                    run(
+                        fc4p_006915e0 as *const (),
+                        Conv::Thiscall,
+                        p,
+                        &[
+                            a.wrapping_add(at_index * 32) as u32,
+                            a as u32,
+                            0xDEAD_BEEF,
+                            count as u32,
+                            skip,
+                        ],
+                        0,
+                        0,
+                    )
+                };
+                let capacity = length + length.max(count);
+                let allocation = if capacity == 0 { 0 } else { b as u32 };
+                let suffix = if skip as u8 == 0 { length - at_index } else { 0 };
+                assert_eq!(result.0, allocation);
+                assert_eq!(
+                    object,
+                    [
+                        allocation,
+                        allocation.wrapping_add(((at_index + count + suffix) * 32) as u32),
+                        allocation.wrapping_add((capacity * 32) as u32)
+                    ]
+                );
+                let mut expected = source[..at_index * 8].to_vec();
+                for _ in 0..count {
+                    expected.extend_from_slice(&source[..8]);
+                }
+                if suffix != 0 {
+                    expected.extend_from_slice(&source[at_index * 8..length * 8]);
+                }
+                assert_eq!(&destination[..expected.len()], expected);
+                let mut trace = Vec::new();
+                if capacity != 0 {
+                    trace.push(Call(0x0090_CF54, 0, vec![(capacity * 32) as u32]));
+                }
+                if skip as u8 == 0 {
+                    trace.push(Call(
+                        0x006E_9150,
+                        a.wrapping_add(at_index * 32) as usize,
+                        vec![
+                            a.wrapping_add(length * 32) as u32,
+                            b.wrapping_add((at_index + count) * 32) as u32,
+                            skip,
+                        ],
+                    ));
+                }
+                trace.push(Call(0x0090_CF63, a as usize, vec![]));
+                assert_eq!(calls(), trace);
+            }
+        }
+
+        extern "thiscall" fn rewind(this: *mut u8) -> u64 {
+            log(0x0065_EF70, this, &[]);
+            FIXTURE.with(|s| s.borrow_mut().words[10] = 0);
+            0
+        }
+        extern "thiscall" fn next_height(this: *mut u8, vertex: *mut u32, height: *mut u32) -> u64 {
+            log(0x0065_EB50, this, &[]);
+            FIXTURE.with(|s| {
+                let mut s = s.borrow_mut();
+                let i = s.words[10] as usize;
+                if i >= s.words[9] as usize {
+                    return registers(0xABCD_0000, 0x1122_3344);
+                }
+                unsafe {
+                    vertex.write_unaligned(s.words[i * 2]);
+                    height.write_unaligned(s.words[i * 2 + 1]);
+                }
+                s.words[10] += 1;
+                registers(0xABCD_0080, 0x1122_3344)
+            })
+        }
+        extern "thiscall" fn flat_height(this: *mut u8, vertex: u32) -> f32 {
+            log(0x30, this, &[vertex]);
+            300.0
+        }
+        extern "thiscall" fn set_height(this: *mut u8, vertex: u32, height: u32) -> u64 {
+            log(0xC8, this, &[vertex, height]);
+            registers(0x1234_5678, 0x8765_4321)
+        }
+        extern "thiscall" fn begin_grading(this: *mut u8) -> u64 {
+            log(0x15C, this, &[]);
+            0
+        }
+        extern "thiscall" fn end_grading(this: *mut u8) -> u64 {
+            log(0x160, this, &[]);
+            registers(0xAABB_CCDD, 0x1122_3344)
+        }
+        extern "thiscall" fn redisplay(this: *mut u8, a: u32, b: u32, rect: *const u32, kind: u32) -> u64 {
+            let r = unsafe { core::slice::from_raw_parts(rect, 4) };
+            log(0x110, this, &[a, b, r[0], r[1], r[2], r[3], kind]);
+            0
+        }
+        extern "thiscall" fn width(this: *mut u8) -> u64 {
+            log(0x174, this, &[]);
+            registers(64, 0x1122_3344)
+        }
+        extern "thiscall" fn depth(this: *mut u8) -> u64 {
+            log(0x178, this, &[]);
+            registers(64, 0x5566_7788)
+        }
+        extern "thiscall" fn grow_vertices(
+            this: *mut u8,
+            at: *mut u8,
+            value: *const u32,
+            cookie: *mut u32,
+            count: u32,
+            mode: u32,
+        ) -> u64 {
+            log(
+                0x0051_CA60,
+                this,
+                &[
+                    at as u32,
+                    unsafe { value.read_unaligned() },
+                    unsafe { cookie.read_unaligned() },
+                    count,
+                    mode,
+                ],
+            );
+            FIXTURE.with(|s| {
+                let allocation = s.borrow().pointers[0] as *mut u8;
+                unsafe {
+                    put(allocation, 0, value.read_unaligned());
+                    put(this, 0, allocation as u32);
+                    put(this, 4, allocation.wrapping_add(4) as u32);
+                    put(this, 8, allocation.wrapping_add(32) as u32);
+                }
+            });
+            registers(0x1234_5678, 0x8765_4321)
+        }
+        #[test]
+        fn grading_keeps_threshold_bounds_solution_order_and_the_z_divisor() {
+            reset();
+            let _fpu = GameFpu::new();
+            let _rewind = fake(0x0065_EF70, rewind as *const () as usize);
+            let _next = fake(0x0065_EB50, next_height as *const () as usize);
+            let _grow = fake(0x0051_CA60, grow_vertices as *const () as usize);
+            let mut threshold = 0.001f32;
+            let _threshold = fake_data(0x00A8_67A4, (&mut threshold as *mut f32).cast());
+            let mut terrain_vt = [0usize; 0x17C / 4];
+            terrain_vt[0x30 / 4] = flat_height as *const () as usize;
+            terrain_vt[0xC8 / 4] = set_height as *const () as usize;
+            terrain_vt[0x110 / 4] = redisplay as *const () as usize;
+            terrain_vt[0x15C / 4] = begin_grading as *const () as usize;
+            terrain_vt[0x160 / 4] = end_grading as *const () as usize;
+            terrain_vt[0x174 / 4] = width as *const () as usize;
+            terrain_vt[0x178 / 4] = depth as *const () as usize;
+            let mut terrain = [terrain_vt.as_ptr() as usize];
+            let t = terrain.as_mut_ptr().cast::<u8>();
+            let mut city = t;
+            let _city = fake_data(0x00B4_3CEC, (&mut city as *mut *mut u8).cast());
+            let mut object = [0xA5u8; 0x260];
+            let p = object.as_mut_ptr();
+            unsafe {
+                put(p, 0x44, t as u32);
+                put(p, 0x248, 65);
+                put(p, 0x24C, 65);
+            }
+            let original = object;
+            let mut vertices = [0xCCCC_CCCCu32; 8];
+            let v = vertices.as_mut_ptr().cast::<u8>();
+            for (entries, expected, rect) in [
+                (
+                    vec![(660u32, 300.0005f32), (1330, 300.002)],
+                    vec![1330u32],
+                    Some([29, 19, 31, 21]),
+                ),
+                (vec![(660u32, 300.0005f32)], vec![], None),
+                (
+                    vec![(0u32, 310.0f32), (4224, 310.0)],
+                    vec![0u32, 4224],
+                    Some([0, 0, 64, 64]),
+                ),
+                (vec![(1u32, f32::NAN)], vec![], None),
+                (vec![], vec![], None),
+            ] {
+                let mut changed = [v as u32, v.wrapping_add(12) as u32, v.wrapping_add(32) as u32];
+                let c = changed.as_mut_ptr().cast::<u8>();
+                FIXTURE.with(|s| {
+                    let mut s = s.borrow_mut();
+                    s.words[9] = entries.len() as u32;
+                    for (i, (vertex, height)) in entries.iter().enumerate() {
+                        s.words[i * 2] = *vertex;
+                        s.words[i * 2 + 1] = height.to_bits();
+                    }
+                });
+                let result = unsafe { run(fc4p_00644530 as *const (), Conv::Thiscall, p, &[c as u32], 0, 0) };
+                assert_eq!(changed[1], v.wrapping_add(expected.len() * 4) as u32);
+                assert_eq!(&vertices[..expected.len()], expected);
+                let trace = calls();
+                assert_eq!(trace[0], Call(0x0065_EF70, p.wrapping_add(0x188) as usize, vec![]));
+                assert_eq!(trace.iter().filter(|c| c.0 == 0x0065_EB50).count(), entries.len() + 1);
+                let expected_writes: Vec<_> = entries
+                    .iter()
+                    .filter(|(v, _)| expected.contains(v))
+                    .map(|(v, h)| Call(0xC8, t as usize, vec![*v, h.to_bits()]))
+                    .collect();
+                assert_eq!(
+                    trace.iter().filter(|c| c.0 == 0xC8).collect::<Vec<_>>(),
+                    expected_writes.iter().collect::<Vec<_>>()
+                );
+                if let Some(r) = rect {
+                    assert_eq!(
+                        &trace[trace.len() - 5..],
+                        [
+                            Call(0x174, t as usize, vec![]),
+                            Call(0x178, t as usize, vec![]),
+                            Call(0x15C, t as usize, vec![]),
+                            Call(0x110, t as usize, vec![1, 1, r[0], r[1], r[2], r[3], 4]),
+                            Call(0x160, t as usize, vec![])
+                        ]
+                    );
+                    assert_eq!(result, (0xAABB_CCDD, 0x1122_3344));
+                } else {
+                    assert_eq!(result, (64, 0));
+                }
+                assert_eq!(object, original);
+            }
+            // A non-square grid uses +0x24c for Z, including after vector growth.
+            unsafe {
+                put(p, 0x24C, 33);
+            }
+            FIXTURE.with(|s| {
+                let mut s = s.borrow_mut();
+                s.words[9] = 1;
+                s.words[0] = 100;
+                s.words[1] = 301f32.to_bits();
+                s.pointers[0] = v as usize;
+            });
+            let mut changed = [0u32; 3];
+            unsafe {
+                run(
+                    fc4p_00644530 as *const (),
+                    Conv::Thiscall,
+                    p,
+                    &[changed.as_mut_ptr() as u32],
+                    0,
+                    0,
+                );
+            }
+            let trace = calls();
+            assert!(trace.contains(&Call(0x0051_CA60, changed.as_ptr() as usize, vec![0, 100, 100, 1, 1])));
+            assert!(trace.contains(&Call(0x110, t as usize, vec![1, 1, 34, 2, 36, 4, 4])));
+        }
+
+        extern "C" fn allocate_string(size: u32) -> *mut u8 {
+            log(0x0090_CF54, core::ptr::null_mut(), &[size]);
+            FIXTURE.with(|s| {
+                let mut s = s.borrow_mut();
+                let i = s.words[10] as usize;
+                s.words[10] += 1;
+                s.pointers[i] as *mut u8
+            })
+        }
+        extern "thiscall" fn read_pair(this: *mut u8, key: *mut u32, value: *mut u32) -> u64 {
+            unsafe {
+                for string in [key, value] {
+                    let data = string.add(1).read();
+                    assert_eq!(
+                        core::slice::from_raw_parts(string, 5),
+                        &[0x00A8_0810, data, data, data + 8, 0]
+                    );
+                    assert_eq!((data as *const u8).read(), 0);
+                    if FIXTURE.with(|s| s.borrow().words[5] != 0) {
+                        string.add(1).write(0);
+                    }
+                }
+                log(0x0067_E0B0, this, &[key.add(1).read(), value.add(1).read()]);
+            }
+            FIXTURE.with(|s| registers(s.borrow().words[0], 0x1122_3344))
+        }
+        extern "C" fn compare_key(a: *const u8, b: *const u8) -> u64 {
+            log(0x00A0_4487, a.cast_mut(), &[b as u32]);
+            FIXTURE.with(|s| registers(s.borrow().words[1], 0x2233_4455))
+        }
+        extern "C" fn integer_entry(text: *const u8) -> u64 {
+            log(0x0090_FE93, text.cast_mut(), &[]);
+            registers(0xFEDC_BA98, 0x3344_5566)
+        }
+        extern "thiscall" fn boolean_entry_body(string: *mut u8) -> u64 {
+            log(0x0067_DFD0, core::ptr::null_mut(), &[unsafe { word(string, 4) }]);
+            FIXTURE.with(|s| registers(s.borrow().words[2], 0x4455_6677))
+        }
+        #[unsafe(naked)]
+        unsafe extern "C" fn boolean_entry() {
+            core::arch::naked_asm!("mov ecx, eax", "jmp {body}", body = sym boolean_entry_body);
+        }
+        extern "thiscall" fn value_entry_body(string: *mut u8, output: *mut u32) -> u64 {
+            log(
+                0x0067_E780,
+                core::ptr::null_mut(),
+                &[unsafe { word(string, 4) }, output as u32, unsafe {
+                    output.read_unaligned()
+                }],
+            );
+            unsafe {
+                output.write_unaligned(0xDEAD_BEEF);
+            }
+            FIXTURE.with(|s| registers(s.borrow().words[2], 0x4455_6677))
+        }
+        #[unsafe(naked)]
+        unsafe extern "C" fn value_entry() {
+            core::arch::naked_asm!("push dword ptr [esp + 4]", "mov ecx, eax", "call {body}", "ret", body = sym value_entry_body);
+        }
+        #[test]
+        fn entry_readers_keep_call_order_ownership_failed_outputs_and_boolean_bytes() {
+            reset();
+            let _allocate = fake(0x0090_CF54, allocate_string as *const () as usize);
+            let _free = fake(0x0090_CF63, vector_free as *const () as usize);
+            let _pair = fake(0x0067_E0B0, read_pair as *const () as usize);
+            let _compare = fake(0x00A0_4487, compare_key as *const () as usize);
+            let _integer = fake(0x0090_FE93, integer_entry as *const () as usize);
+            let _boolean = fake(0x0067_DFD0, boolean_entry as *const () as usize);
+            let _value = fake(0x0067_E780, value_entry as *const () as usize);
+            let mut key_buffer = [0xCCu8; 8];
+            let mut value_buffer = [0xCCu8; 8];
+            let k = key_buffer.as_mut_ptr();
+            let v = value_buffer.as_mut_ptr();
+            let parser = 0x1020 as *mut u8;
+            let mut expected_string = [0u32, 0x3040];
+            for lane in 0..3 {
+                for (read, compare, interpreted, null_strings) in [
+                    (0u32, 0, 0, false),
+                    (0xABCD_0080, 1, 0, false),
+                    (1, u32::MAX, 0, false),
+                    (1, 0, 0, false),
+                    (1, 0, 0xAABB_0080, false),
+                    (0, 0, 0, true),
+                ] {
+                    FIXTURE.with(|s| {
+                        let mut s = s.borrow_mut();
+                        s.words[0] = read;
+                        s.words[1] = compare;
+                        s.words[2] = interpreted;
+                        s.words[5] = u32::from(null_strings);
+                        s.words[10] = 0;
+                        s.pointers[0] = k as usize;
+                        s.pointers[1] = v as usize;
+                    });
+                    let mut output = 0xA5A5_A5A5u32;
+                    let out = &mut output as *mut u32;
+                    let result = unsafe {
+                        match lane {
+                            0 => fc4p_0067e140(parser, expected_string.as_mut_ptr().cast()),
+                            1 => fc4p_0067e250(parser, expected_string.as_mut_ptr().cast(), out),
+                            _ => fc4p_0067f0d0(parser, out, out.cast()),
+                        }
+                    };
+                    let parsed = read as u8 != 0 && (lane == 2 || compare == 0);
+                    let answer = if !parsed {
+                        0
+                    } else if lane == 0 {
+                        interpreted as u8
+                    } else if lane == 1 || interpreted as u8 != 0 {
+                        1
+                    } else {
+                        0
+                    };
+                    assert_eq!(result as u8, answer);
+                    assert_eq!(
+                        output,
+                        if parsed && lane == 1 {
+                            0xFEDC_BA98
+                        } else if parsed && lane == 2 {
+                            0xDEAD_BEEF
+                        } else {
+                            0xA5A5_A5A5
+                        }
+                    );
+                    let mut trace = vec![
+                        Call(0x0090_CF54, 0, vec![8]),
+                        Call(0x0090_CF54, 0, vec![8]),
+                        Call(
+                            0x0067_E0B0,
+                            parser as usize,
+                            if null_strings {
+                                vec![0, 0]
+                            } else {
+                                vec![k as u32, v as u32]
+                            },
+                        ),
+                    ];
+                    if read as u8 != 0 && lane != 2 {
+                        trace.push(Call(0x00A0_4487, k as usize, vec![0x3040]));
+                    }
+                    if parsed {
+                        match lane {
+                            0 => trace.push(Call(0x0067_DFD0, 0, vec![v as u32])),
+                            1 => trace.push(Call(0x0090_FE93, v as usize, vec![])),
+                            _ => {
+                                trace.push(Call(0x0090_FE93, k as usize, vec![]));
+                                trace.push(Call(0x0067_E780, 0, vec![v as u32, out as u32, 0xFEDC_BA98]));
+                            }
+                        }
+                    }
+                    if !null_strings {
+                        trace.push(Call(0x0090_CF63, v as usize, vec![]));
+                        trace.push(Call(0x0090_CF63, k as usize, vec![]));
+                    }
+                    assert_eq!(calls(), trace);
+                    assert_eq!(&key_buffer[1..], &[0xCC; 7]);
+                    assert_eq!(&value_buffer[1..], &[0xCC; 7]);
+                }
+            }
+        }
+    }
 
     mod lane18 {
         use super::*;
