@@ -127,24 +127,37 @@ port! {
 port! {
     /// Packs four signed side codes with wrapping shifts and additions, looks up that key, then key zero
     /// on a miss. Even a second miss reads the sentinel's texture, rotation and flip bytes.
-    #[port(address = 0x006C_6CF0, owner = "lotdeveloper", name = "cSC4LotDeveloper::GetBoundaryLotTexture")]
+    #[port(address = 0x006C_6CF0, owner = "lotdeveloper", name = "cSC4LotDeveloper::GetBoundaryLotTexture", naked)]
     pub unsafe extern "thiscall" fn fc4p_006c6cf0(this: *mut u8, sides: *const i32, texture: *mut u32, rotation: *mut u8, flip: *mut u8) -> u64 {
-        unsafe {
-            let mut key = sides.read_unaligned();
-            for i in 1..4 { key = key.wrapping_shl(4).wrapping_add(sides.add(i).read_unaligned()); }
-            let map = this.add(0xFC);
-            let mut node = core::ptr::null_mut();
-            find_boundary(map, &mut node, &key);
-            if node == map.cast::<*mut u8>().read_unaligned() {
-                key = 0;
-                find_boundary(map, &mut node, &key);
-            }
-            texture.write_unaligned(node.add(0x14).cast::<u32>().read_unaligned());
-            rotation.write(node.add(0x18).read());
-            let value = node.add(0x19).read();
-            flip.write(value);
-            (u64::from(rotation as u32) << 32) | u64::from((node as u32 & !255) | u32::from(value))
+        stack_entry!(boundary_texture, 16);
+    }
+}
+
+// The incoming sides slot becomes the packed key. The local node word is also the final ECX.
+unsafe extern "fastcall" fn boundary_texture(this: *mut u8, stack: *mut u32, _entry_edx: u32) -> u64 {
+    unsafe {
+        let sides = stack.add(1).read() as *const i32;
+        let texture = stack.add(2).read() as *mut u32;
+        let rotation = stack.add(3).read() as *mut u8;
+        let flip = stack.add(4).read() as *mut u8;
+        let mut key = sides.read_unaligned();
+        for i in 1..4 { key = key.wrapping_shl(4).wrapping_add(sides.add(i).read_unaligned()); }
+        let map = this.add(0xFC);
+        let output = stack.sub(1).cast::<*mut u8>();
+        let key_slot = stack.add(1).cast::<i32>();
+        key_slot.write(key);
+        find_boundary(map, output, key_slot);
+        let mut node = output.read();
+        if node == map.cast::<*mut u8>().read_unaligned() {
+            key_slot.write(0);
+            find_boundary(map, output, key_slot);
+            node = output.read();
         }
+        texture.write_unaligned(node.add(0x14).cast::<u32>().read_unaligned());
+        rotation.write(node.add(0x18).read());
+        let value = node.add(0x19).read();
+        flip.write(value);
+        (u64::from(rotation as u32) << 32) | u64::from((node as u32 & !255) | u32::from(value))
     }
 }
 

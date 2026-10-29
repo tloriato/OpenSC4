@@ -379,11 +379,8 @@ port! {
 
 pub const PORTS: &[Port] = &[
     fc4p_006c3e10::PORT,
-    fc4p_006c3e70::PORT,
     fc4p_006c3eb0::PORT,
-    fc4p_006c3f30::PORT,
     fc4p_006c3f80::PORT,
-    fc4p_006c3ff0::PORT,
     fc4p_006c4020::PORT,
     fc4p_006c40e0::PORT,
     fc4p_006c4150::PORT,

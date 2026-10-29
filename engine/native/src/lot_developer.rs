@@ -77,6 +77,19 @@ fn result(call: RawCall) -> u64 {
     (u64::from(call.edx) << 32) | u64::from(call.eax)
 }
 
+// Keep the caller's argument slots available to Rust bodies that use them as callback outputs.
+// The high scratch word also carries the original function's final ECX result.
+macro_rules! stack_entry {
+    ($body:ident, $pop:literal) => {
+        core::arch::naked_asm!(
+            "sub esp, 64", "mov [esp], ebp", "lea ebp, [esp + 64]",
+            "mov [esp + 60], ecx", "push edx", "mov edx, ebp", "call {body}",
+            "mov ecx, [esp + 60]", "mov ebp, [esp]", "add esp, 64",
+            concat!("ret ", stringify!($pop)), body = sym $body,
+        )
+    };
+}
+
 pub mod checks;
 pub mod business;
 pub mod altitudes;
