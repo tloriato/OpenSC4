@@ -50,6 +50,342 @@ game_fn! { fn pop_route_front(this: *mut u8) -> u64 = "thiscall" 0x0055_3720; }
 game_fn! { fn route_begin(this: *mut u8, output: *mut u32) -> *mut u32 = "thiscall" 0x006C_5FE0; }
 game_fn! { fn advance_route_iterator(this: *mut u32) = "thiscall" 0x0050_4C40; }
 game_fn! { fn assign_route_network(this: *mut u8, network: *mut u8) -> u64 = "thiscall" 0x0054_47B0; }
+game_data! { static path_cost_service: *mut u8 = 0x00B4_3D54; }
+game_data! { static path_cost_scale: f32 = 0x00B2_1D2C; }
+game_data! { static backward_coordinate: u32 = 0x00B2_2978; }
+game_data! { static backward_unit: f32 = 0x00B0_A0E8; }
+game_fn! { fn intersect_path_segment(this: *mut u8, first: *mut u32, last: *mut u32,
+point: *const f32, distance: f32, output: *mut f32, tolerance: f32) -> u64 = "thiscall" 0x0055_CFD0; }
+
+port! {
+    /// Chooses a nearby path, adding continuation and traffic costs when there is more than one candidate.
+    /// The two direction words retain their unused stack bytes. Multiple candidates replace the point
+    /// argument word with the most recently examined distance. AL reports whether a path was selected.
+    #[port(address = 0x0055_2520, owner = "shared", name = "ChooseNearbyPath", naked)]
+    pub unsafe extern "C" fn fc4p_00552520() {
+        core::arch::naked_asm!("push edx", "lea edx, [esp + 4]", "sub esp, 0x68",
+            "push [edx - 4]", "call {body}", "add esp, 0x6c", "ret 28",
+            body = sym choose_nearby_path);
+    }
+}
+
+unsafe extern "fastcall" fn choose_nearby_path(
+    this: *mut u8,
+    stack: *mut u32,
+    entry_edx: u32,
+) -> u64 {
+    // The reserved frame holds the original scratch words, including bytes never initialized here.
+    unsafe {
+        let iterator = read_unaligned(stack.add(1)) as *mut u8;
+        let network = pointer(iterator, 0);
+        let direction = read_unaligned(iterator.add(4));
+        let coordinate = read_unaligned(iterator.add(5));
+        let selector = u32::from(read_unaligned(iterator.add(7)) & 15);
+        let direction_word = stack.wrapping_offset(-19);
+        let coordinate_word = stack.wrapping_offset(-18);
+        let extra_cost = stack.wrapping_offset(-17);
+        write_unaligned(direction_word.cast::<u8>(), direction);
+        write_unaligned(coordinate_word.cast::<u8>(), coordinate);
+        write_unaligned(extra_cost, selector);
+        let service = virtual_integer(
+            network,
+            0xC4,
+            pointer(network, 0) as u32,
+            (entry_edx & !0xFF) | u32::from(direction),
+            &[],
+        )
+        .0 as *mut u8;
+        let flag = virtual_integer(this, 0x7C, service as u32, pointer(this, 0) as u32, &[0x40]).0;
+        let radius = if flag as u8 != 0 { 32.0f32 } else { 4.0f32 };
+        let point = read_unaligned(stack.add(5)) as *const f32;
+        let candidates = stack.wrapping_offset(-15);
+        let mut edx = virtual_integer(
+            service,
+            0x18,
+            pointer(service, 0) as u32,
+            selector,
+            &[
+                candidates as u32,
+                selector,
+                point as u32,
+                read_unaligned(coordinate_word),
+                read_unaligned(direction_word),
+                radius.to_bits(),
+            ],
+        )
+        .1;
+        let first = read_unaligned(candidates) as *mut u32;
+        let end = read_unaligned(candidates.add(1)) as *mut u32;
+        let output_id = read_unaligned(stack.add(6)) as *mut u32;
+        let output_distance = read_unaligned(stack.add(7)) as *mut f32;
+        let mut selected = false;
+        let mut ecx = end as u32;
+        if first != end {
+            if (end as u32).wrapping_sub(first as u32) & !3 == 4 {
+                let id = read_unaligned(first);
+                write_unaligned(output_id, id);
+                // The cleanup call receives ECX as the path query left it on this branch.
+                let result = query_path_registers(service, id);
+                ecx = result[1];
+                edx = result[2];
+                let position = pointer(result[0] as *mut u8, 0).cast::<f32>();
+                let x = subtract_float(
+                    F80::from_f32(read_unaligned(position)),
+                    read_unaligned(point),
+                );
+                let y = subtract_float(
+                    F80::from_f32(read_unaligned(position.add(1))),
+                    read_unaligned(point.add(1)),
+                );
+                let z = subtract_float(
+                    F80::from_f32(read_unaligned(position.add(2))),
+                    read_unaligned(point.add(2)),
+                );
+                write_unaligned(output_distance, ((y * y + z * z) + x * x).sqrt().to_f32());
+                selected = true;
+            } else {
+                write_unaligned(output_distance, f32::MAX);
+                write_unaligned(output_id, 0);
+                let mut current = first;
+                loop {
+                    let id = read_unaligned(current);
+                    let path =
+                        virtual_integer(service, 0x0C, id, pointer(service, 0) as u32, &[id, 0]).0
+                            as *mut u8;
+                    let position = pointer(path, 0).cast::<f32>();
+                    let z = subtract_float(
+                        F80::from_f32(read_unaligned(position.add(2))),
+                        read_unaligned(point.add(2)),
+                    );
+                    let y = subtract_float(
+                        F80::from_f32(read_unaligned(position.add(1))),
+                        read_unaligned(point.add(1)),
+                    );
+                    let x = subtract_float(
+                        F80::from_f32(read_unaligned(position)),
+                        read_unaligned(point),
+                    );
+                    write_unaligned(
+                        stack.add(5),
+                        ((x * x + y * y) + z * z).sqrt().to_f32().to_bits(),
+                    );
+                    let head = pointer(this, 0x214);
+                    let mut next = iterator;
+                    let mut block = read_unaligned(stack.add(2));
+                    let mut limit = read_unaligned(stack.add(3));
+                    edx = read_unaligned(stack.add(4));
+                    let mut accepted = true;
+                    if iterator != head {
+                        next = next.wrapping_add(12);
+                        if next as u32 == limit {
+                            block = read_unaligned((edx as *const u32).wrapping_add(1));
+                            edx = edx.wrapping_add(4);
+                            limit = block.wrapping_add(120);
+                            next = block as *mut u8;
+                        }
+                        if next != pointer(this, 0x214) {
+                            let result = virtual_integer(
+                                this,
+                                0x2A4,
+                                pointer(this, 0) as u32,
+                                edx,
+                                &[
+                                    next as u32,
+                                    block,
+                                    limit,
+                                    edx,
+                                    pointer(path, 4).wrapping_sub(12) as u32,
+                                    direction_word as u32,
+                                    extra_cost as u32,
+                                ],
+                            );
+                            edx = result.1;
+                            accepted = result.0 as u8 != 0;
+                            if accepted {
+                                let distance = add_float(
+                                    F80::from_f32(read_unaligned(extra_cost.cast::<f32>())),
+                                    f32::from_bits(read_unaligned(stack.add(5))),
+                                )
+                                .to_f32();
+                                write_unaligned(stack.add(5), distance.to_bits());
+                            }
+                        }
+                    }
+                    if accepted {
+                        let costs = read_unaligned(path_cost_service());
+                        let result = virtual_integer(
+                            costs,
+                            0x6C,
+                            pointer(iterator, 0) as u32,
+                            pointer(costs, 0) as u32,
+                            &[pointer(iterator, 0) as u32, id],
+                        );
+                        edx = result.1;
+                        let cost = add_float(
+                            multiply_float(
+                                F80::from_i32(i32::from(result.0 as u16)),
+                                read_unaligned(path_cost_scale()),
+                            ),
+                            f32::from_bits(read_unaligned(stack.add(5))),
+                        );
+                        if compare_float(cost, read_unaligned(path_zero())) & 0x100 == 0
+                            && compare_float(cost, read_unaligned(output_distance)) & 0x500 == 0x100
+                        {
+                            write_unaligned(output_distance, cost.to_f32());
+                            write_unaligned(output_id, id);
+                            selected = true;
+                        }
+                    }
+                    current = current.wrapping_add(1);
+                    if current == read_unaligned(candidates.add(1)) as *mut u32 {
+                        break;
+                    }
+                }
+            }
+        }
+        let mut eax = read_unaligned(candidates);
+        if eax != 0 {
+            let args = [eax];
+            let mut call = crate::abi::RawCall::new(crate::abi::Conv::Cdecl,
+                crate::abi::target(0x0090_CF63), ecx, &args);
+            call.eax = eax;
+            call.edx = edx;
+            crate::abi::call_raw(&mut call);
+            eax = call.eax;
+            edx = call.edx;
+        }
+        (u64::from(edx) << 32) | u64::from((eax & !0xFF) | u32::from(selected))
+    }
+}
+
+/// Queries the path vector while retaining the three integer registers for the following cleanup.
+unsafe fn query_path_registers(service: *mut u8, id: u32) -> [u32; 3] {
+    unsafe {
+        let target = crate::abi::vslot(service, 0x0C);
+        let (mut eax, mut ecx, mut edx) = (id, service as u32, pointer(service, 0) as u32);
+        core::arch::asm!("push 0", "push eax", "call {target}", target = in(reg) target,
+            inlateout("eax") eax, inlateout("ecx") ecx, inlateout("edx") edx, clobber_abi("C"));
+        [eax, ecx, edx]
+    }
+}
+
+port! {
+    /// Searches path segments backward, then extrapolates using the current segment or object direction.
+    /// Segment queries stop at the first nonzero AL. Fallback writes z, x, then y; EAX and EDX retain the
+    /// branch-specific pointer, count, or coordinate bits left by the calculation.
+    #[port(address = 0x0055_FE60, owner = "shared", name = "FindPointBehindPath")]
+    pub unsafe extern "fastcall" fn fc4p_0055fe60(this: *mut u8, entry_edx: u32,
+        point: *const f32, output: *mut f32, distance: f32, route: *mut u32) -> u64 {
+        unsafe {
+            let city = read_unaligned(route_city());
+            virtual_integer(city, 0xA0, pointer(city, 0) as u32, entry_edx, &[]);
+            let initial = read_unaligned(backward_coordinate());
+            let mut previous = [initial; 3];
+            let mut current = [read_unaligned(route), read_unaligned(route.add(1)),
+                read_unaligned(route.add(2)), read_unaligned(route.add(3))];
+            let mut vector = pointer(this, 0x1F8);
+            let mut edx = route as u32;
+            if !vector.is_null() {
+                let last = pointer(vector, 4).wrapping_sub(12).cast::<u32>();
+                for (i, v) in previous.iter_mut().enumerate() { *v = read_unaligned(last.add(i)); }
+                'paths: loop {
+                    let count = (pointer(vector, 4) as u32).wrapping_sub(pointer(vector, 0) as u32) as i32 / 12;
+                    let mut index = (count as u32).wrapping_sub(2);
+                    loop {
+                        let begin = pointer(vector, 0);
+                        let count = (pointer(vector, 4) as u32).wrapping_sub(begin as u32) as i32 / 12;
+                        if index < count as u32 {
+                            let position = begin.wrapping_add(index.wrapping_mul(12) as usize).cast::<u32>();
+                            let mut first = [read_unaligned(position), read_unaligned(position.add(1)),
+                                read_unaligned(position.add(2))];
+                            let result = intersect_path_segment(this, first.as_mut_ptr(), previous.as_mut_ptr(),
+                                point, distance, output, f32::from_bits(0x3DCC_CCCD));
+                            if result as u8 != 0 { return result; }
+                            previous = first;
+                        }
+                        if index == 0 { break; }
+                        index = index.wrapping_sub(1);
+                    }
+                    // The first scan starts at begin; advancing backward from it wraps to end once.
+                    if current[0] == read_unaligned(route) {
+                        for (i, v) in current.iter_mut().enumerate() { *v = read_unaligned(route.add(4 + i)); }
+                    } else {
+                        if current[0] == current[1] {
+                            current[3] = current[3].wrapping_sub(4);
+                            current[1] = read_unaligned(current[3] as *const u32);
+                            current[0] = current[1].wrapping_add(128);
+                            current[2] = current[0];
+                        }
+                        current[0] = current[0].wrapping_sub(8);
+                    }
+                    edx = current[1];
+                    if current[0] == read_unaligned(route) { break; }
+                    let offset = (current[0].wrapping_sub(current[1]) as i32 >> 3).wrapping_sub(1);
+                    let mut at = current[0].wrapping_sub(8);
+                    if !(0..16).contains(&offset) {
+                        let block_offset = if offset > 0 { offset / 16 } else { (offset.wrapping_add(1) / 16).wrapping_sub(1) };
+                        let node = current[3].wrapping_add(block_offset.wrapping_mul(4) as u32);
+                        edx = read_unaligned(node as *const u32);
+                        at = edx.wrapping_add(offset.wrapping_sub(block_offset.wrapping_mul(16)).wrapping_mul(8) as u32);
+                    }
+                    let network = pointer(at as *mut u8, 0);
+                    if network.is_null() { break 'paths; }
+                    let result = virtual_integer(network, 0xC4, at, pointer(network, 0) as u32, &[]);
+                    edx = result.1;
+                    let service = result.0 as *mut u8;
+                    if service.is_null() { break 'paths; }
+                    let id = read_unaligned((at as *const u32).add(1));
+                    let result = virtual_integer(service, 0x0C, service as u32, pointer(service, 0) as u32, &[id, 0]);
+                    edx = result.1;
+                    vector = result.0 as *mut u8;
+                    if vector.is_null() { break 'paths; }
+                }
+            }
+            vector = pointer(this, 0x1F8);
+            let index = read_unaligned(this.add(0x1FC).cast::<i32>());
+            let mut products = None;
+            let mut degenerate = false;
+            if !vector.is_null() && index >= 0 {
+                let count = (pointer(vector, 4) as u32).wrapping_sub(pointer(vector, 0) as u32) as i32 / 12;
+                edx = (count as u32).wrapping_sub(1);
+                if (index as u32) < edx {
+                    let begin = pointer(vector, 0);
+                    edx = begin as u32;
+                    let position = begin.wrapping_add(index.wrapping_mul(12) as usize).cast::<f32>();
+                    let x = subtract_float(F80::from_f32(read_unaligned(position.add(3))), read_unaligned(position)).to_f32();
+                    let y = subtract_float(F80::from_f32(read_unaligned(position.add(4))), read_unaligned(position.add(1)));
+                    let z = subtract_float(F80::from_f32(read_unaligned(position.add(5))), read_unaligned(position.add(2)));
+                    let stored_z = z.to_f32();
+                    let length = ((multiply_float(z, stored_z) + y * y)
+                        + multiply_float(F80::from_f32(x), x)).sqrt();
+                    degenerate = compare_float(length, read_unaligned(path_epsilon())) & 0x100 != 0;
+                    if !degenerate {
+                        let scale = divide_from_float(length, read_unaligned(backward_unit()));
+                        let x = F80::from_f32(x) * scale;
+                        let y = (y * scale).to_f32();
+                        let z = (F80::from_f32(stored_z) * scale).to_f32();
+                        products = Some((multiply_float(x, distance),
+                            multiply_float(F80::from_f32(y), distance).to_f32(),
+                            multiply_float(F80::from_f32(z), distance).to_f32()));
+                    }
+                }
+            }
+            let (x, y, z) = products.unwrap_or_else(|| (
+                multiply_float(F80::from_f32(distance), read_unaligned(this.add(0x58).cast())),
+                multiply_float(F80::from_f32(distance), read_unaligned(this.add(0x5C).cast())).to_f32(),
+                multiply_float(F80::from_f32(distance), read_unaligned(this.add(0x60).cast())).to_f32(),
+            ));
+            let x = subtract_from_float(x, read_unaligned(point));
+            let y = subtract_float(F80::from_f32(read_unaligned(point.add(1))), y);
+            let z = subtract_float(F80::from_f32(read_unaligned(point.add(2))), z).to_f32();
+            write_unaligned(output.add(2), z);
+            write_unaligned(output, x.to_f32());
+            write_unaligned(output.add(1), y.to_f32());
+            let eax = if degenerate { edx = z.to_bits(); point as u32 } else { z.to_bits() };
+            (u64::from(edx) << 32) | u64::from(eax & !0xFF)
+        }
+    }
+}
 
 port! {
     /// Consumes an explicit route cell and chooses an accepting network and exit for the next node.
@@ -531,6 +867,7 @@ macro_rules! stored_float_op {
     };
 }
 stored_float_op!(subtract_float, "fsub dword ptr [{operand}]");
+stored_float_op!(subtract_from_float, "fsubr dword ptr [{operand}]");
 stored_float_op!(multiply_float, "fmul dword ptr [{operand}]");
 stored_float_op!(add_float, "fadd dword ptr [{operand}]");
 stored_float_op!(divide_from_float, "fdivr dword ptr [{operand}]");
@@ -1157,6 +1494,7 @@ port! {
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
     fc4p_005504e0::PORT,
+    fc4p_00552520::PORT,
     fc4p_005527e0::PORT,
     fc4p_00553aa0::PORT,
     fc4p_00561910::PORT,
@@ -1164,6 +1502,7 @@ pub const PORTS: &[Port] = &[
     fc4p_0055b7c0::PORT,
     fc4p_0055ca60::PORT,
     fc4p_0055faf0::PORT,
+    fc4p_0055fe60::PORT,
     fc4p_00560250::PORT,
     fc4p_005614b0::PORT,
     fc4p_00565580::PORT,
@@ -1184,6 +1523,985 @@ pub const PORTS: &[Port] = &[
     fc4p_005a6290::PORT,
     fc4p_005ac070::PORT,
 ];
+
+#[cfg(test)]
+mod choose_path_tests {
+    use super::*;
+    use crate::abi::{Conv, RawCall};
+    use crate::testing::{fake, fake_data, Fake, GameFpu, Object};
+    use std::cell::RefCell;
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum Event {
+        Service(usize, u32),
+        Flag(u32),
+        Query(u32, u32, u32, u32, u32),
+        Path(u32, u32),
+        Continue([u32; 4], usize, u32),
+        Cost(usize, u32),
+        Free(usize),
+    }
+    #[derive(Default)]
+    struct State {
+        events: Vec<Event>,
+        service: usize,
+        ids: Vec<u32>,
+        paths: Vec<(u32, usize)>,
+        special: bool,
+        costs: Vec<u32>,
+        continuations: Vec<Option<f32>>,
+        at: usize,
+    }
+    thread_local! { static STATE: RefCell<State> = RefCell::new(State::default()); }
+    fn log(e: Event) {
+        STATE.with(|s| s.borrow_mut().events.push(e));
+    }
+    fn events() -> Vec<Event> {
+        STATE.with(|s| core::mem::take(&mut s.borrow_mut().events))
+    }
+    extern "fastcall" fn service(this: *mut u8, edx: u32) -> u64 {
+        log(Event::Service(this as usize, edx));
+        (0x1234_5678u64 << 32) | STATE.with(|s| s.borrow().service as u64)
+    }
+    extern "thiscall" fn flag(_this: *mut u8, mask: u32) -> u32 {
+        log(Event::Flag(mask));
+        STATE.with(|s| u32::from(s.borrow().special))
+    }
+    extern "fastcall" fn query(
+        _this: *mut u8,
+        edx: u32,
+        result: *mut u32,
+        selector: u32,
+        _point: *const f32,
+        coordinate: u32,
+        direction: u32,
+        radius: f32,
+    ) -> u64 {
+        log(Event::Query(
+            edx,
+            selector,
+            coordinate,
+            direction,
+            radius.to_bits(),
+        ));
+        STATE.with(|s| {
+            let mut s = s.borrow_mut();
+            let begin = if s.ids.capacity() == 0 {
+                core::ptr::null_mut()
+            } else {
+                s.ids.as_mut_ptr()
+            };
+            unsafe {
+                result.write(begin as u32);
+                result.add(1).write(begin.wrapping_add(s.ids.len()) as u32);
+                result
+                    .add(2)
+                    .write(begin.wrapping_add(s.ids.capacity()) as u32);
+            }
+        });
+        0x1357_2468_ABCD_EF00
+    }
+    extern "thiscall" fn path(_this: *mut u8, id: u32, zero: u32) -> u64 {
+        log(Event::Path(id, zero));
+        let p = STATE.with(|s| s.borrow().paths.iter().find(|(i, _)| *i == id).unwrap().1);
+        (0x2233_4455u64 << 32) | p as u64
+    }
+    extern "thiscall" fn continuation(
+        _this: *mut u8,
+        a: u32,
+        b: u32,
+        c: u32,
+        d: u32,
+        endpoint: *mut u8,
+        direction: *mut u32,
+        extra: *mut f32,
+    ) -> u64 {
+        log(Event::Continue([a, b, c, d], endpoint as usize, unsafe {
+            direction.read()
+        }));
+        let value = STATE.with(|s| {
+            let mut s = s.borrow_mut();
+            let value = s.continuations[s.at];
+            s.at += 1;
+            value
+        });
+        if let Some(cost) = value {
+            unsafe {
+                extra.write(cost);
+                direction.write(0x8765_4321);
+            }
+        }
+        0x3344_5566_AABB_CC00 | u64::from(value.is_some())
+    }
+    extern "thiscall" fn cost(_this: *mut u8, network: *mut u8, id: u32) -> u64 {
+        log(Event::Cost(network as usize, id));
+        let cost = STATE.with(|s| {
+            let s = s.borrow();
+            s.costs[s.ids.iter().position(|&i| i == id).unwrap()]
+        });
+        (0x4455_6677u64 << 32) | u64::from(cost)
+    }
+    extern "C" fn delete(p: *mut u8) -> u64 {
+        log(Event::Free(p as usize));
+        0x5566_7788_AABB_CCDD
+    }
+    #[unsafe(naked)]
+    unsafe extern "C" fn seeded_entry() {
+        core::arch::naked_asm!("mov dword ptr [esp - 0x4c], 0xa1b2c3d4",
+            "mov dword ptr [esp - 0x48], 0xe5f60718", "jmp {port}", port = sym fc4p_00552520);
+    }
+    struct Fixture {
+        owner: Object,
+        network: Box<[usize; 1]>,
+        _service: Box<[usize; 1]>,
+        _cost: Box<[usize; 1]>,
+        _tables: Vec<Box<[usize]>>,
+        _globals: Box<[u32; 3]>,
+        _fakes: Vec<Fake>,
+    }
+    impl Fixture {
+        fn new(ids: Vec<u32>) -> Self {
+            STATE.with(|s| {
+                *s.borrow_mut() = State {
+                    costs: vec![0; ids.len()],
+                    ids,
+                    ..State::default()
+                }
+            });
+            let mut ot = vec![0usize; 170].into_boxed_slice();
+            ot[0x7C / 4] = flag as *const () as usize;
+            ot[0x2A4 / 4] = continuation as *const () as usize;
+            let mut nt = vec![0usize; 50].into_boxed_slice();
+            nt[49] = service as *const () as usize;
+            let mut st = vec![0usize; 7].into_boxed_slice();
+            st[3] = path as *const () as usize;
+            st[6] = query as *const () as usize;
+            let mut ct = vec![0usize; 28].into_boxed_slice();
+            ct[27] = cost as *const () as usize;
+            let mut owner = Object::new(0x230);
+            unsafe {
+                owner.ptr().cast::<usize>().write(ot.as_ptr() as usize);
+            }
+            let network = Box::new([nt.as_ptr() as usize]);
+            let service = Box::new([st.as_ptr() as usize]);
+            let cost = Box::new([ct.as_ptr() as usize]);
+            STATE.with(|s| s.borrow_mut().service = service.as_ptr() as usize);
+            let mut globals = Box::new([cost.as_ptr() as u32, 2.0f32.to_bits(), 0]);
+            let fakes = vec![
+                fake(0x0090_CF63, delete as *const () as usize),
+                fake_data(0x00B4_3D54, (&mut globals[0] as *mut u32).cast()),
+                fake_data(0x00B2_1D2C, (&mut globals[1] as *mut u32).cast()),
+                fake_data(0x00A8_1054, (&mut globals[2] as *mut u32).cast()),
+            ];
+            Self {
+                owner,
+                network,
+                _service: service,
+                _cost: cost,
+                _tables: vec![ot, nt, st, ct],
+                _globals: globals,
+                _fakes: fakes,
+            }
+        }
+        fn invoke(
+            &mut self,
+            iterator: &mut [u32; 3],
+            links: [u32; 3],
+            point: &mut [f32; 3],
+            id: &mut u32,
+            distance: &mut f32,
+        ) -> (u32, u32, u32) {
+            let mut args = [
+                iterator.as_mut_ptr() as u32,
+                links[0],
+                links[1],
+                links[2],
+                point.as_mut_ptr() as u32,
+                id as *mut u32 as u32,
+                distance as *mut f32 as u32,
+            ];
+            let mut call = RawCall::new(
+                Conv::Thiscall,
+                seeded_entry as *const () as usize,
+                self.owner.ptr() as u32,
+                &args,
+            );
+            call.edx = 0x1234_ABCD;
+            call.args = args.as_mut_ptr();
+            unsafe {
+                super::tests::call_with_stack(&mut call);
+            }
+            (call.eax, call.edx, args[4])
+        }
+        fn prefix(&self) -> Vec<Event> {
+            vec![
+                Event::Service(self.network.as_ptr() as usize, 0x1234_AB12),
+                Event::Flag(0x40),
+                Event::Query(
+                    10,
+                    10,
+                    0xE5F6_0734,
+                    0xA1B2_C312,
+                    if STATE.with(|s| s.borrow().special) {
+                        32.0f32
+                    } else {
+                        4.0f32
+                    }
+                    .to_bits(),
+                ),
+            ]
+        }
+    }
+
+    #[test]
+    fn empty_candidates_preserve_outputs_and_free_only_nonnull_storage() {
+        let _fpu = GameFpu::new();
+        for allocated in [false, true] {
+            let ids = if allocated {
+                Vec::with_capacity(2)
+            } else {
+                Vec::new()
+            };
+            let mut f = Fixture::new(ids);
+            let mut iterator = [f.network.as_ptr() as u32, 0xFA00_3412, 0];
+            let mut point = [1., 2., 3.];
+            let (mut id, mut distance) = (0xDEAD_BEEF, -123.0);
+            let result = f.invoke(&mut iterator, [0; 3], &mut point, &mut id, &mut distance);
+            assert_eq!((id, distance), (0xDEAD_BEEF, -123.0));
+            assert_eq!(result.2, point.as_ptr() as u32);
+            let mut expected = f.prefix();
+            if allocated {
+                expected.push(Event::Free(
+                    STATE.with(|s| s.borrow().ids.as_ptr() as usize),
+                ));
+            }
+            assert_eq!(events(), expected);
+            assert_eq!(
+                (result.0, result.1),
+                if allocated {
+                    (0xAABB_CC00, 0x5566_7788)
+                } else {
+                    (0, 0x1357_2468)
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn single_candidate_uses_raw_distance_and_skips_costs_even_for_nan() {
+        let _fpu = GameFpu::new();
+        for p in [[3.0f32, 4., 12.], [f32::NAN, 0., 0.]] {
+            let mut f = Fixture::new(vec![19]);
+            STATE.with(|s| s.borrow_mut().special = true);
+            let mut position = p;
+            let mut path = [position.as_mut_ptr() as u32, 0, 0];
+            STATE.with(|s| s.borrow_mut().paths = vec![(19, path.as_mut_ptr() as usize)]);
+            let mut iterator = [f.network.as_ptr() as u32, 0xFA00_3412, 0];
+            let mut origin = [0.; 3];
+            let mut id = 0;
+            let mut distance = 0.;
+            let result = f.invoke(&mut iterator, [0; 3], &mut origin, &mut id, &mut distance);
+            assert_eq!(
+                (result.0, result.1, result.2),
+                (0xAABB_CC01, 0x5566_7788, origin.as_ptr() as u32)
+            );
+            assert_eq!(id, 19);
+            if p[0].is_nan() {
+                assert!(distance.is_nan());
+            } else {
+                assert_eq!(distance, 13.);
+            }
+            let mut expected = f.prefix();
+            expected.extend([
+                Event::Path(19, 0),
+                Event::Free(STATE.with(|s| s.borrow().ids.as_ptr() as usize)),
+            ]);
+            assert_eq!(events(), expected);
+        }
+    }
+
+    #[test]
+    fn multiple_candidates_add_unsigned_short_costs_and_keep_first_equal_distance() {
+        let _fpu = GameFpu::new();
+        let mut f = Fixture::new(vec![11, 12, 13, 14]);
+        let mut positions = [
+            [3.0f32, 4., 0.],
+            [1., 0., 0.],
+            [f32::NAN, 0., 0.],
+            [0., 0., 0.],
+        ];
+        let mut paths: Vec<_> = positions
+            .iter_mut()
+            .map(|p| [p.as_mut_ptr() as u32, 0, 0])
+            .collect();
+        STATE.with(|s| {
+            let mut s = s.borrow_mut();
+            s.costs = vec![0, 0xABCD_0002, 0, 0xFFFF];
+            s.paths = paths
+                .iter_mut()
+                .enumerate()
+                .map(|(i, p)| (11 + i as u32, p.as_mut_ptr() as usize))
+                .collect();
+        });
+        let mut iterator = [f.network.as_ptr() as u32, 0xFA00_3412, 0];
+        unsafe {
+            put_pointer(f.owner.ptr(), 0x214, iterator.as_mut_ptr().cast());
+        }
+        let mut point = [0.; 3];
+        let mut id = 0;
+        let mut distance = 0.;
+        let before = unsafe { core::slice::from_raw_parts(f.owner.ptr(), 0x230).to_vec() };
+        let result = f.invoke(
+            &mut iterator,
+            [0x1111, 0x2222, 0x3333],
+            &mut point,
+            &mut id,
+            &mut distance,
+        );
+        assert_eq!((id, distance, result.2), (11, 5., 0));
+        assert_eq!((result.0, result.1), (0xAABB_CC01, 0x5566_7788));
+        let mut expected = f.prefix();
+        for i in 11..15 {
+            expected.extend([
+                Event::Path(i, 0),
+                Event::Cost(f.network.as_ptr() as usize, i),
+            ]);
+        }
+        expected.push(Event::Free(
+            STATE.with(|s| s.borrow().ids.as_ptr() as usize),
+        ));
+        assert_eq!(events(), expected);
+        assert_eq!(
+            unsafe { core::slice::from_raw_parts(f.owner.ptr(), 0x230) },
+            before
+        );
+    }
+
+    #[test]
+    fn continuation_wraps_blocks_rejects_failed_paths_and_keeps_scratch_direction_changes() {
+        let _fpu = GameFpu::new();
+        let mut f = Fixture::new(vec![7, 8]);
+        let mut positions = [[3.0f32, 4., 0.], [0., 0., 0.]];
+        let mut paths: Vec<_> = positions
+            .iter_mut()
+            .map(|p| {
+                [
+                    p.as_mut_ptr() as u32,
+                    p.as_mut_ptr().wrapping_add(3) as u32,
+                    0,
+                ]
+            })
+            .collect();
+        STATE.with(|s| {
+            let mut s = s.borrow_mut();
+            s.paths = paths
+                .iter_mut()
+                .enumerate()
+                .map(|(i, p)| (7 + i as u32, p.as_mut_ptr() as usize))
+                .collect();
+            s.continuations = vec![Some(-10.), None];
+        });
+        let mut iterator = [f.network.as_ptr() as u32, 0xFA00_3412, 0];
+        let mut next_block = [0u32; 30];
+        let mut map = [0, next_block.as_mut_ptr() as u32];
+        let mut point = [0.; 3];
+        let mut id = 0;
+        let mut distance = 0.;
+        let block = iterator.as_ptr() as u32;
+        let limit = iterator.as_ptr().wrapping_add(3) as u32;
+        let result = f.invoke(
+            &mut iterator,
+            [block, limit, map.as_mut_ptr() as u32],
+            &mut point,
+            &mut id,
+            &mut distance,
+        );
+        assert_eq!((result.0, id, distance), (0xAABB_CC00, 0, f32::MAX));
+        let next = next_block.as_mut_ptr() as u32;
+        let mut expected = f.prefix();
+        expected.extend([
+            Event::Path(7, 0),
+            Event::Continue(
+                [next, next, next + 120, map.as_ptr().wrapping_add(1) as u32],
+                positions[0].as_ptr() as usize,
+                0xA1B2_C312,
+            ),
+            Event::Cost(f.network.as_ptr() as usize, 7),
+            Event::Path(8, 0),
+            Event::Continue(
+                [next, next, next + 120, map.as_ptr().wrapping_add(1) as u32],
+                positions[1].as_ptr() as usize,
+                0x8765_4321,
+            ),
+            Event::Free(STATE.with(|s| s.borrow().ids.as_ptr() as usize)),
+        ]);
+        assert_eq!(events(), expected);
+    }
+
+    #[test]
+    fn last_iterator_skips_continuation_and_zero_cost_is_eligible() {
+        let _fpu = GameFpu::new();
+        let mut f = Fixture::new(vec![7, 8]);
+        let mut position = [0.0f32; 3];
+        let mut path = [position.as_mut_ptr() as u32, 0, 0];
+        STATE.with(|s| {
+            s.borrow_mut().paths = vec![
+                (7, path.as_mut_ptr() as usize),
+                (8, path.as_mut_ptr() as usize),
+            ]
+        });
+        let mut iterator = [f.network.as_ptr() as u32, 0xFA00_3412, 0];
+        unsafe {
+            put_pointer(
+                f.owner.ptr(),
+                0x214,
+                iterator.as_mut_ptr().wrapping_add(3).cast(),
+            );
+        }
+        let mut point = [0.; 3];
+        let mut id = 0;
+        let mut distance = 1.;
+        let result = f.invoke(&mut iterator, [0; 3], &mut point, &mut id, &mut distance);
+        assert_eq!((id, distance, result.0), (7, 0., 0xAABB_CC01));
+        assert!(!events().iter().any(|e| matches!(e, Event::Continue(..))));
+    }
+
+    #[test]
+    fn distance_sum_order_differs_between_single_and_multiple_candidates() {
+        let _fpu = GameFpu::new();
+        for (ids, expected) in [(vec![7], 0x460C_FC35), (vec![7, 8], 0x460C_FC36)] {
+            let mut f = Fixture::new(ids);
+            let mut position = [9014.274f32, 305.89984, 254.4586];
+            let mut path = [position.as_mut_ptr() as u32, 0, 0];
+            STATE.with(|s| {
+                s.borrow_mut().paths = vec![
+                    (7, path.as_mut_ptr() as usize),
+                    (8, path.as_mut_ptr() as usize),
+                ]
+            });
+            let mut iterator = [f.network.as_ptr() as u32, 0xFA00_3412, 0];
+            unsafe {
+                put_pointer(f.owner.ptr(), 0x214, iterator.as_mut_ptr().cast());
+            }
+            let mut point = [0.; 3];
+            let mut id = 0;
+            let mut distance = 0.;
+            let sentinel = 123.25f64;
+            let mut restored = 0f64;
+            unsafe {
+                core::arch::asm!("fld qword ptr [{p}]", p = in(reg) &sentinel, out("st(0)") _);
+            }
+            let before = super::tests::float_environment();
+            f.invoke(&mut iterator, [0; 3], &mut point, &mut id, &mut distance);
+            let after = super::tests::float_environment();
+            unsafe {
+                core::arch::asm!("fstp qword ptr [{p}]", p = in(reg) &mut restored, out("st(0)") _);
+            }
+            assert_eq!(distance.to_bits(), expected);
+            assert_eq!(before, after);
+            assert_eq!(restored.to_bits(), sentinel.to_bits());
+            events();
+        }
+    }
+
+    #[unsafe(naked)]
+    unsafe extern "C" fn cleanup_registers() {
+        core::arch::naked_asm!("mov eax, ecx", "ret");
+    }
+    #[unsafe(naked)]
+    unsafe extern "C" fn path_registers() {
+        core::arch::naked_asm!("push [esp + 8]", "push [esp + 8]", "call {body}",
+            "mov ecx, 0x89abcdef", "ret 8", body = sym path);
+    }
+
+    #[test]
+    fn cleanup_receives_the_branch_specific_ecx_and_edx() {
+        let _fpu = GameFpu::new();
+        for count in 0..3 {
+            let mut ids = Vec::with_capacity(3);
+            ids.extend(7..7 + count);
+            let mut f = Fixture::new(ids);
+            f._tables[2][3] = path_registers as *const () as usize;
+            let _cleanup = fake(0x0090_CF63, cleanup_registers as *const () as usize);
+            let mut position = [0.0f32; 3];
+            let mut path = [position.as_mut_ptr() as u32, 0, 0];
+            STATE.with(|s| s.borrow_mut().paths = vec![(7, path.as_mut_ptr() as usize), (8, path.as_mut_ptr() as usize)]);
+            let mut iterator = [f.network.as_ptr() as u32, 0xFA00_3412, 0];
+            unsafe { put_pointer(f.owner.ptr(), 0x214, iterator.as_mut_ptr().cast()); }
+            let mut point = [0.; 3]; let mut id = 0; let mut distance = 0.;
+            let result = f.invoke(&mut iterator, [0; 3], &mut point, &mut id, &mut distance);
+            let end = STATE.with(|s| s.borrow().ids.as_ptr().wrapping_add(count as usize) as u32);
+            let expected_ecx = if count == 1 { 0x89AB_CDEF } else { end };
+            let expected_edx = match count { 0 => 0x1357_2468, 1 => 0x2233_4455, _ => 0x4455_6677 };
+            assert_eq!((result.0, result.1), ((expected_ecx & !0xFF) | u32::from(count != 0), expected_edx));
+            events();
+        }
+    }
+}
+
+#[cfg(test)]
+mod backward_path_tests {
+    use super::*;
+    use crate::testing::{fake, fake_data, Fake, GameFpu, Object};
+    use std::cell::RefCell;
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum Event {
+        Manager(usize),
+        Segment([u32; 3], [u32; 3], u32, u32),
+        Service(usize),
+        Path(u32, u32),
+    }
+    #[derive(Default)]
+    struct State {
+        events: Vec<Event>,
+        accept: usize,
+        calls: usize,
+        service: usize,
+        paths: Vec<(u32, usize)>,
+        mutate_first: bool,
+    }
+    thread_local! { static STATE: RefCell<State> = RefCell::new(State::default()); }
+    fn log(e: Event) {
+        STATE.with(|s| s.borrow_mut().events.push(e));
+    }
+    fn events() -> Vec<Event> {
+        STATE.with(|s| core::mem::take(&mut s.borrow_mut().events))
+    }
+    extern "thiscall" fn manager(this: *mut u8) -> u32 {
+        log(Event::Manager(this as usize));
+        0xDEAD_BEEF
+    }
+    extern "thiscall" fn segment(
+        _this: *mut u8,
+        first: *mut u32,
+        last: *mut u32,
+        _point: *const f32,
+        distance: f32,
+        output: *mut f32,
+        tolerance: f32,
+    ) -> u64 {
+        let a = unsafe { [first.read(), first.add(1).read(), first.add(2).read()] };
+        let b = unsafe { [last.read(), last.add(1).read(), last.add(2).read()] };
+        log(Event::Segment(
+            a,
+            b,
+            distance.to_bits(),
+            tolerance.to_bits(),
+        ));
+        let accepted = STATE.with(|s| {
+            let mut s = s.borrow_mut();
+            s.calls += 1;
+            if s.mutate_first {
+                unsafe {
+                    first.write(99.0f32.to_bits());
+                }
+            }
+            s.calls == s.accept
+        });
+        if accepted {
+            unsafe {
+                output.write(123.);
+                output.add(1).write(456.);
+                output.add(2).write(789.);
+            }
+        }
+        0x7654_3210_ABCD_EF00 | if accepted { 0x77 } else { 0 }
+    }
+    extern "thiscall" fn service(this: *mut u8) -> u64 {
+        log(Event::Service(this as usize));
+        (0x1122_3344u64 << 32) | STATE.with(|s| s.borrow().service as u64)
+    }
+    extern "thiscall" fn path(_this: *mut u8, id: u32, zero: u32) -> u64 {
+        log(Event::Path(id, zero));
+        (0x2233_4455u64 << 32)
+            | STATE.with(|s| {
+                s.borrow()
+                    .paths
+                    .iter()
+                    .find(|(i, _)| *i == id)
+                    .map_or(0, |(_, p)| *p as u64)
+            })
+    }
+    struct Fixture {
+        owner: Object,
+        city: Box<[usize; 1]>,
+        network: Box<[usize; 1]>,
+        _service: Box<[usize; 1]>,
+        _tables: Vec<Box<[usize]>>,
+        _globals: Box<[u32; 4]>,
+        _fakes: Vec<Fake>,
+    }
+    impl Fixture {
+        fn new() -> Self {
+            STATE.with(|s| *s.borrow_mut() = State::default());
+            let mut ct = vec![0usize; 41].into_boxed_slice();
+            ct[40] = manager as *const () as usize;
+            let mut nt = vec![0usize; 50].into_boxed_slice();
+            nt[49] = service as *const () as usize;
+            let mut st = vec![0usize; 4].into_boxed_slice();
+            st[3] = path as *const () as usize;
+            let city = Box::new([ct.as_ptr() as usize]);
+            let network = Box::new([nt.as_ptr() as usize]);
+            let service = Box::new([st.as_ptr() as usize]);
+            STATE.with(|s| s.borrow_mut().service = service.as_ptr() as usize);
+            let mut globals = Box::new([
+                city.as_ptr() as u32,
+                0u32,
+                1.0f32.to_bits(),
+                0.00001f32.to_bits(),
+            ]);
+            let fakes = vec![
+                fake(0x0055_CFD0, segment as *const () as usize),
+                fake_data(0x00B4_3CEC, (&mut globals[0] as *mut u32).cast()),
+                fake_data(0x00B2_2978, (&mut globals[1] as *mut u32).cast()),
+                fake_data(0x00B0_A0E8, (&mut globals[2] as *mut u32).cast()),
+                fake_data(0x00A9_BCD8, (&mut globals[3] as *mut u32).cast()),
+            ];
+            let mut owner = Object::new(0x200);
+            unsafe {
+                for (i, v) in [1.0f32, 2., 3.].iter().enumerate() {
+                    write_unaligned(owner.ptr().add(0x58 + i * 4).cast(), *v);
+                }
+            }
+            Self {
+                owner,
+                city,
+                network,
+                _service: service,
+                _tables: vec![ct, nt, st],
+                _globals: globals,
+                _fakes: fakes,
+            }
+        }
+        fn vector(&mut self, vector: &mut [u32; 3], index: i32) {
+            unsafe {
+                put_pointer(self.owner.ptr(), 0x1F8, vector.as_mut_ptr().cast());
+                write_unaligned(self.owner.ptr().add(0x1FC).cast(), index);
+            }
+        }
+        unsafe fn invoke(
+            &mut self,
+            point: *const f32,
+            output: *mut f32,
+            distance: f32,
+            route: &mut [u32; 8],
+        ) -> u64 {
+            unsafe {
+                fc4p_0055fe60(
+                    self.owner.ptr(),
+                    0x9876_5432,
+                    point,
+                    output,
+                    distance,
+                    route.as_mut_ptr(),
+                )
+            }
+        }
+    }
+    fn vector(points: &mut [[f32; 3]]) -> [u32; 3] {
+        [
+            points.as_mut_ptr() as u32,
+            points.as_mut_ptr().wrapping_add(points.len()) as u32,
+            0xA5A5_A5A5,
+        ]
+    }
+    fn segment_event(a: [f32; 3], b: [f32; 3], distance: f32) -> Event {
+        Event::Segment(
+            a.map(f32::to_bits),
+            b.map(f32::to_bits),
+            distance.to_bits(),
+            0x3DCC_CCCD,
+        )
+    }
+
+    #[test]
+    fn missing_path_extrapolates_direction_with_overlapping_output_and_preserves_environment() {
+        let _fpu = GameFpu::new();
+        let mut f = Fixture::new();
+        let mut route = [0u32; 8];
+        let mut point = [10.0f32, 20., 30.];
+        let before = super::tests::float_environment();
+        let result = unsafe { f.invoke(point.as_ptr(), point.as_mut_ptr(), 2., &mut route) };
+        assert_eq!(point, [8., 16., 24.]);
+        assert_eq!(
+            result,
+            (u64::from(route.as_ptr() as u32) << 32) | 0x41C0_0000
+        );
+        assert_eq!(events(), [Event::Manager(f.city.as_ptr() as usize)]);
+        assert_eq!(before, super::tests::float_environment());
+    }
+
+    #[test]
+    fn success_stops_at_first_segment_keeps_all_return_bits_and_observes_changed_endpoint() {
+        let _fpu = GameFpu::new();
+        let mut f = Fixture::new();
+        let mut points = [[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]];
+        let mut v = vector(&mut points);
+        f.vector(&mut v, 0);
+        let mut route = [0u32; 8];
+        let point = [10., 20., 30.];
+        let mut output = [0.; 3];
+        STATE.with(|s| {
+            let mut s = s.borrow_mut();
+            s.accept = 2;
+            s.mutate_first = true;
+        });
+        let before = unsafe { core::slice::from_raw_parts(f.owner.ptr(), 0x200).to_vec() };
+        let result = unsafe { f.invoke(point.as_ptr(), output.as_mut_ptr(), 2., &mut route) };
+        assert_eq!(result, 0x7654_3210_ABCD_EF77);
+        assert_eq!(output, [123., 456., 789.]);
+        assert_eq!(
+            events(),
+            [
+                Event::Manager(f.city.as_ptr() as usize),
+                segment_event(points[1], points[2], 2.),
+                segment_event(points[0], [99., 5., 6.], 2.)
+            ]
+        );
+        assert_eq!(
+            unsafe { core::slice::from_raw_parts(f.owner.ptr(), 0x200) },
+            before
+        );
+    }
+
+    #[test]
+    fn fallback_retains_each_invalid_index_register_result() {
+        let _fpu = GameFpu::new();
+        for index in [-1, 1, 9] {
+            let mut f = Fixture::new();
+            let mut points = [[0., 0., 0.], [3., 4., 0.]];
+            let mut v = vector(&mut points);
+            f.vector(&mut v, index);
+            let mut route = [0u32, 0x1357_2468, 0, 0, 0, 0, 0, 0];
+            let point = [10., 20., 30.];
+            let mut output = [0.; 3];
+            let result = unsafe { f.invoke(point.as_ptr(), output.as_mut_ptr(), 2., &mut route) };
+            assert_eq!(output, [8., 16., 24.]);
+            assert_eq!(result as u32, 0x41C0_0000);
+            assert_eq!((result >> 32) as u32, if index < 0 { 0 } else { 1 });
+            // Wrapping from begin to the empty end copies its block word, which is zero.
+            assert_eq!(
+                events(),
+                [
+                    Event::Manager(f.city.as_ptr() as usize),
+                    segment_event(points[0], points[1], 2.)
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn fallback_normalizes_current_segment_and_uses_direction_below_threshold_or_for_nan() {
+        let _fpu = GameFpu::new();
+        for delta in [
+            [3.0f32, 4., 0.],
+            [0., 0., 0.],
+            [0.000009, 0., 0.],
+            [0.00001, 0., 0.],
+            [f32::NAN, 0., 0.],
+        ] {
+            let mut f = Fixture::new();
+            let mut points = [[0., 0., 0.], delta];
+            let mut v = vector(&mut points);
+            f.vector(&mut v, 0);
+            let mut route = [0u32; 8];
+            let point = [10., 20., 30.];
+            let mut output = [0.; 3];
+            let result = unsafe { f.invoke(point.as_ptr(), output.as_mut_ptr(), 2., &mut route) };
+            let degenerate = delta[0].is_nan() || delta[0] < 0.00001;
+            if degenerate {
+                assert_eq!(output, [8., 16., 24.]);
+                assert_eq!(
+                    (result as u32, (result >> 32) as u32),
+                    (point.as_ptr() as u32 & !0xFF, 24.0f32.to_bits())
+                );
+            } else {
+                let expected = if delta[1] == 4. {
+                    [8.8f32, 18.4, 30.]
+                } else {
+                    [8., 20., 30.]
+                };
+                assert_eq!(output.map(f32::to_bits), expected.map(f32::to_bits));
+                assert_eq!(
+                    (result as u32, (result >> 32) as u32),
+                    (30.0f32.to_bits() & !0xFF, points.as_ptr() as u32)
+                );
+            }
+            assert_eq!(
+                events(),
+                [
+                    Event::Manager(f.city.as_ptr() as usize),
+                    segment_event(points[0], points[1], 2.)
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn previous_routes_cross_block_map_and_carry_endpoint_between_paths() {
+        let _fpu = GameFpu::new();
+        let mut f = Fixture::new();
+        let mut points = [[100., 0., 0.], [200., 0., 0.]];
+        let mut v = vector(&mut points);
+        f.vector(&mut v, 0);
+        let mut second = [[60., 0., 0.], [70., 0., 0.]];
+        let mut v2 = vector(&mut second);
+        let mut third = [[40., 0., 0.], [50., 0., 0.]];
+        let mut v3 = vector(&mut third);
+        STATE.with(|s| {
+            let mut s = s.borrow_mut();
+            s.accept = 3;
+            s.paths = vec![
+                (72, v2.as_mut_ptr() as usize),
+                (71, v3.as_mut_ptr() as usize),
+            ];
+        });
+        let mut a = [[0u32; 2]; 16];
+        let mut b = [[0u32; 2]; 16];
+        a[15] = [f.network.as_ptr() as u32, 71];
+        b[0] = [f.network.as_ptr() as u32, 72];
+        let mut map = [a.as_mut_ptr() as u32, b.as_mut_ptr() as u32];
+        let mut route = [
+            a.as_mut_ptr().wrapping_add(15) as u32,
+            a.as_mut_ptr() as u32,
+            a.as_mut_ptr().wrapping_add(16) as u32,
+            map.as_mut_ptr() as u32,
+            b.as_mut_ptr().wrapping_add(1) as u32,
+            b.as_mut_ptr() as u32,
+            b.as_mut_ptr().wrapping_add(16) as u32,
+            map.as_mut_ptr().wrapping_add(1) as u32,
+        ];
+        let point = [0.; 3];
+        let mut output = [0.; 3];
+        let result = unsafe { f.invoke(point.as_ptr(), output.as_mut_ptr(), 2., &mut route) };
+        assert_eq!(result, 0x7654_3210_ABCD_EF77);
+        assert_eq!(
+            events(),
+            [
+                Event::Manager(f.city.as_ptr() as usize),
+                segment_event(points[0], points[1], 2.),
+                Event::Service(f.network.as_ptr() as usize),
+                Event::Path(72, 0),
+                segment_event(second[0], points[0], 2.),
+                Event::Service(f.network.as_ptr() as usize),
+                Event::Path(71, 0),
+                segment_event(third[0], second[0], 2.)
+            ]
+        );
+    }
+
+    #[test]
+    fn null_previous_network_service_and_path_stop_search_and_extrapolate() {
+        let _fpu = GameFpu::new();
+        for missing in 0..3 {
+            let mut f = Fixture::new();
+            let mut points = [[0., 0., 0.], [1., 0., 0.]];
+            let mut v = vector(&mut points);
+            f.vector(&mut v, -1);
+            if missing == 1 {
+                STATE.with(|s| s.borrow_mut().service = 0);
+            }
+            let mut block = [[0u32; 2]; 16];
+            block[0] = [
+                if missing == 0 {
+                    0
+                } else {
+                    f.network.as_ptr() as u32
+                },
+                9,
+            ];
+            let mut map = [block.as_mut_ptr() as u32];
+            let begin = block.as_mut_ptr() as u32;
+            let mut route = [
+                begin,
+                begin,
+                begin + 128,
+                map.as_mut_ptr() as u32,
+                begin + 8,
+                begin,
+                begin + 128,
+                map.as_mut_ptr() as u32,
+            ];
+            let point = [10., 20., 30.];
+            let mut output = [0.; 3];
+            let result = unsafe { f.invoke(point.as_ptr(), output.as_mut_ptr(), 2., &mut route) };
+            assert_eq!(output, [8., 16., 24.]);
+            assert_eq!(
+                (result >> 32) as u32,
+                match missing {
+                    0 => begin,
+                    1 => 0x1122_3344,
+                    _ => 0x2233_4455,
+                }
+            );
+            let mut expected = vec![
+                Event::Manager(f.city.as_ptr() as usize),
+                segment_event(points[0], points[1], 2.),
+            ];
+            if missing > 0 {
+                expected.push(Event::Service(f.network.as_ptr() as usize));
+            }
+            if missing == 2 {
+                expected.push(Event::Path(9, 0));
+            }
+            assert_eq!(events(), expected);
+        }
+    }
+
+    #[test]
+    fn wide_exponents_keep_x_product_and_y_segment_difference_in_register_precision() {
+        let _fpu = GameFpu::new();
+        let mut f = Fixture::new();
+        let mut route = [0u32; 8];
+        for i in 0..3 {
+            unsafe {
+                write_unaligned(
+                    f.owner.ptr().add(0x58 + i * 4).cast(),
+                    f32::from_bits(0x5F80_0000),
+                );
+            }
+        }
+        let point = [f32::from_bits(0x7F00_0000); 3];
+        let mut output = [0.; 3];
+        unsafe {
+            f.invoke(
+                point.as_ptr(),
+                output.as_mut_ptr(),
+                f32::from_bits(0x5F80_0000),
+                &mut route,
+            );
+        }
+        assert_eq!(
+            output.map(f32::to_bits),
+            [0xFF00_0000, 0xFF80_0000, 0xFF80_0000]
+        );
+        let mut points = [
+            [0., f32::from_bits(0xFF00_0000), 0.],
+            [0., f32::from_bits(0x7F00_0000), 0.],
+        ];
+        let mut v = vector(&mut points);
+        f.vector(&mut v, 0);
+        let point = [10., 20., 30.];
+        let sentinel = -678.25f64;
+        let mut restored = 0f64;
+        unsafe {
+            core::arch::asm!("fld qword ptr [{p}]", p = in(reg) &sentinel, out("st(0)") _);
+        }
+        let before = super::tests::float_environment();
+        unsafe {
+            f.invoke(point.as_ptr(), output.as_mut_ptr(), 2., &mut route);
+        }
+        let after = super::tests::float_environment();
+        unsafe {
+            core::arch::asm!("fstp qword ptr [{p}]", p = in(reg) &mut restored, out("st(0)") _);
+        }
+        assert_eq!(output, [10., 18., 30.]);
+        assert_eq!(before, after);
+        assert_eq!(restored.to_bits(), sentinel.to_bits());
+        events();
+    }
+}
 
 #[cfg(test)]
 mod explicit_route_tests {
