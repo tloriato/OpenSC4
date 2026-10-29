@@ -480,6 +480,9 @@ const BOUNDARY_RULES: &[(u32, u32, u8, u8)] = &[
     (0x1121, 0x2300, 2, 0),
 ];
 
+// Initialization and loading remain available for verification, outside the installable table.
+const _: [Port; 2] = [fc4p_00734030::PORT, fc4p_00734380::PORT];
+
 pub const PORTS: &[Port] = &[
     fc4p_0072ff80::PORT,
     fc4p_007348c0::PORT,
