@@ -1205,12 +1205,397 @@ port! {
     }
 }
 
+layout! {
+    /// Command records are 44 bytes; input and output parameter sets are retained separately.
+    struct LuaCommandGenerator {
+        0x10 => main_thread / set_main_thread: *mut u8,
+        0x14 => records / set_records: *mut u8,
+        0x18 => records_end / set_records_end: *mut u8,
+        0x38 => input / set_input: *mut u8,
+        0x3C => output / set_output: *mut u8,
+        0x40 => server / set_server: *mut u8,
+    }
+}
+layout! {
+    /// A temporary command string owns the allocation in its second word.
+    struct CommandString {
+        0x00 => vtable / set_vtable: u32,
+        0x04 => buffer / set_buffer: *mut u8,
+    }
+}
+
+game_fn! { fn command_variant_new(this: *mut u8) -> *mut u8 = "thiscall" 0x0091_66D4; }
+game_fn! { fn command_variant_bool(this: *mut u8, value: u32) -> u32 = "thiscall" 0x0091_6657; }
+game_fn! { fn command_variant_number(this: *mut u8, value: f64) -> u32 = "thiscall" 0x0091_66AA; }
+game_fn! { fn command_variant_string(this: *mut u8, value: *mut u8) -> u32 = "thiscall" 0x0091_66CF; }
+game_fn! { fn command_variant_destroy(this: *mut u8) -> u32 = "thiscall" 0x0091_5EB5; }
+game_fn! { fn command_string_from_chars(this: *mut u8, value: *const u8) -> *mut u8 = "thiscall" 0x0040_8480; }
+game_fn! { fn command_string_new(this: *mut u8) -> *mut u8 = "thiscall" 0x0057_8390; }
+game_fn! { fn command_string_chars(this: *mut u8) -> *const u8 = "thiscall" 0x009D_7E63; }
+game_data! { static command_zero: f64 = 0x00A8_0990; }
+game_data! { static command_invalid_status: f64 = 0x00A8_0AC8; }
+
+/// Call a saved virtual table: upvalue and value conversions can change the object's current table.
+unsafe fn command_saved_virtual(this: *mut u8, table: *mut u8, slot: usize, args: &[u32]) -> u32 {
+    unsafe {
+        let mut call = RawCall::new(Conv::Thiscall, read(table, slot), this as u32, args);
+        call_raw(&mut call);
+        call.eax
+    }
+}
+
+/// The iterator methods receive their table in EDX, and its returned value survives cleanup.
+unsafe fn command_iterator_call(this: *mut u8, slot: usize, args: &[u32], eax: u32) -> u64 {
+    unsafe {
+        let table = read::<*mut u8>(this, 0);
+        let mut call = RawCall::new(Conv::Thiscall, read(table, slot), this as u32, args);
+        call.eax = eax;
+        call.edx = table as u32;
+        call_raw(&mut call);
+        (u64::from(call.edx) << 32) | u64::from(call.eax)
+    }
+}
+
+unsafe fn command_failure(thread: *mut u8) -> u64 {
+    unsafe {
+        let bits = crate::x87::F80::from_f64(*command_invalid_status()).to_f64().to_bits();
+        let result = command_iterator_call(thread, 0xC4, &[bits as u32, (bits >> 32) as u32], 0);
+        (result & 0xFFFF_FFFF_0000_0000) | 1
+    }
+}
+
+port! {
+    /// Convert Lua arguments to command parameters, execute the captured record, and push its results.
+    #[port(address = 0x008B_5B70, owner = "shared", name = "InvokeLuaCommand")]
+    pub unsafe extern "C" fn fc4p_008b5b70(state: *mut u8) -> u64 {
+        unsafe {
+            let thread = read::<*mut u8>(state.wrapping_sub(4), 0);
+            let table = read::<*mut u8>(thread, 0);
+            let index = command_saved_virtual(thread, table, 0x148, &[2]);
+            let generator = command_saved_virtual(thread, table, 0xB8, &[index]) as *mut u8;
+            let table = read::<*mut u8>(thread, 0);
+            let index = command_saved_virtual(thread, table, 0x148, &[3]);
+            let main = command_saved_virtual(thread, table, 0xB8, &[index]) as *mut u8;
+            if generator.is_null() { return command_failure(thread); }
+            let generator = LuaCommandGenerator::from_ptr(generator);
+            if generator.server().is_null() || main != generator.main_thread() {
+                return command_failure(thread);
+            }
+            let table = read::<*mut u8>(thread, 0);
+            let index = command_saved_virtual(thread, table, 0x148, &[1]);
+            let number = crate::abi::call_st0(Conv::Thiscall, read(table, 0xA4), thread as u32, &[index]);
+            let index = number.ftol() as i32;
+            let records = generator.records();
+            let length = (generator.records_end() as u32).wrapping_sub(records as u32) as i32 / 44;
+            if index >= length || index < 0 { return command_failure(thread); }
+            let record = records.wrapping_add((index as usize).wrapping_mul(44));
+            vcall!(generator.input(), 0x10 => fn(u32), 0);
+            vcall!(generator.output(), 0x10 => fn(u32), 0);
+            let arguments = vcall!(thread, 0x38 => fn() -> i32);
+            let mut temporaries = core::mem::MaybeUninit::<[u32; 15]>::uninit();
+            let variant = temporaries.as_mut_ptr().cast::<u8>();
+            let string = variant.wrapping_add(20);
+            let input_string = variant.wrapping_add(40);
+            let mut argument = 1i32;
+            while argument <= arguments {
+                command_variant_new(variant);
+                match vcall!(thread, 0x5C => fn(i32) -> u32, argument) {
+                    1 => {
+                        let value = vcall!(thread, 0xA8 => fn(i32) -> u32, argument);
+                        command_variant_bool(variant, value);
+                    }
+                    3 => {
+                        let value = vcall_st0!(thread, 0xA4, argument).to_f64();
+                        command_variant_number(variant, value);
+                    }
+                    4 => {
+                        let value = vcall!(thread, 0xAC => fn(i32) -> *const u8, argument);
+                        let value = command_string_from_chars(input_string, value);
+                        command_variant_string(variant, value);
+                        let temporary = CommandString::from_ptr(input_string);
+                        let buffer = temporary.buffer();
+                        temporary.set_vtable(0x00A8_0810);
+                        if !buffer.is_null() { free(buffer); }
+                    }
+                    _ => {
+                        let value = crate::x87::F80::from_f64(*command_zero()).to_f64();
+                        command_variant_number(variant, value);
+                    }
+                }
+                vcall!(generator.input(), 0x1C => fn(i32, *mut u8), argument.wrapping_sub(1), variant);
+                command_variant_destroy(variant);
+                argument = argument.wrapping_add(1);
+            }
+            let output = generator.output();
+            let input = generator.input();
+            let status = vcall!(generator.server(), 0x50 => fn(u32, *mut u8, *mut u8) -> i32,
+                read::<u32>(record, 0), input, output);
+            let status = crate::x87::F80::from_i32(status).to_f64();
+            vcall!(thread, 0xC4 => fn(f64), status);
+            command_string_new(string);
+            let mut count = 1u32;
+            let mut result = command_iterator_call(generator.output(), 0x34, &[], string as u32);
+            let mut key = result as u32;
+            while key != u32::MAX {
+                if key != 0x2B99_9D2B {
+                    let value = vcall!(generator.output(), 0x18 => fn(u32) -> *mut u8, key);
+                    if value.is_null() {
+                        vcall!(thread, 0xC0 => fn());
+                    } else {
+                        let kind = vcall!(value, 0x0C => fn() -> i32);
+                        match kind {
+                            1 => {
+                                let table = read::<*mut u8>(thread, 0);
+                                let value = vcall!(value, 0x24 => fn() -> u32);
+                                command_saved_virtual(thread, table, 0xD4, &[value]);
+                            }
+                            2..=14 => {
+                                let table = read::<*mut u8>(thread, 0);
+                                let value = vcall_st0!(value, 0x9C).to_f64().to_bits();
+                                command_saved_virtual(thread, table, 0xC4, &[value as u32, (value >> 32) as u32]);
+                            }
+                            _ => {
+                                vcall!(value, 0xDC => fn(*mut u8), string);
+                                let table = read::<*mut u8>(thread, 0);
+                                let value = command_string_chars(string);
+                                command_saved_virtual(thread, table, 0xCC, &[value as u32]);
+                            }
+                        }
+                    }
+                    count = count.wrapping_add(1);
+                }
+                result = command_iterator_call(generator.output(), 0x38, &[key], key);
+                key = result as u32;
+            }
+            let temporary = CommandString::from_ptr(string);
+            let buffer = temporary.buffer();
+            temporary.set_vtable(0x00A8_0810);
+            if !buffer.is_null() {
+                let args = [buffer as u32];
+                let mut call = RawCall::new(Conv::Cdecl, crate::abi::target(0x0090_CF63), 0, &args);
+                call.eax = buffer as u32;
+                call.edx = (result >> 32) as u32;
+                call_raw(&mut call);
+                result = (u64::from(call.edx) << 32) | u64::from(call.eax);
+            }
+            if count == 0 { return command_failure(thread); }
+            (result & 0xFFFF_FFFF_0000_0000) | u64::from(count)
+        }
+    }
+}
+
+layout! {
+    struct RasterQueue {
+        0x14 => triangles / set_triangles: *mut u8,
+        0x20 => pending / set_pending: u32,
+        0x24 => head / set_head: u32,
+        0x1D8 => filter_enabled / set_filter_enabled: u8,
+        0x3EC => pixels / set_pixels: *mut u8,
+        0x410 => stride / set_stride: i32,
+    }
+}
+layout! {
+    /// Three consecutive 24-byte vertices precede the texture and span-program keys.
+    struct QueuedTriangle {
+        0x00 => vertices / set_vertices: [[i32; 6]; 3],
+        0x48 => texture / set_texture: i32,
+        0x4D => texture_kind / set_texture_kind: u8,
+        0x4E => cull_back / set_cull_back: u8,
+        0x4F => options / set_options: u8,
+        0x50 => key_low / set_key_low: u32,
+        0x54 => key_high / set_key_high: u32,
+    }
+}
+game_fn! { fn raster_texture_size(this: *mut u8, texture: i32, width: *mut u32, height: *mut u32) = "thiscall" 0x008D_E900; }
+game_fn! { fn raster_texture_level(this: *mut u8, texture: i32, level: u32) -> *mut u8 = "thiscall" 0x008D_F820; }
+game_fn! { fn raster_span_lookup(this: *mut u8, low: u32, high: u32, payload: *mut u32) -> *mut u8 = "thiscall" 0x008E_BC60; }
+game_fn! { fn raster_code_allocate(bytes: u32) -> *mut u8 = "C" 0x005E_55E0; }
+game_fn! { fn raster_code_free(code: *mut u8) = "C" 0x005E_5620; }
+game_fn! { fn raster_code_generate(code: *mut u8, low: u32, high: u32, size: *mut u32) -> u32 = "C" 0x008E_FFF0; }
+game_fn! { fn raster_span_insert(this: *mut u8, low: u32, high: u32, payload: u32) -> *mut u8 = "thiscall" 0x008E_BE30; }
+game_fn! { fn raster_multiply(a: u64, b: u64) -> u64 = "stdcall" 0x009F_0D10; }
+game_fn! { #[allow(dead_code)] fn raster_triangle(a: *mut u8, b: *mut u8, c: *mut u8, flags: u32) = "C" 0x008D_D8B0; }
+game_data! { static raster_texture_mask: u32 = 0x00B5_C580; }
+game_data! { static raster_texture_offset: u32 = 0x00B5_C584; }
+game_data! { static raster_texture_bias: u64 = 0x00B5_C588; }
+game_data! { static raster_texture: *mut u8 = 0x00B5_C5AC; }
+game_data! { static raster_span: *mut u8 = 0x00B5_C5B8; }
+game_data! { static raster_texture_kind: u32 = 0x00B5_C5BC; }
+game_data! { static raster_default_texture: u8 = 0x00AC_C740; }
+
+unsafe fn submit_raster_triangle(vertices: [*mut u8; 3], flags: u32, ecx: u32, edx: u32) {
+    // Triangle setup preserves these two registers, which remain visible after draining the queue.
+    let args = [vertices[0] as u32, vertices[1] as u32, vertices[2] as u32, flags];
+    let mut call = RawCall::new(Conv::Cdecl, crate::abi::target(0x008D_D8B0), ecx, &args);
+    call.eax = flags;
+    call.edx = edx;
+    unsafe { call_raw(&mut call); }
+}
+
+port! {
+    /// Drain queued triangles, choose texture levels, cache span programs, and clear covered pixels.
+    /// Preserve EDX on an empty queue and return the final span inputs in ECX and EDX.
+    #[port(address = 0x008E_0100, owner = "shared", name = "DrainRasterTriangles", naked)]
+    pub unsafe extern "C" fn fc4p_008e0100() {
+        core::arch::naked_asm!(
+            "mov eax, [esp - 0x30]", "push ecx", "push esp", "push eax", "call {body}", "pop ecx", "ret",
+            body = sym drain_raster_triangles);
+    }
+}
+
+/// The seed retains the previous payload slot if both lookup and allocation fail to produce a payload.
+unsafe extern "fastcall" fn drain_raster_triangles(this: *mut u8, entry_edx: u32, mut payload: u32, result_ecx: *mut u32) -> u64 {
+    unsafe {
+        let queue = RasterQueue::from_ptr(this);
+        let mut ecx = this as u32;
+        let mut edx = entry_edx;
+        if queue.pending() == 0 {
+            result_ecx.write(ecx);
+            return u64::from(edx) << 32;
+        }
+        while queue.pending() != 0 {
+            let triangle = queue.triangles().wrapping_add((queue.head() & 1023) as usize * 88);
+            queue.set_head(queue.head().wrapping_add(1));
+            let queued = QueuedTriangle::from_ptr(triangle);
+            let texture = queued.texture();
+            let options = queued.options();
+            let mut low = queued.key_low() & !0x10_0000;
+            let mut high = queued.key_high() & !0x1000;
+            let colors = [read::<u32>(triangle, 0x0C), read::<u32>(triangle, 0x24), read::<u32>(triangle, 0x3C)];
+            if colors[0] & colors[1] & colors[2] == u32::MAX && low & 0xE_0000 != 0x8_0000 {
+                low &= !0x8000;
+            } else {
+                low &= !0x1_0000;
+                if colors[0] != colors[1] || colors[1] != colors[2] { low |= 0x1_0000; }
+            }
+            let mut clockwise = true;
+            if texture >= 0 {
+                let mut width = 0u32;
+                let mut height = 0u32;
+                raster_texture_size(this.wrapping_add(0x35C), texture, &mut width, &mut height);
+                let mut width_mask = width.wrapping_sub(1);
+                let mut height_mask = height.wrapping_sub(1);
+                let x0 = read::<i32>(triangle, 0);
+                let y0 = read::<i32>(triangle, 4);
+                let area = read::<i32>(triangle, 0x34).wrapping_sub(y0)
+                    .wrapping_mul(read::<i32>(triangle, 0x18).wrapping_sub(x0))
+                    .wrapping_sub(read::<i32>(triangle, 0x1C).wrapping_sub(y0)
+                        .wrapping_mul(read::<i32>(triangle, 0x30).wrapping_sub(x0)));
+                clockwise = area < 0;
+                let u0 = read::<i32>(triangle, 0x10);
+                let v0 = read::<i32>(triangle, 0x14);
+                let uv_area = read::<i32>(triangle, 0x44).wrapping_sub(v0)
+                    .wrapping_mul(read::<i32>(triangle, 0x28).wrapping_sub(u0))
+                    .wrapping_sub(read::<i32>(triangle, 0x40).wrapping_sub(u0)
+                        .wrapping_mul(read::<i32>(triangle, 0x2C).wrapping_sub(v0)));
+                let uv_area = uv_area.wrapping_abs();
+                let mut area = area.wrapping_abs();
+                if options & 0x10 != 0 { low |= 0x10_0000; }
+                if queue.filter_enabled() != 0 && options & (if uv_area < area { 4 } else { 2 }) != 0 {
+                    high |= 0x1000;
+                }
+                let mut level = 0u32;
+                let mut data;
+                if options & 8 != 0 {
+                    area = area.wrapping_mul(2);
+                    while area < uv_area && level < 8 {
+                        area = area.wrapping_mul(4);
+                        level += 1;
+                    }
+                    data = raster_texture_level(this.wrapping_add(0x35C), texture, level);
+                    while data.is_null() && level > 0 {
+                        level -= 1;
+                        data = raster_texture_level(this.wrapping_add(0x35C), texture, level);
+                    }
+                    // Each V coordinate is stored before its U coordinate.
+                    for offset in [0x14, 0x10, 0x2C, 0x28, 0x44, 0x40] {
+                        write(triangle, offset, read::<i32>(triangle, offset) >> level);
+                    }
+                    width_mask >>= level;
+                    height_mask >>= level;
+                } else {
+                    data = raster_texture_level(this.wrapping_add(0x35C), texture, 0);
+                }
+                if high & 0x1000 != 0 {
+                    for offset in [0x10, 0x14, 0x28, 0x2C, 0x40, 0x44] {
+                        write(triangle, offset, read::<i32>(triangle, offset).wrapping_sub(8));
+                    }
+                }
+                if data.is_null() {
+                    width_mask = 0;
+                    height_mask = 0;
+                    high &= !0x1000;
+                    data = raster_default_texture();
+                }
+                *raster_texture() = data;
+                *raster_texture_mask() = (height_mask << 8) | width_mask;
+                *raster_texture_kind() = u32::from(queued.texture_kind());
+                *raster_texture_offset() = 0;
+                let product = raster_multiply(u64::from(height_mask), 0xFFF0_0000_0000_0000);
+                *raster_texture_bias() = product.wrapping_sub(u64::from(width_mask.wrapping_shl(20)))
+                    .wrapping_add(0x7FFF_7FFF_7FFF_7FFF);
+            }
+            let mut code = raster_span_lookup(this.wrapping_add(0x38), low, high, &mut payload);
+            if code.is_null() {
+                let scratch = raster_code_allocate(0x1000);
+                if !scratch.is_null() {
+                    let mut size = 0;
+                    payload = raster_code_generate(scratch, low, high, &mut size);
+                    code = raster_span_insert(this.wrapping_add(0x38), low, high, payload);
+                    // The program is copied in words followed by its final bytes, with forward overlap behavior.
+                    core::arch::asm!(
+                        "push esi", "mov esi, {source:e}", "rep movsd", "mov ecx, edx",
+                        "and ecx, 3", "rep movsb", "pop esi",
+                        source = in(reg) scratch, inout("edi") code => _,
+                        inout("ecx") (size >> 2) => _, in("edx") size);
+                    raster_code_free(scratch);
+                }
+            }
+            *raster_span() = code;
+            let x = [read::<i32>(triangle, 0), read::<i32>(triangle, 0x18), read::<i32>(triangle, 0x30)];
+            let y = [read::<i32>(triangle, 4), read::<i32>(triangle, 0x1C), read::<i32>(triangle, 0x34)];
+            let first_x = x[0].min(x[1].min(x[2])) >> 8;
+            let last_x = x[0].max(x[1].max(x[2])).wrapping_sub(1) >> 8;
+            let first_y = y[0].min(y[1].min(y[2])) >> 8;
+            let last_y = y[0].max(y[1].max(y[2])).wrapping_sub(1) >> 8;
+            ecx = last_x as u32;
+            edx = first_y as u32;
+            let mut row = first_y;
+            while row <= last_y {
+                let mut column = first_x;
+                while column <= last_x {
+                    let index = queue.stride().wrapping_mul(row).wrapping_add(column) as u32;
+                    write(queue.pixels(), index.wrapping_mul(4) as usize, 0u32);
+                    column = column.wrapping_add(1);
+                }
+                row = row.wrapping_add(1);
+                edx = row as u32;
+            }
+            if clockwise {
+                submit_raster_triangle([triangle.wrapping_add(48), triangle.wrapping_add(24), triangle], payload, ecx, edx);
+                if texture < 0 && queued.cull_back() == 0 {
+                    ecx = payload;
+                    submit_raster_triangle([triangle, triangle.wrapping_add(24), triangle.wrapping_add(48)], payload, ecx, edx);
+                }
+            } else if queued.cull_back() == 0 {
+                edx = payload;
+                submit_raster_triangle([triangle, triangle.wrapping_add(24), triangle.wrapping_add(48)], payload, ecx, edx);
+            }
+            queue.set_pending(queue.pending().wrapping_sub(1));
+        }
+        core::arch::asm!("emms", options(nostack));
+        result_ecx.write(ecx);
+        u64::from(edx) << 32
+    }
+}
+
 /// This module's replacements.
 pub const PORTS: &[Port] = &[
     fc4p_0089801e::PORT,
     fc4p_008ae800::PORT,
     fc4p_008b03d0::PORT,
     fc4p_008b15e0::PORT,
+    fc4p_008b5b70::PORT,
     fc4p_008b7f40::PORT,
     fc4p_008b87a0::PORT,
     fc4p_008d0fd0::PORT,
@@ -1219,6 +1604,7 @@ pub const PORTS: &[Port] = &[
     fc4p_008dd620::PORT,
     fc4p_008dd680::PORT,
     fc4p_008dd760::PORT,
+    fc4p_008e0100::PORT,
     fc4p_008dc4c0::PORT,
     fc4p_008eb800::PORT,
     fc4p_008eb8d0::PORT,
@@ -1234,6 +1620,713 @@ pub const PORTS: &[Port] = &[
     fc4p_008ec340::PORT,
     fc4p_008ec440::PORT,
 ];
+
+#[cfg(test)]
+mod raster_queue_tests {
+    use super::*;
+    use crate::testing::{fake, fake_data, GameFpu, Object};
+    use std::cell::RefCell;
+
+    #[derive(Debug, PartialEq)]
+    enum Event {
+        Size(i32), Level(i32, u32), Lookup(u32, u32), Allocate(u32), Generate(u32, u32),
+        Insert(u32, u32, u32), Free, Multiply(u64, u64), Triangle([u32; 3], u32, u32, u32),
+    }
+    #[derive(Default)]
+    struct State {
+        this: u32, width: u32, height: u32, missing: [bool; 9], cache_miss: bool, allocation_fails: bool,
+        scratch: u32, destination: u32, size: u32, events: Vec<Event>,
+    }
+    thread_local! { static STATE: RefCell<State> = RefCell::new(State::default()); }
+    fn event(e: Event) { STATE.with(|s| s.borrow_mut().events.push(e)); }
+    fn events() -> Vec<Event> { STATE.with(|s| core::mem::take(&mut s.borrow_mut().events)) }
+    extern "thiscall" fn size(this: *mut u8, texture: i32, width: *mut u32, height: *mut u32) {
+        STATE.with(|s| {
+            let s = s.borrow(); assert_eq!(this as u32, s.this + 0x35C);
+            unsafe { width.write(s.width); height.write(s.height); }
+        }); event(Event::Size(texture));
+    }
+    extern "thiscall" fn level(this: *mut u8, texture: i32, level: u32) -> *mut u8 {
+        event(Event::Level(texture, level));
+        STATE.with(|s| {
+            let s = s.borrow(); assert_eq!(this as u32, s.this + 0x35C);
+            if s.missing[level as usize] { core::ptr::null_mut() } else { 0x3141_5926 as *mut u8 }
+        })
+    }
+    extern "thiscall" fn lookup(this: *mut u8, low: u32, high: u32, payload: *mut u32) -> *mut u8 {
+        event(Event::Lookup(low, high));
+        STATE.with(|s| {
+            let s = s.borrow(); assert_eq!(this as u32, s.this + 0x38);
+            if s.cache_miss { core::ptr::null_mut() }
+            else { unsafe { payload.write(0x44); } s.destination as *mut u8 }
+        })
+    }
+    extern "C" fn allocate_code(bytes: u32) -> *mut u8 {
+        event(Event::Allocate(bytes));
+        STATE.with(|s| if s.borrow().allocation_fails { core::ptr::null_mut() } else { s.borrow().scratch as *mut u8 })
+    }
+    extern "C" fn generate(code: *mut u8, low: u32, high: u32, size: *mut u32) -> u32 {
+        event(Event::Generate(low, high));
+        STATE.with(|s| {
+            let s = s.borrow(); assert_eq!(code as u32, s.scratch);
+            unsafe { size.write(s.size); }
+        }); 0x77
+    }
+    extern "thiscall" fn insert(this: *mut u8, low: u32, high: u32, payload: u32) -> *mut u8 {
+        event(Event::Insert(low, high, payload));
+        STATE.with(|s| { let s = s.borrow(); assert_eq!(this as u32, s.this + 0x38); s.destination as *mut u8 })
+    }
+    extern "C" fn free_code(code: *mut u8) {
+        STATE.with(|s| assert_eq!(code as u32, s.borrow().scratch)); event(Event::Free);
+    }
+    extern "stdcall" fn multiply(a: u64, b: u64) -> u64 { event(Event::Multiply(a, b)); a.wrapping_mul(b) }
+    #[unsafe(naked)]
+    unsafe extern "C" fn triangle() {
+        core::arch::naked_asm!(
+            "push edx", "push ecx", "push dword ptr [esp + 4]", "push dword ptr [esp + 4]",
+            "push dword ptr [esp + 32]", "push dword ptr [esp + 32]",
+            "push dword ptr [esp + 32]", "push dword ptr [esp + 32]",
+            "call {record}", "add esp, 24", "pop ecx", "pop edx", "ret", record = sym record_triangle);
+    }
+    extern "C" fn record_triangle(a: u32, b: u32, c: u32, flags: u32, ecx: u32, edx: u32) {
+        event(Event::Triangle([a, b, c], flags, ecx, edx));
+    }
+    #[unsafe(naked)]
+    unsafe extern "fastcall" fn invoke(_: *mut u32) {
+        core::arch::naked_asm!(
+            "push ebx", "push esi", "push edi", "push ebp", "mov edi, ecx",
+            "mov ecx, [edi + 4]", "mov edx, [edi + 8]", "call dword ptr [edi]",
+            "mov [edi + 12], eax", "mov [edi + 16], ecx", "mov [edi + 20], edx",
+            "pushfd", "pop dword ptr [edi + 24]", "pop ebp", "pop edi", "pop esi", "pop ebx", "ret");
+    }
+    struct Fixture {
+        object: Object, triangles: Vec<u32>, pixels: Vec<u32>, globals: Box<[u32; 16]>,
+        default_texture: Box<u8>, scratch: Vec<u8>, code: Vec<u8>, _fakes: Vec<crate::testing::Fake>,
+    }
+    impl Fixture {
+        fn new() -> Self {
+            let mut object = Object::new(0x430);
+            let this = object.ptr();
+            let mut triangles = vec![0xA5A5_A5A5u32; 1024 * 22];
+            let mut pixels = vec![0xABCD_EFFF; 128];
+            let mut globals = Box::new([0xA5A5_A5A5u32; 16]);
+            let mut default_texture = Box::new(0xCCu8);
+            let mut scratch: Vec<u8> = (0..64).collect();
+            let mut code = vec![0xCDu8; 64];
+            unsafe {
+                let queue = RasterQueue::from_ptr(this);
+                queue.set_triangles(triangles.as_mut_ptr().cast()); queue.set_pending(1);
+                queue.set_pixels(pixels.as_mut_ptr().add(48).cast()); queue.set_stride(8);
+            }
+            STATE.with(|s| *s.borrow_mut() = State {
+                this: this as u32, width: 16, height: 32, scratch: scratch.as_mut_ptr() as u32,
+                destination: code.as_mut_ptr() as u32, size: 7, ..State::default()
+            });
+            let mut fakes = vec![
+                fake(0x008D_E900, size as *const () as usize), fake(0x008D_F820, level as *const () as usize),
+                fake(0x008E_BC60, lookup as *const () as usize), fake(0x005E_55E0, allocate_code as *const () as usize),
+                fake(0x008E_FFF0, generate as *const () as usize), fake(0x008E_BE30, insert as *const () as usize),
+                fake(0x005E_5620, free_code as *const () as usize), fake(0x009F_0D10, multiply as *const () as usize),
+                fake(0x008D_D8B0, triangle as *const () as usize), fake_data(0x00AC_C740, default_texture.as_mut()),
+            ];
+            for (address, offset) in [(0x00B5_C580, 0), (0x00B5_C584, 1), (0x00B5_C588, 2),
+                (0x00B5_C5AC, 11), (0x00B5_C5B8, 14), (0x00B5_C5BC, 15)] {
+                fakes.push(fake_data(address, unsafe { globals.as_mut_ptr().add(offset) }.cast()));
+            }
+            let mut fixture = Self { object, triangles, pixels, globals, default_texture, scratch, code, _fakes: fakes };
+            fixture.set_triangle(0, -1, 0, false, [u32::MAX; 3], 0, 0);
+            fixture
+        }
+        #[allow(clippy::too_many_arguments)]
+        fn set_triangle(&mut self, index: usize, texture: i32, options: u8, cull: bool, colors: [u32; 3], low: u32, high: u32) {
+            let record = &mut self.triangles[index * 22..index * 22 + 22];
+            for (vertex, (x, y)) in [(0, 0), (0, 512), (512, 0)].into_iter().enumerate() {
+                record[vertex * 6] = x; record[vertex * 6 + 1] = y; record[vertex * 6 + 3] = colors[vertex];
+                record[vertex * 6 + 4] = x; record[vertex * 6 + 5] = y;
+            }
+            record[18] = texture as u32;
+            record[19] = 0x2A00 | u32::from(cull) << 16 | u32::from(options) << 24;
+            record[20] = low; record[21] = high;
+        }
+        fn call(&mut self) -> [u32; 7] {
+            let mut frame = [fc4p_008e0100 as *const () as u32, self.object.ptr() as u32, 0x1234_5678, 0, 0, 0, 0];
+            unsafe { invoke(frame.as_mut_ptr()); }
+            frame
+        }
+        fn triangle_ptr(&mut self, index: usize) -> u32 { (unsafe { self.triangles.as_mut_ptr().add(index * 22) }) as u32 }
+    }
+
+    #[test]
+    fn raster_queue_untextured_ring_wrap_vertex_order_pixel_rectangle_and_return_registers() {
+        let mut f = Fixture::new();
+        f.set_triangle(1023, -1, 0, false, [u32::MAX; 3], 0x10_8000, 0x1000);
+        f.set_triangle(0, -1, 0, true, [0; 3], 0x1_0000, 0);
+        unsafe { let q = RasterQueue::from_ptr(f.object.ptr()); q.set_head(u32::MAX); q.set_pending(2); }
+        let a = f.triangle_ptr(1023); let b = f.triangle_ptr(0);
+        let triangles_before = f.triangles.clone();
+        let mut object_before = unsafe { core::slice::from_raw_parts(f.object.ptr(), 0x430).to_vec() };
+        object_before[0x20..0x24].copy_from_slice(&0u32.to_le_bytes());
+        object_before[0x24..0x28].copy_from_slice(&1u32.to_le_bytes());
+        let frame = f.call();
+        assert_eq!(&frame[3..6], &[0, 1, 2]);
+        assert_eq!(events(), vec![Event::Lookup(0, 0), Event::Triangle([a + 48, a + 24, a], 0x44, 1, 2),
+            Event::Triangle([a, a + 24, a + 48], 0x44, 0x44, 2), Event::Lookup(0, 0),
+            Event::Triangle([b + 48, b + 24, b], 0x44, 1, 2)]);
+        assert_eq!(f.triangles, triangles_before);
+        assert_eq!(unsafe { core::slice::from_raw_parts(f.object.ptr(), 0x430) }, object_before);
+        let mut expected = vec![0xABCD_EFFF; 128];
+        for index in [48, 49, 56, 57] { expected[index] = 0; }
+        assert_eq!(f.pixels, expected);
+        assert_eq!(unsafe { RasterQueue::from_ptr(f.object.ptr()).pending() }, 0);
+        assert_eq!(unsafe { RasterQueue::from_ptr(f.object.ptr()).head() }, 1);
+        let mut expected_globals = [0xA5A5_A5A5u32; 16]; expected_globals[14] = f.code.as_ptr() as u32;
+        assert_eq!(*f.globals, expected_globals);
+    }
+
+    #[test]
+    fn raster_queue_mipmap_selection_backoff_signed_coordinates_filter_and_texture_globals() {
+        for missing in [false, true] {
+            let mut f = Fixture::new();
+            f.set_triangle(0, 7, 0x1A, false, [1, 2, 3], 0x8_0000, 0x1000);
+            unsafe { RasterQueue::from_ptr(f.object.ptr()).set_filter_enabled(1); }
+            // Texture area is 128 times screen area: level 3 is selected, then level 2 is tried.
+            for (offset, value) in [(4, -40i32), (5, -24), (10, -40), (11, 8168), (16, 4056), (17, -24)] {
+                f.triangles[offset] = value as u32;
+            }
+            STATE.with(|s| { let mut s = s.borrow_mut(); s.missing[3] = true; if missing { s.missing = [true; 9]; } });
+            let frame = f.call();
+            assert_eq!(frame[3], 0);
+            assert_eq!(&frame[4..6], &[1, 2]);
+            let mut expected = vec![Event::Size(7), Event::Level(7, 3), Event::Level(7, 2)];
+            if missing { expected.extend([Event::Level(7, 1), Event::Level(7, 0)]); }
+            let width = if missing { 0 } else { 3u32 };
+            let height = if missing { 0 } else { 7u32 };
+            expected.extend([Event::Multiply(u64::from(height), 0xFFF0_0000_0000_0000), Event::Lookup(0x19_0000, if missing { 0 } else { 0x1000 })]);
+            let p = f.triangle_ptr(0); expected.push(Event::Triangle([p + 48, p + 24, p], 0x44, 1, 2));
+            assert_eq!(events(), expected);
+            for (offset, value) in [(4, -40i32), (5, -24), (10, -40), (11, 8168), (16, 4056), (17, -24)] {
+                assert_eq!(f.triangles[offset], ((value >> if missing { 0 } else { 2 }).wrapping_sub(8)) as u32);
+            }
+            assert_eq!(f.globals[0], height << 8 | width);
+            assert_eq!(f.globals[1], 0);
+            let expected_bias = u64::from(height).wrapping_mul(0xFFF0_0000_0000_0000)
+                .wrapping_sub(u64::from(width << 20)).wrapping_add(0x7FFF_7FFF_7FFF_7FFF);
+            assert_eq!(u64::from(f.globals[2]) | u64::from(f.globals[3]) << 32, expected_bias);
+            assert_eq!(f.globals[11], if missing { f.default_texture.as_ref() as *const u8 as u32 } else { 0x3141_5926 });
+            assert_eq!(f.globals[15], 0x2A);
+        }
+    }
+
+    #[test]
+    fn raster_queue_cache_generation_copies_word_and_byte_tails_and_retains_failed_lookup_payload() {
+        for size in 0..9 {
+            let mut f = Fixture::new();
+            STATE.with(|s| { let mut s = s.borrow_mut(); s.cache_miss = true; s.size = size; });
+            let p = f.triangle_ptr(0);
+            let frame = f.call();
+            assert_eq!(&frame[3..6], &[0, 0x77, 2]);
+            assert_eq!(events(), vec![Event::Lookup(0, 0), Event::Allocate(0x1000), Event::Generate(0, 0),
+                Event::Insert(0, 0, 0x77), Event::Free, Event::Triangle([p + 48, p + 24, p], 0x77, 1, 2),
+                Event::Triangle([p, p + 24, p + 48], 0x77, 0x77, 2)]);
+            assert_eq!(&f.code[..size as usize], &f.scratch[..size as usize]);
+            assert_eq!(&f.code[size as usize..], &vec![0xCD; 64 - size as usize]);
+        }
+        let mut f = Fixture::new();
+        STATE.with(|s| { let mut s = s.borrow_mut(); s.cache_miss = true; s.allocation_fails = true; });
+        let mut ecx = 0;
+        assert_eq!(unsafe { drain_raster_triangles(f.object.ptr(), 99, 0xAABB_CCDD, &mut ecx) }, 2u64 << 32);
+        assert_eq!(ecx, 0xAABB_CCDD);
+        assert_eq!(f.globals[14], 0);
+        assert!(events().contains(&Event::Triangle([f.triangle_ptr(0), f.triangle_ptr(0) + 24, f.triangle_ptr(0) + 48], 0xAABB_CCDD, 0xAABB_CCDD, 2)));
+    }
+
+    #[test]
+    fn raster_queue_culling_and_degenerate_negative_pixel_bounds_keep_last_span_inputs() {
+        for (cull, coords) in [(false, [(-256i32, -256i32), (0, -256), (-256, 0)]), (true, [(0, 0), (512, 0), (0, 512)]),
+            (true, [(0, 0), (0, 0), (0, 0)])] {
+            let mut f = Fixture::new();
+            f.set_triangle(0, 0, 0, cull, [u32::MAX; 3], 0, 0);
+            for (vertex, (x, y)) in coords.into_iter().enumerate() { f.triangles[vertex * 6] = x as u32; f.triangles[vertex * 6 + 1] = y as u32; }
+            let frame = f.call();
+            let trace = events();
+            assert_eq!(trace.iter().filter(|e| matches!(e, Event::Triangle(..))).count(), usize::from(!cull));
+            if !cull { assert_eq!(&frame[4..6], &[u32::MAX, 0x44]); assert_eq!(f.pixels[39], 0); }
+            else { assert_eq!(frame[4], if coords[1].0 == 512 { 1 } else { u32::MAX }); }
+        }
+    }
+
+    #[test]
+    fn raster_queue_empty_keeps_mmx_and_entry_registers_and_nonempty_empties_tags() {
+        let _fpu = GameFpu::new();
+        #[repr(C, align(16))] struct Fx([u8; 512]);
+        for count in [0, 1] {
+            let mut f = Fixture::new();
+            unsafe { RasterQueue::from_ptr(f.object.ptr()).set_pending(count); }
+            let mut before = Fx([0; 512]); let mut after = Fx([0; 512]);
+            let snapshots = [&mut before as *mut Fx, &mut after as *mut Fx];
+            let mut frame = [fc4p_008e0100 as *const () as u32, f.object.ptr() as u32, 0x1234_5678, 0, 0, 0, 0];
+            unsafe { core::arch::asm!(
+                "pxor mm0, mm0", "mov eax, [edi]", "fxsave [eax]", "call {invoke}",
+                "mov eax, [edi + 4]", "fxsave [eax]", "emms",
+                invoke = sym invoke, in("ecx") frame.as_mut_ptr(), in("edi") snapshots.as_ptr(),
+                clobber_abi("C"), out("mm0") _);
+            }
+            assert_eq!(after.0[4], if count == 0 { 0xFF } else { 0 });
+            assert_eq!(&before.0[..2], &after.0[..2]);
+            assert_eq!(&before.0[24..28], &after.0[24..28]);
+            assert_eq!(frame[6] & 0x400, 0);
+            if count == 0 { assert_eq!(&frame[3..6], &[0, f.object.ptr() as u32, 0x1234_5678]); assert!(events().is_empty()); }
+        }
+    }
+
+    #[test]
+    fn raster_queue_color_key_cases_texture_area_overflow_and_level_limit() {
+        for (colors, low, expected) in [
+            ([u32::MAX; 3], 0x1_8000, 0x1_0000),
+            ([u32::MAX; 3], 0x8_8000, 0x8_8000),
+            ([0; 3], 0x1_8000, 0x8000),
+            ([1, 1, 2], 0x8000, 0x1_8000),
+        ] {
+            let mut f = Fixture::new();
+            f.set_triangle(0, -1, 0, true, colors, low | 0x10_0000, 0x1000);
+            f.call();
+            assert_eq!(events()[0], Event::Lookup(expected, 0));
+        }
+        let mut f = Fixture::new();
+        f.set_triangle(0, 2, 0xA, true, [u32::MAX; 3], 0, 0);
+        for offset in [0, 1, 6, 7, 12, 13] { f.triangles[offset] = 0; }
+        f.call();
+        assert!(events().contains(&Event::Level(2, 8)));
+        assert_eq!(f.globals[0], 0);
+
+        let mut f = Fixture::new();
+        f.set_triangle(0, 3, 0xC, true, [u32::MAX; 3], 0, 0);
+        unsafe { RasterQueue::from_ptr(f.object.ptr()).set_filter_enabled(1); }
+        // The signed absolute value of this wrapped texture area remains i32::MIN.
+        for (offset, value) in [(4, 0), (5, 0), (10, 0), (11, 1), (16, 0x8000_0000), (17, 0)] { f.triangles[offset] = value; }
+        f.call();
+        assert_eq!(&events()[..4], &[Event::Size(3), Event::Level(3, 0),
+            Event::Multiply(31, 0xFFF0_0000_0000_0000), Event::Lookup(0, 0x1000)]);
+    }
+
+    #[test]
+    fn raster_queue_texture_masks_keep_unsigned_width_and_bias_carries() {
+        for (width, height) in [(0u32, 0u32), (1, 1), (0xFFFF_FFFF, 0x8000_0000)] {
+            let mut f = Fixture::new();
+            f.set_triangle(0, 5, 0, true, [u32::MAX; 3], 0, 0);
+            STATE.with(|s| { let mut s = s.borrow_mut(); s.width = width; s.height = height; });
+            f.call();
+            let width = width.wrapping_sub(1); let height = height.wrapping_sub(1);
+            let bias = u64::from(height).wrapping_mul(0xFFF0_0000_0000_0000)
+                .wrapping_sub(u64::from(width.wrapping_shl(20))).wrapping_add(0x7FFF_7FFF_7FFF_7FFF);
+            assert_eq!(f.globals[0], height.wrapping_shl(8) | width);
+            assert_eq!(f.globals[2], bias as u32); assert_eq!(f.globals[3], (bias >> 32) as u32);
+        }
+    }
+
+    #[test]
+    fn raster_queue_generated_code_keeps_forward_word_overlap_behavior() {
+        let mut f = Fixture::new();
+        let before = f.scratch.clone();
+        STATE.with(|s| {
+            let mut s = s.borrow_mut(); s.cache_miss = true; s.size = 11;
+            s.destination = s.scratch + 4;
+        });
+        f.call();
+        assert_eq!(&f.scratch[..4], &before[..4]);
+        assert_eq!(&f.scratch[4..15], &[0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2]);
+        assert_eq!(&f.scratch[15..], &before[15..]);
+        assert_eq!(f.code, vec![0xCD; 64]);
+    }
+}
+
+#[cfg(test)]
+mod lua_command_tests {
+    use super::*;
+    use crate::testing::{fake, fake_data, GameFpu, Object};
+    use std::cell::RefCell;
+
+    const RETURN_EDX: u32 = 0xBADC_0FFE;
+    const FREE_EDX: u32 = 0x1234_5678;
+    const BUFFER: u32 = 0x1122_3344;
+    const TEXT: &[u8] = b"command text\0";
+
+    #[derive(Debug, PartialEq)]
+    enum Event {
+        Upvalue(u32), Userdata(u32), Clear(u32, u32), Top, Type(i32),
+        ToBool(i32), ToNumber(i32), ToString(i32), NewVariant, SetBool(u32),
+        SetNumber(u64), NewString(bool), SetString, SetParameter(u32), DestroyVariant,
+        Command(u32, u32, u32), PushNumber(u64), First, Get(u32), Kind(i32),
+        GetBool, GetNumber, GetString, Chars, PushBool(u32), PushString(u32), PushNil,
+        Next(u32), Free(u32),
+    }
+    #[derive(Default)]
+    struct State {
+        thread: u32, generator: u32, main: u32, input: u32, output: u32, server: u32,
+        index: f64, arguments: Vec<u32>, top: i32, status: i32, keys: Vec<u32>,
+        variants: Vec<u32>, tables: Vec<u32>, buffer: bool,
+        variant: u32, output_string: u32, input_string: u32, events: Vec<Event>,
+    }
+    thread_local! { static STATE: RefCell<State> = RefCell::new(State::default()); }
+    fn event(e: Event) { STATE.with(|s| s.borrow_mut().events.push(e)); }
+    fn take_events() -> Vec<Event> { STATE.with(|s| core::mem::take(&mut s.borrow_mut().events)) }
+    fn thread(p: *mut u8) { STATE.with(|s| assert_eq!(p as u32, s.borrow().thread)); }
+    fn variant(p: *mut u8) { STATE.with(|s| assert_eq!(p as u32, s.borrow().variant)); }
+    extern "thiscall" fn upvalue(this: *mut u8, which: u32) -> u32 {
+        thread(this);
+        event(Event::Upvalue(which));
+        STATE.with(|s| {
+            if let Some(table) = s.borrow_mut().tables.pop() {
+                unsafe { write(this, 0, table); }
+            }
+        });
+        1000 + which
+    }
+    extern "thiscall" fn userdata(this: *mut u8, token: u32) -> u32 {
+        thread(this);
+        event(Event::Userdata(token));
+        STATE.with(|s| match token {
+            1002 => s.borrow().generator,
+            1003 => s.borrow().main,
+            _ => panic!("unexpected userdata token"),
+        })
+    }
+    extern "thiscall" fn wrong_userdata(_: *mut u8, _: u32) -> u32 {
+        panic!("the callback must use the table saved before the upvalue call")
+    }
+    extern "thiscall" fn number(this: *mut u8, index: i32) -> f64 {
+        thread(this);
+        event(Event::ToNumber(index));
+        STATE.with(|s| if index == 1001 { s.borrow().index } else { -123.25 })
+    }
+    extern "thiscall" fn boolean(this: *mut u8, index: i32) -> u32 {
+        thread(this); event(Event::ToBool(index)); 0xABCD_0001
+    }
+    extern "thiscall" fn text(this: *mut u8, index: i32) -> *const u8 {
+        thread(this); event(Event::ToString(index)); TEXT.as_ptr()
+    }
+    extern "thiscall" fn clear(this: *mut u8, flags: u32) {
+        STATE.with(|s| assert!([s.borrow().input, s.borrow().output].contains(&(this as u32))));
+        event(Event::Clear(this as u32, flags));
+    }
+    extern "thiscall" fn top(this: *mut u8) -> i32 {
+        thread(this); event(Event::Top); STATE.with(|s| s.borrow().top)
+    }
+    extern "thiscall" fn kind(this: *mut u8, index: i32) -> u32 {
+        thread(this); event(Event::Type(index)); STATE.with(|s| s.borrow().arguments[index as usize - 1])
+    }
+    extern "thiscall" fn new_variant(this: *mut u8) -> *mut u8 {
+        STATE.with(|s| s.borrow_mut().variant = this as u32);
+        event(Event::NewVariant);
+        unsafe { write(this, 0, [0x00AC_ECD0u32, 0, 0, 0, 0]); }
+        this
+    }
+    extern "thiscall" fn set_bool(this: *mut u8, value: u32) -> u32 {
+        variant(this); event(Event::SetBool(value)); unsafe { write(this, 4, value); } 0
+    }
+    extern "thiscall" fn set_number(this: *mut u8, value: f64) -> u32 {
+        variant(this); event(Event::SetNumber(value.to_bits())); unsafe { write(this, 4, value); } 0
+    }
+    extern "thiscall" fn new_text(this: *mut u8, value: *const u8) -> *mut u8 {
+        assert_eq!(value, TEXT.as_ptr());
+        STATE.with(|s| {
+            assert_eq!(this as u32, s.borrow().variant + 40);
+            s.borrow_mut().input_string = this as u32;
+        });
+        event(Event::NewString(true));
+        unsafe { write(this, 0, [0x00A8_0810u32, BUFFER, 0, 0, 0]); }
+        this
+    }
+    extern "thiscall" fn set_string(this: *mut u8, value: *mut u8) -> u32 {
+        variant(this);
+        STATE.with(|s| assert_eq!(value as u32, s.borrow().input_string));
+        event(Event::SetString); 0
+    }
+    extern "thiscall" fn set_parameter(this: *mut u8, index: u32, value: *mut u8) {
+        STATE.with(|s| assert_eq!(this as u32, s.borrow().input));
+        variant(value); event(Event::SetParameter(index));
+    }
+    extern "thiscall" fn destroy_variant(this: *mut u8) -> u32 {
+        variant(this); event(Event::DestroyVariant); 0
+    }
+    extern "thiscall" fn command(this: *mut u8, id: u32, input: *mut u8, output: *mut u8) -> i32 {
+        STATE.with(|s| {
+            let s = s.borrow();
+            assert_eq!(this as u32, s.server);
+            assert_eq!(input as u32, s.input);
+            assert_eq!(output as u32, s.output);
+        });
+        event(Event::Command(id, input as u32, output as u32));
+        STATE.with(|s| s.borrow().status)
+    }
+    extern "thiscall" fn push_number(this: *mut u8, value: f64) -> u64 {
+        thread(this); event(Event::PushNumber(value.to_bits())); u64::from(RETURN_EDX) << 32 | 0xA5A5_A5A5
+    }
+    extern "thiscall" fn new_string(this: *mut u8) -> *mut u8 {
+        STATE.with(|s| s.borrow_mut().output_string = this as u32);
+        event(Event::NewString(false));
+        let buffer = STATE.with(|s| if s.borrow().buffer { BUFFER } else { 0 });
+        unsafe { write(this, 0, [0x00A8_0810u32, buffer, 0, 0, 0]); }
+        this
+    }
+    extern "thiscall" fn first(this: *mut u8) -> u64 {
+        STATE.with(|s| assert_eq!(this as u32, s.borrow().output));
+        event(Event::First);
+        let key = STATE.with(|s| s.borrow().keys.first().copied().unwrap_or(u32::MAX));
+        u64::from(RETURN_EDX) << 32 | u64::from(key)
+    }
+    extern "thiscall" fn get(this: *mut u8, key: u32) -> u32 {
+        STATE.with(|s| assert_eq!(this as u32, s.borrow().output));
+        event(Event::Get(key));
+        STATE.with(|s| {
+            let s = s.borrow(); let index = s.keys.iter().position(|&k| k == key).unwrap(); s.variants[index]
+        })
+    }
+    extern "thiscall" fn next(this: *mut u8, key: u32) -> u64 {
+        STATE.with(|s| assert_eq!(this as u32, s.borrow().output));
+        event(Event::Next(key));
+        let key = STATE.with(|s| {
+            let s = s.borrow(); let index = s.keys.iter().position(|&k| k == key).unwrap();
+            s.keys.get(index + 1).copied().unwrap_or(u32::MAX)
+        });
+        u64::from(RETURN_EDX) << 32 | u64::from(key)
+    }
+    extern "thiscall" fn variant_kind(this: *mut u8) -> i32 {
+        let kind = unsafe { read(this, 4) }; event(Event::Kind(kind)); kind
+    }
+    extern "thiscall" fn get_bool(_: *mut u8) -> u32 { event(Event::GetBool); 0xF0F0_0001 }
+    extern "thiscall" fn get_number(_: *mut u8) -> f64 { event(Event::GetNumber); 42.125 }
+    extern "thiscall" fn get_string(_: *mut u8, string: *mut u8) {
+        STATE.with(|s| assert_eq!(string as u32, s.borrow().output_string));
+        event(Event::GetString);
+    }
+    extern "thiscall" fn chars(this: *mut u8) -> *const u8 {
+        STATE.with(|s| assert_eq!(this as u32, s.borrow().output_string));
+        event(Event::Chars); TEXT.as_ptr()
+    }
+    extern "thiscall" fn push_bool(this: *mut u8, value: u32) { thread(this); event(Event::PushBool(value)); }
+    extern "thiscall" fn push_string(this: *mut u8, value: u32) { thread(this); event(Event::PushString(value)); }
+    extern "thiscall" fn push_nil(this: *mut u8) { thread(this); event(Event::PushNil); }
+    #[unsafe(naked)]
+    unsafe extern "thiscall" fn first_preserves_edx(_: *mut u8) -> u64 {
+        core::arch::naked_asm!("mov eax, -1", "ret");
+    }
+    #[unsafe(naked)]
+    unsafe extern "thiscall" fn extended_number(_: *mut u8, _: i32) -> f64 {
+        core::arch::naked_asm!(
+            "call {record}", "sub esp, 12", "mov dword ptr [esp], 0x400",
+            "mov dword ptr [esp + 4], 0x80000000", "mov word ptr [esp + 8], 0x3fff",
+            "fld tbyte ptr [esp]", "add esp, 12", "ret 4", record = sym extended_number_event);
+    }
+    extern "C" fn extended_number_event() { event(Event::ToNumber(1)); }
+    extern "C" fn free_string(buffer: *mut u8) -> u64 {
+        assert_eq!(buffer as u32, BUFFER);
+        STATE.with(|s| {
+            let s = s.borrow();
+            let p = if matches!(s.events.last(), Some(Event::SetString)) { s.input_string } else { s.output_string };
+            assert_eq!(unsafe { read::<u32>(p as *mut u8, 0) }, 0x00A8_0810);
+        });
+        event(Event::Free(buffer as u32)); u64::from(FREE_EDX) << 32 | 0xFFFF_FFFF
+    }
+
+    struct Fixture {
+        _objects: Vec<Object>, tables: Vec<Vec<usize>>, state: [u32; 2], records: [u8; 88],
+        _fakes: Vec<crate::testing::Fake>, _constants: Box<[f64; 2]>,
+    }
+    impl Fixture {
+        fn new() -> Self {
+            STATE.with(|s| *s.borrow_mut() = State::default());
+            let mut tables = vec![vec![0usize; 0x150 / 4]; 4];
+            for (offset, method) in [
+                (0x148, upvalue as *const ()), (0xB8, userdata as *const ()), (0xA4, number as *const ()),
+                (0xA8, boolean as *const ()), (0xAC, text as *const ()), (0x38, top as *const ()),
+                (0x5C, kind as *const ()), (0xC4, push_number as *const ()), (0xD4, push_bool as *const ()),
+                (0xCC, push_string as *const ()), (0xC0, push_nil as *const ()),
+            ] { tables[0][offset / 4] = method as usize; }
+            tables[1][0x10 / 4] = clear as *const () as usize;
+            tables[1][0x1C / 4] = set_parameter as *const () as usize;
+            tables[2][0x10 / 4] = clear as *const () as usize;
+            tables[2][0x34 / 4] = first as *const () as usize;
+            tables[2][0x18 / 4] = get as *const () as usize;
+            tables[2][0x38 / 4] = next as *const () as usize;
+            tables[3][0x50 / 4] = command as *const () as usize;
+            let mut objects: Vec<_> = (0..5).map(|_| Object::new(0x60)).collect();
+            let pointers: Vec<_> = objects.iter_mut().map(|o| o.ptr()).collect();
+            unsafe {
+                for (object, table) in [0, 2, 3, 4].into_iter().zip(&tables) { write(pointers[object], 0, table.as_ptr()); }
+                let generator = LuaCommandGenerator::from_ptr(pointers[1]);
+                generator.set_main_thread(0x1000 as *mut u8);
+                generator.set_input(pointers[2]); generator.set_output(pointers[3]); generator.set_server(pointers[4]);
+            }
+            let mut constants = Box::new([0., 2.]);
+            let fakes = vec![
+                fake(0x0091_66D4, new_variant as *const () as usize), fake(0x0091_6657, set_bool as *const () as usize),
+                fake(0x0091_66AA, set_number as *const () as usize), fake(0x0091_66CF, set_string as *const () as usize),
+                fake(0x0091_5EB5, destroy_variant as *const () as usize), fake(0x0040_8480, new_text as *const () as usize),
+                fake(0x0057_8390, new_string as *const () as usize), fake(0x009D_7E63, chars as *const () as usize),
+                fake(0x0090_CF63, free_string as *const () as usize),
+                fake_data(0x00A8_0990, constants.as_mut_ptr().cast()),
+                fake_data(0x00A8_0AC8, unsafe { constants.as_mut_ptr().add(1) }.cast()),
+            ];
+            STATE.with(|s| *s.borrow_mut() = State {
+                thread: pointers[0] as u32, generator: pointers[1] as u32, main: 0x1000,
+                input: pointers[2] as u32, output: pointers[3] as u32, server: pointers[4] as u32,
+                status: -7, ..State::default()
+            });
+            Self { _objects: objects, tables, state: [pointers[0] as u32, 0], records: [0xA5; 88],
+                _fakes: fakes, _constants: constants }
+        }
+        fn invoke(&mut self) -> u64 {
+            let generator = STATE.with(|s| s.borrow().generator) as *mut u8;
+            if !generator.is_null() { unsafe {
+                LuaCommandGenerator::from_ptr(generator).set_records(self.records.as_mut_ptr());
+                LuaCommandGenerator::from_ptr(generator).set_records_end(self.records.as_mut_ptr().add(88));
+            } }
+            let mut call = RawCall::new(Conv::Cdecl, fc4p_008b5b70 as *const () as usize, 0, &[]);
+            let args = [unsafe { self.state.as_mut_ptr().add(1) } as u32];
+            call.args = args.as_ptr(); call.count = 1;
+            call.eax = 0xAAAA_AAAA; call.edx = 0xBBBB_BBBB;
+            unsafe { call_raw(&mut call); }
+            u64::from(call.edx) << 32 | u64::from(call.eax)
+        }
+    }
+
+    #[test]
+    fn lua_command_converts_arguments_and_preserves_full_boolean_words_and_call_order() {
+        let _fpu = GameFpu::new();
+        let mut f = Fixture::new();
+        STATE.with(|s| { let mut s = s.borrow_mut(); s.arguments = vec![1, 3, 4, 0, 2, 5]; s.top = 6; s.index = 1.9; });
+        f.records[44..48].copy_from_slice(&0x8765_4321u32.to_le_bytes());
+        let before: Vec<_> = f._objects.iter_mut().map(|o| unsafe { core::slice::from_raw_parts(o.ptr(), 0x60).to_vec() }).collect();
+        assert_eq!(f.invoke(), u64::from(RETURN_EDX) << 32 | 1);
+        for (index, object) in f._objects.iter_mut().enumerate() {
+            let bytes = unsafe { core::slice::from_raw_parts(object.ptr(), 0x60) };
+            if index == 1 {
+                assert_eq!(&bytes[..0x14], &before[index][..0x14]);
+                assert_eq!(&bytes[0x1C..], &before[index][0x1C..]);
+            } else { assert_eq!(bytes, before[index]); }
+        }
+        let (input, output) = STATE.with(|s| (s.borrow().input, s.borrow().output));
+        assert_eq!(take_events(), vec![
+            Event::Upvalue(2), Event::Userdata(1002), Event::Upvalue(3), Event::Userdata(1003),
+            Event::Upvalue(1), Event::ToNumber(1001), Event::Clear(input, 0), Event::Clear(output, 0), Event::Top,
+            Event::NewVariant, Event::Type(1), Event::ToBool(1), Event::SetBool(0xABCD_0001), Event::SetParameter(0), Event::DestroyVariant,
+            Event::NewVariant, Event::Type(2), Event::ToNumber(2), Event::SetNumber((-123.25f64).to_bits()), Event::SetParameter(1), Event::DestroyVariant,
+            Event::NewVariant, Event::Type(3), Event::ToString(3), Event::NewString(true), Event::SetString, Event::Free(BUFFER), Event::SetParameter(2), Event::DestroyVariant,
+            Event::NewVariant, Event::Type(4), Event::SetNumber(0), Event::SetParameter(3), Event::DestroyVariant,
+            Event::NewVariant, Event::Type(5), Event::SetNumber(0), Event::SetParameter(4), Event::DestroyVariant,
+            Event::NewVariant, Event::Type(6), Event::SetNumber(0), Event::SetParameter(5), Event::DestroyVariant,
+            Event::Command(0x8765_4321, input, output), Event::PushNumber((-7f64).to_bits()), Event::NewString(false), Event::First,
+        ]);
+        assert_eq!(&f.records[..44], &[0xA5; 44]);
+        assert_eq!(&f.records[48..], &[0xA5; 40]);
+    }
+
+    #[test]
+    fn lua_command_output_types_reserved_key_and_cleanup_keep_order_and_edx() {
+        let _fpu = GameFpu::new();
+        for buffer in [false, true] {
+            let mut f = Fixture::new();
+            let mut table = vec![0usize; 0xE0 / 4];
+            for (slot, fun) in [(0x0C, variant_kind as *const ()), (0x24, get_bool as *const ()),
+                (0x9C, get_number as *const ()), (0xDC, get_string as *const ())] { table[slot / 4] = fun as usize; }
+            let kinds = [1i32, 2, 14, 0, -1, 15];
+            let mut values: Vec<_> = kinds.iter().map(|&k| [table.as_ptr() as u32, k as u32]).collect();
+            STATE.with(|s| {
+                let mut s = s.borrow_mut(); s.buffer = buffer; s.top = -1; s.status = i32::MIN;
+                s.keys = vec![0x2B99_9D2B, 10, 11, 12, 13, 14, 15, 16];
+                s.variants = vec![0, 0]; s.variants.extend(values.iter_mut().map(|v| v.as_mut_ptr() as u32));
+            });
+            assert_eq!(f.invoke(), u64::from(if buffer { FREE_EDX } else { RETURN_EDX }) << 32 | 8);
+            let (input, output) = STATE.with(|s| (s.borrow().input, s.borrow().output));
+            let mut expected = vec![Event::Upvalue(2), Event::Userdata(1002), Event::Upvalue(3), Event::Userdata(1003),
+                Event::Upvalue(1), Event::ToNumber(1001), Event::Clear(input, 0), Event::Clear(output, 0), Event::Top,
+                Event::Command(0xA5A5_A5A5, input, output), Event::PushNumber((i32::MIN as f64).to_bits()),
+                Event::NewString(false), Event::First, Event::Next(0x2B99_9D2B), Event::Get(10), Event::PushNil, Event::Next(10),
+                Event::Get(11), Event::Kind(1), Event::GetBool, Event::PushBool(0xF0F0_0001), Event::Next(11)];
+            for (key, kind) in [(12, 2), (13, 14)] {
+                expected.extend([Event::Get(key), Event::Kind(kind), Event::GetNumber, Event::PushNumber(42.125f64.to_bits()), Event::Next(key)]);
+            }
+            for (key, kind) in [(14, 0), (15, -1), (16, 15)] {
+                expected.extend([Event::Get(key), Event::Kind(kind), Event::GetString, Event::Chars, Event::PushString(TEXT.as_ptr() as u32), Event::Next(key)]);
+            }
+            if buffer { expected.push(Event::Free(BUFFER)); }
+            assert_eq!(take_events(), expected);
+        }
+    }
+
+    #[test]
+    fn lua_command_rejects_missing_owner_server_thread_and_out_of_range_indices() {
+        let _fpu = GameFpu::new();
+        for failure in 0..3 {
+            let mut f = Fixture::new();
+            STATE.with(|s| { let mut s = s.borrow_mut(); match failure {
+                0 => s.generator = 0,
+                1 => unsafe { LuaCommandGenerator::from_ptr(s.generator as *mut u8).set_server(core::ptr::null_mut()); },
+                _ => s.main = 0x9999,
+            } });
+            assert_eq!(f.invoke(), u64::from(RETURN_EDX) << 32 | 1);
+            assert_eq!(take_events(), vec![Event::Upvalue(2), Event::Userdata(1002), Event::Upvalue(3), Event::Userdata(1003), Event::PushNumber(2f64.to_bits())]);
+        }
+        // Truncation keeps the low 32 bits, including integer-indefinite and values past i32.
+        for (index, valid) in [(-1., false), (-0.9, true), (0., true), (1.999, true), (2., false),
+            (f64::NAN, true), (f64::INFINITY, true), (4294967296., true), (2147483648., false)] {
+            let mut f = Fixture::new();
+            STATE.with(|s| s.borrow_mut().index = index);
+            assert_eq!(f.invoke() as u32, 1);
+            let events = take_events();
+            if valid { assert!(events.contains(&Event::First), "index {index}"); }
+            else { assert_eq!(&events[6..], &[Event::PushNumber(2f64.to_bits())], "index {index}"); }
+        }
+    }
+
+    #[test]
+    fn lua_command_saved_upvalue_table_survives_a_table_change() {
+        let _fpu = GameFpu::new();
+        let mut f = Fixture::new();
+        let mut next_table = f.tables[0].clone();
+        next_table[0xB8 / 4] = wrong_userdata as *const () as usize;
+        // The first two upvalues replace the table before their userdata conversion.
+        let mut middle_table = f.tables[0].clone();
+        middle_table[0xA4 / 4] = number as *const () as usize;
+        STATE.with(|s| s.borrow_mut().tables = vec![next_table.as_mut_ptr() as u32, middle_table.as_mut_ptr() as u32]);
+        assert_eq!(f.invoke(), u64::from(RETURN_EDX) << 32 | 1);
+        assert_eq!(take_events().iter().filter(|e| matches!(e, Event::Userdata(_))).count(), 2);
+    }
+
+    #[test]
+    fn lua_command_empty_output_preserves_iterator_edx_and_rounds_extended_st0_only_at_store() {
+        let _fpu = GameFpu::new();
+        let mut f = Fixture::new();
+        f.tables[2][0x34 / 4] = first_preserves_edx as *const () as usize;
+        assert_eq!(f.invoke(), (f.tables[2].as_ptr() as u64) << 32 | 1);
+        take_events();
+        f.tables[0][0xA4 / 4] = extended_number as *const () as usize;
+        STATE.with(|s| { let mut s = s.borrow_mut(); s.arguments = vec![3]; s.top = 1; });
+        assert_eq!(f.invoke() as u32, 1);
+        assert!(take_events().contains(&Event::SetNumber(1f64.to_bits())));
+    }
+
+    #[test]
+    fn lua_command_all_numeric_output_kinds_skip_a_reserved_key_between_values() {
+        let _fpu = GameFpu::new();
+        let mut f = Fixture::new();
+        let mut table = [0usize; 0xA0 / 4];
+        table[0x0C / 4] = variant_kind as *const () as usize;
+        table[0x9C / 4] = get_number as *const () as usize;
+        let mut values: Vec<_> = (2..=14).map(|kind| [table.as_ptr() as u32, kind]).collect();
+        STATE.with(|s| {
+            let mut s = s.borrow_mut(); s.keys = (2..=14).collect();
+            s.variants = values.iter_mut().map(|v| v.as_mut_ptr() as u32).collect();
+            s.keys.insert(5, 0x2B99_9D2B); s.variants.insert(5, 0);
+        });
+        assert_eq!(f.invoke(), u64::from(RETURN_EDX) << 32 | 14);
+        let trace = take_events();
+        assert!(!trace.contains(&Event::Get(0x2B99_9D2B)));
+        for kind in 2..=14 { assert!(trace.contains(&Event::Kind(kind))); }
+        assert_eq!(trace.iter().filter(|e| **e == Event::GetNumber).count(), 13);
+    }
+}
 
 #[cfg(test)]
 mod depth_edge_tests {
