@@ -96,9 +96,15 @@ pub mod updates;
 pub mod planting;
 pub mod daily;
 pub mod position;
+pub mod connections;
+pub mod lot_update;
+pub mod lighting_transition;
 
 const ALL: [Port;
-    explosion::PORTS.len()
+    lighting_transition::PORTS.len()
+        + lot_update::PORTS.len()
+        + connections::PORTS.len()
+        + explosion::PORTS.len()
         + power_changes::PORTS.len()
         + business::PORTS.len()
         + construction::PORTS.len()
@@ -123,6 +129,9 @@ const ALL: [Port;
         + planting::PORTS.len()
         + daily::PORTS.len()
         + position::PORTS.len()] = crate::port::concat(&[
+    lighting_transition::PORTS,
+    lot_update::PORTS,
+    connections::PORTS,
     position::PORTS,
     daily::PORTS,
     planting::PORTS,
