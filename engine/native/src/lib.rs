@@ -43,11 +43,19 @@ mod abi;
 mod testing;
 
 #[cfg(target_arch = "x86")]
+pub mod aura;
+#[cfg(target_arch = "x86")]
+pub mod budget;
+#[cfg(target_arch = "x86")]
 pub mod building;
+#[cfg(target_arch = "x86")]
+pub mod construction_occupant;
 #[cfg(target_arch = "x86")]
 pub mod demand;
 #[cfg(target_arch = "x86")]
 pub mod game;
+#[cfg(target_arch = "x86")]
+pub mod growth_developer;
 #[cfg(target_arch = "x86")]
 pub mod landvalue;
 #[cfg(target_arch = "x86")]
@@ -57,17 +65,33 @@ pub mod neighbors;
 #[cfg(target_arch = "x86")]
 pub mod network_tool;
 #[cfg(target_arch = "x86")]
+pub mod occupant_manager;
+#[cfg(target_arch = "x86")]
+pub mod path_info;
+#[cfg(target_arch = "x86")]
+pub mod pathfinder;
+#[cfg(target_arch = "x86")]
+pub mod plumbing;
+#[cfg(target_arch = "x86")]
 pub mod pollution;
 #[cfg(target_arch = "x86")]
 pub mod power;
+#[cfg(target_arch = "x86")]
+pub mod prop_developer;
 #[cfg(target_arch = "x86")]
 pub mod residential;
 #[cfg(target_arch = "x86")]
 pub mod shared;
 #[cfg(target_arch = "x86")]
+pub mod terrain;
+#[cfg(target_arch = "x86")]
 pub mod tract_developer;
 #[cfg(target_arch = "x86")]
 pub mod traffic;
+#[cfg(target_arch = "x86")]
+pub mod traffic_network;
+#[cfg(target_arch = "x86")]
+pub mod weather;
 #[cfg(target_arch = "x86")]
 pub mod x87;
 #[cfg(target_arch = "x86")]
@@ -81,35 +105,59 @@ mod table {
     use crate::port::{self, Port, PortTable};
 
     const COUNT: usize = crate::x87::PORTS.len()
+        + crate::aura::PORTS.len()
+        + crate::budget::PORTS.len()
         + crate::building::PORTS.len()
+        + crate::construction_occupant::PORTS.len()
         + crate::demand::PORTS.len()
+        + crate::growth_developer::PORTS.len()
         + crate::landvalue::PORTS.len()
         + crate::lot_developer::PORTS.len()
         + crate::neighbors::PORTS.len()
         + crate::network_tool::PORTS.len()
+        + crate::occupant_manager::PORTS.len()
+        + crate::path_info::PORTS.len()
+        + crate::pathfinder::PORTS.len()
+        + crate::plumbing::PORTS.len()
         + crate::pollution::PORTS.len()
         + crate::power::PORTS.len()
+        + crate::prop_developer::PORTS.len()
         + crate::residential::PORTS.len()
         + crate::shared::PORTS.len()
+        + crate::terrain::PORTS.len()
         + crate::tract_developer::PORTS.len()
         + crate::traffic::PORTS.len()
+        + crate::traffic_network::PORTS.len()
+        + crate::weather::PORTS.len()
         + crate::zone_developer::PORTS.len();
     // Only evaluated at compile time, for the uniqueness check and the static table below.
     #[allow(clippy::large_const_arrays)]
     const ALL: [Port; COUNT] = port::concat(&[
         crate::x87::PORTS,
+        crate::aura::PORTS,
+        crate::budget::PORTS,
         crate::building::PORTS,
+        crate::construction_occupant::PORTS,
         crate::demand::PORTS,
+        crate::growth_developer::PORTS,
         crate::landvalue::PORTS,
         crate::lot_developer::PORTS,
         crate::neighbors::PORTS,
         crate::network_tool::PORTS,
+        crate::occupant_manager::PORTS,
+        crate::path_info::PORTS,
+        crate::pathfinder::PORTS,
+        crate::plumbing::PORTS,
         crate::pollution::PORTS,
         crate::power::PORTS,
+        crate::prop_developer::PORTS,
         crate::residential::PORTS,
         crate::shared::PORTS,
+        crate::terrain::PORTS,
         crate::tract_developer::PORTS,
         crate::traffic::PORTS,
+        crate::traffic_network::PORTS,
+        crate::weather::PORTS,
         crate::zone_developer::PORTS,
     ]);
     // Checked in a test: the pairwise check over the whole table is too long for compile-time evaluation.
